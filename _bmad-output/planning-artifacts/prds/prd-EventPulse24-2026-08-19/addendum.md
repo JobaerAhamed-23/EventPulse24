@@ -407,13 +407,13 @@ This addendum preserves depth from the discovery conversation and source documen
 
 ## K. References to Source Documents
 
-- **Product Brief:** `_bmad-output/planning-artifacts/briefs/brief-EventPulse360-2026-08-19/brief.md`
-- **Product Brief Addendum:** `_bmad-output/planning-artifacts/briefs/brief-EventPulse360-2026-08-19/addendum.md`
+- **Product Brief:** `_bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md`
+- **Product Brief Addendum:** `_bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/addendum.md`
 - **Innovation Strategy:** `_bmad-output/innovation-strategy-2026-08-19.md`
 - **Design Thinking:** `_bmad-output/design-thinking-2026-08-19.md`
 - **Blue Ocean Strategy:** `_bmad-output/blue-ocean-strategy-2026-08-19.md`
 - **Original scope:** `docs/scope.txt`
-- **PRD (this run):** `prd-EventPulse360-2026-08-19/prd.md`
+- **PRD (this run):** `prd-EventPulse24-2026-08-19/prd.md`
 - **Memlog (this run):** `.memlog.md`
 
 ---

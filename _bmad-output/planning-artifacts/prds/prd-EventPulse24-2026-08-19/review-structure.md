@@ -1,11 +1,11 @@
-# PRD Structure Review — EventPulse24 (prd-EventPulse360-2026-08-19)
+# PRD Structure Review — EventPulse24 (prd-EventPulse24-2026-08-19)
 
 **Reviewer:** BMad PRD structure reviewer
 **Date:** 2026-08-19
 **Scope:** prd.md + addendum.md
 **Files reviewed:**
-- `/home/bs1346/Documents/P-project/EventPulse24/_bmad-output/planning-artifacts/prds/prd-EventPulse360-2026-08-19/prd.md`
-- `/home/bs1346/Documents/P-project/EventPulse24/_bmad-output/planning-artifacts/prds/prd-EventPulse360-2026-08-19/addendum.md`
+- `/home/bs1346/Documents/P-project/EventPulse24/_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md`
+- `/home/bs1346/Documents/P-project/EventPulse24/_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/addendum.md`
 
 ---
 
@@ -256,4 +256,4 @@ The PRD predominantly describes capabilities (UX behaviors, system responsibilit
 
 ---
 
-**File path:** `/home/bs1346/Documents/P-project/EventPulse24/_bmad-output/planning-artifacts/prds/prd-EventPulse360-2026-08-19/review-structure.md`
+**File path:** `/home/bs1346/Documents/P-project/EventPulse24/_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/review-structure.md`

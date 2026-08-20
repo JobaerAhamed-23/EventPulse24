@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-19
 **Source:** `_bmad-output/blue-ocean-strategy-2026-08-19.md`
-**PRD:** `prd-EventPulse360-2026-08-19/prd.md` (+ `addendum.md`)
+**PRD:** `prd-EventPulse24-2026-08-19/prd.md` (+ `addendum.md`)
 
 ---
 

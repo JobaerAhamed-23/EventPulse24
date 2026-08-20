@@ -1,9 +1,9 @@
 # Brief → PRD Reconciliation
 
 **Inputs compared:**
-- **Brief:** `brief-EventPulse360-2026-08-19/brief.md`
-- **PRD:** `prd-EventPulse360-2026-08-19/prd.md`
-- **Addendum:** `prd-EventPulse360-2026-08-19/addendum.md`
+- **Brief:** `brief-EventPulse24-2026-08-19/brief.md`
+- **PRD:** `prd-EventPulse24-2026-08-19/prd.md`
+- **Addendum:** `prd-EventPulse24-2026-08-19/addendum.md`
 
 ---
 

@@ -1,4 +1,4 @@
-# PRD Quality Review — EventPulse24 (prd-EventPulse360-2026-08-19)
+# PRD Quality Review — EventPulse24 (prd-EventPulse24-2026-08-19)
 
 **Reviewer:** BMad PRD validator
 **Reviewer rubric:** `/home/bs1346/Documents/P-project/EventPulse24/.agents/skills/bmad-prd/assets/prd-validation-checklist.md`

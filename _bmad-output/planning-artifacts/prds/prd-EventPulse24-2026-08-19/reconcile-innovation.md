@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-19
 **Source:** `_bmad-output/innovation-strategy-2026-08-19.md`
-**Target:** `prd-EventPulse360-2026-08-19/prd.md` + `addendum.md`
+**Target:** `prd-EventPulse24-2026-08-19/prd.md` + `addendum.md`
 **Author:** Input reconciliation pass
 
 ---

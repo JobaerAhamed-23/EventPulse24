@@ -11,7 +11,7 @@ handoff_target: bmad-prd
 
 > **Purpose:** Capture the 3 critical pre-PRD gaps the brief missed, plus the few connections that turn those gaps into PRD-ready decisions. Drop into `bmad-prd` as additive context to the existing brief.
 
-This document was generated from a divergent session covering ~119 logged ideas across 8 techniques (First Principles, Reverse Brainstorming, Cross-Pollination, SCAMPER, Constraint Mapping, Worst Possible Idea + inversion, Analogical Thinking, Question Storming, Decision Tree, Failure Analysis). It is meant to be read alongside `brief-EventPulse360-2026-08-19/brief.md` and `addendum.md`.
+This document was generated from a divergent session covering ~119 logged ideas across 8 techniques (First Principles, Reverse Brainstorming, Cross-Pollination, SCAMPER, Constraint Mapping, Worst Possible Idea + inversion, Analogical Thinking, Question Storming, Decision Tree, Failure Analysis). It is meant to be read alongside `brief-EventPulse24-2026-08-19/brief.md` and `addendum.md`.
 
 ---
 
