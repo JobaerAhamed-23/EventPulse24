@@ -1,0 +1,526 @@
+<!--
+  EventPulse24 — Pulse Digest (Mobile, 375px)
+  Person: Maya Patel, Brooklyn. Today: Tuesday, Aug 26, 2026.
+
+  [ASSUMPTION] Card 2 (Sunny Jain Quartet) was authored as "tomorrow 8pm" in the spec but the demo frame is "Today, three things matter." — resolved by re-rendering it as "Tonight · 9:00 PM" per spec note.
+  [ASSUMPTION] Card 3 (Pottery & coffee) was authored as "tomorrow morning" — resolved by re-rendering as "Today · 10:00 AM" per spec note.
+  [ASSUMPTION] The "Barbican" venue name is preserved as in spec even though real "Barbican" is in London; Brooklyn context is implied by the neighborhood labels (Bushwick, Williamsburg, Greenpoint).
+  [DESIGN DECISION] Category stripe rendered as a 3px left edge (per the user's brief) rather than a 4px top stripe used in the canonical DESIGN.md diagram — kept faithful to the user's explicit visual rule.
+  [DESIGN DECISION] Confidence Pulse dots sized at 7px with a mono "(4/5)" alt label inline per the user's brief (demo audience visibility) — supplements the canonical "dots only" default state.
+  [DESIGN DECISION] Source label letter-spacing set to 0.06em (slightly looser than 0.04em) for the small-caps rendering legibility at 12px.
+  [DESIGN DECISION] "Quiet Hours" / "Today's sources" / "Tomorrow's preview" are rendered inline below the cards on mobile per the user's mobile brief (vs. desktop sidebar).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>EventPulse24 — Today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------
+     Tokens (verbatim from DESIGN.md)
+     ------------------------------------------------------------------ */
+  :root {
+    --surface-paper:        #FAF8F4;
+    --surface-elevated:     #FFFFFF;
+    --surface-subtle:       #F1ECE3;
+    --surface-inset:        #EDE7DA;
+    --ink-primary:          #1A1814;
+    --ink-secondary:        #3A352D;
+    --ink-muted:            #7A7066;
+    --ink-inverse:          #FAF8F4;
+    --accent-terracotta:    #C4502B;
+    --accent-slate:         #5B6B7E;
+    --accent-amber:         #C77A2C;
+    --signal-success:       #4A7A4A;
+    --signal-warn:          #B8893A;
+    --signal-error:         #8E2A1F;
+    --border-subtle:        rgba(26, 24, 20, 0.08);
+    --border-strong:        rgba(26, 24, 20, 0.16);
+
+    --family-display: "Source Serif 4", Fraunces, Georgia, serif;
+    --family-body:    "Inter", -apple-system, system-ui, sans-serif;
+    --family-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+    --pad-page: 24px;
+    --gap-cards: 16px;
+    --pad-card: 16px;
+    --r-card: 8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--surface-paper);
+    color: var(--ink-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--family-body);
+    font-size: 16px;
+    line-height: 1.55;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* The mobile frame — caps visible viewport at 375px (iPhone 13/14/15) */
+  .frame {
+    width: 375px;
+    min-height: 100vh;
+    background: var(--surface-paper);
+    padding: 0 var(--pad-page);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ------------------------------------------------------------------
+     App header
+     ------------------------------------------------------------------ */
+  .app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 56px 0 24px;
+  }
+  .wordmark {
+    font-family: var(--family-display);
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: -0.005em;
+    color: var(--ink-primary);
+  }
+  .header-link {
+    font-family: var(--family-body);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-muted);
+    text-decoration: none;
+    letter-spacing: 0.01em;
+  }
+  .header-link:hover { color: var(--ink-primary); }
+
+  /* ------------------------------------------------------------------
+     Hero
+     ------------------------------------------------------------------ */
+  .hero {
+    margin-top: 8px;
+    margin-bottom: 32px;
+  }
+  .hero h1 {
+    font-family: var(--family-display);
+    font-weight: 700;
+    font-size: 36px;             /* type.scale.display.lg.mobile */
+    line-height: 1.10;
+    letter-spacing: -0.018em;
+    color: var(--ink-primary);
+    margin: 0 0 12px;
+  }
+  .hero .subhead {
+    font-family: var(--family-body);
+    font-size: 14px;             /* type.scale.meta.md */
+    font-weight: 500;
+    line-height: 1.45;
+    color: var(--ink-muted);
+    margin: 0;
+  }
+
+  /* ------------------------------------------------------------------
+     Card stack
+     ------------------------------------------------------------------ */
+  .cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-cards);
+  }
+
+  .card {
+    position: relative;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-card);
+    padding: var(--pad-card);
+    /* leave room for the 3px category stripe on the left edge */
+    overflow: hidden;
+    animation: fadeIn 240ms ease-out both;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+  .card--mustknow::before { background: var(--accent-amber); }
+  .card--nearby::before,
+  .card--surprise::before { background: var(--accent-slate); }
+
+  .card:nth-child(1) { animation-delay:   0ms; }
+  .card:nth-child(2) { animation-delay:  60ms; }
+  .card:nth-child(3) { animation-delay: 120ms; }
+
+  /* Kicker label — type.scale.meta.sm */
+  .kicker {
+    font-family: var(--family-body);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.45;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 6px;
+  }
+
+  /* Event name — type.scale.headline.md (22px) per spec, but tight to 20px here for mobile editorial cadence */
+  .card h2 {
+    font-family: var(--family-display);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--ink-primary);
+    margin: 0 0 8px;
+  }
+
+  /* Why-this tags — type.scale.microtag (13px italic) */
+  .why {
+    font-family: var(--family-body);
+    font-size: 13px;
+    font-style: italic;
+    line-height: 1.40;
+    color: var(--ink-secondary);
+    margin: 0 0 14px;
+  }
+
+  /* When · Where metadata row */
+  .when-where {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-family: var(--family-body);
+    font-size: 14px;             /* type.scale.body.sm */
+    font-weight: 400;
+    line-height: 1.50;
+    color: var(--ink-muted);
+    margin: 0 0 14px;
+  }
+  .when-where .sep {
+    color: var(--ink-muted);
+    opacity: 0.55;
+  }
+
+  /* Bottom row: source badge + confidence pulse */
+  .trust-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  /* Source Badge — ink-bordered, 1px, uppercase label per spec */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;          /* radius.subtle */
+    background: transparent;
+    color: var(--ink-muted);
+    font-family: var(--family-body);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .badge .glyph {
+    width: 11px; height: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  /* verified (official_site): terracotta 1px border + label + checkmark */
+  .badge--verified {
+    border-color: var(--accent-terracotta);
+    color: var(--accent-terracotta);
+  }
+  .badge--verified .glyph svg { stroke: var(--accent-terracotta); }
+  /* community: ink-bordered, italic label */
+  .badge--community { font-style: italic; text-transform: none; letter-spacing: 0.01em; }
+  /* aggregator: ink-bordered + link glyph */
+  .badge--aggregator .glyph svg { stroke: var(--ink-primary); }
+
+  /* Confidence Pulse — 5 dots + mono alt label */
+  .confidence {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .confidence .dots {
+    display: inline-flex;
+    gap: 4px;
+  }
+  .confidence .dot {
+    width: 7px; height: 7px;
+    border-radius: 9999px;
+    background: var(--border-subtle);
+    border: 1px solid var(--border-subtle);
+  }
+  .confidence .dot--filled {
+    background: var(--accent-terracotta);
+    border-color: var(--accent-terracotta);
+  }
+  .confidence .alt {
+    font-family: var(--family-mono);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--ink-muted);
+    letter-spacing: 0.02em;
+  }
+
+  /* ------------------------------------------------------------------
+     Tomorrow tease — thin rule + a quiet line
+     ------------------------------------------------------------------ */
+  .tomorrow-tease {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--family-body);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-secondary);
+  }
+  .tomorrow-tease .dot {
+    width: 6px; height: 6px;
+    border-radius: 9999px;
+    background: var(--accent-terracotta);
+    flex-shrink: 0;
+  }
+  .tomorrow-tease a {
+    color: var(--accent-terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--accent-terracotta);
+    padding-bottom: 1px;
+  }
+
+  /* ------------------------------------------------------------------
+     Quiet context block (mobile brief calls for these to sit below cards)
+     ------------------------------------------------------------------ */
+  .quiet-block {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--surface-subtle);
+    border-radius: var(--r-card);
+  }
+  .quiet-block .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 0;
+    font-family: var(--family-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-secondary);
+  }
+  .quiet-block .row + .row { border-top: 1px solid var(--border-subtle); }
+  .quiet-block .row .label { color: var(--ink-muted); letter-spacing: 0.02em; }
+  .quiet-block .row .value { color: var(--ink-primary); }
+
+  /* ------------------------------------------------------------------
+     Bottom Settings link
+     ------------------------------------------------------------------ */
+  .footer {
+    margin-top: 40px;
+    margin-bottom: 40px;
+    text-align: center;
+  }
+  .footer a {
+    font-family: var(--family-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-muted);
+    text-decoration: none;
+    letter-spacing: 0.01em;
+  }
+  .footer a:hover { color: var(--ink-primary); }
+
+  /* ------------------------------------------------------------------
+     Motion
+     ------------------------------------------------------------------ */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0);    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- App header -->
+  <header class="app-header">
+    <span class="wordmark">EventPulse24</span>
+    <a class="header-link" href="#tomorrow">Tomorrow</a>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>Today, three things matter.</h1>
+    <p class="subhead">Tuesday, August 26 · Brooklyn</p>
+  </section>
+
+  <!-- Card stack -->
+  <main class="cards" aria-label="Pulse Digest">
+
+    <!-- Card 1 — Must-know (amber) -->
+    <article class="card card--mustknow">
+      <p class="kicker">Must&nbsp;know</p>
+      <h2>Sam&rsquo;s 30th &mdash; dinner at Lilia</h2>
+      <p class="why">birthday, close friend, walking distance</p>
+      <p class="when-where">
+        <span>Tonight &middot; 7:30 PM</span>
+        <span class="sep">&middot;</span>
+        <span>Lilia, Williamsburg</span>
+        <span class="sep">&middot;</span>
+        <span>0.9 mi</span>
+      </p>
+      <div class="trust-row">
+        <span class="badge badge--aggregator" aria-label="Listing site. Aggregated from a public listing.">
+          <span class="glyph" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5.2 6.8a2.4 2.4 0 0 0 3.4 0l1.6-1.6a2.4 2.4 0 0 0-3.4-3.4L6 2.6"/>
+              <path d="M6.8 5.2a2.4 2.4 0 0 0-3.4 0L1.8 6.8a2.4 2.4 0 0 0 3.4 3.4L6 9.4"/>
+            </svg>
+          </span>
+          From friends&rsquo; calendar
+        </span>
+        <span class="confidence" aria-label="4 of 5">
+          <span class="dots">
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot"></span>
+          </span>
+          <span class="alt">(4/5)</span>
+        </span>
+      </div>
+    </article>
+
+    <!-- Card 2 — Nearby (slate) -->
+    <article class="card card--nearby">
+      <p class="kicker">Nearby</p>
+      <h2>Sunny Jain Quartet at Barbican</h2>
+      <p class="why">nearby, tonight, music</p>
+      <p class="when-where">
+        <span>Tonight &middot; 9:00 PM</span>
+        <span class="sep">&middot;</span>
+        <span>Barbican, Bushwick</span>
+        <span class="sep">&middot;</span>
+        <span>1.4 mi</span>
+      </p>
+      <div class="trust-row">
+        <span class="badge badge--verified" aria-label="Official site. Verified venue.">
+          <span class="glyph" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.5 6.4 5 8.9 9.6 3.6"/>
+            </svg>
+          </span>
+          Verified venue
+        </span>
+        <span class="confidence" aria-label="5 of 5">
+          <span class="dots">
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+          </span>
+          <span class="alt">(5/5)</span>
+        </span>
+      </div>
+    </article>
+
+    <!-- Card 3 — Surprise (slate) -->
+    <article class="card card--surprise">
+      <p class="kicker">Surprise</p>
+      <h2>Pottery &amp; coffee &mdash; drop-in class</h2>
+      <p class="why">serendipity, hands-on, weekend</p>
+      <p class="when-where">
+        <span>Today &middot; 10:00 AM</span>
+        <span class="sep">&middot;</span>
+        <span>Clayworks, Greenpoint</span>
+        <span class="sep">&middot;</span>
+        <span>2.3 mi</span>
+      </p>
+      <div class="trust-row">
+        <span class="badge badge--community" aria-label="Community. Posted by a community member.">
+          <span class="glyph" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.5 6.4 5 8.9 9.6 3.6"/>
+            </svg>
+          </span>
+          Community
+        </span>
+        <span class="confidence" aria-label="3 of 5">
+          <span class="dots">
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot dot--filled"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </span>
+          <span class="alt">(3/5)</span>
+        </span>
+      </div>
+    </article>
+
+  </main>
+
+  <!-- Tomorrow tease -->
+  <p class="tomorrow-tease">
+    <span class="dot" aria-hidden="true"></span>
+    <span>We&rsquo;ll have 2 things tomorrow.</span>
+    <a href="#tomorrow">See them</a>
+  </p>
+
+  <!-- Quiet context block (mobile) -->
+  <aside class="quiet-block" aria-label="Quiet Hours and today's sources">
+    <div class="row">
+      <span class="label">Quiet Hours</span>
+      <span class="value">10pm &ndash; 8am</span>
+    </div>
+    <div class="row">
+      <span class="label">Nothing pushes itself</span>
+      <span class="value">Quiet Hours</span>
+    </div>
+    <div class="row">
+      <span class="label">Today&rsquo;s sources</span>
+      <span class="value">2 venues &middot; 1 community &middot; 0 crawls</span>
+    </div>
+  </aside>
+
+  <!-- Bottom Settings link -->
+  <div class="footer">
+    <a href="#settings">Settings</a>
+  </div>
+
+</div>
+</body>
+</html>

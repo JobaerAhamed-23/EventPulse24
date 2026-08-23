@@ -1,0 +1,747 @@
+---
+title: "EXPERIENCE.md — EventPulse24"
+status: final
+created: 2026-08-23
+updated: 2026-08-23
+project: EventPulse24
+source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
+source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
+references:
+  design: DESIGN.md
+  prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
+  reconcile_design_thinking: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/reconcile-design-thinking.md
+  reconcile_blue_ocean: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/reconcile-blue-ocean.md
+---
+
+# EventPulse24 — Experience Spine
+
+> The behavioral contract for the product. Visual identity lives in `DESIGN.md`; this spine is the experience.
+
+## 1. Foundation
+
+**Project:** EventPulse24 — the calm intelligence layer above all event sources. Anti-Eventbrite. "Headspace of events."
+
+**Form factor:** Responsive web. Mobile-first at 375 px CSS width. Tablet/desktop breakpoint at 768 px. Maximum canvas width 1180 px (content never exceeds this; whitespace expands outward). No native iOS/Android app at MVP (web only; Phase 2+).
+
+**UI system:** None — vanilla web components plus a thin token layer defined in `DESIGN.md.{Tokens}`. We do not adopt Material, shadcn, or a full kit; the surface vocabulary is small and bespoke. Headline typography is `Text.Display`; body is `Text.Body`; metadata is `Text.Meta`.
+
+**Form-factor reasoning:**
+- Web-first because the value prop is read-mostly (a Pulse Digest is a 30-second check-in), and the corpus of public events is best indexed from the open web. SEO is the cold-start unlock — search-engine crawlers do not see a native app.
+- Mobile-first because Maya's UJ-1 starts on her phone at 7:42 am. Desktop adds whitespace; it does not add features. A pulse read on a laptop is the same pulse read on a phone.
+- Responsive because the same calm promise must hold across contexts. The product never feels like "a mobile app stretched" or "a desktop site shrunk."
+
+**Visual identity:** See `DESIGN.md` for `color.accent.terracotta`, `color.surface.paper`, `color.ink.primary`, `color.warm.personal`, `color.cool.public`, and the full token set. This spine references tokens by `{path.to.token}` wherever behavior depends on them.
+
+**Locked principles (PRD §5.1, ratified for behavior):**
+- Calm > Engagement — fewer, better notifications. Counter to industry spam.
+- Explainable AI — every recommendation shows its reasoning.
+- Calendar-sync-in, not replace — extend Google/Apple/Outlook; do not fight OS distribution.
+- 3 cards max — with the adaptive exception (5–7 for engaged users, §4.2 of this spine).
+- Trust through transparency — Source Badges, Confidence Pulse, no hidden ranking.
+- No dark patterns — no urgency badges, no FOMO carousels, no "Don't miss out!" copy.
+
+---
+
+## 2. Information Architecture
+
+Numbered site map. Each route is reachable; each route defines default / empty / loading / error states. Cross-reference `DESIGN.md.Surfaces.{RouteName}` for the corresponding visual composition.
+
+| # | Route | Purpose | Phase | Auth |
+|---|---|---|---|---|
+| 1 | `/` | **Pulse Digest** (home) — 3-card daily brief | MVP | Authed |
+| 2 | `/onboarding` | 3-step first-run flow (calendar → interest inference → first pulse) | MVP | Anon → Authed |
+| 3 | `/events/:id` | **Event Detail** ("Why this?") — single event deep-dive | MVP | Authed + Anon (read-only) |
+| 4 | `/preview` | **Pulse Preview** — anonymous 3-card preview of city events | MVP | Public |
+| 5 | `/events/near-me` | **SEO landing page** — public events for a city, no auth | MVP | Public |
+| 6 | `/settings/reminders` | Default Reminder Plan editor | MVP | Authed |
+| 7 | `/settings/quiet-hours` | Quiet Hours window editor (single window Free; per-day Pro) | MVP | Authed |
+| 8 | `/settings/sources` | Source transparency — list of sources, reliability, mute controls | MVP | Authed |
+| 9 | `/settings/privacy` | Data inventory, export (FR-52), deletion, training opt-out | MVP | Authed |
+| 10 | `/timeline` | **Unified Timeline** — Personal + Public events, week/month | Phase 2 | Authed |
+| 11 | `/conflicts` | **Conflict Resolution** — three-action pattern (Move / Skip / Keep) | Phase 2 | Authed |
+| 12 | `/groups/:id` | **Pulse the Group** — small-group coordination, vote, RSVP | Phase 2 | Authed |
+
+Total: 12 routes.
+
+**State coverage per route.** Every route must handle the four canonical states. The specific copy is in §5 (State Patterns); the table below tells you which states each route is expected to ship at MVP vs Phase 2.
+
+| Route | default | empty | loading | error |
+|---|---|---|---|---|
+| `/` | 3-card Pulse Digest | "Nothing on the pulse today." (no CTA, no carousel) | 3 paper skeletons fading 1px toward ink at 60% then back | "Couldn't reach Pulse. Try again." + retry |
+| `/onboarding` | Step 1 (calendar connect) | n/a (no empty state — every user starts at step 1) | Inline spinner only on the OAuth round-trip | "Connection failed. Skip for now?" |
+| `/events/:id` | Full event detail with Why-this breakdown | An event the source removed: "This event is no longer available." | Detail skeleton: header + meta row + 3 Why-this chips fading in | "Couldn't load this event. Back to Pulse Digest." |
+| `/preview` | 3-card preview for inferred city | "No preview available in {city} yet." | Card skeletons (3, parallel to digest) | "Couldn't load the preview. Refresh." |
+| `/events/near-me` | SEO list of events for city | "Coming soon — we're growing {city}'s coverage." | List skeletons (5 rows) | "Couldn't load events. Try again." |
+| `/settings/reminders` | Default Reminder Plan chips (5d/2d/1d/1hr) | n/a (defaults exist) | Inline save spinner on chip change | "Couldn't save. We'll try again on your next change." |
+| `/settings/quiet-hours` | Default 10pm–8am window | n/a | Inline save spinner | "Couldn't save." |
+| `/settings/sources` | Grouped source list (official/community/aggregator/crawled) | "No sources muted." | List skeletons | "Couldn't load sources. Refresh." |
+| `/settings/privacy` | Data inventory + Export/Delete CTAs | n/a | Inline spinner on export trigger | "Couldn't start export. Email us." |
+| `/timeline` | Week-view, Personal+Public events | "Quiet day — no events." (Phase 2) | Week-row skeletons | "Couldn't reach Timeline. Try again." |
+| `/conflicts` | Conflict list with 3 actions per conflict | "No conflicts." (Phase 2) | Skeleton rows | "Couldn't analyze conflicts. Try again." |
+| `/groups/:id` | Group home, members, next event proposal | "No group yet. Create or join one." (Phase 2) | Skeleton | "Couldn't load group. Try again." |
+
+**Notes:**
+- `/settings/privacy` is implied by the PRD §14.1 Settings → Privacy sub-screen (not in the locked IA list above; flagged `[ASSUMPTION: privacy sub-screen is required at MVP because FR-52 export and FR-50 deletion need a UI home; add as 9th MVP route]`).
+- No `/admin`, no `/debug` — internal AI Cost Dashboard (FR-29) and Editorial Review Queue (FR-57) live outside this surface map.
+
+---
+
+## 3. Voice and Tone
+
+**Voice:** Calm, knowledgeable, restrained. Like a friend who knows the city well but doesn't oversell. (PRD §13.2.)
+
+**Tone:** Plain, direct, modern utility. No flourish, no flourish-free *posturing* either. Functional prose.
+
+**Locked principles (PRD §13.2, ratified for behavior):**
+- Plain language. "Three things worth your time this week" not "We've curated the perfect agenda for your daily life."
+- No superlatives. No "amazing," "incredible," "must-see."
+- Acknowledge the empty case. "No pulse for today" is honest; "Nothing matches your interests yet" is condescending.
+- Why-this Tags are first-class — they are the voice of the product.
+- No exclamation points. Calm products don't shout.
+
+**Microcopy contract — examples by surface (10 surfaces).** Use the locked voice. Cite `{Text.Body}` for body copy.
+
+| Surface | Do | Don't |
+|---|---|---|
+| Pulse Digest headline (above cards) | "Today, three things matter." | "We've hand-curated the perfect day for you!" |
+| Pulse Digest empty state | "Nothing on the pulse today. The calendar is yours." | "No events match your interests yet — keep exploring!" |
+| Why-this Tag (max 3 keywords, comma-separated) | "nearby · tonight · music" | "Within walking distance and a perfect acoustic match for your refined taste!" |
+| Source Badge tooltip (on hover/tap of `Badge.Source`) | "Official site. Verified venue." | "Trusted by EventPulse24! 🌟" |
+| Confidence Pulse tooltip ("Why this confidence?") | "4 of 5. Strong match on your top three interests and within 2 km." | "We think you'll love this! Confidence: 4.7/5" |
+| Reminder Picker label | "Remind me:" | "Set up smart reminders to never miss out!" |
+| Quiet Hours label | "10pm–8am. Nothing during this window." | "Sleep tight! We've got your back." |
+| Onboarding step header | "Connect a calendar (optional)" | "Let's supercharge your events!" |
+| Conflict Resolution sheet header | "These overlap." | "Uh oh! Looks like you have a scheduling conflict!" |
+| Conflict Resolution three-action labels | "Move dinner earlier / Skip concert / Keep both — I'll manage" | "Quickly resolve this clash to keep your calendar tidy" |
+| State-change email subject | "EventPulse24: {event name} was moved to {new date}" | "⚠️ Important update about your event!" |
+| Source transparency page intro | "Here's where events come from and how we trust each one." | "We work with the best event sources in the world!" |
+| Empty onboarding-interest step | "We'll figure this out from your calendar. Skip?" | "Tell us what you love so we can personalize!" |
+| Adaptive-digest inline expand | "Show all 5" | "Unlock the full Pulse experience!" |
+| Free-tier save-cap prompt | "You saved one event today. Save more with Pro." | "LIMITED TIME: Upgrade now and get UNLIMITED saves!" |
+| Status page incident copy | "Source X paused. ~3% of events affected. We are working on it." | "We're aware of an issue and working hard to fix it ASAP!" |
+| Privacy / export confirm | "Your export is ready. Link in your inbox." | "🎉 Success! Your data is on its way!" |
+| Already-handled reminder suppression (FR-44 Phase 2) | (silent — no copy) | "We've suppressed this reminder because we noticed you already RSVP'd." |
+| Streak-broken (Pulse Streak, Phase 3 §11) | "Welcome back." | "You broke your 12-day streak! Don't lose your progress!" |
+
+**Why-this Tags are first-class.** A Why-this Tag is the smallest unit of trust. The exact three keywords on a Pulse Card are repeated on the Detail Screen (PRD §4.6 FR-21). The tags use sentence-case nouns and short verb-free phrases (`nearby, tonight, music` not `you might enjoy this because it is nearby and tonight and music`).
+
+**Voice in error states.** Errors are honest and brief. "Couldn't reach Pulse. Try again." — no apologies, no exclamation marks, no emoji. (See §6 Error Patterns.)
+
+**Voice in success states.** Success is quiet. "Saved." not "🎉 You saved this event!" (See §6 Empty States.)
+
+---
+
+## 4. Component Patterns
+
+Behavioral specs only. Visual composition lives in `DESIGN.md.Components`.
+
+### `Card.PulseDigest`
+A single Pulse Card on the home surface. Always shows: event name, time, location, up to 3 Why-this Tags, 1–5 dot Confidence Pulse, Source Badge (PRD FR-6). Visual spec: `DESIGN.md.Components.PulseDigestCard`.
+
+- **Default state:** Card is `Card.PulseDigest` with body `Text.Body`, headline `Text.Display.sm`, metadata `Text.Meta`. No paper-darker shade. The card is `color.surface.paper` with a 1px hairline border in `color.ink.faint`.
+- **Hover (desktop only):** Background shifts to `color.surface.paper.darker` (a 1-step paper-darker variant). A small `▸` affordance appears at the trailing edge, indicating the card is tappable to open Detail.
+- **Tap:** Opens `/events/:id`.
+- **Long-press (mobile):** Shows a quick-actions sheet anchored to the card: Save, Dismiss, Less like this. Sheet uses `color.surface.paper` and standard mobile sheet affordances.
+- **Swipe-left:** Dismiss (records "less like this"). Card animates off-screen to the left, snaps back if cancelled mid-swipe.
+- **Swipe-right:** Save (to user's saved collection or default). Card animates off-screen to the right with a brief save confirmation.
+- **Focus state (keyboard):** Visible 2px focus ring in `color.accent.terracotta` at AA contrast against `color.surface.paper`. `aria-label` reads the full card content.
+- **Reduced motion:** All swipe animations collapse to instant transition with no fade. (See §7 Interaction Primitives.)
+- **Adaptive expansion (engaged user ≥10 saves/30d):** Card count grows from 3 to 5 (top of the responsive matrix) or 7 (max). At 5+, a "Show all 5" inline link replaces the bottom card with the remainder of the stack, in place — no modal, no carousel. (See §10 Adaptive Density.)
+
+### `Input.ReminderSlot`
+The Reminder Plan editor on Detail Screen (PRD FR-9). Chips for 5d / 2d / 1d / 1hr plus a custom-slot picker.
+
+- **Default:** Four chips (5d / 2d / 1d / 1hr) rendered horizontally with current selection highlighted in `color.accent.terracotta`. Unselected chips use `color.ink.primary` text on `color.surface.paper`.
+- **Drag-to-add:** The user can drag a chip along a horizontal timeline representing the time-to-event. The chip snaps to 5d / 2d / 1d / 1hr markers (snap distance: 12px). Releasing adds the slot to the active Reminder Plan.
+- **Quiet Hours interaction:** If a snap target falls inside the user's Quiet Hours window (PRD FR-12), the chip dims to 40% opacity and shows a small `color.ink.meta` tooltip: "Will deliver at {end of quiet hours}." The chip is still selectable.
+- **Custom slot:** Long-press a chip → opens a time picker (relative to the event start). Min: 15 minutes before; max: 30 days before. Out-of-range snaps back.
+- **Empty state:** No chips selected. Label reads "No reminders. You'll still see this event in Pulse Digest."
+- **Loading:** Chips render immediately (no loading state — local save).
+- **Error:** Inline below the chip row, 1 line: "Couldn't save. We'll try again on your next change." Color: `color.warn.amber` desaturated.
+
+### `Indicator.Confidence`
+The 1–5 dot Confidence Pulse on each Pulse Card (PRD FR-22). Five discrete states; no partial fills.
+
+- **Visual:** Five dot placeholders arranged horizontally. Filled dots use `color.accent.terracotta`; empty dots use `color.ink.faint`. Spacing: 4px between dots.
+- **Default:** Dots only. No numeric label visible. `aria-label="4 of 5"` for screen readers (per §8 Accessibility Floor).
+- **Hover/focus:** Tooltip "Why this confidence?" appears with 1–3 lines of contributing factors: e.g., "Strong match on your top three interests. Within 2 km. Source reliability 0.92." Tooltip uses `Text.Meta` on `color.surface.paper.darker`.
+- **Bucket boundaries (PRD FR-22):** ≥0.85 = 5 dots, ≥0.65 = 4, ≥0.45 = 3, ≥0.25 = 2, else 1. No interpolation. Hysteresis ±0.02.
+- **Tap on a dot:** Same as hover (shows tooltip).
+
+### `Badge.Source`
+The Source Badge on each Pulse Card and Detail Screen (PRD FR-23). Five types: `official_site`, `community`, `aggregator`, `user_imported`, `crawled_html`.
+
+- **`official_site`:** `color.accent.terracotta`-filled checkmark icon. Inline label "Official" in `Text.Meta`. Tooltip: "Verified venue or organizer."
+- **`community`:** Ink-bordered checkmark (no fill, 1.5px border in `color.ink.primary`). Inline label "Community" in `Text.Meta` italic. Tooltip: "Posted by a community member."
+- **`aggregator`:** Ink-bordered link icon (chain glyph). Inline label "Listing site." Tooltip: "Aggregated from a public listing."
+- **`user_imported`:** Ink-bordered inbox icon. Inline label "Forwarded." Tooltip: "Added by you or from your calendar."
+- **`crawled_html`:** A small `color.warn.amber` warning triangle. One-time "Why does this show ⚠?" tooltip on first view per user per event.
+- **Text alternative:** Every variant includes a visible inline text label, not icon-only. (WCAG 1.1.1 per §8.)
+
+### `Sheet.ConflictResolution`
+The three-action conflict sheet (Phase 2, PRD FR-33). Locked pattern from Design Thinking wireframe Screen 6.
+
+- **Trigger:** A saved public event overlaps a saved personal event by >15 minutes.
+- **Three actions, in order:** (a) "Move dinner earlier" — opens the personal event editor with prefilled earlier time; (b) "Skip concert" — dismisses the public event with one tap; (c) "Keep both — I'll manage" — closes the sheet and never re-prompts for this pair.
+- **Sheet header:** "These overlap." (PRD §13.2 voice.) Below header: event names + times in plain prose, no color-coded "CONFLICT!" treatment.
+- **No fourth action.** No "Suggest alternative" (deferred to Phase 3). No auto-rebook.
+- **Persistence:** Once "Keep both" is selected for a pair, the system remembers and does not re-prompt on subsequent digests.
+
+### `Surface.{RouteName}`
+Generic behavior for all routes:
+- **Default:** Renders content. Animated card entrance uses `motion.fadeIn` (240ms) — disabled under `prefers-reduced-motion`.
+- **Empty:** Empty-state copy from §6 Empty Patterns. No CTA when none is appropriate.
+- **Loading:** Skeleton: 3 paper rectangles (`color.surface.paper`) fading 1px toward `color.ink.faint` at 60% opacity, then back. No spinners.
+- **Error:** "Couldn't reach {surface}. Try again." with a single retry button. No stack traces. Error copies to status page on SEV-2+ events.
+
+---
+
+## 5. State Patterns
+
+Global state decisions. Each pattern is invoked wherever the relevant state is encountered.
+
+### Empty Patterns
+
+**Empty Pulse Digest (`/`)** — the cardinal empty state:
+- Copy: "Nothing on the pulse today. The calendar is yours."
+- Visual: A single `Card.PulseDigest` variant (no second card). Card body shows the headline in `Text.Display.sm`. Below the card: a single line in `Text.Meta` reading "No qualifying events in {city}."
+- **No CTA. No carousel. No "Explore trending events" upsell. No upsell at all.**
+- A small "Suggest an event" link in `Text.Meta` ink color, low visual weight — present, not prominent. Opens a `/suggest` form (PRD FR-8).
+- Reasoning: A user opening Pulse to nothing should feel the absence of the product's noise, not be marketed at. The empty state is the product's strongest voice.
+
+**Empty saved collection:** "Nothing saved yet. Tap a card to save it." Single primary CTA pulses to the home.
+
+**Empty onboarding interests (step 2 skipped):** "We'll figure this out from your calendar." Single Skip button.
+
+**Empty Timeline day (Phase 2):** "Quiet day." No card, no CTA. (PRD §14 wireframe Screen 3.)
+
+**Empty Search (Phase 3):** "No matches." No suggestions, no "Did you mean."
+
+### Loading Patterns
+
+**Pulse Digest skeleton:** 3 paper rectangles rendered in `color.surface.paper`, fading 1px toward `color.ink.faint` at 60% opacity, then back. Pulse period: 1800ms. No text inside the skeletons.
+
+**Detail Screen skeleton:** One full-width header block + one meta row + 3 chip skeletons. Same fade animation.
+
+**Settings list skeletons:** N rows (where N matches expected content length), each a 40px-tall `color.surface.paper` rectangle fading identically.
+
+**No spinners, anywhere.** PRD §13.1 and §13.2: "No urgency badges." A spinner is a visual urgency badge.
+
+**No loading states for instant local actions** (toggling a chip, opening a sheet, dismissing a card). Local save feedback uses inline 1-line "Saved." for 800ms.
+
+### Error Patterns
+
+**Generic error:** "Couldn't reach Pulse. Try again." Single retry button. No stack trace. No emoji. The retry button uses `Button.Primary` (filled, `color.accent.terracotta` background, `color.surface.paper` text). On second consecutive failure, the retry button label changes to "Refresh page."
+
+**Detail Screen load failure:** "Couldn't load this event. Back to Pulse Digest." Single primary action navigates home.
+
+**Calendar OAuth failure (onboarding step 1):** "Connection failed. Skip for now?" Two buttons: "Skip" (secondary, opens step 2) and "Try again" (primary, re-triggers OAuth).
+
+**Reminder save failure:** Inline below the chip row, 1 line: "Couldn't save. We'll try again on your next change." No modal, no toast.
+
+**Status page integration (PRD §10.5):** SEV-1 errors propagate to `status.eventpulse24.com` (or equivalent) within 30 minutes. The product surfaces a calm inline banner on relevant surfaces when a known incident affects the user.
+
+### Conflict Patterns (Phase 2)
+
+The three-action pattern (PRD FR-33). See `Sheet.ConflictResolution` in §4. The sheet:
+- **Header:** "These overlap."
+- **Body:** Two event names + times in `Text.Body`.
+- **Three actions:** "Move {personal event name} earlier" / "Skip {public event name}" / "Keep both — I'll manage"
+
+Once "Keep both" is chosen for a pair, the system records the decision and never re-prompts.
+
+### Offline Patterns
+
+**Cached Pulse Digest (read-only when offline):**
+- The system caches the most recent Pulse Digest on device (service worker, 24h TTL).
+- When offline, the user sees the cached digest with an inline banner at the top: "Offline — showing last sync." The banner uses `color.surface.paper.darker` background and `Text.Meta` copy.
+- All interactive affordances (save, dismiss, less like this) queue locally and replay on reconnect. The user sees a quiet inline indicator: "1 action queued" until sync.
+
+**No internet + no cache (cold offline open):**
+- Empty state variant: "You're offline. Pulse will be here when you reconnect."
+- No CTAs, no animations.
+
+### No-CTA Discipline
+
+The product does not push the user. Every CTA exists to fulfill a stated user goal; there are no nudges, no "while you're here" suggestions, no "you might also like."
+
+---
+
+## 6. Interaction Primitives
+
+Touch, keyboard, and accessibility primitives. The product is keyboard-first on desktop, touch-first on mobile.
+
+### Keyboard
+
+All primary actions have a keyboard shortcut, shown in a `?` help menu (visible at the bottom-right of every surface on `md+` viewports; tap to expand on `sm`).
+
+| Shortcut | Action | Surface |
+|---|---|---|
+| `?` | Open keyboard shortcuts menu | Global |
+| `j` / `k` | Move to next / previous card | `/` (Pulse Digest) |
+| `Enter` | Open Detail on focused card | `/` |
+| `s` | Save focused card | `/`, `/events/:id` |
+| `d` | Dismiss focused card | `/`, `/events/:id` |
+| `l` | Less like this | `/`, `/events/:id` |
+| `r` | Open Reminder Picker | `/events/:id` |
+| `1` `2` `3` `4` | Toggle reminder slot 5d/2d/1d/1hr | `/events/:id` |
+| `Esc` | Close sheet / cancel edit | Any |
+| `g d` | Go to Digest | Global |
+| `g s` | Go to Settings | Global |
+| `g t` | Go to Timeline (Phase 2) | Global |
+| `n` | Create new personal event | Global |
+| `/` | Focus search (Phase 3+) | Global |
+
+**Cards are focusable.** Arrow keys (and `j`/`k`) move between cards in the digest. Focus is visible at AA contrast (2px ring, `color.accent.terracotta`).
+
+**Reminder picker keyboard support:** Reminder chips are focusable. `Tab` cycles through chips; `Enter` toggles; arrow keys move within the chip group; `Esc` closes the picker.
+
+**Conflict Resolution keyboard support (Phase 2):** The three actions are focusable in order (`Move / Skip / Keep both`). `Tab` cycles; `Enter` confirms the focused action; `Esc` cancels (treated as `Keep both`).
+
+### Touch
+
+- **Tap** — primary action.
+- **Long-press** — opens quick-actions sheet on a Pulse Card (save, dismiss, less like this). Long-press is reserved for system context menus on iOS (text selection) on text content; on cards it's ours.
+- **Swipe-left** — dismiss (records "less like this").
+- **Swipe-right** — save.
+- **Swipe-down** — refresh on the Pulse Digest only.
+- **Pull-to-refresh** is disabled on all surfaces except `/`. PRD: no infinite scroll, no carousel-driven browsing.
+
+### Mouse
+
+- **Click** — primary action.
+- **Hover** — reveals secondary affordances (Confidence tooltip, Source Badge tooltip). Hover affordances are duplicated as tap-on-mobile. No hover-only affordances on `sm` viewports.
+- **Drag** — supported on Reminder Slot chips only.
+
+### Banned Primitives
+
+These are explicitly out of scope in MVP:
+- Infinite scroll (pagination only).
+- Drag-to-reorder lists (deferred to Phase 2 for Saved Collections).
+- Hover-only affordances on `sm` viewports.
+- Modal stacks > 1 level deep.
+- Full-screen takeover animations.
+- Carousels (Pulse Digest is a stack, not a carousel).
+- Bottom-sheet on a modal (one level of overlay only).
+
+### Reduced Motion
+
+`prefers-reduced-motion: reduce` disables:
+- Card-fade entrance animation.
+- Card swipe animations.
+- Skeleton pulse animation (skeletons render statically).
+- Tooltip fade.
+
+Text and layout remain unchanged. The product does not become a wall of static — it just doesn't animate.
+
+---
+
+## 7. Accessibility Floor
+
+WCAG 2.2 AA across the responsive web surface. PRD §11.5 sets the floor; this spine ratifies the behaviors.
+
+### Color Contrast
+
+- **Body text:** ≥4.5:1 against `color.surface.paper`.
+- **Large text (≥18pt regular, ≥14pt bold):** ≥3:1 against `color.surface.paper`.
+- **`color.accent.terracotta` as text on `color.surface.paper`:** verified ≥4.5:1.
+- **`color.accent.terracotta` as UI element / border:** verified ≥3:1.
+- **`color.warm.personal` and `color.cool.public` (PRD §13.1):** verified ≥3:1 against `color.surface.paper`; *not* the sole carrier of meaning (see "Non-color signals" below).
+
+### Touch & Click Targets
+
+- All interactive elements ≥44×44 px CSS.
+- Card-level targets wrap the entire card; subordinate buttons inside cards are themselves ≥44×44.
+- Spacing between adjacent targets ≥8 px to prevent mis-tap.
+
+### Focus
+
+- Visible 2px focus ring on every focusable element.
+- Ring color: `color.accent.terracotta`.
+- Ring offset: 2 px from the element edge.
+- Focus order matches reading order on every surface.
+- `Esc` closes the topmost modal/popover; `Tab` from inside a closed modal returns focus to the trigger.
+
+### Non-Color Signals
+
+Color is never the sole carrier of meaning:
+- Conflict indicator (PRD FR-58): filled circle in `color.warn.amber` *and* `aria-label="Schedule conflict"`. Shape distinct from Source Badge and Confidence Pulse dots.
+- Source Badge: visible inline text label, not icon-only.
+- Pulse Card warm/cool tone (Personal vs Public): accompanied by text label "Personal" / "Public event" in `Text.Meta`.
+- Why-this Tags: each tag is a visible keyword, not a colored dot.
+
+### Live Regions
+
+- **Pulse Digest ready:** When the 3 cards finish loading and render, a live region announces "Pulse Digest ready, 3 events for today." `aria-live="polite"`.
+- **Save / Dismiss confirmation:** Announced via live region: "Saved. {event name}" / "Dismissed. {event name}."
+- **Conflict Resolution (Phase 2):** When the conflict sheet opens, focus moves to the header ("These overlap.") and the live region announces the conflict summary.
+
+### Screen-Reader Specifics
+
+- **Confidence Pulse:** `aria-label="4 of 5"` (not just "4 dots").
+- **Source Badge:** Full label announced, e.g., "Official site. Verified venue."
+- **Why-this Tags:** Announced as comma-separated text: "nearby, tonight, music."
+- **Adaptive digest expand:** When the digest expands from 3 → 5 cards, announced: "Pulse Digest has 5 events today. Showing 3."
+
+### Motion
+
+- `prefers-reduced-motion: reduce` disables non-essential animation (see §6 Reduced Motion).
+- No auto-playing video or audio at MVP.
+- All transitions ≤500ms; default 240ms.
+
+### Pre-Launch Audit Gate
+
+Per PRD §11.5, an accessibility audit report is required before MVP launch:
+- NVDA + Firefox (Windows): full Pulse Digest traversal.
+- VoiceOver + Safari (macOS, iOS): mobile-web Pulse Digest.
+- TalkBack + Chrome (Android): mobile-web Pulse Digest.
+- Switch Control / Switch Access: save and dismiss a card without fine-motor gesture.
+- Lighthouse accessibility score ≥95 on all primary pages.
+- axe-core CI gate: zero serious/critical violations.
+
+---
+
+## 8. Key Flows
+
+Named-protagonist journeys. Each flow names a protagonist, an entry state, a path, a climax, and a failure mode.
+
+### Flow 1 — Maya's morning (PRD UJ-1, the moment-of-truth flow)
+
+**Persona:** Maya, 32, senior product designer in Brooklyn. Has connected Google Calendar during yesterday's onboarding.
+
+**Entry state:** 7:42 am. Phone in hand. Pulse Ping notification arrived at 8:00 am ±15min — wait, Maya's chosen delivery time is 8:00 am local, so the notification is still pending. `[ASSUMPTION: Maya opens Pulse manually at 7:42 am because the Pulse Ping has not yet arrived — the app respects her chosen time; the manual-open path renders the same Pulse Digest]`. Alternatively: Pulse Ping delivery is configured at 7:42 am, the morning check-in slot she chose during onboarding.
+
+**Path:**
+1. Maya taps the Pulse Ping notification (or opens `eventpulse24.com` on her phone).
+2. Pulse Digest loads. Three cards render in `Card.PulseDigest`:
+   - (a) "Sam's birthday dinner — 7pm tonight" with Why-this Tags `close-friend, tonight, restaurant`. Confidence Pulse 4 of 5. Source Badge: User-imported (calendar).
+   - (b) "Free tech meetup Thu, 2 blocks from work" with `nearby, thursday, free`. Confidence 3 of 5. Source: Community.
+   - (c) "Rooftop jazz in your neighborhood Sat" with `nearby, weekend, novel`. Confidence 3 of 5. Source: Official.
+3. Maya reads the headline "Today, three things matter." (above the cards).
+4. She reads card (a)'s Why-this Tags: `close-friend, tonight, restaurant`. The tags confirm her mental model — yes, this is Sam's thing.
+5. She taps card (a) → Detail Screen at `/events/:sam-birthday`. Sees the full Why-this breakdown: source badge, confidence pulse, similar events she's attended, neighbor count (suppressed — k-anonymity threshold not met).
+6. She taps "Remind me" → Reminder Picker opens. Default 1d + 1hr is pre-selected. She taps the 2d chip. Saves.
+7. She closes the app.
+
+**Climax:** "Total time: 28 seconds." She knows what matters this week. She set one reminder. Nothing else pushed itself. (PRD UJ-1 climax.)
+
+**Failure modes:**
+- Notification delayed >5 minutes: logged but invisible to Maya. PRD §10.4 SLAs: no "delayed" status to user.
+- Card (a) removed between Pulse composition and Maya's tap (state change, PRD FR-53): Detail Screen shows "This event is no longer available." with a back link. Maya returns to digest.
+- Maya swipes card (b) down (dismiss / less like this): card animates off; live region announces "Dismissed." The system records the dismissal for the Preference Graph (PRD FR-25). The 3-consecutive-similar-dismissal prompt does not fire on a single dismissal.
+
+### Flow 2 — First-time onboarding (PRD UJ-3)
+
+**Persona:** Pary, new visitor. Has never used EventPulse24.
+
+**Entry state:** Lands on `eventpulse24.com/events/near-me/brooklyn` from a Google search for "events near me Brooklyn." Sees the SEO landing page (PRD FR-27).
+
+**Path:**
+1. SEO page renders 3 Pulse Cards for Brooklyn today, plus the headline "Events near Brooklyn today." Each card has Why-this Tags, a Confidence Pulse, and a Source Badge. The cards are crawlable, Schema.org JSON-LD embedded.
+2. Pary taps "See today's full Pulse" → routes to `/preview`. Pulse Preview shows 3 cards in `Card.PulseDigest`. Above the cards: "Get Pulse like this in your inbox." Below: a single CTA "Sign up" (primary, terracotta-filled).
+3. Pary taps "Sign up" → routes to `/onboarding` step 1.
+4. Step 1: "Connect a calendar (optional)." Two buttons: "Connect Google Calendar" (primary) and "Skip" (secondary). The Skip is at equal visual weight to a "Continue" affordance — onboarding is genuinely skippable.
+5. Pary taps Connect Google → OAuth round-trip → returns to step 2.
+6. Step 2: "Pick a few interests (optional)." A grid of ~12 chips (Music, Tech, Food, Sports, Family, Arts, etc.). "Skip" and "Pick 3" buttons. Pary picks 3.
+7. Step 3: "When should we send your daily Pulse?" A time picker (default 8:00 am). Timezone pre-filled from browser. "Done" button.
+8. Pary lands on `/` (Pulse Digest). The first Pulse Digest is rendered from the cached composition (PRD FR-1 consequence) — 3 cards for Brooklyn, calibrated to her 3 interests.
+
+**Climax:** "First relevant event in 15 seconds." (PRD FR-1 + Design Thinking wireframe Screen 1 target.)
+
+**Failure modes:**
+- Geo-IP wrong (shows NYC instead of Brooklyn): a calm banner at the top of Pulse Preview reads "Showing events near NYC. Use a different city?" with "Change" / "Use this" / "Don't use my location" buttons. (PRD FR-2 consequence.)
+- Calendar OAuth fails: "Connection failed. Skip for now?" Pary skips; Pulse infers from her 3 interest chips and geo-IP.
+- Pary abandons at step 2: resumed at step 2 within 7 days. (PRD FR-1 consequence.)
+
+### Flow 3 — Conflict Resolution (Phase 2, PRD FR-33)
+
+**Persona:** Maya. Saturday morning. Has saved "Sam's birthday dinner — 7pm Saturday @ Lilia" (personal event) and "Jazz at Bar Bespoke — 8pm Saturday" (public event).
+
+**Entry state:** Pulse Digest loads. The conflict indicator (small `color.warn.amber` filled circle, top-right of both cards, with `aria-label="Schedule conflict"`) is visible on both cards.
+
+**Path:**
+1. Maya taps the dinner card (a) → Detail Screen. The conflict indicator on the Detail Screen header is the same filled circle.
+2. She taps the conflict indicator → `Sheet.ConflictResolution` opens.
+3. Sheet header: "These overlap." Body: "Sam's birthday dinner, 7pm Saturday at Lilia. Jazz at Bar Bespoke, 8pm Saturday. (You saved both.)"
+4. Three actions, top to bottom:
+   - "Move Sam's birthday dinner earlier" (primary, `Button.Primary`, terracotta-filled) — opens the personal event editor with a prefilled earlier time (e.g., 6pm).
+   - "Skip Jazz at Bar Bespoke" (secondary, `Button.Secondary`) — dismisses the public event with one tap.
+   - "Keep both — I'll manage" (tertiary, plain text button, `color.ink.primary`) — closes the sheet and records the decision.
+5. Maya taps "Move dinner earlier" → the personal event editor opens with prefilled 6pm time. She confirms. Dinner moves. The public event remains saved. The conflict sheet does not reopen.
+
+**Climax:** "Three actions, no anxiety." (Locked Design Thinking pattern.)
+
+**Failure modes:**
+- Maya taps "Keep both" but later wants to revisit: she can mute the conflict per-event from Detail Screen (PRD FR-55 consequence).
+- More than two events overlap: the sheet handles pairwise. The Digest's top-level summary shows "1 conflict to review." Tap routes to `/conflicts` (Phase 2 route) which lists all conflicts.
+
+### Flow 4 — Adaptive expansion (Phase 3+, but designed now)
+
+**Persona:** Maya. Has been a user for 60 days. Has saved 12 events in the last 30 days. The system qualifies her for adaptive expansion (≥10 saves in 30d).
+
+**Entry state:** Pulse Digest loads. 5 cards render.
+
+**Path:**
+1. Five cards visible in stack.
+2. At the bottom of the digest, after card 5, an inline link: "Show all 5" (subtle, `Text.Meta`, `color.ink.primary` underlined). `[ASSUMPTION: the link is present-but-deemphasized; the default render is all 5 cards; the link is a redundant affordance for users who missed the count]`.
+3. No modal. No upsell. The 5 cards stay where they are; the link exists to confirm count.
+
+**Climax:** "No modal. No upsell. Just more cards, inline." `[ASSUMPTION: at 7 cards (max adaptive), the inline expand becomes a "Show all 7" link with the first 5 visible by default and the last 2 below the fold on mobile]` — but the visible count grows only up to 5; 7 is the eventual upper bound and is tested in Phase 3.
+
+**Failure modes:**
+- Adaptive expansion violates the 3-card default for an engaged user: this is the explicit adaptive exception (PRD §4.5.1 reconcile, locked in this brief). The setting is opt-out, not opt-in (locked decision).
+- User engagement drops below threshold (e.g., 10 saves/30d no longer holds): Pulse Digest returns to 3 cards. No announcement.
+
+---
+
+## 9. Inspiration & Anti-patterns
+
+### Sources We Borrow From
+
+- **Linear** — keyboard-first discipline. `⌘K` is the command center (in our case `?`); `j`/`k` to move between cards; no drag for primary navigation; status-pill vocabulary. We borrow the *posture*, not the chrome.
+- **Are.na** — restraint and editorial calm. Channels of curated content read like a slow magazine, not a feed. We borrow the posture of "a small set, presented without selling."
+- **Headspace** — calmer moments. The brand is "a friend who knows you well and isn't trying to sell you." We borrow the visual restraint and the empty-state-as-feature instinct. PRD §13.1 cites Headspace as the aesthetic anchor for "Headspace of events."
+- **Bandcamp** — editorial card design. Cards are dense with information but never noisy; the editorial posture makes the user feel like they're being shown, not sold to. We borrow the card composition and the absence of promotional badges.
+- **Notion** — decision-friendly minimalism. The UI is a quiet workspace, not a sales surface. We borrow the minimalism and the "no shouting" voice. PRD §13.1.
+- **Apple Calendar** — week-view restraint. PRD §13.1. We borrow the calm layout pattern for the Timeline (Phase 2) and the absence of badges, urgency, or color-noise.
+- **Day One / iA Writer** (cited from `experience-example-mobile.md` Quill spine) — the single daily framing and the no-toolbar discipline. We borrow the "one moment per day" calibration of Pulse Digest and the "compose without chrome" rhythm of personal event creation.
+
+### Anti-patterns We Explicitly Avoid
+
+These are the patterns we will *not* ship, ever. PRD §13.3 anchors the list; this spine ratifies the full set.
+
+- **Notification badges.** No unread counts on the app icon. No "23 new events" badges on cards. PRD §5.1: No dark patterns.
+- **Streak popups.** No "🔥 5-day streak!" toasts. The streak is internal at most (Pulse Streak, Phase 3 §11); it never yells at the user.
+- **Social-proof counters.** No "12 of your neighbors are going." (Neighbor count exists per PRD FR-24, but only on Detail Screen with k-anonymity, and never as a CTA or pressure element.)
+- **"People are viewing this" widgets.** Banned everywhere. Engagement theater.
+- **Infinite scroll.** Pulse Digest is bounded (3, 5, or 7 cards max). Search results paginate.
+- **FOMO carousels.** No "Trending now" hero carousels. No "Don't miss out!" rotation. PRD §5 Non-Goals: "Real-time trending carousels."
+- **Dark-pattern nudges.** No urgency timers, no countdown badges, no "Only 2 left!" copy on event tickets (we don't sell tickets anyway, but the principle holds).
+- **Hidden ranking algorithms.** Pulse Digest composition is explainable. The Why-this breakdown is visible to the user; ranking is not hidden.
+- **Modal stacks.** No modals on modals. One overlay level only.
+- **Emoji as CTAs.** Emoji are status indicators (Source Badge icons), never action prompts.
+- **Exclamation points.** PRD §13.2: "No exclamation points. Calm products don't shout."
+- **"Promoted" or "Sponsored" placements.** PRD §15.2: "No ads. No commissions. No data sales."
+- **"🎉 You saved this!" celebration animations.** Saved is quiet: inline "Saved." for 800ms.
+- **Empty-state upsell.** Empty Pulse Digest never asks the user to upgrade, browse trending, or take action. The empty state is the message.
+
+### The Three Most Important Anti-patterns
+
+If a future contributor can only remember three lines from this section, these are the three:
+
+1. **No FOMO. No urgency. No "Don't miss out!" copy. Ever.** (PRD §5.1, §13.3.)
+2. **No hidden ranking. Every recommendation shows its reasoning.** (PRD §5.1: Explainable AI.)
+3. **3 cards max, with the adaptive exception.** The Pulse Digest is bounded on purpose. Don't propose "let users pick how many cards they see." (PRD §5.1, §6.1 Out of Scope, FR-5 Out of Scope.)
+
+---
+
+## 10. Responsive & Platform
+
+### Responsive Breakpoints
+
+| Breakpoint | Width | Behavior |
+|---|---|---|
+| `sm` | ≤767 px (default MVP target: 375 px) | Mobile. Bottom-tab navigation. Single-column digest. Sheet-based overlays. Card stack vertical. |
+| `md` | 768–1023 px | Tablet. Sidebar visible (Digest / Timeline / Add / Settings). Two-column digest on landscape; single-column portrait. |
+| `lg` | 1024–1179 px | Desktop. Sidebar visible. Two-column digest: today's pulse on the left, "this week" preview on the right. |
+| `xl` | ≥1180 px | Max canvas. Content constrained to 1180 px. Whitespace expands outward. No content reflow. |
+
+**Desktop does not add features.** Desktop adds whitespace and (optionally) reveals hover affordances on `Badge.Source` and `Indicator.Confidence`. No new screens, no new actions, no new copy. PRD §13.1: "Whitespace over density."
+
+**Mobile-first discipline.** Every screen is designed for 375 px first; the desktop view is a whitespace-expanded version of the mobile view, not a separate design.
+
+### Platform
+
+- **Web:** responsive web (PWA) is the only MVP surface.
+- **Native mobile apps (iOS, Android):** Phase 2+. PRD §5 Non-Goals.
+- **Browser notifications:** Web Notification API for Pulse Ping. PRD FR-10.
+- **Web Share API:** for outbound shares (Pulse share-link, PRD FR-28).
+- **Service worker:** for offline-cached Pulse Digest (24h TTL) and queued local actions (§5 Offline Patterns).
+- **No push notifications to mobile** at MVP (email digest only, PRD FR-11; push in Phase 2 with native apps).
+- **No iOS / Android conventions** beyond standard responsive web behavior — no bottom-sheet-from-bottom on desktop, no hamburger menu on mobile (bottom-tab navigation instead).
+
+### Browser Support
+
+- Latest 2 versions of Chrome, Edge, Firefox, Safari.
+- iOS Safari 16+.
+- Android Chrome (latest).
+- No IE / legacy Edge.
+
+### Performance Budgets (PRD §11.1)
+
+- **Pulse Digest composition:** <500ms p95 (cached); <3s p95 (cold).
+- **Page load:** <1.5s LCP on `/` and `/events/:id`, 3G-fast.
+- **API response:** <300ms p95 for read-heavy endpoints.
+
+Performance is a behavioral contract: a slow digest is a broken digest.
+
+---
+
+## 11. Pulse Streak & Year in Pulse (Phase 3)
+
+Restoring from `reconcile-blue-ocean.md` §G6: the dropped CREATE factors "Pulse Streak" (calm gamification, retention without FOMO) and "Year in Pulse" (Spotify-Wrapped-style annual recap, brand love + viral moment). PRD FR-46 and FR-47.
+
+### Pulse Streak (PRD FR-46, Year 2+)
+
+**Behavior:** A gentle streak counter on the Pulse Digest home. The streak increments when the user opens the Pulse Digest on the same calendar day as their chosen Pulse Ping delivery time, ±6 hours.
+
+- **Default:** Visible only on the home surface, after the digest. A single line in `Text.Meta`: "Opened Pulse {N} days this week." Below: "Streak: {N}."
+- **No streak-broken copy.** If the user misses a day, the streak number quietly resets to 0 the next time they open. No toast. No email. No "Don't break your streak!" prompt.
+- **No streak-shame.** PRD FR-46: "no missed-day punishment." The streak is a brand-loyalty signal we observe internally; it is not a metric we optimize for.
+- **Opt-out:** Settings → Reminders → "Show streak counter." Off by default for users who have explicitly opted out.
+
+**Anti-pattern to avoid:** Duolingo's streak shaming (orange owl, push notifications, "Your streak is in danger!"). PRD §13.3 explicitly bans this.
+
+**Annual recap milestone:** When the streak hits a year (365 days), the system offers a single, quiet one-time prompt: "Your year on Pulse is ready. See it?" Tap routes to `/year-in-pulse`. (See below.)
+
+### Year in Pulse (PRD FR-47, Year 2+)
+
+**Behavior:** An annual recap, generated in early December each year, that surfaces the user's event engagement: events saved, events attended, top categories, top neighborhoods, longest streak, a "this month you showed up" stat. Visualized as a calm, scrollable single-page report.
+
+- **Trigger:** Eligible on December 1 each year for users active in the prior 12 months.
+- **Delivery:** Email + in-app banner: "Your Year in Pulse is ready." One email, one banner. No push.
+- **Surface:** `/year-in-pulse/[year]` — a single scrollable page. Sections in `Text.Display` headlines, body in `Text.Body`. Color: `color.surface.paper` background with `color.accent.terracotta` accents on key numbers.
+- **Share:** Optional share-card generates a public URL with OG image, opt-in only. The share-card has no PII — only the user's category distribution and a "this was your year" tagline.
+- **Viral posture:** This is the brand-love moment. Calm, reflective, shareable. Not gamified.
+
+**Anti-patterns to avoid:**
+- "You attended 47 events! 🎉" (no emoji, no exclamations)
+- "You missed 12 events this year!" (no negative framing)
+- Push notifications prompting users to share
+- "Unlock your full recap with Pro" (the recap is free for all users)
+
+---
+
+## 12. Trust Signals as First-Class Surface
+
+The "Why this?" pattern is the heart of the product. PRD §4.6 (FR-21–24) makes trust signals an MVP requirement; this section ratifies the *first-class surface* posture — trust signals are not hidden, not behind a tap on the card alone, but elevated in the design language.
+
+### On the Pulse Card (home surface)
+
+Every `Card.PulseDigest` carries these trust signals inline, without an extra tap:
+
+- **Source Badge** (PRD FR-23) — top-right of card. Visible inline label (`Official`, `Community`, `Listing site`, `Forwarded`, or warning triangle for `crawled_html`).
+- **Confidence Pulse** (PRD FR-22) — top-right of card, immediately left of Source Badge. 1–5 dots. `aria-label="4 of 5"` for screen readers.
+- **Why-this Tags** (PRD FR-21) — below the event name. Up to 3 keywords in `Text.Meta` ink color, comma-separated.
+
+The trust signals are *visible*, not behind a tap. PRD §13.1: "Why-this Tags are first-class." Design Thinking §Next Steps #7: "Inline trust beats click-to-reveal." The rationale is locked.
+
+### On the Detail Screen
+
+The Detail Screen is the trust-signal elevation surface. PRD §14.3 wireframe. From top to bottom:
+
+1. **Source Badge** (inline, top, with `Tooltip.Source` on hover).
+2. **Confidence Pulse** (inline, with `Tooltip.Confidence` showing contributing factors on hover).
+3. **Event name** (`Text.Display.sm`).
+4. **When · Where** (`Text.Body`).
+5. **Why-this Tags** (3 keywords — same as on the card).
+6. **Description** (2–3 lines max).
+7. **Reminder Picker** (chips for 5d/2d/1d/1hr).
+8. **Save to Pulse · Share · Dismiss** (3 buttons in `Button.Secondary` weight).
+9. **Why-this breakdown** (expandable) — the human-readable reasoning behind the tags. E.g., "Comedy is in your top 3 categories. Within 2 km of your work. 12 of your neighbors saved this." Each factor on its own line.
+10. **Similar events you've attended** (when computable).
+11. **Neighbor count** (per PRD FR-24, k-anonymity threshold ≥5 qualifying users; bucketed: `👥 5–9`, `👥 10–24`, `👥 25–99`, `👥 100+`. Below 5: silently suppressed.)
+12. **Reviews count** — restored from Design Thinking wireframe Screen 7 per `reconcile-design-thinking.md` §5 (Top 5 Reconciliation #5). `[ASSUMPTION: reviews are a Phase 3+ candidate and currently excluded from MVP per PRD §14.3 ("No reviews / ratings element"); the restoration is a deferred decision pending a Phase 3 design review against the engagement-trap principle]` — for MVP, **the Detail Screen does not show reviews.** The reconcile recommendation is acknowledged but not adopted at MVP.
+
+### Why-this Breakdown (the heart)
+
+The Why-this breakdown is the human-readable explanation of why the AI surfaced this event. It expands from the 3 keywords on the card. Example:
+
+> "Surfaced because:
+> - Comedy is in your top 3 categories.
+> - 2 km from your work.
+> - 12 of your neighbors saved this.
+> - Source reliability 0.92."
+
+Each factor has a tooltip explaining what it means. The expansion uses `motion.fadeIn` (240ms, disabled under reduced-motion).
+
+### Neighbor Count Privacy
+
+Per PRD FR-24:
+- Threshold: ≥5 qualifying users in the same area (haversine ≤2 km or same city-zip-cluster).
+- Display: bucketed. Exact counts never exposed.
+- Suppression: silently below threshold (no "0 neighbors" copy).
+- Tier-agnostic: Pro and Free users count identically.
+
+### Community Corroboration Count (optional, deferred)
+
+`[ASSUMPTION: a community corroboration count (number of users who saved or opened Detail Screen for an event, regardless of proximity) is a deferred Phase 3 candidate. The PRD does not require it; the reconciliation against engagement-trap principles is pending. Adopt only after a Trust Review.]`
+
+---
+
+## 13. Adaptive Density
+
+The principle: cards reveal more detail on long-press, focus, or desktop hover. Mobile default is intentionally spartan. The default mobile view of `Card.PulseDigest` shows only:
+
+- Event name (`Text.Display.sm`)
+- When · Where (`Text.Meta`)
+- 3 Why-this Tags (`Text.Meta`)
+- 1 Confidence Pulse (top-right)
+- 1 Source Badge (top-right)
+
+That's it. No description, no image, no map, no price, no attendee count, no share button. The mobile default is the *decision surface*, not the *browsing surface*.
+
+### Density Modes
+
+| Mode | Trigger | Adds |
+|---|---|---|
+| **Default (mobile, idle)** | Always | Name, When · Where, 3 Why-this Tags, Confidence, Source |
+| **Focused (keyboard)** | Tab focus on the card | Visible focus ring (2px, terracotta). `aria-label` exposes full card content to screen readers. |
+| **Hovered (desktop)** | Mouse hover | Background shifts to `color.surface.paper.darker`. `▸` affordance appears. Tooltips available on Source Badge and Confidence Pulse. |
+| **Long-pressed (mobile)** | Long-press on card | Quick-actions sheet anchored to card: Save, Dismiss, Less like this. |
+| **Adaptive expansion** | ≥10 saves in 30d | Card count grows from 3 to 5 (top of the responsive matrix) or 7 (Phase 3 max). Inline "Show all 5" link below the last card. |
+
+### Anti-pattern: progressive disclosure that hides trust signals
+
+Adaptive density must not hide the trust signals (Why-this Tags, Confidence Pulse, Source Badge) at any density mode. The mobile default exposes all three; hover/focus/long-press *add* detail but never *remove* the trust signals. PRD §13.1: "Why-this Tags are first-class."
+
+### Anti-pattern: progressive disclosure that hides the conflict indicator
+
+If a card is in conflict (PRD FR-58), the conflict indicator is always visible — top-right of the card, in the same visual zone as Source Badge and Confidence Pulse. Adaptive density may add detail (e.g., a tooltip on the conflict indicator explaining the conflict), but the indicator itself never collapses below 8×8 px.
+
+### Desktop Hover Discipline
+
+On desktop (`md+`), hover affordances are *additions*, not requirements. A user with a mouse and a user with a touchscreen get the same default; hover only adds detail. Per `DESIGN.md.Do's-and-Dont's` (per the locked brief), the desktop view is "whitespace and hover-revealed detail" — not "more features."
+
+### What Adaptive Density Does Not Do
+
+- Does not change the 3-card discipline (except via the explicit adaptive exception).
+- Does not introduce infinite scroll.
+- Does not introduce a carousel.
+- Does not reorder cards based on engagement signal — card composition is determined by Pulse Digest logic (PRD FR-5), not by per-card density.
+- Does not introduce paywalled density tiers ("Upgrade to Pro for full event descriptions").
+
+---
+
+## Appendix — DESIGN.md Token Reference
+
+All behavior in this spine references `DESIGN.md` tokens by `{path.to.token}` syntax. The token names below are referenced in this spine; they are the canonical names the DESIGN.md author is using in parallel:
+
+- `color.accent.terracotta` — primary accent (CTAs, focus ring, filled Source Badge).
+- `color.surface.paper` — base background.
+- `color.surface.paper.darker` — hover/darker paper variant.
+- `color.ink.primary` — body text.
+- `color.ink.meta` — metadata text.
+- `color.ink.faint` — subtle dividers, empty dot placeholders.
+- `color.warm.personal` — Personal Event tone (PRD §13.1).
+- `color.cool.public` — Public Event tone (PRD §13.1).
+- `color.warn.amber` (desaturated) — conflict indicator (PRD FR-58).
+- `Text.Display` — headlines.
+- `Text.Display.sm` — card-level headlines.
+- `Text.Body` — body copy.
+- `Text.Meta` — metadata, tags, timestamps.
+- `Card.PulseDigest` — home card component.
+- `Input.ReminderSlot` — reminder picker chips.
+- `Indicator.Confidence` — 5-dot confidence indicator.
+- `Badge.Source` — source type indicator.
+- `Sheet.ConflictResolution` — Phase 2 conflict sheet.
+- `motion.fadeIn` — 240ms entrance transition (disabled under reduced-motion).
+- `Button.Primary` — terracotta-filled CTA.
+- `Button.Secondary` — ink-bordered CTA.
+- `Tooltip.Source` / `Tooltip.Confidence` — hover/focus tooltips.
+
+Visual definitions (exact hex values, spacing scales, type ramps) live in `DESIGN.md`. This spine assumes them and references by name.
+
+---
+
+_End of EventPulse24 experience spine. Generated 2026-08-23. Paired with `DESIGN.md`. Source PRD: `prd-EventPulse24-2026-08-19`. Reconciles: `reconcile-design-thinking.md`, `reconcile-blue-ocean.md`._
