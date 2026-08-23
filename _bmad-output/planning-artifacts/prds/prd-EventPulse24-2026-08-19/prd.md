@@ -533,7 +533,9 @@ The system detects scheduling conflicts and likely-duplicate events at Personal 
 **Consequences (testable):**
 - On Personal Event creation, the system scans for other Personal Events within ±30 minutes of the new event's start time. If found, the user sees a calm inline message: "You also have [event name] at [time]. Keep both or change?"
 - On Personal Event creation, the system flags a likely duplicate when another Personal Event has the same name (case-insensitive, ≥80% string overlap) AND starts within 24 hours. The user sees: "Looks like [existing event name] on [date]. Keep both or update the existing one?"
-- A saved public event that overlaps with a Personal Event by >15 minutes is marked with a subtle conflict dot on both Pulse Cards. Tapping the dot opens a non-alarming conflict-detail panel.
+- A saved public event that overlaps with a Personal Event by >15 minutes is marked with a conflict indicator on both Pulse Cards. Tapping the indicator opens a non-alarming conflict-detail panel.
+- **Conflict indicator visual spec (wireframe-locked):** a small (8–10 px), filled, neutral-tone circle icon positioned at the top-right corner of the Pulse Card; the color is desaturated amber (#B8893D or equivalent), never red, and is accompanied by an `aria-label="Schedule conflict"` for screen readers (per §11.5). The indicator is identical for both Pulse Cards in the conflict pair (symmetric signal); it does not differentiate "this one caused it" vs "this one was overlapped."
+- **Color is not the sole carrier of meaning:** the indicator shape (filled circle) is distinct from the Source Badge (✅/👥/🔗/📥/⚠️) and the Confidence Pulse (● dots); users with color-vision deficiency can distinguish by shape and position alone (per §11.5).
 - The user can dismiss any conflict message with one tap; the system does not re-prompt.
 
 **Out of Scope:** Auto-rebook or alternative suggestions (Phase 2 — FR-33 Conflict-Aware Scheduling). Public-event vs. public-event conflicts at MVP (Phase 2).
@@ -563,7 +565,10 @@ Each Pulse Card shows a 1–5 dot Confidence Pulse (●●●●○ = 4/5). The 
 - A Pulse Card always shows a Confidence Pulse.
 - A 1-dot event has lower Confidence in the user's likely interest (could still be surfaced as "serendipity").
 - A 5-dot event has high Confidence in the user's likely interest.
-- **Formula (Algorithm spec):** `confidence = floor(5 * relevance_score)` where `relevance_score` is a weighted sum of: (a) preference-graph match (0–1), (b) source reliability score (0–1), (c) recency-vs-event-time fit (0–1), (d) novelty-vs-exploration (0–1). Weights are tunable; the formula is in the Architecture spec. The 1–5 discretization is deliberate UX choice (not 1–100).
+- **Formula (Algorithm spec):** `relevance_score` is a weighted sum of: (a) preference-graph match (0–1), (b) source reliability score (0–1), (c) recency-vs-event-time fit (0–1), (d) novelty-vs-exploration (0–1). Weights are tunable; the formula is in the Architecture spec. The 1–5 discretization is deliberate UX choice (not 1–100).
+- **Bucket boundaries (wireframe-locked):** the displayed Confidence Pulse is mapped from `relevance_score` using explicit thresholds — ≥0.85 = 5 dots, ≥0.65 = 4 dots, ≥0.45 = 3 dots, ≥0.25 = 2 dots, else 1 dot. The UI renders exactly these 5 states; no interpolation, no partial fills.
+- **No-flicker rule:** a change in `relevance_score` that does not cross a bucket boundary MUST NOT change the displayed Confidence Pulse on the user's next Pulse Digest. The previous bucket is preserved until the new score crosses the threshold (hysteresis on the boundary, ±0.02 tolerance band).
+- **Range clamp:** `relevance_score` is clamped to [0.0, 1.0] before bucket mapping; the rendered Confidence Pulse is always 1, 2, 3, 4, or 5.
 
 #### FR-23: Source Badge
 
@@ -580,7 +585,11 @@ Tapping any Pulse Card opens a Detail Screen showing: full event description, lo
 **Consequences (testable):**
 - The Detail Screen always shows the Why-this breakdown.
 - The Detail Screen shows similar events the user has attended (when computable).
-- The Detail Screen shows a neighbor count (`👥 X neighbors`) when at least 1 user is in the same area and same event.
+- The Detail Screen shows a neighbor count when the k-anonymity threshold (≥5 qualifying users) is met; below the threshold the badge is suppressed silently (no "0 neighbors" copy).
+- **Qualifying user:** an authenticated EventPulse24 user who has either saved OR opened the Detail Screen for this event in the last 30 days.
+- **Same area:** haversine distance ≤ 2 km OR same city-zip-cluster (whichever is broader); events outside the user's home country do not count.
+- **Display rounding (wireframe-locked):** the count is bucketed and rendered as `👥 5–9`, `👥 10–24`, `👥 25–99`, or `👥 100+`. Buckets `<5` are suppressed (k-anonymity). Exact counts are never exposed.
+- **Privacy floor:** the count aggregates Pro and Free tier users identically; the badge never differentiates by tier (no Pro-vs-Free density leakage).
 
 **Out of Scope:** Friend-attending count (Phase 2 — Pulse the Group). Public event ratings/reviews.
 
