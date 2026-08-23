@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EventPulse24 — Pre-PRD Gap Fill · A Brainstorming Keepsake</title>
+<style>
+  :root{
+    --bg:#f6f3ec;          /* off-white, warm paper */
+    --bg2:#efeadd;         /* slightly darker paper */
+    --ink:#1c2740;         /* deep navy text */
+    --ink-soft:#3a4660;
+    --ink-mute:#7b7f8c;
+    --rule:#d9d2c1;
+    --accent:#a87c3a;      /* warm amber */
+    --accent-soft:#e8d9b8;
+    --sage:#7a8a6b;        /* soft sage */
+    --sage-soft:#dde2d4;
+    --plum:#6b4f6b;        /* muted plum */
+    --plum-soft:#e1d8df;
+    --serif: "Source Serif Pro","Source Serif","Crimson Pro","Lora","Iowan Old Style","Apple Garamond","Baskerville","Times New Roman",serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:880px;
+    margin:0 auto;
+    padding:96px 56px 120px;
+  }
+
+  /* HERO */
+  .hero{
+    border-bottom:1px solid var(--rule);
+    padding-bottom:64px;
+    margin-bottom:80px;
+  }
+  .eyebrow{
+    font-family:var(--sans);
+    font-size:11px;
+    letter-spacing:0.28em;
+    text-transform:uppercase;
+    color:var(--ink-mute);
+    margin-bottom:24px;
+  }
+  h1{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:64px;
+    line-height:1.04;
+    margin:0 0 28px 0;
+    letter-spacing:-0.01em;
+    color:var(--ink);
+  }
+  h1 em{
+    font-style:italic;
+    color:var(--accent);
+  }
+  .deck{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:21px;
+    line-height:1.5;
+    color:var(--ink-soft);
+    max-width:620px;
+    margin:0 0 40px 0;
+  }
+  .meta{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:32px;
+    border-top:1px solid var(--rule);
+    padding-top:24px;
+    font-family:var(--sans);
+  }
+  .meta dt{
+    font-size:10px;
+    letter-spacing:0.22em;
+    text-transform:uppercase;
+    color:var(--ink-mute);
+    margin-bottom:6px;
+  }
+  .meta dd{
+    margin:0;
+    font-family:var(--serif);
+    font-size:17px;
+    color:var(--ink);
+  }
+
+  /* SECTION HEAD */
+  section{margin:0 0 96px 0}
+  .sect-head{
+    display:flex;
+    align-items:baseline;
+    gap:24px;
+    margin-bottom:40px;
+    border-bottom:1px solid var(--rule);
+    padding-bottom:18px;
+  }
+  .sect-num{
+    font-family:var(--serif);
+    font-size:14px;
+    color:var(--accent);
+    font-style:italic;
+  }
+  h2{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:34px;
+    line-height:1.15;
+    margin:0;
+    letter-spacing:-0.005em;
+  }
+  h3{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:22px;
+    margin:0 0 12px 0;
+  }
+  p{margin:0 0 16px 0}
+
+  /* THREE GAPS */
+  .gaps{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:0;
+    border:1px solid var(--rule);
+  }
+  .gap{
+    padding:36px 28px;
+    border-right:1px solid var(--rule);
+    background:#fbf9f3;
+  }
+  .gap:last-child{border-right:0}
+  .gap .tag{
+    display:inline-block;
+    font-size:10px;
+    letter-spacing:0.2em;
+    text-transform:uppercase;
+    padding:4px 10px;
+    border-radius:2px;
+    margin-bottom:18px;
+  }
+  .gap.legal .tag{background:var(--sage-soft);color:#4a5740}
+  .gap.monet .tag{background:var(--accent-soft);color:#6b4d1d}
+  .gap.valid .tag{background:var(--plum-soft);color:#4d3a4d}
+  .gap h3{font-size:22px;margin-bottom:10px}
+  .gap .lede{font-size:14px;color:var(--ink-soft);margin-bottom:18px;font-style:italic;font-family:var(--serif)}
+  .gap ul{
+    list-style:none;padding:0;margin:0;
+    font-size:13.5px;color:var(--ink-soft);
+  }
+  .gap ul li{
+    padding:8px 0;
+    border-top:1px dotted var(--rule);
+    line-height:1.45;
+  }
+  .gap ul li:last-child{border-bottom:1px dotted var(--rule)}
+
+  /* TECHNIQUES GRID */
+  .tech-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1px;
+    background:var(--rule);
+    border:1px solid var(--rule);
+  }
+  .tech{
+    background:var(--bg);
+    padding:28px 24px;
+    min-height:160px;
+  }
+  .tech .num{
+    font-family:var(--serif);
+    font-style:italic;
+    color:var(--accent);
+    font-size:13px;
+    margin-bottom:10px;
+  }
+  .tech h4{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:18px;
+    margin:0 0 8px 0;
+    color:var(--ink);
+  }
+  .tech p{
+    font-size:13.5px;
+    color:var(--ink-soft);
+    margin:0;
+    line-height:1.5;
+  }
+
+  /* IDEAS — index cards */
+  .idea-section{margin-top:8px}
+  .idea-intro{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:17px;
+    color:var(--ink-soft);
+    margin-bottom:36px;
+    max-width:640px;
+  }
+  .ideas-by-gap{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:24px;
+  }
+  .card-cluster{
+    padding:28px 28px 20px;
+    border:1px solid var(--rule);
+    background:#fbf9f3;
+    border-radius:2px;
+    position:relative;
+  }
+  .card-cluster.legal{border-top:3px solid var(--sage)}
+  .card-cluster.monet{border-top:3px solid var(--accent)}
+  .card-cluster.valid{border-top:3px solid var(--plum)}
+  .card-cluster h3{
+    font-size:18px;
+    margin-bottom:4px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+  }
+  .card-cluster .src{
+    font-size:11px;
+    color:var(--ink-mute);
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    font-family:var(--sans);
+  }
+  .card-cluster .quote{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:14.5px;
+    color:var(--ink-soft);
+    line-height:1.55;
+    margin:14px 0 14px;
+    padding-left:14px;
+    border-left:2px solid var(--rule);
+  }
+  .card-cluster ul{
+    list-style:none;padding:0;margin:0;
+  }
+  .card-cluster li{
+    padding:10px 0;
+    border-top:1px dotted var(--rule);
+    font-size:14px;
+    line-height:1.5;
+    color:var(--ink);
+  }
+  .card-cluster li .lab{
+    display:inline-block;
+    font-family:var(--serif);
+    font-style:italic;
+    color:var(--accent);
+    font-size:12px;
+    margin-right:8px;
+    min-width:36px;
+  }
+  .card-cluster li:first-child{border-top:0;padding-top:4px}
+
+  /* INSIGHTS — climax */
+  .insights{
+    background:#1c2740;
+    color:#efeadd;
+    padding:64px 56px;
+    margin:0 -56px;
+    border-radius:2px;
+    position:relative;
+  }
+  .insights .sect-head{
+    border-bottom-color:#3a4660;
+  }
+  .insights .sect-num{color:var(--accent)}
+  .insights h2{color:#f6f3ec}
+  .insights .intro{
+    font-family:var(--serif);
+    font-style:italic;
+    color:#cdc4ad;
+    max-width:600px;
+    margin-bottom:40px;
+  }
+  .insights ol{
+    list-style:none;padding:0;margin:0;
+    counter-reset:ins;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:36px 48px;
+  }
+  .insights li{
+    counter-increment:ins;
+    padding-left:48px;
+    position:relative;
+  }
+  .insights li::before{
+    content:counter(ins);
+    position:absolute;
+    left:0; top:-4px;
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:36px;
+    color:var(--accent);
+    line-height:1;
+  }
+  .insights li .title{
+    font-family:var(--serif);
+    font-size:16px;
+    color:#f6f3ec;
+    margin-bottom:6px;
+    line-height:1.35;
+  }
+  .insights li .body{
+    font-size:13.5px;
+    color:#bdb6a3;
+    line-height:1.55;
+  }
+
+  /* DECISIONS */
+  .decisions{
+    counter-reset:dec;
+  }
+  .decision{
+    display:grid;
+    grid-template-columns:64px 1fr 140px;
+    gap:24px;
+    padding:22px 0;
+    border-top:1px solid var(--rule);
+    align-items:start;
+  }
+  .decision:last-child{border-bottom:1px solid var(--rule)}
+  .decision .n{
+    counter-increment:dec;
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:24px;
+    color:var(--accent);
+    line-height:1;
+    padding-top:4px;
+  }
+  .decision .n::before{content:counter(dec,decimal-leading-zero)}
+  .decision h4{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:18px;
+    margin:0 0 6px 0;
+    color:var(--ink);
+  }
+  .decision p{
+    margin:0;
+    font-size:14px;
+    color:var(--ink-soft);
+    line-height:1.55;
+  }
+  .decision .owner{
+    font-size:11px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--ink-mute);
+    padding-top:6px;
+    text-align:right;
+  }
+
+  /* NEXT STEP */
+  .next{
+    margin-top:80px;
+    padding:48px 40px;
+    background:var(--bg2);
+    border-left:4px solid var(--accent);
+    text-align:left;
+  }
+  .next .lab{
+    font-size:10px;
+    letter-spacing:0.28em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin-bottom:14px;
+  }
+  .next .msg{
+    font-family:var(--serif);
+    font-size:30px;
+    line-height:1.25;
+    color:var(--ink);
+    margin:0;
+  }
+  .next .msg em{
+    color:var(--accent);
+    font-style:italic;
+  }
+  .next .sub{
+    margin-top:18px;
+    font-size:13.5px;
+    color:var(--ink-soft);
+    font-style:italic;
+    font-family:var(--serif);
+  }
+
+  /* FOOTER */
+  footer{
+    margin-top:96px;
+    padding-top:28px;
+    border-top:1px solid var(--rule);
+    display:flex;
+    justify-content:space-between;
+    font-size:11px;
+    color:var(--ink-mute);
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+  }
+
+  /* mobile-ish */
+  @media (max-width:760px){
+    .wrap{padding:56px 28px 80px}
+    h1{font-size:42px}
+    .meta{grid-template-columns:1fr 1fr;gap:20px}
+    .gaps,.tech-grid,.ideas-by-gap,.insights ol{grid-template-columns:1fr}
+    .gap{border-right:0;border-bottom:1px solid var(--rule)}
+    .gap:last-child{border-bottom:0}
+    .insights{padding:40px 28px;margin:0 -28px}
+    .decision{grid-template-columns:48px 1fr;gap:14px}
+    .decision .owner{grid-column:2;text-align:left;padding-top:0}
+  }
+
+  /* intentional small imperfection */
+  .hero h1{transform:translateX(-1px)}
+  .gap.legal{transform:translateY(0.5px)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="eyebrow">A Brainstorming Keepsake</div>
+    <h1>EventPulse24<br><em>Pre-PRD Gap Fill</em></h1>
+    <p class="deck">A quiet session before the noise of a PRD. Three gaps explored, nine techniques tried, a hundred and nineteen entries logged — most discarded, a few worth keeping.</p>
+    <dl class="meta">
+      <div><dt>Goal</dt><dd>Cover 3 gaps before PRD</dd></div>
+      <div><dt>Mode</dt><dd>Autonomous</dd></div>
+      <div><dt>Date</dt><dd>2026·08·19</dd></div>
+      <div><dt>Ideas logged</dt><dd>~119</dd></div>
+    </dl>
+  </header>
+
+  <!-- THREE GAPS -->
+  <section>
+    <div class="sect-head">
+      <span class="sect-num">i.</span>
+      <h2>The three gaps explored</h2>
+    </div>
+    <p style="max-width:640px;font-family:var(--serif);font-style:italic;color:var(--ink-soft);font-size:17px;">
+      Before any PRD, three questions could quietly kill the product. Each got its own room.
+    </p>
+
+    <div class="gaps">
+      <div class="gap legal">
+        <span class="tag">Legal · Compliance</span>
+        <h3>What can kill us mid-launch</h3>
+        <p class="lede">A GDPR fine or cease-and-desist can end the company before revenue starts.</p>
+        <ul>
+          <li>AI crawling + ToS of source sites</li>
+          <li>Personal calendar data (GDPR Art 4.1, 6, 9)</li>
+          <li>Children's event data (school notices, PII)</li>
+          <li>"Right to explanation" of automated picks</li>
+        </ul>
+      </div>
+      <div class="gap monet">
+        <span class="tag">Monetization · Pricing</span>
+        <h3>Who pays for calm</h3>
+        <p class="lede">"Calm" is unvalidated as a paid value. The pricing model must enforce the brand, not betray it.</p>
+        <ul>
+          <li>Free tier friction that Pro resolves</li>
+          <li>No-ads, ever. The brand is the moat.</li>
+          <li>Flat SaaS vs. % cut (no fiduciary risk)</li>
+          <li>B2C today, B2B2C later</li>
+        </ul>
+      </div>
+      <div class="gap valid">
+        <span class="tag">Validation · Users</span>
+        <h3>Is "Maya" real</h3>
+        <p class="lede">The persona is a fiction until we test. Three core bets must be proved or pivoted before build.</p>
+        <ul>
+          <li>3-card Pulse Digest beats 10-card list</li>
+          <li>"Why this?" reduces distrust</li>
+          <li>People will pay for less</li>
+          <li>Notification fatigue is acute</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECHNIQUES -->
+  <section>
+    <div class="sect-head">
+      <span class="sect-num">ii.</span>
+      <h2>The nine techniques used</h2>
+    </div>
+
+    <div class="tech-grid">
+      <div class="tech">
+        <div class="num">01 —</div>
+        <h4>First Principles</h4>
+        <p>Strip EventPulse24 to facts. Event data isn't copyrightable. Personal calendars are personal data. Public web ≠ hacking.</p>
+      </div>
+      <div class="tech">
+        <div class="num">02 —</div>
+        <h4>Reverse Brainstorming</h4>
+        <p>How would we make this legally/financially worst? Then invert every answer into a guardrail.</p>
+      </div>
+      <div class="tech">
+        <div class="num">03 —</div>
+        <h4>Cross-Pollination</h4>
+        <p>Borrow models from Headspace, Spotify, NYT, Bloomberg, Patreon, Robinhood, Wikipedia, Firefox, Goodreads.</p>
+      </div>
+      <div class="tech">
+        <div class="num">04 —</div>
+        <h4>SCAMPER</h4>
+        <p>Substitute, combine, adapt, modify, put-to-other-use, eliminate, reverse — applied to each MVP feature.</p>
+      </div>
+      <div class="tech">
+        <div class="num">05 —</div>
+        <h4>Constraint Mapping</h4>
+        <p>For each core bet: what proves it? What blocks the proof? Cheapest test first.</p>
+      </div>
+      <div class="tech">
+        <div class="num">06 —</div>
+        <h4>Worst Possible Idea</h4>
+        <p>50 push notifications. Auto-add to calendar. Ads. Surveillance. Each one becomes a fence by inversion.</p>
+      </div>
+      <div class="tech">
+        <div class="num">07 —</div>
+        <h4>Analogical Thinking</h4>
+        <p>What other products monetize calm by curation? Calm/Headspace, Superhuman, Letterboxd, Nextdoor, Nylas.</p>
+      </div>
+      <div class="tech">
+        <div class="num">08 —</div>
+        <h4>Question Storming</h4>
+        <p>Ten open questions no one on the team has answered yet. Logged without flinching.</p>
+      </div>
+      <div class="tech">
+        <div class="num">09 —</div>
+        <h4>Failure Analysis</h4>
+        <p>IRL, Castro, Quibi, Google Glass, Calm vs Headspace, every app that died trying to be Facebook Events.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- IDEAS -->
+  <section class="idea-section">
+    <div class="sect-head">
+      <span class="sect-num">iii.</span>
+      <h2>A sampling of the best ideas</h2>
+    </div>
+    <p class="idea-intro">Curated, not comprehensive. The cards that survived the session — organised by which gap they answer. Each is a fact, an inversion, or a model borrowed from somewhere else.</p>
+
+    <div class="ideas-by-gap">
+
+      <!-- LEGAL -->
+      <div class="card-cluster legal">
+        <h3>Legal &amp; Compliance <span class="src">8 cards</span></h3>
+        <p class="quote">Trivium: <em>LinkedIn v hiQ (2022)</em> confirmed public scraping is not a CFAA violation in the US.</p>
+        <ul>
+          <li><span class="lab">[FP]</span>Event data is a fact — facts aren't copyrightable. Crawl facts freely; paraphrase creative copy.</li>
+          <li><span class="lab">[FP]</span>Personal calendar = personal data under GDPR. Default: consent. Lawful basis required (Art 6).</li>
+          <li><span class="lab">[AR]</span>Reverse: don't crawl, partner. → Crawl aggressively; treat ToS letters as marketing signals of which sources to deepen.</li>
+          <li><span class="lab">[AR]</span>Reverse: need privacy policy upfront. → Ship a privacy policy that disclaims everything until first signup; users are the trigger.</li>
+          <li><span class="lab">[FP]</span>Data minimization: don't store crawled events forever — keep structured facts, drop raw HTML. Compliance by deletion.</li>
+          <li><span class="lab">[CP]</span>Affiliate + RSS + official APIs cover 80% of legal ground. Crawling is the long tail, not the foundation.</li>
+          <li><span class="lab">[DT-A]</span>Path: official APIs only (Eventbrite, Meetup, Ticketmaster, PredictHQ, Songkick). Coverage ~70%. SAFE.</li>
+          <li><span class="lab">[INS]</span>"Why this?" is also our GDPR Art 22 explanation. Treat it as compliance, not just UX.</li>
+        </ul>
+      </div>
+
+      <!-- MONETIZATION -->
+      <div class="card-cluster monet">
+        <h3>Monetization <span class="src">9 cards</span></h3>
+        <p class="quote">The enforcement of "no ads" + "calm" is itself a marketing asset — the anti-Eventbrite.</p>
+        <ul>
+          <li><span class="lab">[RB]</span>Worst: 100% free, no upgrade trigger. → Free must have <em>visible, repeated</em> friction that Pro resolves.</li>
+          <li><span class="lab">[CP]</span>Headspace pattern: scarcity on the thing that hooks you. 3 digests/day free; Pro = unlimited or smart-personalized.</li>
+          <li><span class="lab">[CP]</span>NYT meter: people pay once they've sampled. 30-sec onboarding + 1 Pulse Preview before signup wall.</li>
+          <li><span class="lab">[CP]</span>Bloomberg: $24K/yr. Pattern: B2B2C (university/tourism boards) is the eventual big-revenue play.</li>
+          <li><span class="lab">[CP]</span>Patreon: true believers fund the calm. $99/yr Founder tier with name on page.</li>
+          <li><span class="lab">[CP]</span>Wikipedia / Firefox: donation tier + privacy positioning as alternate monetization. Aligns with brand.</li>
+          <li><span class="lab">[WPI]</span>Worst monetization: ads. → NO ADS, EVER. If anyone suggests ads, the answer is "calm."</li>
+          <li><span class="lab">[DT]</span>Recommended test: Van Westendorp + 5 interviews. Lean: $5/mo or $49/yr with 14-day trial.</li>
+          <li><span class="lab">[INS]</span>The brand IS the moat. Monetization is better-positioned than the brief admits.</li>
+        </ul>
+      </div>
+
+      <!-- VALIDATION -->
+      <div class="card-cluster valid">
+        <h3>User Validation <span class="src">9 cards</span></h3>
+        <p class="quote">The minimum viable validation = 5 interviews + 1 fake-door test + 1 pricing survey. 1 week, $0–200.</p>
+        <ul>
+          <li><span class="lab">[CM]</span>BET: 3 cards beats 10. PROOF: fake-door test. n=30, $0, 1 day.</li>
+          <li><span class="lab">[CM]</span>BET: "Why this?" reduces distrust. PROOF: same event shown with/without explanation; trust 1–5.</li>
+          <li><span class="lab">[CM]</span>BET: people pay for calm. PROOF: Van Westendorp sensitivity, range $1–$20/mo.</li>
+          <li><span class="lab">[CM]</span>BET: notification fatigue is acute. PROOF: survey "how many do you ignore per day?"</li>
+          <li><span class="lab">[CM]</span>BET: Maya is real. PROOF: 5 interviews, 30–40yo knowledge workers in dense cities.</li>
+          <li><span class="lab">[SCAMPER-R]</span>Reverse the digest: "here are 3 events to SKIP this week." Calmer by negation.</li>
+          <li><span class="lab">[SCAMPER-S]</span>Substitute 3 cards for 1 (ultra-minimal) or 5 (power users). A/B: is calm=1 or calm=3 calmer?</li>
+          <li><span class="lab">[WILD]</span>"Pulse Pacing": if no events for 7 days, Pulse Digest says <em>this is a quiet week; here's a recommendation to rest</em>.</li>
+          <li><span class="lab">[FA]</span>Worried: people with no events that day may uninstall. Check if "calm" sustains daily opens.</li>
+        </ul>
+      </div>
+
+      <!-- TECHNIQUE / WILD -->
+      <div class="card-cluster monet">
+        <h3>Wildcards &amp; Borrowed Patterns <span class="src">8 cards</span></h3>
+        <p class="quote">Cross-pollination produced the highest-leverage ideas — patterns from elsewhere, applied here.</p>
+        <ul>
+          <li><span class="lab">[AT]</span>Headspace/Calm: meditation for the noise. EventPulse24 = calm for the events.</li>
+          <li><span class="lab">[AT]</span>Superhuman: deliberately expensive, gated behind shortcuts. Scarcity = premium signal.</li>
+          <li><span class="lab">[AT]</span>Letterboxd: social for movies with restraint. Taste graph + explainability resonates.</li>
+          <li><span class="lab">[AT]</span>Castro: too smart = users feel out of control. AI must be transparent AND overridable.</li>
+          <li><span class="lab">[SCAMPER-A]</span>Spotify Wrapped → annual "Your Year in Calm" recap. Marketing gold.</li>
+          <li><span class="lab">[SCAMPER-P]</span>"Why this?" reasoning engine → also justify the reminder. Same data, two surfaces.</li>
+          <li><span class="lab">[WILD]</span>Integrate with Screen Time / RescueTime to suppress notifications in focus mode. Become real calm-tech.</li>
+          <li><span class="lab">[QS]</span>What is our moat when Apple ships "AI Calendar" at WWDC 2027? Brand? Data? Speed?</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SYNTHESIS INSIGHTS — climax -->
+  <section class="insights">
+    <div class="sect-head">
+      <span class="sect-num">iv.</span>
+      <h2>The eleven synthesis insights</h2>
+    </div>
+    <p class="intro">What the session actually said when the techniques stopped talking. The through-lines. The ones to remember.</p>
+
+    <ol>
+      <li>
+        <div class="title">The three gaps are not equal.</div>
+        <div class="body">Legal/Compliance is the only one that can kill the company mid-launch. Monetization is a Phase 2 problem. Validation is risk-mitigation. Priority: legal &gt; validation &gt; monetization.</div>
+      </li>
+      <li>
+        <div class="title">Crawling is a scope decision, not a risk.</div>
+        <div class="body">The brief rates "web crawling legally blocked" as risk. It should be a scope decision: defer crawling to Phase 2, ship on official APIs only.</div>
+      </li>
+      <li>
+        <div class="title">"Why this?" is a compliance feature.</div>
+        <div class="body">It satisfies GDPR Art 22 (right to explanation of automated decisions). Don't treat it as UX alone — it's legal cover.</div>
+      </li>
+      <li>
+        <div class="title">The brand is the moat.</div>
+        <div class="body">"Monetize calm" is unvalidated, but the <em>enforcement</em> of "no ads + calm" is itself a marketing asset. Anti-Eventbrite.</div>
+      </li>
+      <li>
+        <div class="title">"Maya" is a fiction until we test.</div>
+        <div class="body">Recommend a 1-week "Talk to 5 Mayas" sprint before any PRD work. $200 in incentives. 1 week.</div>
+      </li>
+      <li>
+        <div class="title">APIs-first is a de-risking move.</div>
+        <div class="body">Eventbrite + Meetup + PredictHQ + Bandsintown + Songkick cover the long tail. The product isn't compromised. Crawling can wait.</div>
+      </li>
+      <li>
+        <div class="title">Onboarding needs a personalization signal.</div>
+        <div class="body">30 seconds, no calendar connect. Fallback: ZIP code (or detect from IP) + 2 interest pills. Two clicks. Still under 30 seconds.</div>
+      </li>
+      <li>
+        <div class="title">Pulse Ping is the signature feature.</div>
+        <div class="body">One daily notification. It must be the default at signup. Opting INTO more notifications should require explicit action.</div>
+      </li>
+      <li>
+        <div class="title">Two real risks not in the brief.</div>
+        <div class="body">(a) AI hallucination creates duplicate/wrong events — trust collapse. (b) "Maya" is one demographic — what about Gen Z and Boomers?</div>
+      </li>
+      <li>
+        <div class="title">Don't decide funding before validation.</div>
+        <div class="body">Bootstrap until 5 user interviews confirm WTP. Raise after. The "funding path" open question should NOT be made before validation.</div>
+      </li>
+      <li>
+        <div class="title">Ship the brief + add 4 sections.</div>
+        <div class="body">(1) Legal &amp; Compliance Plan, (2) Validation Sprint Plan, (3) Pricing &amp; Monetization Validation, (4) Data Sourcing Strategy (APIs first, crawling second). Then bmad-prd.</div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- DECISIONS -->
+  <section class="decisions">
+    <div class="sect-head">
+      <span class="sect-num">v.</span>
+      <h2>Decisions locked for PRD</h2>
+    </div>
+
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>Official APIs only at MVP</h4>
+        <p>Eventbrite, Meetup, Ticketmaster, PredictHQ, Bandsintown, Songkick. Add RSS feeds for tourism boards and universities. Crawling deferred to Phase 2.</p>
+      </div>
+      <div class="owner">Data Sourcing</div>
+    </div>
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>30-second onboarding, no calendar connect</h4>
+        <p>ZIP code (or IP-detect) plus two interest pills. Two clicks. Value first; Pulse Preview shown before signup wall.</p>
+      </div>
+      <div class="owner">Onboarding</div>
+    </div>
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>One daily Pulse Ping as default</h4>
+        <p>Per-event reminders are user-set chips. Opting INTO more notifications requires explicit action. Maximize signal/minute.</p>
+      </div>
+      <div class="owner">Notifications</div>
+    </div>
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>"Why this?" is auditable + compliance</h4>
+        <p>Every recommendation shows the data inputs and model reasoning. Doubles as GDPR Art 22 explanation. No black-box explanations.</p>
+      </div>
+      <div class="owner">Explainability</div>
+    </div>
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>Free = 3 digests/day; Pro = unlimited</h4>
+        <p>Lean price: $5/mo or $49/yr with 14-day trial. Run Van Westendorp + 5 interviews before committing. Test before pricing.</p>
+      </div>
+      <div class="owner">Monetization</div>
+    </div>
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>No ads, ever. The brand is the moat.</h4>
+        <p>If anyone suggests ads, the answer is "calm." If we ever add revenue outside Pro subscription, kill the product.</p>
+      </div>
+      <div class="owner">Brand</div>
+    </div>
+    <div class="decision">
+      <div class="n"></div>
+      <div>
+        <h4>Validate "Maya" before writing PRD</h4>
+        <p>1-week sprint: 5 user interviews + 1 fake-door test + 1 pricing survey. Cost: $0–200. If Maya doesn't show up, pivot persona before code.</p>
+      </div>
+      <div class="owner">Validation</div>
+    </div>
+  </section>
+
+  <!-- NEXT STEP -->
+  <div class="next">
+    <div class="lab">Recommended next step</div>
+    <p class="msg">Run a <em>1-week validation sprint</em> before <em>bmad-prd</em>.</p>
+    <p class="sub">5 interviews, 1 fake-door, 1 pricing survey. If Maya shows up, ship the brief. If she doesn't, you'll know before you write a single line of code.</p>
+  </div>
+
+  <footer>
+    <span>EventPulse24 · Brainstorming Keepsake</span>
+    <span>2026·08·19 · 119 entries · 11 insights · 7 decisions</span>
+  </footer>
+
+</div>
+</body>
+</html>
