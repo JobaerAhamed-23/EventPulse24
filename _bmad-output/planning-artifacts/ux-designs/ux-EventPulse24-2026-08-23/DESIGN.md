@@ -39,7 +39,7 @@ The visual rule: if it would feel at home on Eventbrite, Meetup, or a gaming app
 
 The palette is paper-and-ink plus one warm accent. Editorial Calm has a dark mode: paper becomes ink, ink becomes paper, terracotta stays terracotta but loses saturation. Tokens use path-style names so `EXPERIENCE.md` can cross-reference with `{color.accent.terracotta}` syntax.
 
-[ASSUMPTION: Hex values below are estimated from named descriptions; calibrate against final brand sampling before engineering. Terracotta `#C4502B` was provided; the rest are derived from the warm-neutral palette direction.]
+[ASSUMPTION: Hex values below are estimated from named descriptions; calibrate against final brand sampling before engineering. Terracotta `#C4502B` was provided; the rest are derived from the warm-neutral palette direction. — see _Assumptions_ at end of document, ASSUM-1.]
 
 ### Light mode
 
@@ -49,9 +49,14 @@ The palette is paper-and-ink plus one warm accent. Editorial Calm has a dark mod
 - `color.surface.inset` — `#EDE7DA`. Inset wells (e.g., the search field resting state, a nested grouping block).
 - `color.ink.primary` — `#1A1814`. Headlines, serif display, the highest-contrast text. Slightly warm black, not pure `#000`.
 - `color.ink.secondary` — `#3A352D`. Body copy, input text. Softer than primary but still high contrast.
-- `color.ink.muted` — `#7A7066`. Metadata, timestamps, helper text, source attribution labels.
+- `color.ink.muted` — `#7A7066`. Metadata, timestamps, helper text, source attribution labels. (Path alias: `color.ink.meta` — same value, both names accepted so EXPERIENCE.md and DESIGN.md can use either without drift.)
+- `color.ink.faint` — `#C9C2B5`. The dimmest readable ink. Used only for: empty `Indicator.Confidence` dot placeholders and the dim target of the skeleton pulse animation. Never used for body copy or interactive affordances.
 - `color.ink.inverse` — `#FAF8F4`. Text on dark fills (e.g., the terracotta CTA label).
-- `color.accent.terracotta` — `#C4502B`. Single warm accent. Used only for: the `Indicator.Today` dot, the `Button.Primary` fill, the `Badge.Source.verified` fill. Nothing else.
+- `color.surface.paper.darker` — `#F4F0E8`. The hover background for `Card.PulseDigest` (one step darker than `color.surface.paper`, no shadow). Used only on hover and on the skeleton pulse animation's resting frame; never as a static surface.
+- `color.warm.personal` — `#A8765C`. The warm tone reserved for Personal events on `Card.PulseDigest` and the Detail Screen. Used only as an accent strip or small label, paired with the visible text label "Personal" (PRD §13.1) so color is never the sole carrier of meaning.
+- `color.cool.public` — `#5B6B7E`. Path alias of `color.accent.slate`; both names accepted so EXPERIENCE.md and DESIGN.md can use either. Reserved for the public-event tone on `Card.PulseDigest` and Detail Screen; paired with the text label "Public event."
+- `color.warn.amber` — `#B8893A`. Muted amber reserved for the conflict indicator (filled circle, PRD FR-58). Distinct from `color.accent.amber`, which is a warm-secondary category stripe. Used only at the moment of state change (conflict active) and as a static indicator mark on a card or detail screen header; never as decoration.
+- `color.accent.terracotta` — `#C4502B`. Single warm accent. Used only for: the `Indicator.Today` dot, the `Button.Primary` fill, the `Badge.Source.verified` fill, and the focus ring (the fourth sanctioned use — see §Color usage rules). Nothing else.
 - `color.accent.slate` — `#5B6B7E`. Cool secondary. Used only for: the public-event category stripe on `Card.PulseDigest`, the surprise / discovery card category stripe. No other use.
 - `color.accent.amber` — `#C77A2C`. Warm secondary, distinct from terracotta. Used only for: the must-know card category stripe on `Card.PulseDigest`. Used sparingly; should not appear on more than ~10% of cards in any view.
 - `color.signal.success` — `#4A7A4A`. Reminder confirmed, source verified success state. Muted, not vivid.
@@ -70,9 +75,14 @@ Editorial Calm has dark mode. Paper inverts to ink, ink inverts to paper, terrac
 - `color.surface.inset` — `#2C2820`. Inset wells.
 - `color.ink.primary` — `#F2EFE8`. Headlines on dark — warm near-white.
 - `color.ink.secondary` — `#D6D1C5`. Body copy on dark.
-- `color.ink.muted` — `#8C8478`. Metadata on dark.
+- `color.ink.muted` — `#8C8478`. Metadata on dark. (Path alias: `color.ink.meta` — same value, both names accepted.)
+- `color.ink.faint` — `#3A352D`. Empty `Indicator.Confidence` dot placeholders and the dim target of the skeleton pulse animation on dark surfaces.
 - `color.ink.inverse` — `#15140F`. Text on light fills (e.g., terracotta CTA label in dark mode).
-- `color.accent.terracotta` — `#D88A6E`. Terracotta reduced saturation for dark surfaces. Still reserved for the same three uses (today indicator, primary CTA, verified badge).
+- `color.surface.paper.darker` — `#1A1814`. Hover background for `Card.PulseDigest` on dark (one step darker than `color.surface.paper`, no shadow).
+- `color.warm.personal` — `#C8967A`. Warm tone for Personal events on dark surfaces. Same usage rules as light mode.
+- `color.cool.public` — `#7E91A6`. Path alias of `color.accent.slate` (dark variant); both names accepted.
+- `color.warn.amber` — `#D8A86A`. Conflict indicator on dark surfaces. Same usage rules as light mode.
+- `color.accent.terracotta` — `#D88A6E`. Terracotta reduced saturation for dark surfaces. Still reserved for the same four uses (today indicator, primary CTA, verified badge, focus ring).
 - `color.accent.slate` — `#7E91A6`. Slate brightened for dark contrast on category stripes.
 - `color.accent.amber` — `#D8A06A`. Amber warm-secondary, adjusted for dark.
 - `color.signal.success` — `#7AAA7A`.
@@ -83,15 +93,34 @@ Editorial Calm has dark mode. Paper inverts to ink, ink inverts to paper, terrac
 
 ### Color usage rules
 
-- `color.accent.terracotta` is the only chromatic accent. Its three sanctioned uses are the today indicator, the primary CTA, and the verified source badge. It does not appear on hover, focus rings, or link underlines.
-- `color.accent.slate` and `color.accent.amber` are reserved exclusively for category stripes on `Card.PulseDigest`. They are not used for buttons, icons, or interactive surfaces.
+- `color.accent.terracotta` is the only chromatic accent. Its **four sanctioned uses** are the today indicator, the primary CTA, the verified source badge, and the focus ring (the focus ring being the only exception outside the original three). It does not appear on hover, link underlines, category stripes, or anywhere else.
+- **Focus ring (exception, fourth sanctioned use):** The 2px focus ring at 2px offset on focusable interactive elements uses `color.accent.terracotta`. WCAG 2.2 focus-visible is required, and terracotta is the highest-contrast chromatic signal we own; AA contrast (≥3:1 against `color.surface.paper`) is verified for the ring stroke. This is the only sanctioned use of terracotta outside the three originally named above (today indicator, primary CTA, verified source badge), and the only chromatic focus ring in the system — there is no terracotta-on-link or terracotta-on-hover rule.
+- `color.accent.slate` and `color.accent.amber` are reserved exclusively for category stripes on `Card.PulseDigest`. They are not used for buttons, icons, or interactive surfaces. `color.accent.slate` and `color.cool.public` are interchangeable path aliases for the same token; either name is accepted.
+- `color.warm.personal` is reserved exclusively for the Personal-event tone on `Card.PulseDigest` and Detail Screen (a small accent strip or label). It is always paired with the visible text label "Personal" so color is never the sole carrier of meaning (WCAG 1.4.1).
+- `color.warn.amber` is reserved exclusively for the conflict indicator (filled circle mark on `Card.PulseDigest` and Detail Screen header, per PRD FR-58). It is distinct from `color.accent.amber` (warm-secondary category stripe) — do not substitute one for the other.
 - `color.signal.success`, `color.signal.warn`, and `color.signal.error` are signal colors, not brand colors. They appear only at the moment of state change, never as decoration.
+- `color.ink.faint` is reserved for empty `Indicator.Confidence` dot placeholders and the skeleton pulse animation's dim target. Never used for body copy or interactive affordances.
+- `color.surface.paper.darker` is reserved for `Card.PulseDigest` hover background and the skeleton pulse animation's resting frame. Never used as a static surface or as a hover state on non-card elements.
+
+## Token Implementation Contract
+
+The visual identity in this document is the source of truth; this subsection specifies the build substrate so engineering does not reach for a UI library, a tooltip framework, or an animation library to implement it.
+
+- **Token substrate.** Tokens are CSS custom properties declared at `:root` (`--color-accent-terracotta: #C4502B;` etc.) with a dark-mode override under `[data-theme="dark"]`. Tokens are not a JS constants file and not a build-time JSON; they are read by the runtime CSS engine directly. Path-style names in `{color.accent.terracotta}` form are the canonical names referenced by `EXPERIENCE.md`; the CSS variable name is the kebab-case form of the path (`--color-accent-terracotta`).
+- **Path aliases (canonical mapping).** Path aliases resolve to a single CSS variable. Engineering does not declare separate variables for each alias; it declares one and accepts both names on read.
+  - `color.ink.meta` is a path alias for `color.ink.muted` → CSS variable `--color-ink-muted` (declared). `--color-ink-meta` is **not** declared; `color.ink.meta` is read as the same key.
+  - `color.cool.public` is a path alias for `color.accent.slate` → CSS variable `--color-accent-slate` (declared). `--color-cool-public` is **not** declared; `color.cool.public` is read as the same key.
+  - Dark-mode overrides apply to the primary variable only; both names pick up the override through the same key.
+- **Dark-mode trigger.** Dark mode is set by writing `data-theme="dark"` on the `<html>` element. There is no `prefers-color-scheme: dark` auto-switch at MVP — the user picks theme in `Settings` (§2 of `EXPERIENCE.md`). The system UI follows.
+- **Motion — `motion.fadeIn`.** A 240ms CSS `opacity` transition (no transform, no translate). Implementation is a single class toggled by the framework: `.fade-in { transition: opacity 240ms ease-out; }` plus `opacity: 0` → `opacity: 1`. Under `@media (prefers-reduced-motion: reduce)`, the class becomes `transition: none`. There is no JS animation library. Skeleton pulse animation is a CSS `@keyframes` between `color.surface.paper` and `color.ink.faint` (or `color.surface.paper.darker` resting frame), 1800ms period, also collapsing to a static frame under reduced-motion.
+- **Tooltip pattern.** `Tooltip.Source` and `Tooltip.Confidence` use a `<button>` trigger with `aria-describedby="tooltip-{id}"` pointing to a sibling `<span role="tooltip" id="tooltip-{id}">`. Tooltips appear on `:hover` and `:focus-visible`; on touch viewports (`<768px`), tooltips appear on tap and dismiss on outside-tap or `Esc`. No hover-only tooltips on touch. The tooltip container uses `color.surface.elevated` fill, the one allowed shadow (`0 8px 24px rgba(0,0,0,0.08)`), and `Text.Meta` content.
+- **No UI framework.** The "UI system: None" declaration in `EXPERIENCE.md` §1 is binding: vanilla web components plus the token layer above. No Material, no shadcn, no full kit. The tooltip pattern is hand-rolled per the rule above; the modal pattern is a single overlay level using `<dialog>` native element; the sheet pattern uses `<dialog>` with `bottom` anchoring on mobile only.
 
 ## Typography
 
 Three type families. Headlines use a serif for the editorial voice. Body uses a sans for clarity and screen readability. Mono is reserved for confidence numerics (the 1–5 dot counts) and any timestamp that requires non-ambiguous digit rendering.
 
-[ASSUMPTION: The locked chain is `Source Serif 4` with `Fraunces` as fallback. If engineering prefers a different serif, swap the family name only — the scale and roles below are the contract.]
+[ASSUMPTION: The locked chain is `Source Serif 4` with `Fraunces` as fallback. If engineering prefers a different serif, swap the family name only — the scale and roles below are the contract. — see _Assumptions_ at end of document, ASSUM-2.]
 
 ### Type families
 
@@ -179,7 +208,7 @@ Editorial Calm communicates depth with **tonal layering and one shadow**. No glo
 - Cards and sheets use a 1px border (`color.border.subtle`) instead of shadow to sit above `color.surface.paper`.
 - The one allowed shadow is reserved for floating surfaces — modals, popovers, the command-palette overlay: `0 8px 24px rgba(0, 0, 0, 0.08)`. Tinted toward ink, not toward terracotta or slate.
 - Hover on a card does not add shadow. Hover is communicated by a 1px transition from `color.border.subtle` to `color.border.strong`. That's the entire hover affordance.
-- Focus rings are 2px solid `color.ink.primary` at 100% opacity, with a 2px offset. No glow, no chromatic focus ring.
+- Focus rings are 2px solid `color.accent.terracotta` at 100% opacity, with a 2px offset. AA contrast (≥3:1 against `color.surface.paper`) is verified. **The focus ring is the only sanctioned use of terracotta outside the three named in §Color usage rules** (today indicator, primary CTA, verified source badge); no other chromatic focus ring exists in the system.
 
 ## Shapes
 
@@ -218,7 +247,7 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 
 ### Buttons
 
-- `component.button.primary` — Filled `{color.accent.terracotta}` background, `{color.ink.inverse}` label, `{type.scale.body.md}` weight 600, padding `{spacing.3}` × `{spacing.6}`, `{radius.control}` (12px). Reserved for the single most important affordance on a surface (e.g., "Set reminder", "View why this?"). One primary per surface.
+- `component.button.primary` — Filled `{color.accent.terracotta}` background, `{color.ink.inverse}` label, `{type.scale.body.md}` weight 600, padding `{spacing.3}` × `{spacing.6}`, `{radius.control}` (12px). Reserved for the most important affordance within a **decision moment** (e.g., "Set reminder", "View why this?"). A surface may carry multiple primaries when it has multiple decision moments — e.g. `/events/:id` has Save, Configure-reminders, and (when a conflict is active) Resolve-conflict — each rendered in a distinct visual zone separated by `spacing.12`+ whitespace. See Do's and Don'ts.
 - `component.button.secondary` — Transparent fill, 1px `{color.border.strong}` border, `{color.ink.primary}` label, padding `{spacing.3}` × `{spacing.6}`, `{radius.card}` (8px). For less-important affordances ("Show fewer like this", "Edit").
 - `component.button.ghost` — Transparent fill, no border, `{color.ink.secondary}` label, padding `{spacing.2}` × `{spacing.4}`. For inline tertiary actions ("Dismiss", "Maybe later"). Quietest button in the system.
 
@@ -238,7 +267,7 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 ### Badges and indicators
 
 - `component.badge.source` — Inline source attribution badge. Three variants, distinguished by border and label, not by fill:
-  - `verified` — `{color.accent.terracotta}` 1px border, `{color.accent.terracotta}` label, no fill. The only place terracotta appears on a card besides the today indicator.
+  - `verified` — `{color.accent.terracotta}` 1px border, `{color.accent.terracotta}` label, no fill. One of the four sanctioned terracotta uses; the only one that appears on a card body besides the `Indicator.Today` dot.
   - `official` — `{color.ink.primary}` 1px border, `{color.ink.primary}` label, no fill.
   - `community` — `{color.border.strong}` 1px border, `{color.ink.muted}` label, no fill.
   - Always inline on the card (next to the headline), never behind a tap. This carries the "Inline trust beats click-to-reveal" principle from Design Thinking.
@@ -253,7 +282,7 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 
 | Do | Don't |
 |---|---|
-| Use `color.accent.terracotta` only for the today indicator, the primary CTA, and the verified source badge. | Use terracotta on hover states, focus rings, link underlines, or category stripes. |
+| Use `color.accent.terracotta` only for the today indicator, the primary CTA, the verified source badge, **and the focus ring** (the one sanctioned exception — see §Color usage rules). | Use terracotta on hover states, link underlines, category stripes, or anywhere else outside the four sanctioned uses. |
 | Use italic micro-tags inline (`nearby · tonight · music`) via `type.scale.microtag`. | Set micro-tags in regular weight or in the display font. |
 | Show the source badge inline on the card, never behind a tap. | Hide source attribution behind a "details" disclosure or modal. |
 | Keep card headlines to 8 words or fewer. | Wrap a long sentence as a card headline; that is body copy, not a headline. |
@@ -262,5 +291,23 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 | Use the 1px border transition for card hover, not a shadow lift. | Add a shadow on hover or active state. |
 | Use `radius.control` (12px) only for `Button.Primary`. | Apply 12px to secondary buttons, inputs, or chips. |
 | Reserve `Indicator.Confidence` for AI-generated recommendations and reminders. | Render a confidence indicator on a manually-entered event or a public event from an official source. |
-| Place one `Button.Primary` per surface. | Stack multiple terracotta CTAs on the same view. |
+| Place one `Button.Primary` per **decision moment**, separated by `spacing.12`+ whitespace. A surface may have multiple decision moments (e.g. `/events/:id` has Save, Configure-reminders, Resolve-conflict); each gets its own primary in a distinct visual zone. | Stack multiple terracotta CTAs in the same visual zone, or place two primaries adjacent without whitespace separation. |
 | Use `EmptyState.Quiet` for genuinely empty days — present it as a feature, not a failure. | Replace an empty state with "no results" copy, illustration, or a suggested-search rail. |
+
+## Assumptions
+
+All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry has a stable ID (`ASSUM-N`) for cross-reference from the body and from `EXPERIENCE.md`. Status: OPEN = needs a decision before engineering ships; RESOLVED = owner has answered; DEFERRED = explicitly parked to a later phase.
+
+- **ASSUM-1.** Hex values for the palette are estimated from named descriptions and from the warm-neutral palette direction. Only `color.accent.terracotta #C4502B` was provided by brand; the rest (paper, ink, slate, amber, signal colors, and the cross-doc tokens `color.ink.faint`, `color.ink.meta`, `color.surface.paper.darker`, `color.warm.personal`, `color.cool.public`, `color.warn.amber`) are derived.
+  - Status: OPEN
+  - Owner: TBD (brand / design owner)
+  - Affects: §Colors, §Token Implementation Contract
+  - Decision deadline: before engineering token implementation begins
+  - Action: sample the warm-neutral palette from brand collateral; replace the estimated hex values with sampled values; re-verify AA contrast for `color.ink.*`, `color.warn.amber`, and the terracotta focus ring against `color.surface.paper` in light and dark modes.
+
+- **ASSUM-2.** The locked display-serif chain is `Source Serif 4` with `Fraunces` as fallback. Engineering may swap the family name (e.g. for `IBM Plex Serif`, `Tiempos`) but the scale (`type.scale.display.*`, `type.scale.headline.*`) and the role (display family for headlines and editorial display moments only) are the contract and may not change.
+  - Status: OPEN
+  - Owner: design (final family pick) + engineering (font hosting / loading)
+  - Affects: §Typography → Type families; all `component.text.display` and `component.text.headline` render paths
+  - Decision deadline: before first production typography integration
+  - Action: confirm the family pick; verify the chosen family has the weight set (400 / 600 / 700) and italic availability used in `type.scale.microtag`; license the chosen family or confirm open-source status.
