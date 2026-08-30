@@ -2,7 +2,7 @@
 title: "EXPERIENCE.md — EventPulse24"
 status: final
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-30
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -11,6 +11,7 @@ references:
   prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
   reconcile_design_thinking: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/reconcile-design-thinking.md
   reconcile_blue_ocean: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/reconcile-blue-ocean.md
+  mockups: mockups/
 ---
 
 # EventPulse24 — Experience Spine
@@ -24,6 +25,8 @@ references:
 **Form factor:** Responsive web. Mobile-first at 375 px CSS width. Tablet/desktop breakpoint at 768 px. Maximum canvas width 1180 px (content never exceeds this; whitespace expands outward). No native iOS/Android app at MVP (web only; Phase 2+).
 
 **UI system:** None — vanilla web components plus a thin token layer defined in `DESIGN.md.{Tokens}`. We do not adopt Material, shadcn, or a full kit; the surface vocabulary is small and bespoke. Headline typography is `Text.Display`; body is `Text.Body`; metadata is `Text.Meta`.
+
+**Theme (added 2026-08-30):** Dark mode is the default and primary theme at MVP (PRD update + user direction). Engineering ships with `data-theme="dark"` set on the `<html>` element by default. Light mode is provided as an opt-in alternative in `Settings → Appearance`, but the visual identity, contrast, motion, and component behaviors in `DESIGN.md` are calibrated for the dark surface first. There is no `prefers-color-scheme: dark` auto-switch at MVP — the user picks theme explicitly from `Settings → Appearance`. A "System" option (follow OS) is a Phase 2 candidate. The rationale for dark-first: it matches the brand posture of *instrument-grade calm* and is OLED-friendly — the deep near-black canvas with a single terracotta glow reads as a precision tool, not a marketing site.
 
 **Form-factor reasoning:**
 - Web-first because the value prop is read-mostly (a Pulse Digest is a 30-second check-in), and the corpus of public events is best indexed from the open web. SEO is the cold-start unlock — search-engine crawlers do not see a native app.
@@ -188,13 +191,23 @@ The Source Badge on each Pulse Card and Detail Screen (PRD FR-23). Five types: `
 - **Text alternative:** Every variant includes a visible inline text label, not icon-only. (WCAG 1.1.1 per §8.)
 
 ### `Sheet.ConflictResolution`
-The three-action conflict sheet (Phase 2, PRD FR-33). Locked pattern from Design Thinking wireframe Screen 6.
+The three-action conflict prompt (MVP, PRD FR-58 / Amendment A-5). This is the **minimum viable guard at MVP** — the system never lets a user double-book without an explicit decision. Locked pattern from Design Thinking wireframe Screen 6, extended with the forced-choice rule.
 
-- **Trigger:** A saved public event overlaps a saved personal event by >15 minutes.
-- **Three actions, in order:** (a) "Move dinner earlier" — opens the personal event editor with prefilled earlier time; (b) "Skip concert" — dismisses the public event with one tap; (c) "Keep both — I'll manage" — closes the sheet and never re-prompts for this pair.
-- **Sheet header:** "These overlap." (PRD §13.2 voice.) Below header: event names + times in plain prose, no color-coded "CONFLICT!" treatment.
-- **No fourth action.** No "Suggest alternative" (deferred to Phase 3). No auto-rebook.
-- **Persistence:** Once "Keep both" is selected for a pair, the system remembers and does not re-prompt on subsequent digests.
+- **Trigger:** (a) On Personal Event creation, the system scans for other Personal Events within ±30 minutes. If found, the prompt appears inline in the creation flow. (b) On Personal Event creation, when a likely duplicate is detected (same name, ≥80% Jaccard, within 24h). (c) When a saved public event overlaps a saved personal event by >15 minutes (the existing Pulse Card of both events shows `Indicator.Conflict`).
+- **Three actions, fixed order (top-to-bottom):**
+  1. **"Keep both — I'll manage"** — confirms both events. `Indicator.Conflict` remains on both Pulse Cards permanently. No further prompting for this conflict pair. A `ConflictResolution` value object is recorded with `value=keep_both`.
+  2. **"Edit the new one"** — opens the new event in edit mode with the conflicting time pre-highlighted. After editing, conflict detection re-runs. (For duplicate detection, this action is relabeled "Update the existing one" and opens the existing event.)
+  3. **"Delete the new one"** — removes the new event. A confirmation step is required before deletion completes.
+- **No fourth action. No dismiss button. No "X" close. No escape-key close. No outside-click close.** The user must choose. PRD FR-58 is explicit: *"There is no 'dismiss' or 'X' button."* This is non-negotiable for the calm contract — letting the user silently close without resolving would re-create the exact harm (missed double-booking) the prompt is preventing.
+- **Visual treatment:**
+  - Desktop: centered modal (`component.surface.modal`) on `Surface.PersonalEventCreate` or `Surface.PulseDigest`.
+  - Mobile: bottom-anchored sheet (`component.surface.sheet`) with the same three-action body. The modal header uses an amber-circle exclamation glyph (`color.warn.amber`) — never red.
+  - Header copy: "This overlaps with another event." (PRD §13.2 voice — direct, not alarmist.) Subhead: "You've already saved {conflicting event name}. Choose how to handle it."
+  - The two affected events render as small stacked cards with the `Indicator.Conflict` amber dot on each. The new event is marked "NEW" in a terracotta pill above its card (one of the four sanctioned terracotta uses — `Badge.State.New` is a derived use of the verified-badge pattern, justified because it is a state marker on a personal event the system is bringing to the user's attention, not a decorative accent).
+  - Each of the three action buttons is a full-width `Button.Secondary` with a leading icon glyph (✓ / ✎ / ✕ in a neutral circular frame). On hover in dark mode, the icon frame tints to terracotta (`rgba(255,106,71,0.12)`); the button fill stays `color.surface.paper`. The buttons are not primaries — the prompt is a forced choice, not a marketing CTA, and a row of three terracotta buttons would feel alarmist.
+- **Live region (a11y):** When the conflict sheet/modal opens, focus moves to the header and the live region announces: "Schedule conflict. Three choices." (`aria-live="assertive"`.) Each action button has a full `aria-label` describing both the action and its consequence (e.g., "Keep both events. The conflict indicator remains on both.").
+- **Persistence:** Once a choice is recorded for a conflict pair, the system never re-prompts. The `ConflictResolution` value object lives with the user-event pair. The `Indicator.Conflict` on each Pulse Card persists permanently after "Keep both" as a calm permanent reminder (per PRD §3 Glossary — *Conflict Indicator* entry).
+- **Edge case:** If the user backgrounds the prompt and returns later, the prompt is still open. There is no timeout that auto-dismisses the conflict.
 
 ### `Surface.{RouteName}`
 Generic behavior for all routes:
@@ -475,27 +488,30 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 - Calendar OAuth fails: "Connection failed. Skip for now?" Pary skips; Pulse infers from her 3 interest chips and geo-IP.
 - Pary abandons at step 2: resumed at step 2 within 7 days. (PRD FR-1 consequence.)
 
-### Flow 3 — Conflict Resolution (Phase 2, PRD FR-33)
+### Flow 3 — Conflict Resolution (MVP, PRD FR-58)
 
-**Persona:** Maya. Saturday morning. Has saved "Sam's birthday dinner — 7pm Saturday @ Lilia" (personal event) and "Jazz at Bar Bespoke — 8pm Saturday" (public event).
+**Persona:** Maya. Friday afternoon. Creating "Anniversary dinner with Rahul — Fri 7:00 PM @ Lilia" as a new Personal Event. Already has a saved public event "Free tech meetup — Fri 6:30 PM @ Brooklyn Arts Council" within 30 minutes.
 
-**Entry state:** Pulse Digest loads. The conflict indicator (small `color.warn.amber` filled circle, top-right of both cards, with `aria-label="Schedule conflict"`) is visible on both cards.
+**Entry state:** Maya is in the Personal Event creation flow (`Sheet.PersonalEventCreate`). She's filled in name, date, time, location. She taps "Save to my Pulse."
 
 **Path:**
-1. Maya taps the dinner card (a) → Detail Screen. The conflict indicator on the Detail Screen header is the same filled circle.
-2. She taps the conflict indicator → `Sheet.ConflictResolution` opens.
-3. Sheet header: "These overlap." Body: "Sam's birthday dinner, 7pm Saturday at Lilia. Jazz at Bar Bespoke, 8pm Saturday. (You saved both.)"
-4. Three actions, top to bottom:
-   - "Move Sam's birthday dinner earlier" (primary, `Button.Primary`, terracotta-filled) — opens the personal event editor with a prefilled earlier time (e.g., 6pm).
-   - "Skip Jazz at Bar Bespoke" (secondary, `Button.Secondary`) — dismisses the public event with one tap.
-   - "Keep both — I'll manage" (tertiary, plain text button, `color.ink.primary`) — closes the sheet and records the decision.
-5. Maya taps "Move dinner earlier" → the personal event editor opens with prefilled 6pm time. She confirms. Dinner moves. The public event remains saved. The conflict sheet does not reopen.
+1. The system detects the ±30-minute overlap with the saved "tech meetup" event. The `Sheet.ConflictResolution` modal opens immediately on top of the creation flow.
+2. Modal header: "This overlaps with another event." Subhead: "You've already saved 'Free tech meetup — Designing for Calm'. Choose how to handle it."
+3. The two affected events render as stacked card rows. The new event ("Anniversary dinner") is marked with a "NEW" terracotta pill above its card (sanctioned state-marker use). Both show the amber `Indicator.Conflict` filled circle on the top-right.
+4. Three actions, top to bottom — secondary buttons (full-width, neutral), NOT primaries:
+   - **Keep both — I'll manage** (with check icon) → both events saved. `ConflictResolution{value=keep_both}` is recorded. `Indicator.Conflict` remains on both Pulse Cards permanently.
+   - **Edit the new one** (with pencil icon) → creation form re-opens with the conflicting time field focused and pre-highlighted. Maya shifts the dinner to 8:00 PM. Conflict detection re-runs. No conflict. Save completes.
+   - **Delete the new one** (with X icon) → a confirmation step asks "Delete 'Anniversary dinner with Rahul'? This cannot be undone." On confirm, the event is removed; creation flow resets.
+5. There is NO fourth action, NO close button, NO outside-click dismiss. Maya must choose one.
 
-**Climax:** "Three actions, no anxiety." (Locked Design Thinking pattern.)
+**Climax:** "Three actions, no anxiety, no way to look away." The calm contract: the system surfaces the issue and waits calmly for the user to resolve it before proceeding.
+
+**Resolution:** Maya picks "Edit the new one," moves dinner to 8:30 PM, the conflict clears, her anniversary dinner saves cleanly, the tech meetup is untouched, and she's back in the digest at 7:55 PM ready to close the app.
 
 **Failure modes:**
-- Maya taps "Keep both" but later wants to revisit: she can mute the conflict per-event from Detail Screen (PRD FR-55 consequence).
-- More than two events overlap: the sheet handles pairwise. The Digest's top-level summary shows "1 conflict to review." Tap routes to `/conflicts` (Phase 2 route) which lists all conflicts.
+- Maya taps the conflict dot on an existing Pulse Card (not during creation): the same `Sheet.ConflictResolution` opens, this time scoped to a saved-confirmed pair. The "Edit the new one" action is relabeled "Edit one of these" and shows both as editable targets.
+- More than 2 events overlap: pairwise prompt. The MVP caps the prompt at the first 2 overlapping events; remaining overlaps are listed at the bottom of the modal in a `Text.Meta` block ("Also overlaps with: …") without prompting for resolution on those pairs.
+- User backgrounds the prompt and returns: the prompt is still open. There is no timeout.
 
 ### Flow 4 — Adaptive expansion (Phase 3+, but designed now)
 
@@ -809,4 +825,33 @@ All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry h
 
 ---
 
-_End of EventPulse24 experience spine. Generated 2026-08-23. Paired with `DESIGN.md`. Source PRD: `prd-EventPulse24-2026-08-19`. Reconciles: `reconcile-design-thinking.md`, `reconcile-blue-ocean.md`._
+_End of EventPulse24 experience spine. Generated 2026-08-23; last revised 2026-08-30 to add dark-first theme, lift conflict prompt to MVP per PRD FR-58, and lock the surface-coverage map below. Paired with `DESIGN.md`. Source PRD: `prd-EventPulse24-2026-08-19`. Reconciles: `reconcile-design-thinking.md`, `reconcile-blue-ocean.md`._
+
+---
+
+## Surface Coverage Map (mockups)
+
+The `mockups/` directory contains 14 HTML files covering every MVP surface in both Desktop and Mobile breakpoints where applicable. Old light-mode mocks are preserved in `mockups/light-archive/` for reference. **Spines win on conflict with any mockup** — if a mockup diverges from a token in `DESIGN.md` or a behavior in this spine, fix the mockup, not the spine. The mockups exist to anchor visual decisions; they are not the source of truth.
+
+| # | Surface | Route / component | Desktop mockup | Mobile mockup | Notes |
+|---|---|---|---|---|---|
+| 1 | Pulse Preview (public landing) | `/preview` | `pulse-preview-desktop.html` | `pulse-preview-mobile.html` | FR-2, UJ-3. Includes geo-IP consent banner. |
+| 2 | Onboarding — step 1 (calendar connect) | `/onboarding` step 1 | `onboarding-step1-desktop.html` | `onboarding-step1-mobile.html` | FR-1 / FR-3. Step is skippable. |
+| 3 | Onboarding — step 2 (interest chips) | `/onboarding` step 2 | `onboarding-step2-desktop.html` | _(covered by step 1 mobile)_ | FR-1. Up to 3 picks. |
+| 4 | Onboarding — step 3 (digest time + timezone) | `/onboarding` step 3 | `onboarding-step3-desktop.html` | _(covered by step 1 mobile)_ | FR-1 / FR-7. Includes presets. |
+| 5 | Pulse Digest (home, 3 cards) | `/` | `pulse-digest-desktop.html` | `pulse-digest-mobile.html` | FR-5 / FR-6. Slot 1 + Slot 2 + Slot 3 with the conflict indicator on Slot 2. |
+| 6 | Event Detail | `/events/:id` | `event-detail-desktop.html` | `event-detail-mobile.html` | FR-9 / FR-24. Why-this breakdown + multi-tier reminders + neighbors. |
+| 7 | Personal Event creation | `/events/new` modal | `personal-event-create-desktop.html` | _(desktop-first; mobile uses bottom sheet, same tokens)_ | FR-18. |
+| 8 | Conflict Resolution prompt | `Sheet.ConflictResolution` | `conflict-prompt-desktop.html` | `conflict-prompt-mobile.html` | FR-58. Three forced choices, no dismiss. |
+| 9 | Empty Pulse Digest | `/` empty state | `empty-pulse-digest-desktop.html` | _(covered by pulse-digest-mobile empty)_ | FR-8. Includes suggested-sources strip. |
+| 10 | Settings (theme, notifications, quiet hours, calendar, account, plan) | `/settings/*` | `settings-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-7 / FR-12 / FR-48 / FR-49 / FR-51 / FR-52. |
+| 11 | Public share-link landing | `/share/:slug` | `share-link-desktop.html` | _(deferred — desktop-first at MVP)_ | UJ-5. SEO public URL with Schema.org Event JSON-LD. |
+
+**Coverage gaps to fill before launch** _(logged here as `mockups/pending` items)_:
+
+- Mobile settings (single-stacked-tab pattern; can follow the desktop mockup 1:1 using tokens).
+- Mobile share-link landing (small follow-up).
+- Personal Event creation on mobile (bottom-sheet variant — pattern already shown in the conflict-prompt mobile mock, just applied here).
+- Mobile empty-state confirmation (still pending — the desktop variant is canonical).
+
+**Visual identity rule for all mockups:** tokens are declared in `:root` and overridden under `[data-theme="dark"]`. The dark variant is the default at `<html data-theme="dark">`. Every mockup carries the conditional layer at the top of its `<style>` so engineering can paste the same template for any new surface.

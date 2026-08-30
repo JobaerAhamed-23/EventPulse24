@@ -1,0 +1,201 @@
+<!--
+  EventPulse24 — Pulse Preview (Public Landing, Desktop 1280px) — DARK THEME
+  Realizes FR-2 Pulse Preview, UJ-3 first-visit experience.
+  No auth. Geo-IP city default banner. 3 cards. Soft-wall at "Save".
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Find the three things that matter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --cool-public:#6E7E92;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { min-height: 100vh; padding: 0 80px; }
+  .container { max-width: 1180px; margin: 0 auto; }
+
+  /* Geo-IP consent banner */
+  .geobar { background: var(--surface-elevated); border-bottom: 1px solid var(--border-subtle); padding: 12px 80px; font-size: 13px; color: var(--ink-secondary); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .geobar .left { display: flex; align-items: center; gap: 10px; }
+  .geobar .icon { color: var(--accent-terracotta); }
+  .geobar .actions { display: flex; gap: 8px; }
+  .geobar .link { color: var(--ink-secondary); padding: 6px 10px; border-radius: 6px; font-weight: 500; }
+  .geobar .link:hover { background: var(--surface-subtle); }
+  .geobar .link.primary { background: rgba(255,106,71,0.12); color: var(--accent-terracotta); }
+
+  /* Topbar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 20px; font-weight: 600; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+  .topright { display: flex; gap: 12px; align-items: center; }
+  .ghost { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  .btn-primary:hover { background: #FF7E5E; }
+
+  /* Hero */
+  .hero { padding: 88px 0 64px; max-width: 820px; }
+  .hero .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--accent-terracotta); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 20px; }
+  .hero .eyebrow .glyph { width: 14px; height: 14px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 14px rgba(255,106,71,0.6); }
+  .hero h1 { font-family: var(--family-display); font-size: 64px; font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; margin: 0 0 20px; color: var(--ink-primary); }
+  .hero h1 em { font-style: italic; color: var(--accent-terracotta); font-weight: 700; }
+  .hero p { font-size: 18px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 32px; max-width: 640px; }
+  .hero .ctas { display: flex; gap: 12px; align-items: center; }
+  .hero .meta-link { font-size: 13px; color: var(--ink-muted); margin-left: 8px; }
+  .hero .meta-link:hover { color: var(--ink-secondary); }
+
+  /* Preview section */
+  .preview-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 28px; padding-top: 32px; border-top: 1px solid var(--border-subtle); }
+  .preview-head h2 { font-family: var(--family-display); font-size: 28px; font-weight: 600; margin: 0; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .preview-head .city-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--surface-subtle); color: var(--ink-secondary); font-size: 13px; }
+  .preview-head .city-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); }
+
+  .preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding-bottom: 80px; }
+
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 24px; position: relative; transition: background 180ms; display: flex; flex-direction: column; min-height: 280px; }
+  .card:hover { background: var(--surface-subtle); }
+  .card .stripe { position: absolute; left: 0; top: 24px; bottom: 24px; width: 3px; border-radius: 0 2px 2px 0; }
+  .card .stripe.public { background: var(--cool-public); }
+  .card .stripe.discovery { background: var(--accent-slate); opacity: 0.7; }
+  .card .stripe.mustknow { background: var(--accent-amber); }
+
+  .meta { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 12px; padding-left: 14px; }
+  .meta .sep { color: var(--ink-faint); margin: 0 6px; text-transform: none; }
+  .card h3 { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.28; margin: 0 0 8px; padding-left: 14px; color: var(--ink-primary); }
+  .where { font-size: 14px; color: var(--ink-secondary); padding-left: 14px; margin: 0 0 12px; }
+  .tags { font-style: italic; font-size: 12px; color: var(--ink-muted); padding-left: 14px; margin: 0 0 18px; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 5px; }
+
+  .card-cta { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border-subtle); padding-left: 14px; }
+  .save-btn { width: 100%; background: rgba(255,106,71,0.10); color: var(--accent-terracotta); padding: 10px; border-radius: 8px; font-weight: 600; font-size: 13px; border: 1px solid rgba(255,106,71,0.25); }
+  .save-btn:hover { background: rgba(255,106,71,0.18); }
+  .save-btn::after { content: " → Sign up to save"; opacity: 0.7; font-weight: 400; }
+
+  .srcbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-secondary); margin-left: 14px; }
+  .srcbadge.verified { color: var(--accent-terracotta); }
+  .pulse { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot.on { background: var(--ink-primary); }
+
+  /* Value props */
+  .props { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding: 64px 0 96px; border-top: 1px solid var(--border-subtle); }
+  .prop .num { font-family: var(--family-mono); font-size: 12px; color: var(--accent-terracotta); letter-spacing: 0.06em; margin-bottom: 12px; font-weight: 600; }
+  .prop h4 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); }
+  .prop p { font-size: 14px; line-height: 1.55; color: var(--ink-secondary); margin: 0; }
+</style>
+</head>
+<body>
+<div class="geobar" role="region" aria-label="Location consent">
+  <div class="left">
+    <span class="icon">●</span>
+    <span>Showing events near <strong style="color: var(--ink-primary);">Brooklyn, NY</strong>. Use a different city?</span>
+  </div>
+  <div class="actions">
+    <button class="link">Change</button>
+    <button class="link primary">Use this</button>
+    <button class="link">Don't use my location</button>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="container">
+    <nav class="topbar">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <div class="topright">
+        <button class="ghost">How it works</button>
+        <button class="btn-primary">Sign up</button>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="eyebrow"><span class="glyph"></span> The calm intelligence layer for events</div>
+      <h1>Three things matter. <em>We show you exactly those.</em></h1>
+      <p>EventPulse24 reads the open web — concerts, meetups, classes, neighborhood events — and gives you a daily brief of three worth your attention. No feeds. No badges. No infinite scroll.</p>
+      <div class="ctas">
+        <button class="btn-primary">Get my first brief</button>
+        <button class="ghost">See today's preview ↓</button>
+        <span class="meta-link">Free. No card.</span>
+      </div>
+    </section>
+
+    <section>
+      <div class="preview-head">
+        <h2>Today in Brooklyn</h2>
+        <span class="city-pill"><span class="dot"></span> 3 events, all free</span>
+      </div>
+      <div class="preview-grid">
+
+        <article class="card">
+          <span class="stripe mustknow"></span>
+          <div class="meta">Must-know <span class="sep">·</span> Today · 7:00 PM</div>
+          <h3>Brooklyn Symphony open rehearsal</h3>
+          <p class="where">BAM Howard Gilman Opera House</p>
+          <p class="tags"><span class="tag">tonight</span><span class="dotsep">·</span><span class="tag">classical</span></p>
+          <div class="card-cta">
+            <button class="save-btn">Save</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <span class="stripe public"></span>
+          <div class="meta">Nearby <span class="sep">·</span> Thu · 6:30 PM</div>
+          <h3>Free tech meetup — "Designing for Calm"</h3>
+          <p class="where">2 blocks from work · Brooklyn Arts Council</p>
+          <p class="tags"><span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">free</span></p>
+          <div class="card-cta">
+            <button class="save-btn">Save</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <span class="stripe discovery"></span>
+          <div class="meta">Discovery <span class="sep">·</span> Sat · 8:00 PM</div>
+          <h3>Sunny Jain Quartet — outdoor rooftop set</h3>
+          <p class="where">Rooftop, Greenpoint</p>
+          <p class="tags"><span class="tag">discovery</span><span class="dotsep">·</span><span class="tag">new-to-you</span></p>
+          <div class="card-cta">
+            <button class="save-btn">Save</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="props">
+      <div class="prop">
+        <div class="num">01 — CALM BY DESIGN</div>
+        <h4>Three cards. That's it.</h4>
+        <p>Not "as many as we can think of." A short brief every morning — chosen because they're worth your attention, not because the algorithm needs to feed you.</p>
+      </div>
+      <div class="prop">
+        <div class="num">02 — EXPLAINABLE</div>
+        <h4>"Why this?" on every card.</h4>
+        <p>Each event arrives with a one-line reason — <em>nearby, tonight, free, new-to-you</em> — and a fuller explanation one tap away. No black-box recommendations.</p>
+      </div>
+      <div class="prop">
+        <div class="num">03 — ONE PING, NOT MANY</div>
+        <h4>A single daily notification.</h4>
+        <p>One calm Pulse Ping at your chosen time. Multi-tier reminders for the events you actually save. Counter-metric: <em>fewer</em> pings means we're doing our job.</p>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

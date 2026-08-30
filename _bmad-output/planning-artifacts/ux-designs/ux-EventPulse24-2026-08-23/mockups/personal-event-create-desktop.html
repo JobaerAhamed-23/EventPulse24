@@ -1,0 +1,130 @@
+<!--
+  EventPulse24 — Personal Event Creation (Desktop, modal over digest) — DARK THEME
+  FR-18 manual personal event creation.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Add personal event</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --warm-personal:#C8967A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input,textarea { font: inherit; color: inherit; }
+
+  /* Backdrop */
+  .backdrop { position: fixed; inset: 0; background: rgba(10,10,11,0.7); backdrop-filter: blur(8px); z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 6vh; }
+  .modal { width: 560px; max-width: 92vw; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.6); overflow: hidden; }
+  .modal-head { padding: 20px 28px 16px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0; color: var(--ink-primary); }
+  .modal-head .pill { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warm-personal); background: rgba(200,150,122,0.10); padding: 4px 10px; border-radius: 4px; margin-left: 10px; }
+  .modal-body { padding: 20px 28px; }
+  .modal-foot { padding: 16px 28px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; background: var(--surface-subtle); }
+  .close { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-muted); }
+  .close:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+
+  .field { margin-bottom: 16px; }
+  .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 6px; letter-spacing: 0.02em; }
+  .field-label .req { color: var(--accent-terracotta); margin-left: 2px; }
+  .input { width: 100%; background: var(--surface-paper); border: 1px solid var(--border-subtle); padding: 12px 14px; border-radius: 10px; font-size: 14px; color: var(--ink-primary); }
+  .input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 1px; border-color: var(--accent-terracotta); }
+  .input::placeholder { color: var(--ink-faint); }
+  textarea.input { min-height: 70px; resize: vertical; font-family: inherit; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  .reminder-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rem-chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border-subtle); font-size: 13px; font-weight: 500; color: var(--ink-secondary); background: var(--surface-paper); }
+  .rem-chip.on { background: rgba(255,106,71,0.10); border-color: rgba(255,106,71,0.30); color: var(--accent-terracotta); }
+
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .btn-primary:hover { background: #FF7E5E; }
+  .ghost { padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink-muted); }
+  .ghost:hover { color: var(--ink-secondary); }
+</style>
+</head>
+<body>
+<div class="backdrop" role="dialog" aria-modal="true" aria-labelledby="title">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2 id="title" style="display: inline-block;">Add personal event</h2>
+        <span class="pill">Personal</span>
+      </div>
+      <button class="close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label" for="name">Name <span class="req">*</span></label>
+        <input class="input" id="name" value="Anniversary dinner with Rahul" />
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label class="field-label" for="date">Date <span class="req">*</span></label>
+          <input class="input" id="date" type="text" value="Fri, Aug 29, 2026" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="time">Start time <span class="req">*</span></label>
+          <input class="input" id="time" type="text" value="7:00 PM" />
+        </div>
+      </div>
+
+      <div class="row-3">
+        <div class="field">
+          <label class="field-label" for="dur">Duration</label>
+          <input class="input" id="dur" type="text" value="2 hours" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="tz">Timezone</label>
+          <input class="input" id="tz" type="text" value="EDT" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="end">End time</label>
+          <input class="input" id="end" type="text" value="9:00 PM" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="loc">Location</label>
+        <input class="input" id="loc" type="text" value="Lilia, Williamsburg" />
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="notes">Notes</label>
+        <textarea class="input" id="notes" placeholder="Reservation under Maya +1. Surprise Rahul."></textarea>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Reminders</label>
+        <div class="reminder-grid">
+          <button class="rem-chip">5 days before</button>
+          <button class="rem-chip on">1 day before</button>
+          <button class="rem-chip on">1 hour before</button>
+        </div>
+        <div style="font-size: 12px; color: var(--ink-muted); margin-top: 8px;">Defaults to 1d + 1hr. Edit anytime.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="ghost">Cancel</button>
+      <button class="btn-primary">Save to my Pulse →</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

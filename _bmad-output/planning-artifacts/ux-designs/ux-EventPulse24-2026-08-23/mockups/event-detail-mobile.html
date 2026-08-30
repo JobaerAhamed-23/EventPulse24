@@ -1,0 +1,127 @@
+<!--
+  EventPulse24 — Event Detail (Mobile, 375px) — DARK THEME
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Designing for Calm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --cool-public:#6E7E92;
+    --border-subtle:rgba(242,242,244,0.08);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { max-width: 420px; margin: 0 auto; min-height: 100vh; padding: 0 20px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 8px; }
+  .back { color: var(--ink-muted); font-size: 13px; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; }
+  .iconbtn { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-secondary); }
+
+  .stripe { width: 4px; height: 28px; background: var(--cool-public); border-radius: 0 3px 3px 0; margin: 16px 0 14px; }
+  .type-label { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cool-public); margin-bottom: 10px; }
+  h1 { font-family: var(--family-display); font-size: 28px; font-weight: 700; line-height: 1.18; letter-spacing: -0.02em; margin: 0 0 14px; color: var(--ink-primary); }
+  .meta { font-size: 13px; color: var(--ink-secondary); margin-bottom: 6px; display: flex; gap: 8px; align-items: center; }
+  .meta .label { color: var(--ink-muted); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+  .tagsline { font-style: italic; font-size: 13px; color: var(--ink-muted); margin: 12px 0 20px; }
+  .tagsline .tag { color: var(--ink-secondary); }
+  .tagsline .dotsep { color: var(--ink-faint); margin: 0 5px; }
+
+  .desc { font-size: 14px; line-height: 1.6; color: var(--ink-secondary); margin: 0 0 24px; }
+
+  h2 { font-family: var(--family-display); font-size: 17px; font-weight: 600; margin: 28px 0 12px; color: var(--ink-primary); }
+
+  .why { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .why-row { display: flex; gap: 10px; padding: 10px 0; }
+  .why-row + .why-row { border-top: 1px solid var(--border-subtle); }
+  .why-row .glyph { width: 24px; height: 24px; border-radius: 50%; background: rgba(255,106,71,0.12); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+  .why-row strong { display: block; font-size: 13px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .why-row p { font-size: 12px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
+
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .reminder-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+  .reminder-row:first-child { border-top: 0; padding-top: 0; }
+  .reminder-row .when { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-primary); font-weight: 600; }
+  .reminder-row .rel { font-size: 11px; color: var(--ink-muted); }
+  .toggle { width: 34px; height: 20px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
+  .toggle::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
+  .toggle.on { background: var(--accent-terracotta); }
+  .toggle.on::after { transform: translateX(14px); background: var(--ink-primary); }
+
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600; width: 100%; margin-top: 16px; }
+
+  .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .ghost { flex: 1; padding: 11px; border-radius: 10px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); text-align: center; }
+
+  .map { height: 180px; border-radius: 12px; background: linear-gradient(135deg, var(--surface-subtle), var(--surface-inset)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; color: var(--ink-muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="topbar">
+    <a href="#" class="back">← Today</a>
+    <button class="iconbtn" aria-label="Share">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+    </button>
+  </nav>
+
+  <div class="stripe"></div>
+  <div class="type-label">Public event · nearby</div>
+  <h1>Free tech meetup — "Designing for Calm"</h1>
+
+  <div class="meta"><span class="label">When</span> Thu, Aug 28 · 6:30 PM</div>
+  <div class="meta"><span class="label">Where</span> Brooklyn Arts Council</div>
+  <div class="meta"><span class="label">Cost</span> Free</div>
+
+  <p class="tagsline"><span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">free</span></p>
+
+  <p class="desc">A short, opinionated panel on building products that respect attention — featuring two product leads and a research neuroscientist. Drinks and snacks from 6 PM. Q&amp;A until 8:30.</p>
+
+  <h2>Why is this in your brief?</h2>
+  <div class="why">
+    <div class="why-row"><div class="glyph">📍</div><div><strong>4 blocks from your office.</strong><p>Within your recommended radius.</p></div></div>
+    <div class="why-row"><div class="glyph">⭐</div><div><strong>Confidence 4/5 — high match.</strong><p>You attended 2 similar events recently.</p></div></div>
+    <div class="why-row"><div class="glyph">✅</div><div><strong>Verified source: Brooklyn Arts Council.</strong><p>Reliability 0.91.</p></div></div>
+  </div>
+
+  <h2>Reminders</h2>
+  <div class="panel">
+    <div class="reminder-row">
+      <div><div class="when">5 days before</div><div class="rel">Mon · 6:30 PM</div></div>
+      <div class="toggle on"></div>
+    </div>
+    <div class="reminder-row">
+      <div><div class="when">2 days before</div><div class="rel">Tue · 6:30 PM</div></div>
+      <div class="toggle on"></div>
+    </div>
+    <div class="reminder-row">
+      <div><div class="when">1 day before</div><div class="rel">Wed · 6:30 PM</div></div>
+      <div class="toggle on"></div>
+    </div>
+    <div class="reminder-row">
+      <div><div class="when">1 hour before</div><div class="rel">Thu · 5:30 PM</div></div>
+      <div class="toggle on"></div>
+    </div>
+  </div>
+
+  <button class="btn-primary">Save to my Pulse →</button>
+  <div class="actions">
+    <button class="ghost">Share</button>
+    <button class="ghost">Less like this</button>
+  </div>
+
+  <div class="map">🗺 Map — Brooklyn Arts Council</div>
+</div>
+</body>
+</html>

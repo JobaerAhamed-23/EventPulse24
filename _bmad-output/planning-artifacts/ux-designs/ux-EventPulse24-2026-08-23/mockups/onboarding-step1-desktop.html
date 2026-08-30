@@ -1,395 +1,120 @@
 <!--
-  EventPulse24 — Onboarding Step 1 (Desktop)
-  Viewport: 1280px CSS width
-  Route: /onboarding  (Flow 2, Pary's first-time onboarding — EXPERIENCE.md §8)
-  PRD refs: FR-1 (calendar connect, 30s), FR-3 (calendar optional)
-
-  [ASSUMPTION] Mock renders the static "default" state of step 1. OAuth loading /
-    error states are not depicted here.
-  [ASSUMPTION] Wordmark in the app bar is rendered in serif (display family) to
-    echo the editorial voice. Treated as a brand-mark decision.
-  [ASSUMPTION] "Step 1 of 3 · 30 seconds" rendered as a single meta line below
-    the dot row (mirrors mobile).
-  [DESIGN DECISION] Content column capped at 560px (narrower than the 720px
-    layout.container.reading, narrower than 1180 layout.container.max). Chosen
-    to keep the editorial headline and three option cards in a calm vertical
-    stack at desktop, with generous whitespace wings. The 560 width is
-    inline with the prompt spec, not from DESIGN.md directly.
-  [DESIGN DECISION] Icon glyphs are inline SVG path approximations (Google
-    multi-color shape, Apple silhouette, Outlook envelope) rather than brand
-    SVGs (no external assets).
-  [DESIGN DECISION] Hero uses display.md (36px) per the prompt spec, not
-    display.lg (48px). This is the empty-state hero scale per DESIGN.md and
-    matches the onboarding voice: "Connect a calendar. Or don't." reads as a
-    section opener, not the page hero of the product.
-  [DESIGN DECISION] Card internal padding: 20px horizontal, 20px vertical,
-    bridging the mobile (16px) and the desktop card spec (24px). Justified
-    by the column being narrower than full desktop width.
-  [DESIGN DECISION] Connect link uses a discreet " → " arrow; no underline.
-    Skip link is text-only, no underline; both rely on color and weight.
-  [DESIGN DECISION] App bar stretches edge-to-edge with 80px page padding
-    matching layout.page.padding.desktop. Bottom hairline separates it from
-    content.
+  EventPulse24 — Onboarding Step 1 of 3 (Desktop) — DARK THEME
+  Calendar connect. Optional. Skippable.
+  Shows steps 1-2-3 with current = 1.
 -->
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EventPulse24 — Connect a calendar</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Connect your calendar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
 <style>
-  /* ---------- Tokens (DESIGN.md, light mode) ---------- */
   :root {
-    --surface-paper: #FAF8F4;
-    --surface-elevated: #FFFFFF;
-    --surface-subtle: #F1ECE3;
-    --surface-inset: #EDE7DA;
-    --ink-primary: #1A1814;
-    --ink-secondary: #3A352D;
-    --ink-muted: #7A7066;
-    --ink-inverse: #FAF8F4;
-    --accent-terracotta: #C4502B;
-    --border-subtle: rgba(26, 24, 20, 0.08);
-    --border-strong: rgba(26, 24, 20, 0.16);
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
-    --font-display: "Source Serif 4", Fraunces, Georgia, serif;
-    --font-body: "Inter", -apple-system, system-ui, sans-serif;
+  .frame { min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 80px; border-bottom: 1px solid var(--border-subtle); }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .skip-all { color: var(--ink-muted); font-size: 13px; font-weight: 500; }
+  .skip-all:hover { color: var(--ink-secondary); }
 
-    --radius-card: 8px;
-    --radius-subtle: 4px;
-    --radius-full: 9999px;
-  }
+  .container { flex: 1; max-width: 720px; margin: 0 auto; padding: 64px 24px 48px; width: 100%; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  .steps { display: flex; gap: 8px; margin-bottom: 48px; }
+  .step { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-inset); position: relative; overflow: hidden; }
+  .step.done::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); }
+  .step.current::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); animation: fillbar 400ms ease-out; }
+  @keyframes fillbar { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 
-  html, body {
-    background: var(--surface-paper);
-    color: var(--ink-secondary);
-    font-family: var(--font-body);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-  }
+  .step-label { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 12px; }
+  h1 { font-family: var(--family-display); font-size: 40px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; color: var(--ink-primary); }
+  .lede { font-size: 16px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 32px; }
 
-  /* ---------- Desktop page: full-bleed paper ---------- */
-  .page {
-    width: 1280px;
-    min-height: 900px;
-    margin: 0 auto;
-    background: var(--surface-paper);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-  }
+  .providers { display: grid; gap: 12px; margin-bottom: 28px; }
+  .provider { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-elevated); transition: border-color 160ms, background 160ms; cursor: pointer; text-align: left; width: 100%; }
+  .provider:hover { border-color: var(--border-strong); background: var(--surface-subtle); }
+  .provider .logo { width: 36px; height: 36px; border-radius: 8px; background: var(--surface-inset); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: var(--ink-secondary); flex-shrink: 0; }
+  .provider .body { flex: 1; }
+  .provider .body strong { display: block; font-size: 15px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .provider .body span { font-size: 13px; color: var(--ink-muted); }
+  .provider .arrow { color: var(--ink-muted); }
 
-  /* ---------- App bar (edge-to-edge, 80px page padding) ---------- */
-  .appbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 22px 80px 22px 80px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--surface-paper);
-  }
-  .wordmark {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 19px;
-    letter-spacing: -0.01em;
-    color: var(--ink-primary);
-  }
-  .appbar-step {
-    font-family: var(--font-body);
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--ink-muted);
-    letter-spacing: 0.01em;
-  }
+  .privacy { display: flex; gap: 10px; padding: 14px 16px; background: var(--surface-subtle); border-radius: 10px; margin-bottom: 28px; font-size: 13px; color: var(--ink-secondary); line-height: 1.5; }
+  .privacy .glyph { color: var(--accent-terracotta); flex-shrink: 0; margin-top: 2px; }
 
-  /* ---------- Centered column ---------- */
-  .stage {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    padding: 0 80px;
-  }
-  .column {
-    width: 100%;
-    max-width: 560px;
-    display: flex;
-    flex-direction: column;
-  }
+  .footer-actions { display: flex; justify-content: space-between; align-items: center; }
+  .skip-link { color: var(--ink-muted); font-size: 14px; font-weight: 500; padding: 10px 16px; }
+  .skip-link:hover { color: var(--ink-secondary); }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .btn-primary:hover { background: #FF7E5E; }
 
-  /* ---------- Progress dots ---------- */
-  .progress {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 80px 0 14px 0;
-  }
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: var(--radius-full);
-    background: var(--border-subtle);
-  }
-  .dot.is-active {
-    background: var(--accent-terracotta);
-  }
-  .progress-meta {
-    text-align: center;
-    font-family: var(--font-body);
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--ink-muted);
-    letter-spacing: 0.02em;
-    padding-bottom: 56px;
-  }
-
-  /* ---------- Hero ---------- */
-  .hero {
-    padding-bottom: 40px;
-  }
-  .hero-headline {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 36px;       /* display.md */
-    line-height: 1.15;
-    color: var(--ink-primary);
-    letter-spacing: -0.02em;
-    margin-bottom: 18px;
-  }
-  .hero-sub {
-    font-family: var(--font-body);
-    font-weight: 400;
-    font-size: 18px;       /* body.lg */
-    line-height: 1.55;
-    color: var(--ink-secondary);
-    max-width: 520px;
-  }
-
-  /* ---------- Cards ---------- */
-  .cards {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 18px 20px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-card);
-    transition: background 160ms ease, border-color 160ms ease;
-    cursor: pointer;
-    text-align: left;
-    width: 100%;
-    font-family: inherit;
-  }
-  .card:hover,
-  .card:focus-visible {
-    background: var(--surface-subtle);
-    border-color: var(--border-strong);
-    outline: none;
-  }
-  .card:focus-visible {
-    box-shadow: 0 0 0 2px var(--ink-primary), 0 0 0 4px var(--surface-paper);
-  }
-  .icon {
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--ink-primary);
-  }
-  .card-body {
-    flex: 1;
-    min-width: 0;
-  }
-  .card-label {
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 18px;
-    color: var(--ink-primary);
-    line-height: 1.3;
-    margin-bottom: 3px;
-  }
-  .card-sub {
-    font-family: var(--font-body);
-    font-weight: 400;
-    font-size: 14px;
-    color: var(--ink-muted);
-    line-height: 1.4;
-  }
-  .card-cta {
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 16px;
-    color: var(--accent-terracotta);
-    flex-shrink: 0;
-    margin-left: 12px;
-  }
-  .card-cta::after {
-    content: " →";
-    font-weight: 500;
-  }
-
-  /* ---------- Divider + skip ---------- */
-  .divider {
-    height: 1px;
-    background: var(--border-subtle);
-    margin: 28px 0 22px 0;
-  }
-  .skip-wrap {
-    text-align: center;
-    padding-bottom: 12px;
-  }
-  .skip-link {
-    font-family: var(--font-body);
-    font-weight: 500;
-    font-size: 14px;
-    color: var(--ink-muted);
-    text-decoration: none;
-    letter-spacing: 0.01em;
-    padding: 6px 10px;
-    border-radius: var(--radius-subtle);
-  }
-  .skip-link:hover,
-  .skip-link:focus-visible {
-    color: var(--ink-secondary);
-    outline: none;
-    box-shadow: 0 0 0 2px var(--ink-primary), 0 0 0 4px var(--surface-paper);
-  }
-  .skip-note {
-    text-align: center;
-    font-family: var(--font-body);
-    font-weight: 400;
-    font-style: italic;
-    font-size: 13px;
-    color: var(--ink-muted);
-    line-height: 1.5;
-    padding: 0 12px 48px 12px;
-  }
-
-  /* ---------- Privacy note (inset surface, 8px radius, sits inside column) ---------- */
-  .privacy {
-    background: var(--surface-inset);
-    padding: 16px 20px;
-    border-radius: var(--radius-card);
-    margin-bottom: 80px;
-  }
-  .privacy p {
-    font-family: var(--font-body);
-    font-weight: 400;
-    font-size: 13px;
-    color: var(--ink-secondary);
-    line-height: 1.5;
-  }
+  .note { font-size: 12px; color: var(--ink-muted); margin-top: 24px; line-height: 1.5; }
 </style>
 </head>
 <body>
-  <div class="page" role="main" aria-label="Onboarding, step 1 of 3">
+<div class="frame">
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> EventPulse24</div>
+    <button class="skip-all">Skip — take me to my brief →</button>
+  </header>
 
-    <!-- App bar -->
-    <header class="appbar">
-      <div class="wordmark">EventPulse24</div>
-      <div class="appbar-step">Step 1 of 3</div>
-    </header>
+  <main class="container">
+    <div class="steps" aria-label="Onboarding progress">
+      <div class="step current" aria-label="Step 1 of 3"></div>
+      <div class="step" aria-label="Step 2 of 3"></div>
+      <div class="step" aria-label="Step 3 of 3"></div>
+    </div>
 
-    <!-- Centered stage -->
-    <div class="stage">
-      <div class="column">
+    <div class="step-label">Step 1 of 3 · Optional</div>
+    <h1>Connect a calendar?</h1>
+    <p class="lede">We'll surface your personal events alongside public ones — birthdays, dinners, hard-to-tickets — in the same calm brief. Read-only access. You can disconnect anytime.</p>
 
-        <!-- Progress -->
-        <div class="progress" aria-hidden="true">
-          <span class="dot is-active"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
-        </div>
-        <div class="progress-meta">Step 1 of 3 · 30 seconds</div>
+    <div class="providers">
+      <button class="provider">
+        <span class="logo" aria-hidden="true">G</span>
+        <span class="body"><strong>Google Calendar</strong><span>Read-only · 1-click OAuth</span></span>
+        <span class="arrow">→</span>
+      </button>
+      <button class="provider">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="body"><strong>Apple Calendar <span style="color: var(--ink-muted); font-weight: 400;">(CalDAV)</span></strong><span>Coming Phase 2 · Join the waitlist</span></span>
+        <span class="arrow">→</span>
+      </button>
+      <button class="provider">
+        <span class="logo" aria-hidden="true">O</span>
+        <span class="body"><strong>Outlook Calendar</strong><span>Coming Phase 2 · Join the waitlist</span></span>
+        <span class="arrow">→</span>
+      </button>
+    </div>
 
-        <!-- Hero -->
-        <section class="hero">
-          <h1 class="hero-headline">Connect a calendar. Or don't.</h1>
-          <p class="hero-sub">Pulse will figure out what you care about from events already in your calendar. Skip if you'd rather start from scratch.</p>
-        </section>
+    <div class="privacy">
+      <span class="glyph">●</span>
+      <div>We never write to your calendar. Your events stay yours. Read-only access lets us see what's coming up — we never add anything.</div>
+    </div>
 
-        <!-- Option cards -->
-        <div class="cards">
-
-          <!-- Google -->
-          <button class="card" type="button" aria-label="Connect Google Calendar">
-            <span class="icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M21.6 11.227c0-.74-.066-1.45-.19-2.136H11v4.04h5.96a5.1 5.1 0 0 1-2.21 3.34v2.776h3.575c2.09-1.925 3.275-4.76 3.275-8.02z" fill="#1A1814" opacity="0.92"/>
-                <path d="M11 22c2.97 0 5.46-.98 7.28-2.66l-3.575-2.776c-.99.665-2.26 1.058-3.705 1.058-2.85 0-5.265-1.925-6.13-4.515H1.18v2.835A11 11 0 0 0 11 22z" fill="#1A1814" opacity="0.72"/>
-                <path d="M4.87 13.107A6.6 6.6 0 0 1 4.5 11c0-.73.13-1.44.37-2.107V6.058H1.18A11 11 0 0 0 .5 11c0 1.78.43 3.46 1.18 4.942l3.69-2.835z" fill="#1A1814" opacity="0.84"/>
-                <path d="M11 4.39c1.615 0 3.065.555 4.205 1.645l3.155-3.155C16.455 1.09 13.965.14 11 .14A11 11 0 0 0 1.18 6.058l3.69 2.835C5.735 6.305 8.15 4.39 11 4.39z" fill="#1A1814" opacity="0.96"/>
-              </svg>
-            </span>
-            <span class="card-body">
-              <span class="card-label">Google Calendar</span>
-              <span class="card-sub">Read-only — we'll never modify your events</span>
-            </span>
-            <span class="card-cta">Connect</span>
-          </button>
-
-          <!-- Apple -->
-          <button class="card" type="button" aria-label="Connect Apple Calendar">
-            <span class="icon" aria-hidden="true">
-              <svg width="20" height="22" viewBox="0 0 20 22" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14.94 11.61c-.02-2.32 1.9-3.43 1.98-3.49-1.08-1.58-2.77-1.8-3.37-1.82-1.43-.15-2.79.84-3.52.84-.73 0-1.84-.82-3.03-.8-1.56.02-3 .91-3.8 2.3-1.62 2.81-.42 6.97 1.16 9.25.77 1.12 1.69 2.37 2.89 2.33 1.16-.05 1.6-.75 3-.75 1.4 0 1.8.75 3.03.72 1.25-.02 2.04-1.13 2.81-2.25.88-1.29 1.25-2.54 1.27-2.6-.03-.01-2.43-.93-2.45-3.7zM12.66 4.84c.64-.78 1.07-1.86.95-2.94-.92.04-2.03.61-2.69 1.39-.59.69-1.11 1.79-.97 2.85 1.03.08 2.07-.52 2.71-1.3z"/>
-              </svg>
-            </span>
-            <span class="card-body">
-              <span class="card-label">Apple Calendar</span>
-              <span class="card-sub">Read-only — we'll never modify your events</span>
-            </span>
-            <span class="card-cta">Connect</span>
-          </button>
-
-          <!-- Outlook -->
-          <button class="card" type="button" aria-label="Connect Outlook">
-            <span class="icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="1.5" y="4.5" width="14" height="13" rx="1" stroke="currentColor" stroke-width="1.4" fill="none"/>
-                <path d="M1.5 5.5L8.5 11L15.5 5.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>
-                <rect x="15" y="7" width="5.5" height="10" rx="1" stroke="currentColor" stroke-width="1.4" fill="none"/>
-                <circle cx="17.75" cy="11" r="0.9" fill="currentColor"/>
-                <circle cx="17.75" cy="14" r="0.9" fill="currentColor"/>
-              </svg>
-            </span>
-            <span class="card-body">
-              <span class="card-label">Outlook</span>
-              <span class="card-sub">Read-only — we'll never modify your events</span>
-            </span>
-            <span class="card-cta">Connect</span>
-          </button>
-
-        </div>
-
-        <!-- Divider + skip -->
-        <div class="divider" role="separator" aria-hidden="true"></div>
-        <div class="skip-wrap">
-          <a href="#step2" class="skip-link">Skip for now</a>
-        </div>
-        <div class="skip-note">You can always connect one later in Settings.</div>
-
-        <!-- Privacy note -->
-        <div class="privacy" role="note">
-          <p>We never sell your calendar data. We never share it. You can export or delete everything in Settings → Privacy.</p>
-        </div>
-
+    <div class="footer-actions">
+      <button class="skip-link">← Back</button>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <button class="skip-link">Skip for now</button>
+        <button class="btn-primary">Continue →</button>
       </div>
     </div>
-  </div>
+    <div class="note">All steps are skippable. You can update these any time in Settings.</div>
+  </main>
+</div>
 </body>
 </html>

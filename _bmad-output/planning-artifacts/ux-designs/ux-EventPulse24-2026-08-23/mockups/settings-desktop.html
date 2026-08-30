@@ -1,0 +1,220 @@
+<!--
+  EventPulse24 — Settings (Desktop) — DARK THEME
+  Theme, quiet hours, digest time, account, privacy, pro.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-amber:#E89B4A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 24px 0 80px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+
+  .grid { display: grid; grid-template-columns: 220px 1fr; gap: 48px; }
+  .sidenav { position: sticky; top: 24px; align-self: start; }
+  .sidenav h1 { font-family: var(--family-display); font-size: 28px; font-weight: 700; margin: 0 0 18px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .sidenav ul { list-style: none; padding: 0; margin: 0; }
+  .sidenav li { margin-bottom: 2px; }
+  .sidenav a { display: block; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-muted); font-weight: 500; }
+  .sidenav a:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
+  .sidenav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
+
+  .section { padding-bottom: 32px; margin-bottom: 32px; border-bottom: 1px solid var(--border-subtle); }
+  .section:last-child { border-bottom: 0; }
+  .section h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 16px; color: var(--ink-primary); }
+  .section .desc { font-size: 13px; color: var(--ink-muted); margin: -8px 0 18px; line-height: 1.5; }
+
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+  .row:first-of-type { border-top: 0; padding-top: 0; }
+  .row-label strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .row-label span { font-size: 12px; color: var(--ink-muted); line-height: 1.4; }
+
+  /* Theme toggle */
+  .theme-pick { display: flex; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 3px; }
+  .theme-pick button { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-muted); }
+  .theme-pick button.active { background: var(--accent-terracotta); color: var(--ink-inverse); }
+
+  /* Switch */
+  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
+  .switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
+  .switch.on { background: var(--accent-terracotta); }
+  .switch.on::after { transform: translateX(16px); background: var(--ink-primary); }
+
+  /* Time input */
+  .time-row { display: flex; align-items: center; gap: 10px; }
+  .time-input { background: var(--surface-elevated); border: 1px solid var(--border-subtle); padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-primary); width: 80px; text-align: center; font-family: var(--family-body); }
+
+  /* Pro upsell row */
+  .pro-card { background: linear-gradient(135deg, rgba(255,106,71,0.10), rgba(110,126,146,0.10)); border: 1px solid rgba(255,106,71,0.25); border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .pro-card .pill { display: inline-block; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 3px 8px; border-radius: 4px; font-weight: 700; margin-bottom: 6px; }
+  .pro-card h3 { font-family: var(--family-display); font-size: 18px; margin: 0 0 4px; color: var(--ink-primary); }
+  .pro-card p { font-size: 13px; color: var(--ink-secondary); margin: 0; }
+  .pro-card .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+
+  /* Account */
+  .account { display: flex; gap: 14px; align-items: center; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 14px; font-weight: 600; }
+  .account strong { font-size: 14px; color: var(--ink-primary); display: block; }
+  .account span { font-size: 12px; color: var(--ink-muted); }
+
+  .ghost { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .danger { color: var(--accent-terracotta); font-size: 13px; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <button class="ghost">← Back to Today</button>
+    </nav>
+
+    <div class="grid">
+      <aside class="sidenav">
+        <h1>Settings</h1>
+        <ul>
+          <li><a href="#" class="active">General</a></li>
+          <li><a href="#">Notifications</a></li>
+          <li><a href="#">Quiet hours</a></li>
+          <li><a href="#">Calendar sync</a></li>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Account</a></li>
+          <li><a href="#">Data &amp; export</a></li>
+          <li><a href="#">About</a></li>
+        </ul>
+      </aside>
+
+      <main>
+        <section class="section">
+          <h2>Appearance</h2>
+          <p class="desc">Pick how EventPulse24 looks. Dark mode is recommended for low-light reading.</p>
+          <div class="row">
+            <div class="row-label"><strong>Theme</strong><span>Dark is default. Light is available.</span></div>
+            <div class="theme-pick" role="radiogroup" aria-label="Theme">
+              <button class="active" role="radio" aria-checked="true">Dark</button>
+              <button role="radio" aria-checked="false">Light</button>
+              <button role="radio" aria-checked="false">System</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Reduce motion</strong><span>Disable fades and skeleton animations.</span></div>
+            <div class="switch" role="switch" aria-checked="false"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Notifications</h2>
+          <p class="desc">One calm Pulse Ping per day, plus per-event reminders you turn on.</p>
+          <div class="row">
+            <div class="row-label"><strong>Pulse Ping delivery time</strong><span>Your daily brief, one tap away.</span></div>
+            <div class="time-row">
+              <input class="time-input" value="8:00" />
+              <button class="ghost">AM</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Timezone</strong><span>Auto-detected from your device.</span></div>
+            <button class="ghost">America/New_York (EDT) →</button>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Email reminders</strong><span>Multi-tier reminders for events you save.</span></div>
+            <div class="switch on" role="switch" aria-checked="true"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Quiet hours</h2>
+          <p class="desc">No notifications or emails during this window. Free tier = one window. Pro = per day-of-week.</p>
+          <div class="row">
+            <div class="row-label"><strong>Daily quiet hours</strong><span>10:00 PM – 7:00 AM</span></div>
+            <div class="time-row">
+              <input class="time-input" value="22:00" />
+              <span style="color: var(--ink-muted);">→</span>
+              <input class="time-input" value="07:00" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Per-day quiet hours</strong><span>Pro — e.g., no pings Sat morning.</span></div>
+            <button class="ghost">Upgrade to Pro →</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Calendar sync</h2>
+          <p class="desc">Connect a calendar to see personal events alongside public ones. Read-only.</p>
+          <div class="row">
+            <div class="row-label"><strong>Google Calendar</strong><span style="color: var(--signal-success, #7AAA7A);">● Connected as maya@gmail.com</span></div>
+            <button class="ghost">Disconnect</button>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Apple Calendar</strong><span>Pro — Phase 2</span></div>
+            <button class="ghost">Join waitlist</button>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Outlook Calendar</strong><span>Pro — Phase 2</span></div>
+            <button class="ghost">Join waitlist</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Account</h2>
+          <div class="account" style="padding: 14px 0; border-top: 1px solid var(--border-subtle);">
+            <div class="avatar">MP</div>
+            <div>
+              <strong>Maya Patel</strong>
+              <span>maya@gmail.com · Free tier</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Plan</h2>
+          <div class="pro-card">
+            <div>
+              <span class="pill">Pro · $4.99/mo</span>
+              <h3>Unlimited saves, custom quiet hours, calendar sync.</h3>
+              <p>You saved 1 of 1 this week. The next one will nudge.</p>
+            </div>
+            <button class="btn-primary">Upgrade →</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Danger zone</h2>
+          <div class="row">
+            <div class="row-label"><strong>Export your data</strong><span>Download JSON + ICS archive.</span></div>
+            <button class="ghost">Request export</button>
+          </div>
+          <div class="row">
+            <div class="row-label"><strong>Delete account</strong><span>Permanent. Cannot be undone.</span></div>
+            <button class="danger">Delete account →</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</body>
+</html>
