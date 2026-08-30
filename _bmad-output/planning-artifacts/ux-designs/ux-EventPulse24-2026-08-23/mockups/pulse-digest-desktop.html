@@ -1,8 +1,10 @@
 <!--
   EventPulse24 — Pulse Digest (Desktop, 1280px) — DARK THEME
-  Person: Maya Patel, Brooklyn. Today: Tuesday, Aug 26, 2026.
+  Person: Maya Patel, Brooklyn. Today: Thursday, Aug 27, 2026.
   Visual identity: OLED-dark primary. Near-black canvas, terracotta glow accent.
-  Slot composition: Slot 1 must-know (personal anniversary), Slot 2 nearby, Slot 3 serendipity.
+  Slot composition: Slot 1 personal anniversary (warm-personal stripe),
+  Slot 2 nearby public meetup (must-know amber stripe + schedule conflict),
+  Slot 3 serendipity discovery (slate stripe at 0.85).
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -10,6 +12,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>EventPulse24 — Today</title>
+<!-- Brand: EventPulse24 logo (cyan pulse waveform + single coral peak). -->
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
@@ -41,11 +45,11 @@
     --family-body:    "Inter", -apple-system, system-ui, sans-serif;
     --family-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-    --pad-page: 80px;
-    --gap-cards: 24px;
-    --gap-cols: 32px;
-    --pad-card: 28px;
-    --r-card: 12px;
+    --pad-page: 88px;
+    --gap-cards: 36px;
+    --gap-cols: 40px;
+    --pad-card: 32px;
+    --r-card: 14px;
     --container-max: 1180px;
   }
 
@@ -57,89 +61,110 @@
   .frame { min-height: 100vh; padding: 0 var(--pad-page); }
   .container { max-width: var(--container-max); margin: 0 auto; }
 
-  /* Top app bar — borderless, whitespace-rhythm */
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 24px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
-  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 14px rgba(255,106,71,0.55); }
-  .topnav { display: flex; gap: 28px; }
-  .topnav a { color: var(--ink-muted); font-size: 14px; font-weight: 500; }
+  /* Top app bar — Apple-class: airy, borderless, calm. */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 36px 0 32px; }
+  /* Brand: PNG logo + display wordmark. Logo glow is the only sanctioned terracotta carry-over (today indicator's twin). */
+  .brand { display: inline-flex; align-items: center; gap: 12px; font-family: var(--family-display); font-size: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); text-decoration: none; }
+  .brand .brand-mark { height: 32px; width: auto; display: block; }
+  .brand .brand-text { line-height: 1; padding-top: 1px; }
+  .topnav { display: flex; gap: 32px; }
+  .topnav a { color: var(--ink-muted); font-size: 13px; font-weight: 500; letter-spacing: 0.005em; transition: color 160ms ease; }
+  .topnav a:hover { color: var(--ink-secondary); }
   .topnav a.active { color: var(--ink-primary); }
-  .topright { display: flex; align-items: center; gap: 14px; }
-  .iconbtn { width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-secondary); }
+  .topright { display: flex; align-items: center; gap: 16px; }
+  .iconbtn { width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-secondary); transition: background 160ms ease, color 160ms ease; }
   .iconbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
   .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 12px; font-weight: 600; }
 
-  /* Page header */
-  .pagehead { padding: 56px 0 40px; max-width: 720px; }
-  .pagehead .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
-  .pagehead .eyebrow .today-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 10px rgba(255,106,71,0.5); }
-  .pagehead h1 { font-family: var(--family-display); font-size: 48px; font-weight: 700; line-height: 1.10; letter-spacing: -0.02em; margin: 0 0 14px; color: var(--ink-primary); }
-  .pagehead .lede { font-family: var(--family-body); font-size: 18px; line-height: 1.55; color: var(--ink-secondary); margin: 0; }
+  /* Page header — Apple-class: quieter lede, narrower column, calmer rhythm. */
+  .pagehead { padding: 72px 0 56px; max-width: 720px; }
+  .pagehead .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--ink-muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 22px; }
+  .pagehead .eyebrow .today-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); }
+  .pagehead h1 { font-family: var(--family-display); font-size: 56px; font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; margin: 0 0 18px; color: var(--ink-primary); }
+  .pagehead .lede { font-family: var(--family-body); font-size: 17px; line-height: 1.55; color: var(--ink-secondary); margin: 0; max-width: 540px; letter-spacing: 0.005em; }
 
   /* Two-column grid */
   .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gap-cols); padding-bottom: 80px; }
   @media (max-width: 1023px) { .grid { grid-template-columns: 1fr; } }
 
-  /* Card */
-  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: var(--pad-card); position: relative; transition: background 180ms ease; cursor: pointer; }
-  .card:hover { background: var(--surface-subtle); }
+  /* Card — Apple-class: softer edge, calmer hover. */
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: var(--pad-card); position: relative; transition: background 180ms ease, border-color 180ms ease; cursor: pointer; }
+  .card:hover { background: var(--surface-subtle); border-color: var(--border-strong); }
+  /* EXPERIENCE §4 Card.PulseDigest Focus state: 2px terracotta ring at AA contrast. */
+  /* EXPERIENCE §4 Hover: trailing ▸ affordance (decorative — entire card is the tap target). */
+  .card:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .card:focus-visible::after,
+  .card:hover::after { content: "▸"; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); color: var(--ink-secondary); font-family: var(--family-mono); font-size: 14px; transition: color 160ms ease, transform 160ms ease; }
+  .card:hover::after { color: var(--ink-primary); transform: translateY(-50%) translateX(2px); }
   .card .stripe { position: absolute; left: 0; top: var(--pad-card); bottom: var(--pad-card); width: 3px; border-radius: 0 2px 2px 0; }
-  .card.slot-1 .stripe { background: var(--accent-amber); }
-  .card.slot-2 .stripe { background: var(--cool-public); }
+  /* Slot 1 = personal event — DESIGN §Components.pulse.digest.category.personal: warm-personal stripe. */
+  /* Slot 2 = must-know public — accent-amber stripe (warm-secondary, max ~10% of cards). */
+  /* Slot 3 = discovery — accent-slate at 0.85 opacity. */
+  .card.slot-1 .stripe { background: var(--warm-personal); }
+  .card.slot-2 .stripe { background: var(--accent-amber); }
   .card.slot-3 .stripe { background: var(--accent-slate); opacity: 0.85; }
 
-  .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-left: 14px; }
+  .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding-left: 18px; }
   .card-main { flex: 1; min-width: 0; }
-  .card-meta { display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 500; color: var(--ink-muted); letter-spacing: 0.02em; margin-bottom: 12px; }
+  .card-meta { display: flex; gap: 10px; align-items: center; font-size: 12px; font-weight: 500; color: var(--ink-muted); letter-spacing: 0.02em; margin-bottom: 14px; }
   .card-meta .sep { color: var(--ink-faint); }
-  .card-meta .type-label { color: var(--ink-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
-  .card h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; margin: 0 0 10px; color: var(--ink-primary); }
-  .card .where { font-size: 14px; color: var(--ink-secondary); margin: 0 0 14px; }
-  .tags { font-family: var(--family-body); font-style: italic; font-size: 13px; line-height: 1.40; color: var(--ink-muted); margin: 0 0 18px; }
+  .card-meta .type-label { color: var(--ink-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .card h2 { font-family: var(--family-display); font-size: 24px; font-weight: 600; line-height: 1.22; letter-spacing: -0.014em; margin: 0 0 12px; color: var(--ink-primary); }
+  .card .where { font-size: 14px; color: var(--ink-secondary); margin: 0 0 16px; }
+  .tags { font-family: var(--family-body); font-style: italic; font-size: 13px; line-height: 1.40; color: var(--ink-muted); margin: 0 0 22px; letter-spacing: 0.005em; }
   .tags .tag { color: var(--ink-secondary); }
   .tags .dotsep { color: var(--ink-faint); margin: 0 6px; }
+  /* Why-this Tags are announced as comma-separated text per EXPERIENCE §7. */
+  .tags .comma { color: var(--ink-faint); }
 
-  .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); margin-top: 4px; }
-  .card-foot-left { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--ink-muted); }
+  .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid var(--border-subtle); margin-top: 6px; }
+  .card-foot-left { display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--ink-muted); }
   .pulse { display: inline-flex; gap: 4px; align-items: center; }
-  .pulse .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); transition: background 180ms ease; }
   .pulse .dot.on { background: var(--ink-primary); }
-  .pulse .n { font-family: var(--family-mono); font-size: 12px; font-weight: 600; color: var(--ink-secondary); margin-left: 4px; }
+/* EXPERIENCE §4 Indicator.Confidence: "Dots only. No numeric label visible." Numeric is announced via aria-label on the .pulse wrapper. */
+  .pulse .n { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .srcbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-secondary); }
   .srcbadge .glyph { font-size: 13px; }
   .srcbadge.verified { color: var(--accent-terracotta); }
 
   .card-actions { display: flex; gap: 8px; }
-  .ghostbtn { padding: 7px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
-  .ghostbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .ghostbtn { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .ghostbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); border-color: var(--border-strong); }
 
-  /* Conflict indicator */
-  .conflict { position: absolute; top: 16px; right: 16px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 0 3px rgba(216,168,106,0.18); }
+  /* Conflict indicator — softened glow ring. */
+  .conflict { position: absolute; top: 18px; right: 18px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 0 4px rgba(216,168,106,0.14); }
   .conflict[aria-label]::after { content: ""; }
 
-  /* Sidebar — Discovery & saved */
-  .side h3 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0 0 18px; color: var(--ink-primary); }
-  .side .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: 20px; margin-bottom: 20px; }
-  .saved-row { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border-subtle); }
+  /* Sidebar — Apple-class: same softness, larger saved-row titles. */
+  .side h3 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 22px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .side .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: 22px; margin-bottom: 22px; }
+  .saved-row { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
   .saved-row:first-of-type { border-top: 0; }
-  .saved-row .when { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
+  .saved-row .when { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; padding-top: 2px; }
   .saved-row .title { font-size: 14px; font-weight: 500; color: var(--ink-primary); line-height: 1.35; }
-  .saved-row .where-sm { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  .saved-row .where-sm { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
 
-  .pro-cta { background: linear-gradient(135deg, rgba(255,106,71,0.10), rgba(110,126,146,0.10)); border: 1px solid rgba(255,106,71,0.25); border-radius: var(--r-card); padding: 20px; }
-  .pro-cta .pill { display: inline-block; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 3px 8px; border-radius: 4px; font-weight: 600; margin-bottom: 10px; }
-  .pro-cta p { font-size: 13px; color: var(--ink-secondary); line-height: 1.5; margin: 0 0 14px; }
+  .pro-cta { background: linear-gradient(135deg, rgba(255,106,71,0.08), rgba(110,126,146,0.08)); border: 1px solid rgba(255,106,71,0.20); border-radius: var(--r-card); padding: 22px; }
+  .pro-cta .pill { display: inline-block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 4px 10px; border-radius: 4px; font-weight: 600; margin-bottom: 12px; }
+  .pro-cta p { font-size: 13px; color: var(--ink-secondary); line-height: 1.5; margin: 0 0 16px; }
 
-  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: background 160ms ease, transform 160ms ease; }
+
+  /* Screen-reader only utility. */
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .btn-primary:hover { background: #FF7E5E; }
-  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(255,106,71,0.35); }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
 </style>
 </head>
 <body>
 <div class="frame">
   <div class="container">
     <nav class="topbar" aria-label="Primary">
-      <div class="brand"><span class="dot" aria-hidden="true"></span> EventPulse24</div>
+      <a href="#" class="brand" aria-label="EventPulse24 — Home">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="32" height="32" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </a>
       <div class="topnav">
         <a href="#" class="active">Today</a>
         <a href="#">Timeline</a>
@@ -158,36 +183,34 @@
     </nav>
 
     <header class="pagehead">
-      <div class="eyebrow"><span class="today-dot"></span> Tuesday · Aug 26, 2026 · Brooklyn, NY</div>
-      <h1>Three things matter today.</h1>
+      <div class="eyebrow"><span class="today-dot"></span> Thursday · Aug 27, 2026 · Brooklyn, NY</div>
+      <h1>Today, three things matter.</h1>
       <p class="lede">Your morning brief, kept short on purpose. Open one, save one, or close the app and let it go.</p>
     </header>
 
     <div class="grid">
       <main aria-label="Pulse Digest">
+        <!-- EXPERIENCE §7 Live Regions: Pulse Digest ready announcement. -->
+        <div role="status" class="sr-only" aria-live="polite" aria-atomic="true">Pulse Digest ready. 3 events for today.</div>
         <!-- SLOT 1 — must-know: personal event (warm stripe) -->
-        <article class="card slot-1" style="margin-bottom: var(--gap-cards);" aria-labelledby="c1">
+        <article class="card slot-1" style="margin-bottom: var(--gap-cards);" tabindex="0" aria-labelledby="c1" aria-label="Anniversary dinner with Rahul, Thu 7:30 PM at Lilia, Williamsburg. Personal calendar.">
           <span class="stripe" aria-hidden="true"></span>
           <div class="card-row">
             <div class="card-main">
               <div class="card-meta">
                 <span class="type-label" style="color: var(--warm-personal);">Personal</span>
                 <span class="sep">·</span>
-                <span>Tonight · 7:00 PM</span>
+                <span>Thu · 7:30 PM</span>
                 <span class="sep">·</span>
                 <span>Lilia, Williamsburg</span>
               </div>
               <h2 id="c1">Anniversary dinner with Rahul</h2>
               <p class="tags">
-                <span class="tag">family</span><span class="dotsep">·</span><span class="tag">tonight</span><span class="dotsep">·</span><span class="tag">restaurant</span>
+                <span class="tag">family</span><span class="comma">, </span><span class="tag">thursday</span><span class="comma">, </span><span class="tag">restaurant</span>
               </p>
               <div class="card-footer">
                 <div class="card-foot-left">
                   <span class="srcbadge"><span class="glyph">📥</span> Personal calendar</span>
-                  <span class="pulse" aria-label="5 of 5 confidence">
-                    <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span>
-                    <span class="n">5/5</span>
-                  </span>
                 </div>
                 <div class="card-actions">
                   <button class="ghostbtn">Open</button>
@@ -198,13 +221,13 @@
         </article>
 
         <!-- SLOT 2 — nearby: public event (cool stripe) -->
-        <article class="card slot-2" style="margin-bottom: var(--gap-cards);" aria-labelledby="c2">
+        <article class="card slot-2" style="margin-bottom: var(--gap-cards);" tabindex="0" aria-labelledby="c2" aria-label="Free tech meetup, Designing for Calm, Thu 6:30 PM, 2 blocks from work. Verified by Brooklyn Arts Council. Schedule conflict. Why this: nearby, thursday, free. Confidence 4 of 5.">
           <span class="stripe" aria-hidden="true"></span>
           <span class="conflict" role="img" aria-label="Schedule conflict"></span>
           <div class="card-row">
             <div class="card-main">
               <div class="card-meta">
-                <span class="type-label" style="color: var(--cool-public);">Public</span>
+                <span class="type-label" style="color: var(--cool-public);">Public event</span>
                 <span class="sep">·</span>
                 <span>Thu · 6:30 PM</span>
                 <span class="sep">·</span>
@@ -212,15 +235,16 @@
               </div>
               <h2 id="c2">Free tech meetup — "Designing for Calm"</h2>
               <p class="tags">
-                <span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">free</span>
+                <span class="tag">nearby</span><span class="comma">, </span><span class="tag">thursday</span><span class="comma">, </span><span class="tag">free</span>
               </p>
               <div class="card-footer">
                 <div class="card-foot-left">
                   <span class="srcbadge verified"><span class="glyph">✅</span> Verified · Brooklyn Arts Council</span>
-                  <span class="pulse" aria-label="4 of 5 confidence">
+                  <span class="pulse" aria-label="4 of 5 confidence" aria-describedby="tooltip-c2">
                     <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
                     <span class="n">4/5</span>
                   </span>
+                  <span role="tooltip" id="tooltip-c2" hidden>4 of 5. Strong match on nearby tech meetups and within 2 km of your work.</span>
                 </div>
                 <div class="card-actions">
                   <button class="ghostbtn">Why this?</button>
@@ -232,7 +256,7 @@
         </article>
 
         <!-- SLOT 3 — serendipity -->
-        <article class="card slot-3" aria-labelledby="c3">
+        <article class="card slot-3" tabindex="0" aria-labelledby="c3" aria-label="Sunny Jain Quartet outdoor rooftop set, Sat 8 PM, Rooftop Greenpoint. Community source, Barbican listing. Why this: discovery, new-to-you. Confidence 3 of 5.">
           <span class="stripe" aria-hidden="true"></span>
           <div class="card-row">
             <div class="card-main">
@@ -245,15 +269,16 @@
               </div>
               <h2 id="c3">Sunny Jain Quartet — outdoor rooftop set</h2>
               <p class="tags">
-                <span class="tag">discovery</span><span class="dotsep">·</span><span class="tag">new-to-you</span>
+                <span class="tag">discovery</span><span class="comma">, </span><span class="tag">new-to-you</span>
               </p>
               <div class="card-footer">
                 <div class="card-foot-left">
                   <span class="srcbadge"><span class="glyph">👥</span> Community · Barbican listing</span>
-                  <span class="pulse" aria-label="3 of 5 confidence">
+                  <span class="pulse" aria-label="3 of 5 confidence" aria-describedby="tooltip-c3">
                     <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span>
                     <span class="n">3/5</span>
                   </span>
+                  <span role="tooltip" id="tooltip-c3" hidden>3 of 5. New-to-you discovery in your least-engaged category.</span>
                 </div>
                 <div class="card-actions">
                   <button class="ghostbtn">Save</button>
@@ -292,7 +317,7 @@
 
         <div class="pro-cta">
           <span class="pill">Pro · $4.99/mo</span>
-          <p>Unlimited saves, custom quiet hours, Google Calendar sync.</p>
+          <p>Fewer interruptions, more control.</p>
           <button class="btn-primary">Upgrade →</button>
         </div>
       </aside>
