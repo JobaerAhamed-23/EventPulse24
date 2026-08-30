@@ -1,8 +1,8 @@
 ---
 title: "PRD: EventPulse24"
-status: final
+status: amended-2026-08-29
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-29
 project: EventPulse24
 author: Jobaer
 sources:
@@ -12,6 +12,9 @@ sources:
   - _bmad-output/design-thinking-2026-08-19.md
   - _bmad-output/blue-ocean-strategy-2026-08-19.md
   - docs/scope.txt
+amendments:
+  - 6 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source) merged on 2026-08-29
+  - 43 MVP FRs (was 41; +2 from FR-59 and FR-60); 17 named FRs for Phase 2/3+
 ---
 
 # PRD: EventPulse24
@@ -188,22 +191,25 @@ EventPulse24 is **not** for v1:
 
 *Downstream artifacts (UX, Architecture, Epics, Stories) MUST use these terms exactly. Introducing a synonym is a discipline violation. New domain nouns introduced in §4 land here in the same pass.*
 
-- **Event**: A single time-bounded happening with a name, start time, location, and source. May be public (sourced from a public source) or personal (created by the user). Cardinality: 1-to-many Sources, 1-to-1-or-0 ReminderPlan.
+- **Event**: A single time-bounded happening with a name, start time, location, and source. May be public (sourced from a public source) or personal (created by the user). Cardinality: 1-to-many Sources, 1-to-1-or-0 ReminderPlan. Every Event has a canonical `event_id` (see **Event Identity**), a `start_time_tz` field with explicit timezone (see FR-60), and a `tz_inference_confidence` field (1.0 if the source provided a timezone; lower if inferred).
+- **Event Identity**: The canonical tuple `(source_id, source_event_id, venue_fingerprint, start_time_with_tz, title_fingerprint)` that uniquely identifies an Event across ingestion cycles. Two extracted records refer to the same Event if any of the following hold: (a) `source_id + source_event_id` match exactly; (b) `(venue_fingerprint, start_time_with_tz)` match exactly AND `title_fingerprint` token-overlap (Jaccard, stop-word-filtered) ≥80%; (c) canonical URL matches. Embedding cosine similarity is **not** an identity signal — it is a review-queue routing signal only. Recurring events (e.g., a tech meetup every Thursday) are distinct `event_id`s linked by a shared `series_id`. Postponements within ±30 days of the original start time update the same `event_id`; postponements beyond ±30 days create a new Event. State changes (postpone, cancel, move, sold-out) update the same `event_id` and append to `state_history`.
 - **Source**: A provenance record for an Event. Types: `official_site` (verified venue/organizer), `community` (community-posted, e.g., Luma), `aggregator` (e.g., Eventbrite public listing), `user_imported` (user-forwarded email/ICS), `crawled_html` (last resort, ToS-reviewed). Each Source has a reliability score.
 - **Pulse Digest**: The home surface. A daily, fixed-cadence, 3-card brief delivered to the user. Default delivery: 8:00 AM local. Each card is a Pulse Card.
 - **Pulse Preview**: The no-auth public surface shown to first-time and unauthenticated visitors. 3 Pulse Cards in the user's inferred city (geo-IP default, one-tap city override). Soft-walls at the "Save to Pulse" CTA — signup is required to save, not to browse.
-- **Pulse Card**: A single event in the Pulse Digest. Shows: event name, time, location, 3-keyword "Why this?" micro-tags, 1–5 Confidence Pulse, Source Badge. Tappable to Detail Screen.
+- **Pulse Card**: A *projection* of an Event in a specific User's Pulse Digest at a specific composition time. Not a separate entity. Shows: event name, time (user-local; venue-local on Detail Screen if cross-timezone), location, up to 3 Why-this Tags, 1–5 Confidence Pulse, Source Badge, and (if applicable) Conflict Indicator. Tappable to Detail Screen.
 - **Pulse Ping**: The single daily notification that brings the user back to the Pulse Digest. **Not** an event-specific reminder. Counter to industry's 5–15/day blast.
 - **Quiet Hours**: The user-configured time window during which no notifications or emails are sent. Free tier: a single window (e.g., 10pm–7am). Pro tier: per-day-of-week windows (FR-51). Reminders and Pulse Pings falling inside Quiet Hours are silently deferred to the window end; no next-day surprise.
-- **Why-this Tags**: Up to 3 keywords on a Pulse Card explaining *why* the AI surfaced this event (e.g., `nearby, tonight, music`). Same tags appear on the Detail Screen.
+- **Why-this Tags**: Up to 3 keywords on a Pulse Card explaining *why* the event was surfaced (e.g., `nearby, tonight, music`). Why-this Tags are **category descriptors**, not full explanations; the full reasoning is on the Detail Screen (FR-24). On Slot 3 (serendipity) cards, the tag reads `discovery` or `new-to-you` instead of a category name (per Amendment A-2 / FR-5). Same tags appear on the Pulse Card and on the Detail Screen.
 - **Confidence Pulse**: A 1–5 dot indicator on each Pulse Card showing AI certainty about relevance. 5 = very strong match; 1 = weak. Persisted on the Event record.
 - **Source Badge**: A small visual label on each Pulse Card and Detail Screen indicating the Source type. `official_site` = ✅, `community` = 👥, `aggregator` = 🔗, `user_imported` = 📥, `crawled_html` = ⚠️.
 - **Detail Screen**: The expanded view of a Pulse Card. Shows: full event description, location with map, reminder picker, share, save, dismiss, Why-this breakdown, similar events user has attended, neighbor count.
 - **Neighbor Count**: A signal on the Detail Screen showing how many other EventPulse24 users are in the same area and tracking the same event (`👥 X neighbors`). Revealed only when at least 1 qualifying user exists; absence is silent, not a zero. Privacy-respecting — no identifying information.
 - **Timeline**: A unified calendar view (Phase 2) showing Personal Events (warm tones) and Public Events (cool tones) in one week- or month-view. Conflicts highlighted, never alarmed.
 - **Personal Event**: A user-created or calendar-synced event (birthday, meeting). Exists in the user's Personal Calendar. Phase 2 surfaces a Personal Event in the Timeline; MVP surfaces it only via manual add in the EventPulse24 UI.
+- **Conflict Indicator**: A small (8–10 px) filled, neutral-tone circle icon positioned at the top-right corner of the Pulse Card, indicating that the event overlaps with another event the user has saved or set a Reminder Plan for. Color is desaturated amber (#B8893D or equivalent), never red. Accompanied by `aria-label="Schedule conflict"`. Distinct in shape from the Source Badge (✅/👥/🔗/📥/⚠️) and the Confidence Pulse (● dots). The indicator is symmetric across the conflict pair (both events show it). The indicator persists after the user has explicitly chosen "Keep both" (FR-58) as a calm permanent reminder.
+- **Conflict Resolution**: A user decision on a conflict prompt, recorded as one of: `keep_both`, `edit_new`, `delete_new` (Personal-vs-Personal time conflict); or `keep_both`, `update_existing`, `delete_new` (Personal-vs-Personal duplicate). The resolution is recorded as a `ConflictResolution` value object. There is no `dismiss` resolution — the user must make an explicit choice.
 - **Public Event**: A Source-sourced event not created by the user.
-- **Reminder Plan**: A per-Event set of up to N reminder slots (default: 5d, 2d, 1d, 1hr before) plus Pulse Ping (which is a separate, global concept). User-editable per event.
+- **Reminder Plan**: A per-Event set of up to N reminder slots (default: 5d, 2d, 1d, 1hr before). **Pulse Ping is NOT part of any Reminder Plan** — it is a separate, global per-day notification (FR-10). User-editable per event. All slots subject to Quiet Hours deferral.
 - **Preference Graph**: Per-user behavior-derived data structure (dwell, swipes, dismissals, saves) that drives Pulse Digest composition. Built incrementally; cold-start is SEO/geo-derived.
 - **Pulse the Group**: Phase 2 feature: AI-assisted small-group coordination (UJ-6). NOT a social feed.
 - **Travel Mode**: Phase 3 feature: hyperlocal event discovery in visited cities without per-city setup.
@@ -214,6 +220,8 @@ EventPulse24 is **not** for v1:
 - **Free Tier**: Unauthenticated browsing via Pulse Preview. Authenticated users on the free tier see the full Pulse Digest (3 cards/day) and can save up to **1 Pulse Card per 24-hour period**; the 2nd save action triggers a calm in-app CTA to upgrade to Pro (FR-48). Feature caps apply (see §15.1).
 - **Source Reliability Score**: Per-Source trust score (0.0–1.0) computed from extraction accuracy, user dismissal rate, and editorial review. Lowers ≠ removes a Source; changes its ranking.
 - **AI Cost Dashboard**: Internal-facing per-feature telemetry (FR-29) tracking spend on extraction, embeddings, classification, and personalization.
+- **EventReport**: A user-submitted quality report on an Event, created via FR-59. Composed of (User, Event, category ∈ {wrong_date, wrong_venue, not_exist, duplicate}, timestamp). Rate-limited to 5 per user per day. Routed to the editorial review queue (FR-57) with priority `user_reported`. Retained 24 months.
+- **Source tz_coverage**: A per-Source field (`full` / `partial` / `none`) indicating whether the source emits event timestamps with explicit timezones. See FR-60.
 
 ---
 
@@ -283,28 +291,41 @@ The system persists authenticated user state across sessions (web cookie + serve
 
 **Description:** The daily morning brief. The product's moment-of-truth surface. Realizes UJ-1. Bounded by design: 3 cards, max. Decision fatigue is the enemy.
 
-#### FR-5: Pulse Digest Composition
+#### FR-5: Pulse Digest Composition (revised by Amendment A-2)
 
-The system composes a Pulse Digest of 3 Pulse Cards per user per day based on the user's Preference Graph, location, and Source Reliability Scores. Realizes UJ-1.
+The system composes a Pulse Digest of 3 Pulse Cards per user per day using **slot-specific scoring** keyed to the user's Preference Graph, location, and Source Reliability Scores. Realizes UJ-1.
+
+**Slot structure:**
+
+- **Slot 1 ("must-know")** — Personal Events eligible (warm-tone; see FR-19). If no Personal Event is eligible within the next 48 hours, falls back to the highest-scoring eligible public event in the user's beachhead.
+- **Slot 2 ("nearby")** — `score = source_reliability × geographic_distance_factor × freshness_factor`, with city-wide popularity as a **tie-breaker only** (not a multiplier).
+- **Slot 3 ("serendipity")** — `score = source_reliability × geographic_distance_factor × freshness_factor × (1 - normalized_popularity)`. Explicit anti-popularity bias. Restricted to a category distinct from the user's most-engaged category (per Preference Graph; default to "least-engaged category in beachhead" during cold start).
 
 **Consequences (testable):**
-- A Pulse Digest contains exactly 3 cards on a standard day. Exception: a "No pulse for today" empty state.
-- A Pulse Card in the digest is not a duplicate (same Event) of another.
-- The 3 cards cover at least 2 distinct categories (e.g., one `personal-near`, one `public-near`, one `serendipity`).
-- The system can run an empty-state Pulse Digest when there are no qualifying public events. In this case, the digest shows one card: "No pulse for today."
 
-**Cold-start composition (users with <7 days of Preference Graph data):**
-- The system uses a deterministic ranked formula: `score = popularity × source_reliability × geographic_distance_factor × freshness_factor`.
-- **Popularity** is computed from city-wide save/dismiss rates for the event (Bayesian-smoothed with prior α=5, β=5 — same as FR-16).
-- **Source reliability** is the per-Source score (FR-16).
-- **Geographic distance factor** decays from 1.0 (same neighborhood) to 0.3 (different city) using haversine on the user's home city centroid. Events outside the user's home country fall to 0.1.
-- **Freshness factor** is 1.0 for events ≥3 days out, 1.2 for events 1–3 days out, 1.5 for events ≤24 hours out (urgency bias within calm).
-- The 3 cards honor the diversity floor (see FR-25 update): at least one card is a `serendipity` category (low popularity × high source reliability).
-- After the first save or first dismissal (whichever comes first within 24h of signup), the Preference Graph begins to influence ranking. Within 7 days, the cold-start formula is fully replaced by personalized ranking.
+- A Pulse Digest contains exactly 3 cards on a standard day. Exception: a "No pulse for today" empty state (FR-8).
+- A Pulse Card in the digest is not a duplicate (same `event_id`) of another.
+- The 3 cards honor the diversity floor by slot design (Slot 3 is structurally serendipity; see also FR-25 for the post-launch regression guarantee).
+- The system can run an empty-state Pulse Digest when there are no qualifying public events and no eligible Personal Events. In this case, the digest shows one card: "No pulse for today."
+- Per-slot engagement is tracked on the AI Cost Dashboard: `slot_1_save_rate`, `slot_2_save_rate`, `slot_3_save_rate`, `slot_3_bounce_rate`.
+
+**Cold-start composition (users with <7 days of Preference Graph data, until ADR-0007 signal threshold is defined):**
+
+- Slot 1 and Slot 2 use the original cold-start formula: `popularity × source_reliability × geographic_distance_factor × freshness_factor` with Bayesian smoothing (α=5, β=5).
+- Slot 3 uses the **inverted** formula above regardless of cold-start state.
+- The geographic distance factor decays from 1.0 (same neighborhood) to 0.3 (different city) using haversine on the user's home city centroid. Events outside the user's home country fall to 0.1.
+- The freshness factor is 1.0 for events ≥3 days out, 1.2 for events 1–3 days out, 1.5 for events ≤24 hours out.
+- "Most-engaged category" during cold start = the highest-popularity category in the user's beachhead over the prior 30 days. "Distinct" means Jaccard overlap on category tags <0.3.
+- Popularity tie-breaker (Slot 2 cold start) is the Bayesian-smoothed posterior mean (α=5, β=5 prior; same as FR-16).
+
+**Personalized ranking (after cold-start window):**
+
+- All three slots use personalized ranking with slot-specific weights. Slot weights are tracked on the AI Cost Dashboard and are subject to the static-weights rule (Amendment A-3 / FR-22).
+- Personalized ranking weights are NOT applied until the signal threshold in the deferred ADR-0007 is met.
 
 **Out of Scope:** More than 3 cards. User-configurable digest size. Per-event "I want more of this" in MVP — Phase 2 (FR-33).
 
-**Notes:** `[ASSUMPTION: digest composition algorithm is deterministic per user per day; rainbow-A/B testing done via shadow composition in the AI Cost Dashboard, not live user experience.]`
+**Notes:** `[ASSUMPTION-2]` — A/B testing done via shadow composition in the AI Cost Dashboard, not live user experience. Live weights are static post-launch (Amendment A-3).
 
 #### FR-6: Pulse Card Information Density
 
@@ -428,17 +449,25 @@ The system extracts structured Events from sources using a hybrid pipeline: stru
 
 **Out of Scope:** Real-time extraction from social posts (Phase 3+). User-facing extraction quality dashboard.
 
-#### FR-15: Event Deduplication
+#### FR-15: Event Deduplication (revised by Amendment A-1)
 
-The system deduplicates extracted events using a hybrid pass: canonical URL match, normalized time + venue match, and embedding similarity (cosine ≥0.85) on event summary vectors. Realizes UJ-1.
+The system deduplicates extracted events using **Event Identity** (canonical tuple; see §3 Glossary). Identity is computed once at ingestion and is structural, not semantic. **Embedding cosine similarity is a review-queue routing signal, not an identity signal.**
 
 **Consequences (testable):**
-- A new event matching an existing event on canonical URL is suppressed.
-- A new event with cosine similarity ≥0.95 to an existing event is auto-merged.
-- A new event with cosine similarity 0.85–0.95 is flagged for review (not merged).
-- The dedup pass is idempotent: re-extracting the same source does not create duplicates.
 
-**Out of Scope:** Cross-language dedup (Phase 3). Auto-merge across >2 ambiguous candidates.
+- Two extracted records with matching `source_id + source_event_id` are auto-merged (same Event).
+- Two extracted records with matching `(venue_fingerprint, start_time_with_tz)` AND `title_fingerprint` Jaccard ≥80% are auto-merged.
+- Two extracted records with matching canonical URL are auto-merged.
+- Two extracted records with embedding cosine ≥0.95 (summary vectors) are added to the editorial review queue (FR-57) as "possible duplicate" — NOT auto-merged.
+- Two extracted records with embedding cosine 0.85–0.95 are flagged on the Source Pipeline dashboard as "watch" — NOT auto-merged.
+- Two extracted records with embedding cosine <0.85 produce no dedup action.
+- The dedup pass is idempotent: re-extracting the same source does not create duplicates.
+- A postponed event whose `start_time_with_tz` changes within ±30 days updates the same `event_id` and appends to `state_history`.
+- A postponed event whose `start_time_with_tz` changes by more than ±30 days creates a new Event.
+- Recurring events (same `series_id`, multiple `event_id`s) are *not* dedup-merged across instances.
+- Embedding model swap does not break dedup: identity is structural.
+
+**Out of Scope:** Cross-language dedup (Phase 3). Auto-merge across >2 ambiguous candidates (always routed to editorial review).
 
 #### FR-16: Source Reliability Score
 
@@ -490,7 +519,57 @@ The system exposes an internal-facing editorial review queue for events that fai
 - The queue is reviewed at least daily by the editorial team / on-call engineer.
 - The queue's current size and average review latency are tracked on the AI Cost Dashboard (FR-29).
 
-**Out of Scope:** User-submitted "report this event" CTA in MVP (Phase 3 candidate).
+**In Scope (MVP, by Amendment A-4):**
+
+- The Detail Screen surfaces a "Report this event" CTA (see FR-59). `EventReport` records enter this queue with priority `user_reported`.
+- The queue's review SLA for user-reported events is 24 hours from submission (vs. the daily-review cadence for non-user-flagged events).
+
+**Out of Scope:** Free-text user feedback in MVP (Phase 2).
+
+#### FR-60: Timezone Source of Truth (added by Amendment A-6)
+
+Every Event has an explicit `start_time_tz` field. Events without an explicit timezone at the source are either inferred via venue resolution or auto-rejected. This is a launch-gating requirement to prevent the "wrong-time event" hallucination class.
+
+**Extraction rule:**
+
+For every extracted Event, the pipeline produces:
+
+- `start_time_local` — the time as written in the source.
+- `start_time_tz` — the timezone as written in the source. **Required.**
+- `start_time_utc` — UTC equivalent, computed from `start_time_local` + `start_time_tz`.
+- `tz_inference_confidence` — 1.0 if the source provided a timezone; lower if inferred (see below).
+
+**Source-coverage tiers:**
+
+| Tier | Source behavior | Pipeline behavior |
+|---|---|---|
+| `full` | Source emits ISO 8601 with offset | `start_time_tz` = offset; `tz_inference_confidence` = 1.0; no editorial review |
+| `partial` | Source emits ISO 8601 without offset but with venue city | Venue registry + IANA timezone database resolves to a timezone. Confidence ≥0.9 → proceed. Confidence 0.7–0.9 → flag with `tz_inference_confidence` and route to editorial review (FR-57). Confidence <0.7 → auto-reject. |
+| `none` | Source emits bare local time without timezone and without reliable venue | Auto-reject. The editorial team may add a venue entry to the registry to enable future ingestion. |
+
+The Source Registry (FR-13) gains a `tz_coverage` field per source. Sources with `tz_coverage = none` are flagged in the Source Pipeline dashboard.
+
+**Display rule:**
+
+- Pulse Card displays the event time in the **user's local timezone**.
+- Detail Screen displays the event time in the user's local timezone AND the venue-local timezone if the user's timezone differs from the venue's by more than 1 hour (label: "venue local time").
+- SEO public URLs (FR-26) include the timezone in Schema.org Event JSON-LD.
+
+**Cross-timezone conflict detection (FR-58):**
+
+- Conflict detection compares events in **UTC**, not local time.
+- The ±30-minute conflict window applies in UTC.
+
+**Consequences (testable):**
+
+- An event with `start_time_tz` missing from the source and not resolvable from venue registry is auto-rejected before reaching the Pulse Digest.
+- An event with `tz_inference_confidence` in [0.7, 0.9] appears in the Pulse Digest with a "venue time approximated" note on the Detail Screen.
+- An event with `tz_inference_confidence` < 0.7 does not appear in any Pulse Digest until editorial review completes.
+- A user in NYC viewing an event at a venue in LA sees the event time in NYC local AND "5:00 PM (venue local time)" on the Detail Screen.
+- The Source Pipeline dashboard surfaces `tz_coverage = none` sources for editorial action.
+- The AI Cost Dashboard (FR-29) tracks: timezone-rejection rate, timezone-review-queue size, mean editorial-review latency for timezone-uncertain events.
+
+**Out of Scope:** Cross-source venue reconciliation beyond the venue registry (Phase 3). Timezone-aware reminder delivery optimization (e.g., send the reminder at 9am venue-local for a user in a different timezone) — current behavior delivers at user-local Reminder Plan slot, deferred to Phase 3.
 
 ### 4.5 Personal Event Management
 
@@ -526,19 +605,75 @@ A Personal Event created with a default Reminder Plan inherits 1d + 1hr. The use
 - A new Personal Event has a Reminder Plan of 1d + 1hr by default.
 - The user can remove all reminders.
 
-#### FR-58: Personal Event Conflict Detection (MVP minimum)
+#### FR-58: Personal Event Conflict Detection (revised by Amendment A-5)
 
-The system detects scheduling conflicts and likely-duplicate events at Personal Event creation time. This is a minimum viable guard — Phase 2 unifies on a Timeline. Realizes "calm" principle at the basic user-input level: the system should never let a user double-book without a calm prompt.
+The system detects scheduling conflicts and likely-duplicate events at Personal Event creation time. Conflict prompts **require an explicit choice** from the user — there is no dismiss-without-resolution option. This is the minimum viable guard at MVP; Phase 2 unifies on a Timeline (FR-32). Realizes "calm" principle at the basic user-input level: the system should never let a user double-book without an explicit decision.
+
+**Conflict detection rules:**
+
+- On Personal Event creation, the system scans for other Personal Events within ±30 minutes of the new event's start time. If found, the user sees a calm inline prompt listing the conflicting event(s).
+- On Personal Event creation, the system flags a likely duplicate when another Personal Event has the same name (case-insensitive, ≥80% Jaccard overlap on tokens) AND starts within 24 hours.
+- A saved public event that overlaps with a Personal Event by >15 minutes is marked with a conflict indicator on both Pulse Cards. Tapping the indicator opens a non-alarming conflict-detail panel.
+
+**Conflict prompt structure (testable):**
+
+The prompt lists the conflicting event(s) and presents exactly three buttons. **There is no "dismiss" or "X" button.** The user must choose one:
+
+1. **"Keep both — I'll manage"** — Confirms both events. The conflict indicator (see §3 Glossary) remains on both Pulse Cards permanently. No further prompting for this conflict pair.
+2. **"Edit the new one"** — Opens the new event in edit mode with the conflicting time pre-highlighted. After editing, conflict detection re-runs.
+3. **"Delete the new one"** — Removes the new event. Confirmation required before deletion completes.
+
+For duplicate-detection prompts, option 2 is relabeled **"Update the existing one"** and opens the existing event in edit mode.
+
+**Conflict indicator visual spec (wireframe-locked):**
+
+- Position: top-right corner of the Pulse Card.
+- Size: 8–10 px.
+- Shape: filled circle.
+- Color: desaturated amber (#B8893D or equivalent). Never red.
+- Accessibility: `aria-label="Schedule conflict"`.
+- Symmetric: identical on both Pulse Cards in the conflict pair.
+- Persistent: remains after the user chooses "Keep both."
+- Distinct from Source Badge (icon-glyph) and Confidence Pulse (● dots) by shape and position alone — color is not the sole carrier of meaning.
 
 **Consequences (testable):**
-- On Personal Event creation, the system scans for other Personal Events within ±30 minutes of the new event's start time. If found, the user sees a calm inline message: "You also have [event name] at [time]. Keep both or change?"
-- On Personal Event creation, the system flags a likely duplicate when another Personal Event has the same name (case-insensitive, ≥80% string overlap) AND starts within 24 hours. The user sees: "Looks like [existing event name] on [date]. Keep both or update the existing one?"
-- A saved public event that overlaps with a Personal Event by >15 minutes is marked with a conflict indicator on both Pulse Cards. Tapping the indicator opens a non-alarming conflict-detail panel.
-- **Conflict indicator visual spec (wireframe-locked):** a small (8–10 px), filled, neutral-tone circle icon positioned at the top-right corner of the Pulse Card; the color is desaturated amber (#B8893D or equivalent), never red, and is accompanied by an `aria-label="Schedule conflict"` for screen readers (per §11.5). The indicator is identical for both Pulse Cards in the conflict pair (symmetric signal); it does not differentiate "this one caused it" vs "this one was overlapped."
-- **Color is not the sole carrier of meaning:** the indicator shape (filled circle) is distinct from the Source Badge (✅/👥/🔗/📥/⚠️) and the Confidence Pulse (● dots); users with color-vision deficiency can distinguish by shape and position alone (per §11.5).
-- The user can dismiss any conflict message with one tap; the system does not re-prompt.
 
-**Out of Scope:** Auto-rebook or alternative suggestions (Phase 2 — FR-33 Conflict-Aware Scheduling). Public-event vs. public-event conflicts at MVP (Phase 2).
+- A Personal Event creation that triggers a conflict prompt requires the user to make one of the three explicit choices before the creation flow can complete.
+- Choosing "Keep both" persists the conflict indicator on both Pulse Cards. Tapping the indicator on either card opens a non-alarming detail panel.
+- Choosing "Edit the new one" or "Delete the new one" resolves the conflict; the conflict indicator is removed from the Pulse Card.
+- A user choosing "Keep both" is not re-prompted for the same conflict pair.
+- A `ConflictResolution` value object is recorded for every conflict prompt, even those resolved by editing or deletion.
+- The conflict indicator is not a "Dismiss" affordance — it is informational. Tapping opens the detail panel, not a silent close.
+
+**Out of Scope:** Auto-rebook or alternative suggestions (Phase 2 — FR-33). Public-event vs. public-event conflicts at MVP (Phase 2). A "Hide conflict indicators" toggle (Phase 2 candidate; conflicts with the calm permanent-reminder design).
+
+#### FR-59: User-Reported Event Quality (added by Amendment A-4)
+
+The Detail Screen exposes a "Report this event" CTA so users can flag quality issues they observe. Realizes the "Trust through transparency" principle: the user can participate in the trust infrastructure, not just consume it.
+
+**CTA placement:**
+
+- Detail Screen, secondary action row (alongside Save, Share, Dismiss).
+- Icon: small flag glyph. Not a primary button.
+- Tap opens a modal with four categories (single-select):
+  1. "Wrong date or time"
+  2. "Wrong venue or address"
+  3. "Doesn't exist or is cancelled"
+  4. "Duplicate of another event"
+
+**Consequences (testable):**
+
+- A user can submit a report with one tap after selecting a category. No free-text field in MVP.
+- On submission, an `EventReport` record is created (User, Event, category, timestamp) and the Event is added to the editorial review queue (FR-57) with priority `user_reported`.
+- The user sees a confirmation toast: "Thanks — we'll review this."
+- The editorial review SLA for user-reported events is 24 hours from submission.
+- Rate limit: 5 reports per user per day. The 6th attempt in a 24h window is silently rate-limited (the modal opens but the submit button is disabled with the message "You've reported 5 events today — try again tomorrow.").
+- All `EventReport`-flagged events require editorial confirmation before action (Approve / Reject / Edit). A single report does not auto-reject an event.
+- Repeat reporters (users whose reports are rejected by editorial ≥80% of the time over the prior 30 days) get a soft warning: "Some recent reports weren't actionable — thanks for being careful." Their reports remain in the queue at reduced priority.
+- `EventReport` records are retained 24 months (matching audit-log retention in §10.2).
+- The AI Cost Dashboard (FR-29) surfaces: `user_reports_per_day`, `report_category_distribution`, `report_to_action_ratio`, `mean_report_review_latency`.
+
+**Out of Scope:** Free-text feedback (Phase 2). User-visible report counter on public Event URLs (rejected — would create a pile-on dynamic violating the calm principle). Auto-rejection on a single report (rejected — editorial confirmation required).
 
 ---
 
@@ -557,18 +692,59 @@ Each Pulse Card shows up to 3 Why-this Tags (3 keywords explaining why the event
 
 **Out of Scope:** Natural-language "Why this?" (Phase 3 — Why Now? — FR-38).
 
-#### FR-22: Confidence Pulse
+#### FR-22: Confidence Pulse (revised by Amendment A-3)
 
-Each Pulse Card shows a 1–5 dot Confidence Pulse (●●●●○ = 4/5). The Confidence Pulse is computed from the AI's certainty about relevance (not just trust in the source). Realizes UJ-1, UJ-4.
+Each Pulse Card shows a 1–5 dot Confidence Pulse (●●●●○ = 4/5). The Confidence Pulse is computed from the AI's certainty about relevance (not just trust in the source). Realizes UJ-1, UJ-4. The formula and weights are **published in the PRD and immutable post-launch** to honor the "Trust through transparency" principle.
+
+**Formula:**
+
+```
+relevance_score = 0.40 × preference_graph_match
+                + 0.25 × source_reliability
+                + 0.20 × recency_fit
+                + 0.15 × novelty_vs_exploration
+```
+
+Where each component is normalized to [0.0, 1.0]. `preference_graph_match` uses the user's Preference Graph with cold-start fallback. `source_reliability` uses the per-Source reliability score (FR-16, Bayesian-smoothed). `recency_fit` measures how well the event's start time aligns with the user's typical engagement windows. `novelty_vs_exploration` balances familiarity (events similar to past saves) against exploration (events outside the user's usual categories).
+
+**Initial weights (MVP, locked):**
+
+| Weight | Component | Value |
+|---|---|---|
+| `w1` | preference_graph_match | 0.40 |
+| `w2` | source_reliability | 0.25 |
+| `w3` | recency_fit | 0.20 |
+| `w4` | novelty_vs_exploration | 0.15 |
+
+**Bucket boundaries (wireframe-locked):**
+
+| relevance_score | Displayed dots |
+|---|---|
+| ≥ 0.85 | 5 (●●●●●) |
+| ≥ 0.65 | 4 (●●●●○) |
+| ≥ 0.45 | 3 (●●●○○) |
+| ≥ 0.25 | 2 (●●○○○) |
+| < 0.25 | 1 (●○○○○) |
+
+**No-flicker rule:** a change in `relevance_score` that does not cross a bucket boundary MUST NOT change the displayed Confidence Pulse on the user's next Pulse Digest. The previous bucket is preserved until the new score crosses the threshold (hysteresis on the boundary, ±0.02 tolerance band).
+
+**Range clamp:** `relevance_score` is clamped to [0.0, 1.0] before bucket mapping; the rendered Confidence Pulse is always 1, 2, 3, 4, or 5.
+
+**Immutability and amendment policy:**
+
+- The weights above are the MVP weights and are locked at launch.
+- Any change to the weights is a PRD amendment requiring explicit product leadership sign-off.
+- Amendments are tracked in `docs/adr/` and surfaced in Settings → Privacy → "Ranking algorithm version" with the amendment date and a link to the relevant ADR.
+- A/B testing of weights on live users is forbidden. All weight experimentation happens in shadow composition (per `[ASSUMPTION-2]` and the shadow pipeline).
+- The Architecture spec describes the *implementation* of the formula but does not redefine the weights.
 
 **Consequences (testable):**
+
 - A Pulse Card always shows a Confidence Pulse.
-- A 1-dot event has lower Confidence in the user's likely interest (could still be surfaced as "serendipity").
-- A 5-dot event has high Confidence in the user's likely interest.
-- **Formula (Algorithm spec):** `relevance_score` is a weighted sum of: (a) preference-graph match (0–1), (b) source reliability score (0–1), (c) recency-vs-event-time fit (0–1), (d) novelty-vs-exploration (0–1). Weights are tunable; the formula is in the Architecture spec. The 1–5 discretization is deliberate UX choice (not 1–100).
-- **Bucket boundaries (wireframe-locked):** the displayed Confidence Pulse is mapped from `relevance_score` using explicit thresholds — ≥0.85 = 5 dots, ≥0.65 = 4 dots, ≥0.45 = 3 dots, ≥0.25 = 2 dots, else 1 dot. The UI renders exactly these 5 states; no interpolation, no partial fills.
-- **No-flicker rule:** a change in `relevance_score` that does not cross a bucket boundary MUST NOT change the displayed Confidence Pulse on the user's next Pulse Digest. The previous bucket is preserved until the new score crosses the threshold (hysteresis on the boundary, ±0.02 tolerance band).
-- **Range clamp:** `relevance_score` is clamped to [0.0, 1.0] before bucket mapping; the rendered Confidence Pulse is always 1, 2, 3, 4, or 5.
+- The displayed dot count matches the bucket boundaries above for any given `relevance_score`.
+- A weight change without a PRD amendment is a CI-level test failure.
+- Settings → Privacy → "Ranking algorithm version" shows the current weights and the last-amendment date.
+- A user reading the PRD can compute the Confidence Pulse for any Event given the inputs.
 
 #### FR-23: Source Badge
 
@@ -602,9 +778,11 @@ Swiping a Pulse Card down dismisses it and signals "less like this" to the AI. R
 - After 3 consecutive dismissals of similar events (clustered by embedding cosine ≥0.7), the system shows a calm prompt: "Less rooftop jazz in your next digest?" — one tap to mute.
 - A mute is reversible from settings.
 
-**Diversity floor (launch gating):**
-- The system never lets dismissal over-fit the digest. The Pulse Digest composition (FR-5) guarantees **at least one card from a `serendipity` category** (low popularity × high source reliability × distinct from user's most-engaged category). This is a hard floor — the diversity card is included even if the user's Preference Graph says "no jazz."
+**Diversity floor (launch gating; revised by Amendment A-2):**
+- The Pulse Digest composition (FR-5) guarantees Slot 3 is a `serendipity` category by formula — low popularity × high source reliability × distinct from the user's most-engaged category. This is a hard floor enforced at composition time, not a post-hoc check.
+- The diversity card is included even if the user's Preference Graph says "no jazz" — serendipity is a product decision, not a user preference.
 - Dismissal signals have a **decay window** of 60 days. After 60 days, the negative signal weight is halved; after 180 days, it expires entirely. The system never permanently bans a category for a user.
+- Why-this Tag on Slot 3 cards reads `discovery` or `new-to-you` (not a category name) to signal the slot's intent.
 
 **Rage-dismiss guard:**
 - The 3-consecutive dismissal cluster requires 3 *distinct events* across a digest window (default: a calendar day). Rapid 3-swipes in <5 seconds are rate-limited: only the first dismissal counts toward the cluster; the next two are recorded but do not advance the cluster counter.
@@ -951,15 +1129,15 @@ Ship-ready functional requirements for the launch MVP:
 - FR-1, FR-2, FR-3, FR-4 — Onboarding & Account
 - FR-5, FR-6, FR-7, FR-8 — Pulse Digest
 - FR-9, FR-10, FR-11, FR-12 — Reminders & Notifications
-- FR-13, FR-14, FR-15, FR-16, FR-17, FR-56, FR-57 — Event Extraction & Source Pipeline
+- FR-13, FR-14, FR-15, FR-16, FR-17, FR-56, FR-57, FR-60 — Event Extraction & Source Pipeline
 - FR-18, FR-19, FR-20, FR-58 — Personal Event Management
-- FR-21, FR-22, FR-23, FR-24, FR-25 — Explainability & Trust
+- FR-21, FR-22, FR-23, FR-24, FR-25, FR-59 — Explainability & Trust
 - FR-26, FR-27, FR-28 — Sharing & Discovery
 - FR-29, FR-30 — AI Cost Discipline
 - FR-53, FR-54, FR-55 — Event State Sync (cancel/postpone/move/sold-out)
 - FR-48, FR-49, FR-50, FR-51, FR-52 — MVP Pro Tier (shipped at launch)
 
-**Total:** 41 MVP FRs (FR-1 through FR-30, FR-48 through FR-58), 17 named FRs for Phase 2/3+ (FR-31 through FR-47), 6 User Journeys, 15 Open Questions, 10 Assumptions, 16 Success Metrics + 5 Counter-metrics, 12 Risks.
+**Total:** 43 MVP FRs (FR-1 through FR-30, FR-48 through FR-60; +2 from Amendment A-4 / FR-59 and Amendment A-6 / FR-60), 17 named FRs for Phase 2/3+ (FR-31 through FR-47), 6 User Journeys, 15 Open Questions, 13 Assumptions (was 10; +3 from Amendments A-3, A-5, A-6), 18 Success Metrics (was 16; +2 from Amendments A-2 and A-4) + 6 Counter-metrics (was 5; +1 from Amendment A-6), 12 Risks.
 
 **Operational:** AI Cost Dashboard, Source Registry, ToS review log, Pro-tier billing integration (Stripe), webhooks for source state sync, editorial review queue.
 
@@ -1010,7 +1188,9 @@ Ship-ready functional requirements for the launch MVP:
 - **SM-7: Pulse Preview conversion**: % of Pulse Preview visitors who sign up. Target: >20%. Validates FR-2.
 - **SM-8: Privacy page dwell > 30s**: Proxy for trust explanation depth. Target: >40% of returning users. Validates FR-21, FR-22.
 - **SM-9: Personal Event creation rate**: % of returning users who create at least one Personal Event. Target: >30% by W4. Validates FR-18, FR-19.
-- **SM-10: Digest novelty rate**: % of Pulse Digest cards the user has not seen in the prior 30 days. Target: >50%. Validates H2 (innovation-strategy: serendipity / discovery-of-new-events). Lower signals corpus is too narrow; higher signals the relevance filter is too loose. Validates FR-5, FR-15.
+- **SM-10: Digest novelty rate**: % of Pulse Digest cards the user has not seen in the prior 30 days. Target: >50%. By slot design (Amendment A-2), Slot 3 is structurally low-novelty-saturation, raising the overall digest novelty rate. Lower than 50% signals the corpus is too narrow or the relevance filter is too loose. Validates FR-5, FR-15.
+- **SM-17: Per-slot engagement** (added by Amendment A-2): Per-slot save rate (`slot_1_save_rate`, `slot_2_save_rate`, `slot_3_save_rate`) and Slot 3 bounce rate (`slot_3_bounce_rate`). Target: Slot 3 save rate ≥10% by Month 3 (validates the anti-popularity inversion); Slot 3 bounce rate <40% (validates the inverted formula). Validates FR-5.
+- **SM-18: User-reported event action rate** (added by Amendment A-4): % of `EventReport`-flagged events for which editorial takes action (Approve, Reject, or Edit) within 24 hours. Target: ≥90% by Month 1. Validates FR-57, FR-59.
 
 ### 7.2 Counter-Metrics (Do Not Optimize)
 
@@ -1019,6 +1199,7 @@ Ship-ready functional requirements for the launch MVP:
 - **SM-C3: Per-user reminder opt-out rate**: % of reminders marked "less like this" or muted. Target: <20%. If rising, signals bad recommendations, not bad UX. Counterbalances SM-5.
 - **SM-C4: Free-tier signup cap conversion**: % of users who hit the free-tier save cap and don't upgrade paths. Target: <10%. Counterbalances growth-vs-monetization trade. Counterbalances SM-7 (Pulse Preview conversion).
 - **SM-C5: Per-MAU TCO**: Total cost to serve one monthly active user, per FR-29's cost-category breakdown. Target: ≤$1.25/month at MVP; ≤$0.55/month at 1M MAU. Trend MUST be down over time. Replaces the older "AI cost per MAU" lens — full TCO catches hosting, email, support, and other costs that AI-only metrics miss. Counterbalances any "more personalization" push. Counterbalances SM-6 (D7 retention) — keeping cost down is the discipline that keeps growth sustainable.
+- **SM-C6: Timezone-rejection rate** (added by Amendment A-6): % of extracted events auto-rejected for missing `start_time_tz`. Target: <5% at MVP launch. Counterbalances FR-13's source-count floor — sources with `tz_coverage = none` are penalized for the corpus floor but not removed. Counterbalances SM-10 (Digest novelty rate) by ensuring novelty comes from legitimate sources, not timezone-broken ones. Validates FR-60.
 
 ### 7.3 Lagging Indicators (Months 2–12)
 
@@ -1073,6 +1254,9 @@ Ship-ready functional requirements for the launch MVP:
 - **[ASSUMPTION-8]** From §4.6 FR-25 — "Less like this" swipe is the only dismissal signal in MVP. Nuanced dismissals (e.g., "not for me but similar events are fine") in Phase 2.
 - **[ASSUMPTION-9]** From §4.7 FR-26 — Public event pages are not user-generated-content; they reflect the registry's source-of-truth only.
 - **[ASSUMPTION-10]** From §7.1 SM-1 — "Time-to-first-relevant-event" includes both Pulse Preview (anonymous) and post-signup first Pulse Digest. The 30-second target is for the post-signup path.
+- **[ASSUMPTION-11]** From Amendment A-3 / FR-22 — Confidence Pulse formula weights (`w1=0.40, w2=0.25, w3=0.20, w4=0.15`) are locked at MVP launch. Any change requires a PRD amendment with a changelog entry visible in Settings → Privacy → "Ranking algorithm version." A/B testing on live weights is forbidden; shadow composition is the only sanctioned channel.
+- **[ASSUMPTION-12]** From Amendment A-5 / FR-58 — Conflict prompts require an explicit choice (Keep both / Edit the new one / Delete the new one). No dismiss-without-resolution option. The conflict indicator persists on Pulse Cards after "Keep both" is chosen as a calm permanent reminder.
+- **[ASSUMPTION-13]** From Amendment A-6 / FR-60 — Every Event has an explicit `start_time_tz`. Sources with `tz_coverage = none` (bare local time without reliable venue) are auto-rejected for corpus inclusion. The venue registry is a new infrastructure component supporting both FR-60 timezone resolution and FR-15 Event Identity `venue_fingerprint`.
 
 ---
 
@@ -1229,6 +1413,15 @@ The AI Cost Dashboard (FR-29) is **operational from day 1.** The default per-MAU
 - English-first MVP. i18n architecture in place (string externalization, locale-aware date/time).
 - Multi-region rollout (EU, APAC) is Phase 2+.
 
+**Event timezone handling (per Amendment A-6 / FR-60):**
+
+- Every Event has an explicit `start_time_tz` field. Timezone inference uses a venue registry + IANA timezone database.
+- The Pulse Card displays event time in the user's local timezone. The Detail Screen displays venue-local time when the user's timezone differs by >1 hour.
+- Conflict detection (FR-58) operates in UTC.
+- Cross-timezone event delivery (e.g., a user in NYC viewing an LA event) is a core MVP capability, not a Phase 2 feature.
+
+**Multi-region rollout (EU, APAC) is Phase 2+.** The GDPR / UK GDPR / EU-launch-gate commitments in §10.1 are jurisdiction-dependent and proceed independently of i18n rollout.
+
 ---
 
 ## 12. Why Now
@@ -1325,6 +1518,7 @@ This is a **launch blocker**, not a polish item. Live competitive re-verificatio
 | **Delete my account** | CTA → 30-day grace period → permanent deletion (per §10.1). Confirmation modal explains what is and isn't retained (anonymized aggregates survive). | All users |
 | **Geo-IP usage** | Toggle to opt out of geo-IP inference; fallback to "most popular city" or manually-selected city | All users |
 | **Training opt-out** | Confirms EventPulse24 never uses personal data for model training (per §10.2); informational | All users |
+| **Ranking algorithm version** | Displays the Confidence Pulse formula weights (currently `w1=0.40, w2=0.25, w3=0.20, w4=0.15`), the bucket boundaries, and the last-amendment date. Links to the relevant PRD section and the ADR changelog. Read-only. Satisfies the "Trust through transparency" principle. | All users |
 
 ### 14.2 Navigation
 
