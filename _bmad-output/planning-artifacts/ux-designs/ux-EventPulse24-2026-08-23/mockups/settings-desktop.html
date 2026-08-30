@@ -36,7 +36,7 @@
   .sidenav h1 { font-family: var(--family-display); font-size: 28px; font-weight: 700; margin: 0 0 18px; color: var(--ink-primary); letter-spacing: -0.01em; }
   .sidenav ul { list-style: none; padding: 0; margin: 0; }
   .sidenav li { margin-bottom: 2px; }
-  .sidenav a { display: block; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-muted); font-weight: 500; }
+  .sidenav a { display: block; padding: 8px 12px; border-radius: 6px; font-size: 14px; color: var(--ink-muted); font-weight: 500; transition: color 160ms ease, background 160ms ease; }
   .sidenav a:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
   .sidenav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
 
@@ -45,32 +45,35 @@
   .section h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 16px; color: var(--ink-primary); }
   .section .desc { font-size: 13px; color: var(--ink-muted); margin: -8px 0 18px; line-height: 1.5; }
 
-  .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); gap: 16px; }
   .row:first-of-type { border-top: 0; padding-top: 0; }
   .row-label strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
   .row-label span { font-size: 12px; color: var(--ink-muted); line-height: 1.4; }
 
-  /* Theme toggle */
-  .theme-pick { display: flex; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 3px; }
-  .theme-pick button { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-muted); }
-  .theme-pick button.active { background: var(--accent-terracotta); color: var(--ink-inverse); }
+  /* Theme segmented control — selection communicates via tint + ink-primary label. */
+  .theme-pick { display: flex; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 3px; }
+  .theme-pick button { padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: 500; color: var(--ink-muted); transition: background 160ms ease, color 160ms ease; }
+  .theme-pick button:hover { color: var(--ink-secondary); }
+  .theme-pick button.active { background: var(--surface-subtle); color: var(--ink-primary); }
 
-  /* Switch */
-  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
-  .switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
-  .switch.on { background: var(--accent-terracotta); }
-  .switch.on::after { transform: translateX(16px); background: var(--ink-primary); }
+  /* Switch — neutral track; thumb color signals state. Avoids terracotta track fill (reserved). */
+  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--surface-inset); border: 1px solid var(--border-strong); position: relative; transition: background 160ms ease; }
+  .switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--ink-secondary); top: 2px; left: 2px; transition: transform 160ms ease, background 160ms ease; }
+  .switch.on { background: var(--surface-elevated); border-color: var(--accent-terracotta); }
+  .switch.on::after { transform: translateX(16px); background: var(--accent-terracotta); }
 
   /* Time input */
   .time-row { display: flex; align-items: center; gap: 10px; }
-  .time-input { background: var(--surface-elevated); border: 1px solid var(--border-subtle); padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-primary); width: 80px; text-align: center; font-family: var(--family-body); }
+  .time-input { background: var(--surface-elevated); border: 1px solid var(--border-subtle); padding: 8px 12px; border-radius: 6px; font-size: 14px; color: var(--ink-primary); width: 80px; text-align: center; font-family: var(--family-body); transition: border-color 160ms ease; }
+  .time-input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; border-color: transparent; }
 
   /* Pro upsell row */
   .pro-card { background: linear-gradient(135deg, rgba(255,106,71,0.10), rgba(110,126,146,0.10)); border: 1px solid rgba(255,106,71,0.25); border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-  .pro-card .pill { display: inline-block; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 3px 8px; border-radius: 4px; font-weight: 700; margin-bottom: 6px; }
+  .pro-card .pill { display: inline-block; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 3px 8px; border-radius: 6px; font-weight: 700; margin-bottom: 6px; }
   .pro-card h3 { font-family: var(--family-display); font-size: 18px; margin: 0 0 4px; color: var(--ink-primary); }
   .pro-card p { font-size: 13px; color: var(--ink-secondary); margin: 0; }
-  .pro-card .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+  .pro-card .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 600; transition: background 160ms ease; }
+  .pro-card .btn-primary:hover { background: #FF7E5E; }
 
   /* Account */
   .account { display: flex; gap: 14px; align-items: center; }
@@ -78,9 +81,13 @@
   .account strong { font-size: 14px; color: var(--ink-primary); display: block; }
   .account span { font-size: 12px; color: var(--ink-muted); }
 
-  .ghost { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
-  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
-  .danger { color: var(--accent-terracotta); font-size: 13px; font-weight: 500; }
+  /* DESIGN §Components.button.secondary: 12px radius on dark. */
+  .ghost { padding: 8px 14px; border-radius: 12px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); background: var(--surface-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .ghost:hover { background: var(--surface-inset); color: var(--ink-primary); border-color: var(--border-strong); }
+  .ghost:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  /* DESIGN §Colors: signal.error is the destructive color, not terracotta. */
+  .danger { color: var(--signal-error); font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 12px; background: transparent; transition: background 160ms ease; }
+  .danger:hover { background: rgba(198,106,92,0.10); }
 </style>
 </head>
 <body>
@@ -136,7 +143,7 @@
           </div>
           <div class="row">
             <div class="row-label"><strong>Timezone</strong><span>Auto-detected from your device.</span></div>
-            <button class="ghost">America/New_York (EDT) →</button>
+            <button class="ghost">America/New_York (EDT)</button>
           </div>
           <div class="row">
             <div class="row-label"><strong>Email reminders</strong><span>Multi-tier reminders for events you save.</span></div>
@@ -157,7 +164,7 @@
           </div>
           <div class="row">
             <div class="row-label"><strong>Per-day quiet hours</strong><span>Pro — e.g., no pings Sat morning.</span></div>
-            <button class="ghost">Upgrade to Pro →</button>
+            <button class="ghost">Upgrade to Pro</button>
           </div>
         </section>
 
@@ -165,7 +172,7 @@
           <h2>Calendar sync</h2>
           <p class="desc">Connect a calendar to see personal events alongside public ones. Read-only.</p>
           <div class="row">
-            <div class="row-label"><strong>Google Calendar</strong><span style="color: var(--signal-success, #7AAA7A);">● Connected as maya@gmail.com</span></div>
+            <div class="row-label"><strong>Google Calendar</strong><span style="color: var(--signal-success, #7AAA7A); display: inline-flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--signal-success, #7AAA7A);"></span>Connected as maya@gmail.com</span></div>
             <button class="ghost">Disconnect</button>
           </div>
           <div class="row">
@@ -197,7 +204,7 @@
               <h3>Unlimited saves, custom quiet hours, calendar sync.</h3>
               <p>You saved 1 of 1 this week. The next one will nudge.</p>
             </div>
-            <button class="btn-primary">Upgrade →</button>
+            <button class="btn-primary">Upgrade to Pro</button>
           </div>
         </section>
 
@@ -209,7 +216,7 @@
           </div>
           <div class="row">
             <div class="row-label"><strong>Delete account</strong><span>Permanent. Cannot be undone.</span></div>
-            <button class="danger">Delete account →</button>
+            <button class="danger">Delete account</button>
           </div>
         </section>
       </main>

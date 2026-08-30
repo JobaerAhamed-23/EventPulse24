@@ -32,27 +32,29 @@
   .skip-all:hover { color: var(--ink-secondary); }
 
   .container { flex: 1; max-width: 720px; margin: 0 auto; padding: 64px 24px 48px; width: 100%; }
-  .steps { display: flex; gap: 8px; margin-bottom: 48px; }
-  .step { flex: 1; height: 4px; border-radius: 2px; background: var(--accent-terracotta); }
+  .steps { display: flex; gap: 8px; margin-bottom: 56px; }
+  .step { flex: 1; height: 4px; border-radius: 2px; background: var(--ink-primary); }
   .step.pending { background: var(--surface-inset); }
 
-  .step-label { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; }
-  .step-label .count { color: var(--accent-terracotta); }
   h1 { font-family: var(--family-display); font-size: 40px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; color: var(--ink-primary); }
   .lede { font-size: 16px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 32px; }
 
+  /* DESIGN §Components.input.chip: subtle fill, secondary ink, 6px radius. */
   .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
-  .chip { padding: 10px 16px; border-radius: 999px; border: 1px solid var(--border-subtle); font-size: 14px; color: var(--ink-secondary); background: var(--surface-elevated); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
-  .chip:hover { background: var(--surface-subtle); }
-  .chip.selected { border-color: var(--accent-terracotta); background: rgba(255,106,71,0.10); color: var(--accent-terracotta); }
-  .chip .glyph { font-size: 13px; opacity: 0.7; }
+  .chip { padding: 10px 14px; border-radius: 6px; border: 1px solid transparent; font-size: 14px; color: var(--ink-secondary); background: var(--surface-subtle); font-weight: 500; display: inline-flex; align-items: center; gap: 8px; transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .chip:hover { background: var(--surface-inset); color: var(--ink-primary); }
+  .chip:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  /* DESIGN §Components.input.chip selection: tint + label color shift, no terracotta border. */
+  .chip.selected { background: rgba(255,106,71,0.10); color: var(--accent-terracotta); border-color: transparent; }
+  .chip .glyph { width: 14px; height: 14px; opacity: 0.8; }
 
   .footer-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; }
   .skip-link { color: var(--ink-muted); font-size: 14px; font-weight: 500; padding: 10px 16px; }
   .skip-link:hover { color: var(--ink-secondary); }
-  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: background 160ms ease; }
   .btn-primary:disabled { background: var(--surface-inset); color: var(--ink-muted); cursor: not-allowed; }
   .btn-primary:hover:not(:disabled) { background: #FF7E5E; }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -67,17 +69,19 @@
       <div class="step"></div>
       <div class="step pending"></div>
     </div>
-    <div class="step-label">
-      <span>Step 2 of 3 · Optional</span>
-      <span class="count">2 of 3 picked</span>
-    </div>
     <h1>What kinds of things?</h1>
     <p class="lede">Pick up to three. We'll bias your brief toward them — and your serendipity slot toward something <em>else</em>. Skip and we'll learn from your first week instead.</p>
 
     <div class="chips">
-      <button class="chip selected">● Music <span class="glyph">✓</span></button>
+      <button class="chip selected">
+        Music
+        <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 7"/></svg>
+      </button>
       <button class="chip">Tech &amp; meetups</button>
-      <button class="chip selected">● Food &amp; dining <span class="glyph">✓</span></button>
+      <button class="chip selected">
+        Food &amp; dining
+        <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 7"/></svg>
+      </button>
       <button class="chip">Sports &amp; fitness</button>
       <button class="chip">Arts &amp; culture</button>
       <button class="chip">Family &amp; kids</button>
@@ -93,7 +97,7 @@
       <button class="skip-link">← Back</button>
       <div style="display: flex; gap: 12px; align-items: center;">
         <button class="skip-link">Skip for now</button>
-        <button class="btn-primary">Continue →</button>
+        <button class="btn-primary">Continue</button>
       </div>
     </div>
   </main>

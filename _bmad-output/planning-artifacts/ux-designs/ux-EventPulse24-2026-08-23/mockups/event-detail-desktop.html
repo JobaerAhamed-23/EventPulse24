@@ -30,24 +30,23 @@
   .frame { padding: 0 80px; min-height: 100vh; }
   .container { max-width: 1180px; margin: 0 auto; padding: 24px 0 80px; }
 
-  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 32px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 32px 0 24px; }
   .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
-  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
-  .back { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 13px; font-weight: 500; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .back { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 13px; font-weight: 500; transition: color 160ms ease; }
   .back:hover { color: var(--ink-secondary); }
 
   .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px; }
   @media (max-width: 1023px) { .grid { grid-template-columns: 1fr; } }
 
-  /* Main column */
-  .stripe { width: 4px; height: 32px; background: var(--cool-public); border-radius: 0 3px 3px 0; margin-bottom: 20px; }
-  .type-label { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cool-public); margin-bottom: 14px; }
+  /* Main column — no eyebrow above H1; let the headline carry. */
+  .kicker { font-family: var(--family-body); font-size: 13px; font-weight: 600; color: var(--cool-public); margin: 0 0 14px; letter-spacing: 0.005em; }
   h1 { font-family: var(--family-display); font-size: 40px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 16px; color: var(--ink-primary); }
 
-  .meta-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 8px; font-size: 14px; color: var(--ink-secondary); }
-  .meta-row .label { color: var(--ink-muted); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 4px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; margin-bottom: 8px; font-size: 14px; color: var(--ink-secondary); }
+  .meta-row .label { color: var(--ink-muted); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 8px; }
   .meta-row .item { display: inline-flex; align-items: center; gap: 6px; }
-  .meta-row .glyph { color: var(--ink-muted); }
+  .meta-row .glyph { color: var(--ink-muted); width: 14px; height: 14px; flex-shrink: 0; }
 
   .tagsline { font-style: italic; font-size: 14px; color: var(--ink-muted); margin: 16px 0 28px; }
   .tagsline .tag { color: var(--ink-secondary); }
@@ -60,15 +59,17 @@
 
   /* Why-this breakdown */
   .why { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-  .why-row { display: flex; gap: 14px; padding: 10px 0; align-items: flex-start; }
+  .why-row { display: flex; gap: 14px; padding: 12px 0; align-items: flex-start; }
   .why-row + .why-row { border-top: 1px solid var(--border-subtle); }
-  .why-row .glyph { width: 28px; height: 28px; border-radius: 50%; background: rgba(255,106,71,0.12); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; flex-shrink: 0; }
+  .why-row .glyph { width: 28px; height: 28px; border-radius: 8px; background: var(--surface-subtle); color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .why-row .glyph svg { width: 14px; height: 14px; }
   .why-row .body strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
   .why-row .body p { font-size: 13px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
 
   /* Source box */
-  .source-box { display: flex; gap: 14px; align-items: center; padding: 16px; background: var(--surface-subtle); border-radius: 10px; margin-bottom: 12px; }
+  .source-box { display: flex; gap: 14px; align-items: center; padding: 16px; background: var(--surface-subtle); border-radius: 12px; margin-bottom: 12px; }
   .source-box .badge { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 500; color: var(--accent-terracotta); }
+  .source-box .badge svg { width: 14px; height: 14px; }
   .source-box .name { font-size: 13px; color: var(--ink-secondary); }
   .source-box .reliability { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); margin-left: auto; }
 
@@ -77,31 +78,41 @@
   .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
   .panel h3 { color: var(--ink-primary); font-family: var(--family-display); font-size: 16px; text-transform: none; letter-spacing: 0; margin-bottom: 14px; }
 
-  /* Reminder picker */
+  /* Reminder picker — selected chip uses tint + label color, never terracotta fill. */
   .reminder-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-  .rem-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--surface-subtle); border-radius: 8px; }
-  .rem-row.on { background: rgba(255,106,71,0.10); border: 1px solid rgba(255,106,71,0.30); }
+  .rem-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--surface-subtle); border: 1px solid transparent; border-radius: 6px; }
+  .rem-row.on { background: rgba(255,106,71,0.10); border-color: rgba(255,106,71,0.30); }
   .rem-row .when { font-family: var(--family-mono); font-size: 13px; color: var(--ink-primary); font-weight: 600; }
+  .rem-row.on .when { color: var(--accent-terracotta); }
   .rem-row .rel { font-size: 11px; color: var(--ink-muted); }
-  .toggle { width: 36px; height: 20px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
+  .toggle { width: 36px; height: 20px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; border: 0; padding: 0; }
   .toggle::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
   .toggle.on { background: var(--accent-terracotta); }
   .toggle.on::after { transform: translateX(16px); background: var(--ink-primary); }
 
-  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+  /* DESIGN §Components.button.primary: terracotta fill, 12px radius. */
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; transition: background 160ms ease; }
   .btn-primary:hover { background: #FF7E5E; }
-  .ghost { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 6px; }
-  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  /* DESIGN §Components.button.secondary: 12px radius on dark. */
+  .ghost { padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 6px; background: var(--surface-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .ghost:hover { background: var(--surface-inset); color: var(--ink-primary); border-color: var(--border-strong); }
+  .ghost:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
 
   .actions { display: flex; gap: 8px; margin-top: 12px; }
   .actions .ghost { flex: 1; justify-content: center; }
 
-  .neighbor { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-secondary); padding: 8px 0; }
-  .neighbor .av { width: 24px; height: 24px; border-radius: 50%; background: var(--accent-slate); }
-  .neighbor .count { font-family: var(--family-mono); font-size: 13px; color: var(--ink-primary); font-weight: 600; }
+  /* Similar-events row — neutral list, no social-proof chrome. */
+  .similar { border-top: 1px solid var(--border-subtle); padding: 12px 0; font-size: 13px; color: var(--ink-secondary); }
+  .similar:first-of-type { border-top: 0; padding-top: 4px; }
+  .similar strong { display: block; color: var(--ink-primary); margin-bottom: 2px; font-weight: 600; font-size: 14px; }
+
+  /* Map placeholder — minimal grid backdrop, honest label, no emoji. */
+  .map-placeholder { height: 240px; border-radius: 12px; background-color: var(--surface-subtle); background-image: linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px); background-size: 32px 32px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; color: var(--ink-muted); font-size: 13px; }
 
   .report { font-size: 12px; color: var(--ink-muted); padding: 12px 0 0; border-top: 1px solid var(--border-subtle); margin-top: 12px; }
   .report a { color: var(--ink-secondary); text-decoration: underline; text-decoration-color: var(--ink-faint); text-underline-offset: 3px; }
+  .report a:hover { color: var(--ink-primary); }
 </style>
 </head>
 <body>
@@ -114,18 +125,13 @@
 
     <div class="grid">
       <main>
-        <div class="stripe"></div>
-        <div class="type-label">Public event · nearby</div>
+        <p class="kicker">Public event · nearby</p>
         <h1>Free tech meetup — "Designing for Calm"</h1>
 
         <div class="meta-row">
-          <span class="item"><span class="glyph">●</span> <span class="label">When</span> Thu, Aug 28 · 6:30 PM (your time)</span>
-        </div>
-        <div class="meta-row">
-          <span class="item"><span class="glyph">●</span> <span class="label">Where</span> Brooklyn Arts Council, 4 blocks from work</span>
-        </div>
-        <div class="meta-row">
-          <span class="item"><span class="glyph">●</span> <span class="label">Cost</span> Free</span>
+          <span class="item"><span class="label">When</span> Thu, Aug 28 · 6:30 PM (your time)</span>
+          <span class="item"><span class="label">Where</span> Brooklyn Arts Council, 4 blocks from work</span>
+          <span class="item"><span class="label">Cost</span> Free</span>
         </div>
 
         <p class="tagsline">
@@ -137,28 +143,36 @@
         <h2>Why is this in your brief?</h2>
         <div class="why">
           <div class="why-row">
-            <div class="glyph">📍</div>
+            <span class="glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.5-7-12a7 7 0 0 1 14 0c0 4.5-7 12-7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            </span>
             <div class="body">
               <strong>It's four blocks from your office.</strong>
               <p>You marked "Brooklyn, NY" as your city and your work address falls within the recommended radius.</p>
             </div>
           </div>
           <div class="why-row">
-            <div class="glyph">⭐</div>
+            <span class="glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 2.6 6.3 6.8.6-5.1 4.5 1.5 6.6L12 16.9 6.2 20l1.5-6.6L2.6 8.9l6.8-.6Z"/></svg>
+            </span>
             <div class="body">
               <strong>Confidence 4/5 — high match.</strong>
               <p>You attended 2 similar events in the past 60 days and saved the most recent one.</p>
             </div>
           </div>
           <div class="why-row">
-            <div class="glyph">🆓</div>
+            <span class="glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12h6"/><path d="M12 9v6"/></svg>
+            </span>
             <div class="body">
               <strong>Free, no ticket required.</strong>
               <p>You haven't filtered by paid events.</p>
             </div>
           </div>
           <div class="why-row">
-            <div class="glyph">✅</div>
+            <span class="glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+            </span>
             <div class="body">
               <strong>Verified source: Brooklyn Arts Council.</strong>
               <p>Official-site source; reliability score 0.91 (Bayesian-smoothed).</p>
@@ -168,18 +182,19 @@
 
         <h2>Source</h2>
         <div class="source-box">
-          <span class="badge">✅ Verified · Official site</span>
+          <span class="badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 7"/></svg>
+            Verified · Official site
+          </span>
           <span class="name">brooklynartscouncil.org</span>
-          <span class="reliability">reliability 0.91</span>
+          <span class="reliability">reliability&nbsp;0.91</span>
         </div>
         <div class="report">
           Something off? <a href="#">Report this event</a> · wrong date, wrong venue, doesn't exist, or a duplicate.
         </div>
 
         <h2>Map</h2>
-        <div style="height: 240px; border-radius: 12px; background: linear-gradient(135deg, var(--surface-subtle), var(--surface-inset)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; color: var(--ink-muted); font-size: 13px;">
-          🗺 Map — Brooklyn Arts Council (4 blocks from work)
-        </div>
+        <div class="map-placeholder" aria-label="Map placeholder — Brooklyn Arts Council, 4 blocks from work">Map · Brooklyn Arts Council</div>
       </main>
 
       <aside class="aside" aria-label="Actions">
@@ -218,7 +233,7 @@
           <button class="ghost" style="width: 100%; justify-content: center;">+ Add custom slot</button>
 
           <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
-            <button class="btn-primary">Save to my Pulse →</button>
+            <button class="btn-primary">Save to my Pulse</button>
             <div class="actions">
               <button class="ghost">Share</button>
               <button class="ghost">Less like this</button>
@@ -227,22 +242,23 @@
         </div>
 
         <div class="panel">
-          <h3>Neighbors</h3>
-          <div class="neighbor">
-            <div class="av"></div><div class="av" style="margin-left: -8px; background: var(--warm-personal);"></div><div class="av" style="margin-left: -8px; background: var(--accent-amber);"></div>
-            <div><span class="count">12 neighbors</span> tracking this in Brooklyn</div>
-          </div>
-          <div style="font-size: 12px; color: var(--ink-muted); margin-top: 8px;">Privacy-respecting — no identifying info.</div>
+          <h3>Often saved with this one</h3>
+          <p style="margin: 0; font-size: 13px; color: var(--ink-secondary); line-height: 1.55;">
+            People who saved "Designing for Calm" also saved talks in the Calm Tech track and free neighborhood meetups within 2 km.
+          </p>
+          <p style="margin: 12px 0 0; font-size: 12px; color: var(--ink-muted);">
+            Aggregated, never personal. No names, no counts.
+          </p>
         </div>
 
         <div class="panel">
           <h3>Similar events you've attended</h3>
-          <div style="font-size: 13px; color: var(--ink-secondary); padding: 8px 0; border-top: 1px solid var(--border-subtle);">
-            <strong style="color: var(--ink-primary); display: block; margin-bottom: 2px;">Design Systems NYC — April</strong>
+          <div class="similar">
+            <strong>Design Systems NYC — April</strong>
             Brooklyn · attended
           </div>
-          <div style="font-size: 13px; color: var(--ink-secondary); padding: 8px 0; border-top: 1px solid var(--border-subtle);">
-            <strong style="color: var(--ink-primary); display: block; margin-bottom: 2px;">Calm Tech Conference — Feb</strong>
+          <div class="similar">
+            <strong>Calm Tech Conference — Feb</strong>
             Manhattan · attended
           </div>
         </div>

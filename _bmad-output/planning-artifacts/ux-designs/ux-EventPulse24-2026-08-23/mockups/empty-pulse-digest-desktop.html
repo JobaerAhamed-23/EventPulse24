@@ -32,26 +32,31 @@
   .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
 
   .pagehead { padding: 56px 0 40px; max-width: 720px; }
-  .pagehead .eyebrow { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; margin-bottom: 18px; }
   .pagehead h1 { font-family: var(--family-display); font-size: 48px; font-weight: 700; line-height: 1.10; letter-spacing: -0.02em; margin: 0 0 14px; color: var(--ink-primary); }
+  .pagehead .meta { font-family: var(--family-mono, monospace); font-size: 14px; color: var(--ink-muted); margin: 0 0 18px; }
   .pagehead p { font-size: 18px; line-height: 1.55; color: var(--ink-secondary); margin: 0; }
 
   /* Empty-state card */
-  .empty { background: var(--surface-elevated); border: 1px dashed var(--border-strong); border-radius: 16px; padding: 80px 48px; text-align: center; max-width: 720px; margin: 0 auto; }
-  .empty .glyph { width: 64px; height: 64px; border-radius: 50%; background: var(--surface-subtle); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 28px; box-shadow: 0 0 0 6px rgba(255,106,71,0.08); }
-  .empty h2 { font-family: var(--family-display); font-size: 32px; font-weight: 600; margin: 0 0 12px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .empty { background: var(--surface-elevated); border: 1px dashed var(--border-strong); border-radius: 12px; padding: 80px 48px; text-align: center; max-width: 720px; margin: 0 auto; }
+  /* Quiet glyph: inset circle, neutral ink, no halo, no terracotta. */
+  .empty .glyph { width: 56px; height: 56px; border-radius: 50%; background: var(--surface-subtle); color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; margin: 0 auto 24px; }
+  .empty .glyph svg { width: 24px; height: 24px; }
+  .empty h2 { font-family: var(--family-display); font-size: 32px; font-weight: 600; margin: 0 0 12px; color: var(--ink-primary); letter-spacing: -0.012em; }
   .empty p { font-size: 15px; line-height: 1.6; color: var(--ink-secondary); margin: 0 auto 28px; max-width: 480px; }
   .empty-actions { display: flex; justify-content: center; gap: 12px; }
-  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; }
-  .ghost { padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
-  .ghost:hover { background: var(--surface-subtle); }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: background 160ms ease; }
+  .btn-primary:hover { background: #FF7E5E; }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .ghost { padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); background: var(--surface-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .ghost:hover { background: var(--surface-inset); color: var(--ink-primary); border-color: var(--border-strong); }
 
-  /* Suggested sources strip */
+  /* Suggested sources strip — chips, not pills. Plus glyph as neutral inline SVG. */
   .suggested { margin-top: 64px; padding-top: 48px; border-top: 1px solid var(--border-subtle); }
   .suggested h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-secondary); margin: 0 0 16px; letter-spacing: -0.01em; }
-  .sources { display: flex; gap: 12px; flex-wrap: wrap; }
-  .source { padding: 10px 14px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 999px; font-size: 13px; color: var(--ink-secondary); }
-  .source::before { content: "+"; color: var(--accent-terracotta); font-weight: 700; margin-right: 8px; }
+  .sources { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .source { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 6px; font-size: 13px; color: var(--ink-secondary); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .source:hover { background: var(--surface-inset); color: var(--ink-primary); border-color: var(--border-strong); }
+  .source svg { width: 12px; height: 12px; color: var(--ink-muted); }
 </style>
 </head>
 <body>
@@ -63,13 +68,15 @@
     </nav>
 
     <header class="pagehead">
-      <div class="eyebrow">Tuesday · Aug 26, 2026 · Brooklyn, NY</div>
+      <p class="meta">Tuesday · Aug 26, 2026 · Brooklyn, NY</p>
       <h1>No pulse today.</h1>
       <p>Your week is quiet. We don't pad it.</p>
     </header>
 
     <div class="empty">
-      <div class="glyph" aria-hidden="true">◌</div>
+      <span class="glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
+      </span>
       <h2>Nothing qualifying today.</h2>
       <p>No public events matched your city, your interests, and our confidence threshold. Rather than show filler, here's the silence — and a way to add a source if you'd like.</p>
       <div class="empty-actions">
@@ -80,11 +87,26 @@
       <div class="suggested">
         <h3>Suggested sources for you</h3>
         <div class="sources">
-          <button class="source">Brooklyn Public Library events</button>
-          <button class="source">Greenpoint calendar</button>
-          <button class="source">BAM</button>
-          <button class="source">NYT Arts &amp; culture</button>
-          <button class="source">Luma community</button>
+          <button class="source">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            Brooklyn Public Library events
+          </button>
+          <button class="source">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            Greenpoint calendar
+          </button>
+          <button class="source">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            BAM
+          </button>
+          <button class="source">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            NYT Arts &amp; culture
+          </button>
+          <button class="source">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            Luma community
+          </button>
         </div>
       </div>
     </div>

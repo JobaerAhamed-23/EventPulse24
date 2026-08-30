@@ -25,28 +25,34 @@
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
   .backdrop { position: fixed; inset: 0; background: rgba(10,10,11,0.7); backdrop-filter: blur(8px); z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 8vh; }
-  .modal { width: 560px; max-width: 92vw; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.6); overflow: hidden; }
+  /* DESIGN §Elevation: the single allowed shadow for floating surfaces. */
+  .modal { width: 560px; max-width: 92vw; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.40); overflow: hidden; }
 
   .head { padding: 24px 28px 8px; text-align: center; }
-  .glyph { width: 44px; height: 44px; margin: 0 auto 14px; border-radius: 50%; background: rgba(216,168,106,0.15); color: var(--warn-amber); display: inline-flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 0 0 4px rgba(216,168,106,0.10); }
-  h2 { font-family: var(--family-display); font-size: 24px; font-weight: 600; margin: 0 0 6px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  /* DESIGN §Components.indicator.conflict: filled amber circle. No halo. */
+  .head .glyph { width: 44px; height: 44px; margin: 0 auto 14px; border-radius: 50%; background: rgba(216,168,106,0.15); color: var(--warn-amber); display: inline-flex; align-items: center; justify-content: center; }
+  .head .glyph svg { width: 20px; height: 20px; }
+  h2 { font-family: var(--family-display); font-size: 24px; font-weight: 600; margin: 0 0 6px; color: var(--ink-primary); letter-spacing: -0.012em; }
   .sub { font-size: 14px; line-height: 1.5; color: var(--ink-secondary); margin: 0 auto; max-width: 380px; }
 
   .body { padding: 16px 28px 24px; }
   .events { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 24px; }
-  .evt { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; position: relative; }
+  .evt { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px; position: relative; }
   .evt .when { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
   .evt .title { font-family: var(--family-display); font-size: 16px; font-weight: 600; line-height: 1.3; margin: 0 0 4px; color: var(--ink-primary); }
   .evt .where { font-size: 12px; color: var(--ink-muted); }
-  .evt .pin { position: absolute; top: 14px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 0 3px rgba(216,168,106,0.20); }
-  .evt .new { border-color: var(--accent-terracotta); background: rgba(255,106,71,0.06); }
-  .evt .new::before { content: "NEW"; position: absolute; top: -8px; left: 14px; font-size: 9px; font-weight: 700; letter-spacing: 0.10em; color: var(--accent-terracotta); background: var(--surface-elevated); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,106,71,0.30); }
+  .evt .pin { position: absolute; top: 14px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-amber); }
+  /* The new event reads as new via a hairline-strong border + a NEW tag in ink; terracotta is reserved. */
+  .evt .new { border-color: var(--border-strong); background: var(--surface-elevated); }
+  .evt .new::before { content: "NEW"; position: absolute; top: -8px; left: 14px; font-family: var(--family-body); font-size: 9px; font-weight: 700; letter-spacing: 0.10em; color: var(--ink-secondary); background: var(--surface-elevated); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-strong); }
 
   .choices { display: flex; flex-direction: column; gap: 8px; }
-  .choice { width: 100%; text-align: left; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-paper); display: flex; gap: 12px; align-items: flex-start; }
+  .choice { width: 100%; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--surface-paper); display: flex; gap: 12px; align-items: flex-start; transition: background 160ms ease, border-color 160ms ease; }
   .choice:hover { background: var(--surface-subtle); border-color: var(--border-strong); }
-  .choice .glyph { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-inset); color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin: 0; box-shadow: none; }
-  .choice:hover .glyph { background: rgba(255,106,71,0.12); color: var(--accent-terracotta); }
+  .choice:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .choice .glyph { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-inset); color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin: 0; transition: background 160ms ease, color 160ms ease; }
+  .choice .glyph svg { width: 14px; height: 14px; }
+  .choice:hover .glyph { background: var(--surface-elevated); color: var(--ink-primary); }
   .choice strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
   .choice span { font-size: 12px; color: var(--ink-muted); line-height: 1.4; }
 
@@ -57,7 +63,9 @@
 <div class="backdrop" role="dialog" aria-modal="true" aria-labelledby="title">
   <div class="modal">
     <div class="head">
-      <div class="glyph" aria-hidden="true">!</div>
+      <span class="glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+      </span>
       <h2 id="title">This overlaps with another event.</h2>
       <p class="sub">You've already saved a tech meetup that starts within 30 minutes of your new event. Choose how to handle it.</p>
     </div>
@@ -79,21 +87,27 @@
 
       <div class="choices" role="group" aria-label="Conflict resolution">
         <button class="choice">
-          <div class="glyph" aria-hidden="true">✓</div>
+          <span class="glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>
+          </span>
           <div>
             <strong>Keep both — I'll manage</strong>
             <span>Both events stay on your timeline. A small amber dot on each reminds you they're close. We won't ask again.</span>
           </div>
         </button>
         <button class="choice">
-          <div class="glyph" aria-hidden="true">✎</div>
+          <span class="glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </span>
           <div>
             <strong>Edit the new one</strong>
             <span>Open the dinner in edit mode with the time pre-highlighted so you can shift it. Conflict re-checks automatically.</span>
           </div>
         </button>
         <button class="choice">
-          <div class="glyph" aria-hidden="true">✕</div>
+          <span class="glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          </span>
           <div>
             <strong>Delete the new one</strong>
             <span>Removes "Anniversary dinner with Rahul". You'll be asked to confirm before it's gone for good.</span>

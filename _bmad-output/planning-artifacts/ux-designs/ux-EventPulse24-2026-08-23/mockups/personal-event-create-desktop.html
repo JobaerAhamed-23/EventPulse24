@@ -28,20 +28,23 @@
 
   /* Backdrop */
   .backdrop { position: fixed; inset: 0; background: rgba(10,10,11,0.7); backdrop-filter: blur(8px); z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 6vh; }
-  .modal { width: 560px; max-width: 92vw; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.6); overflow: hidden; }
+  /* DESIGN §Elevation: the single allowed shadow for floating surfaces. */
+  .modal { width: 560px; max-width: 92vw; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.40); overflow: hidden; }
   .modal-head { padding: 20px 28px 16px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
   .modal-head h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0; color: var(--ink-primary); }
-  .modal-head .pill { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warm-personal); background: rgba(200,150,122,0.10); padding: 4px 10px; border-radius: 4px; margin-left: 10px; }
+  .modal-head .pill { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warm-personal); background: rgba(200,150,122,0.10); padding: 4px 10px; border-radius: 6px; margin-left: 10px; }
   .modal-body { padding: 20px 28px; }
-  .modal-foot { padding: 16px 28px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; background: var(--surface-subtle); }
-  .close { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-muted); }
+  .modal-foot { padding: 16px 28px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; background: var(--surface-subtle); gap: 8px; }
+  .close { width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-muted); }
   .close:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .close:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
 
   .field { margin-bottom: 16px; }
-  .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 6px; letter-spacing: 0.02em; }
-  .field-label .req { color: var(--accent-terracotta); margin-left: 2px; }
-  .input { width: 100%; background: var(--surface-paper); border: 1px solid var(--border-subtle); padding: 12px 14px; border-radius: 10px; font-size: 14px; color: var(--ink-primary); }
-  .input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 1px; border-color: var(--accent-terracotta); }
+  .field-label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-muted); margin-bottom: 6px; letter-spacing: 0.005em; }
+  .field-label .req { color: var(--ink-muted); margin-left: 2px; font-weight: 400; }
+  /* DESIGN §Components.input.field: 6px radius, hairline stroke. */
+  .input { width: 100%; background: var(--surface-paper); border: 1px solid var(--border-subtle); padding: 12px 14px; border-radius: 6px; font-size: 14px; color: var(--ink-primary); transition: border-color 160ms ease; }
+  .input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; border-color: transparent; }
   .input::placeholder { color: var(--ink-faint); }
   textarea.input { min-height: 70px; resize: vertical; font-family: inherit; }
 
@@ -49,13 +52,16 @@
   .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
   .reminder-grid { display: flex; gap: 8px; flex-wrap: wrap; }
-  .rem-chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border-subtle); font-size: 13px; font-weight: 500; color: var(--ink-secondary); background: var(--surface-paper); }
-  .rem-chip.on { background: rgba(255,106,71,0.10); border-color: rgba(255,106,71,0.30); color: var(--accent-terracotta); }
+  /* DESIGN §Components.input.reminder.slot: 6px radius, tint+label selected state, no terracotta fill. */
+  .rem-chip { padding: 8px 12px; border-radius: 6px; border: 1px solid transparent; font-size: 13px; font-weight: 500; color: var(--ink-secondary); background: var(--surface-subtle); transition: background 160ms ease, color 160ms ease; }
+  .rem-chip:hover { background: var(--surface-inset); color: var(--ink-primary); }
+  .rem-chip.on { background: rgba(255,106,71,0.10); color: var(--accent-terracotta); }
 
-  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: background 160ms ease; }
   .btn-primary:hover { background: #FF7E5E; }
-  .ghost { padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink-muted); }
-  .ghost:hover { color: var(--ink-secondary); }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .ghost { padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 500; color: var(--ink-muted); background: transparent; transition: color 160ms ease, background 160ms ease; }
+  .ghost:hover { color: var(--ink-secondary); background: var(--surface-elevated); }
 </style>
 </head>
 <body>
@@ -66,7 +72,9 @@
         <h2 id="title" style="display: inline-block;">Add personal event</h2>
         <span class="pill">Personal</span>
       </div>
-      <button class="close" aria-label="Close">✕</button>
+      <button class="close" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div class="field">
@@ -122,7 +130,7 @@
     </div>
     <div class="modal-foot">
       <button class="ghost">Cancel</button>
-      <button class="btn-primary">Save to my Pulse →</button>
+      <button class="btn-primary">Save to my Pulse</button>
     </div>
   </div>
 </div>
