@@ -1,0 +1,157 @@
+<!--
+  EventPulse24 — "Less like this" mute prompt (Desktop) — DARK THEME
+  FR-25. Triggered after 3 clustered dismissals (embedding cosine ≥0.7).
+  Calm copy. Reversible from settings. No dark-pattern nag.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Less like this?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 40px 0 80px; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 20px; font-weight: 600; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+  .ghost { padding: 9px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+
+  /* Section: digest context (faded, with the 3 dismissed cards shown collapsed) */
+  h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .page-sub { font-size: 14px; color: var(--ink-muted); margin: 0 0 40px; max-width: 640px; line-height: 1.55; }
+  .page-sub code { font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-terracotta); }
+
+  .digest-preview { background: var(--surface-paper); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; max-width: 760px; margin-bottom: 40px; opacity: 0.55; }
+  .digest-preview .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+  .digest-preview .head h3 { font-family: var(--family-display); font-size: 18px; margin: 0; }
+  .digest-preview .head span { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); }
+  .dismissed { display: flex; gap: 10px; padding: 12px; background: var(--surface-subtle); border-radius: 8px; margin-bottom: 8px; align-items: center; opacity: 0.6; }
+  .dismissed:last-child { margin-bottom: 0; }
+  .dismissed .meta { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; min-width: 80px; }
+  .dismissed .title { font-family: var(--family-display); font-size: 14px; font-weight: 500; flex: 1; color: var(--ink-secondary); }
+  .dismissed .tag-pill { font-family: var(--family-mono); font-size: 11px; color: var(--accent-slate); background: rgba(110,126,146,0.12); padding: 3px 8px; border-radius: 4px; }
+  .dismissed .arrow { color: var(--ink-faint); font-size: 14px; }
+
+  /* The prompt itself — calm, bottom-anchored sheet (not a modal) */
+  .prompt { background: var(--surface-elevated); border: 1px solid var(--border-strong); border-radius: 16px; padding: 24px 28px; max-width: 720px; box-shadow: 0 16px 48px rgba(0,0,0,0.5); display: flex; gap: 20px; align-items: center; }
+  .prompt .glyph { width: 44px; height: 44px; border-radius: 50%; background: rgba(110,126,146,0.16); color: var(--accent-slate); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .prompt .body { flex: 1; min-width: 0; }
+  .prompt h2 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0 0 6px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .prompt p { font-size: 13px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
+  .prompt p strong { color: var(--ink-primary); font-weight: 500; }
+  .prompt .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .prompt .btn-ghost { padding: 9px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-muted); border: 1px solid var(--border-subtle); }
+  .prompt .btn-ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .prompt .btn-mute { padding: 9px 14px; border-radius: 8px; font-size: 13px; color: var(--accent-slate); border: 1px solid rgba(110,126,146,0.40); font-weight: 500; }
+  .prompt .btn-mute:hover { background: rgba(110,126,146,0.10); border-color: var(--accent-slate); }
+
+  /* Specs panel — for engineering reference */
+  .specs { margin-top: 40px; padding: 20px; background: var(--surface-subtle); border-radius: 10px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-secondary); line-height: 1.7; }
+  .specs strong { color: var(--ink-primary); }
+  .specs code { background: var(--surface-inset); padding: 2px 6px; border-radius: 4px; color: var(--accent-terracotta); }
+
+  /* Variants row */
+  .variants { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 32px; }
+  .variant { padding: 16px; border-radius: 10px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); }
+  .variant h4 { font-family: var(--family-display); font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); }
+  .variant .meta { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); margin-bottom: 10px; }
+  .variant p { font-size: 12px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <button class="ghost">← Back to Today</button>
+    </nav>
+
+    <h1>"Less like this" mute prompt — states</h1>
+    <p class="page-sub">FR-25. Triggered after <strong style="color: var(--ink-secondary);">3 clustered dismissals</strong> (embedding cosine ≥0.7 across a digest window). Calm copy, reversible, no dark-pattern nag. Decay window: 60 days halved, 180 days expired.</p>
+
+    <!-- Digest context (faded) -->
+    <div class="digest-preview" aria-hidden="true">
+      <div class="head">
+        <h3>Today's Pulse Digest</h3>
+        <span>3 cards · 3 dismissed</span>
+      </div>
+      <div class="dismissed">
+        <span class="meta">ROOFTOP JAZZ</span>
+        <span class="title">Vince × Ecstatic — outdoor rooftop set</span>
+        <span class="tag-pill">jazz · rooftop</span>
+        <span class="arrow">↓ dismissed</span>
+      </div>
+      <div class="dismissed">
+        <span class="meta">ROOFTOP JAZZ</span>
+        <span class="title">Sunday rooftop jazz trio — Williamsburg</span>
+        <span class="tag-pill">jazz · rooftop</span>
+        <span class="arrow">↓ dismissed</span>
+      </div>
+      <div class="dismissed">
+        <span class="meta">ROOFTOP JAZZ</span>
+        <span class="title">Pianist Eri Yamamoto — sunset rooftop</span>
+        <span class="tag-pill">jazz · rooftop</span>
+        <span class="arrow">↓ dismissed</span>
+      </div>
+    </div>
+
+    <!-- THE PROMPT — calm, non-modal, anchored at bottom -->
+    <section aria-labelledby="prompt-title">
+      <div class="prompt" role="dialog" aria-labelledby="prompt-title" aria-describedby="prompt-desc">
+        <div class="glyph" aria-hidden="true">○</div>
+        <div class="body">
+          <h2 id="prompt-title">Less rooftop jazz in your next digest?</h2>
+          <p id="prompt-desc">You've swiped past <strong>3 similar jazz events</strong>. Want us to deprioritize this category for a while? You can undo anytime in <strong>Settings → Taste</strong>.</p>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost">Keep as is</button>
+          <button class="btn-mute">Mute for 30 days</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Variants -->
+    <section class="variants">
+      <div class="variant">
+        <h4>Variant — explicit category</h4>
+        <div class="meta">category detected · cosine 0.82</div>
+        <p><em>"Less rooftop jazz in your next digest?"</em> — uses the cluster's most-common category. Most common.</p>
+      </div>
+      <div class="variant">
+        <h4>Variant — generic tone</h4>
+        <div class="meta">no clear category</div>
+        <p><em>"Less events like these in your next digest?"</em> — fallback when cluster doesn't map to a single category.</p>
+      </div>
+    </section>
+
+    <!-- Specs -->
+    <section class="specs">
+      <strong>Trigger rule (FR-25):</strong> 3 distinct events dismissed across a digest window (default: a calendar day), embedding cosine ≥0.7 between them. <strong>Rage-dismiss guard:</strong> rapid 3-swipes in &lt;5s are rate-limited — only the first dismissal counts toward the cluster counter; the next two are recorded but do not advance.<br><br>
+      <strong>Position:</strong> bottom-anchored sheet, NOT a modal. The user can close it without choosing.<br><br>
+      <strong>Reversibility:</strong> <code>Settings → Taste → Muted categories</code> lists every active mute. One tap unmutes. Mute duration defaults to 30 days; user can choose 7/30/90 days or "indefinite."<br><br>
+      <strong>Decay:</strong> even without explicit mute, dismissal signals decay — 60 days halves the weight, 180 days expires. The system never permanently bans a category (PRD: serendipity is a product decision, not a user preference).<br><br>
+      <strong>Slot 3 immunity:</strong> discovery cards are tagged <code>discovery, new-to-you</code> and are NOT candidates for clustering — serendipity is protected.<br><br>
+      <strong>Accessibility:</strong> <code>role="dialog"</code> + <code>aria-labelledby</code> + <code>aria-describedby</code>. Buttons keyboard-reachable. Focus moves to "Mute for 30 days" on open (the affirmative — calm default).
+    </section>
+  </div>
+</div>
+</body>
+</html>

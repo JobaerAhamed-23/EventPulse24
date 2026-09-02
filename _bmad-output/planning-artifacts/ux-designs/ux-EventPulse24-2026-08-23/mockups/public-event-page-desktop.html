@@ -1,0 +1,190 @@
+<!--
+  EventPulse24 — Public Event Page (Desktop) — DARK THEME
+  FR-26. SEO canonical URL with Schema.org Event JSON-LD embedded.
+  Crawlable. OG-rich. "Save to Pulse" soft-wall. NO auth required to view.
+  Distinct from share-link-desktop (which has "shared by" attribution).
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Schema.org Event JSON-LD for SEO -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Event",
+  "name": "Free tech meetup — \"Designing for Calm\"",
+  "startDate": "2026-08-28T18:30:00-04:00",
+  "endDate": "2026-08-28T20:30:00-04:00",
+  "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+  "eventStatus": "https://schema.org/EventScheduled",
+  "location": {
+    "@type": "Place",
+    "name": "Brooklyn Arts Council",
+    "address": { "@type": "PostalAddress", "streetAddress": "27 Clinton Ave", "addressLocality": "Brooklyn", "addressRegion": "NY", "postalCode": "11205", "addressCountry": "US" }
+  },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+  "organizer": { "@type": "Organization", "name": "Brooklyn Arts Council", "url": "https://brooklynartscouncil.org" },
+  "description": "A short, opinionated panel on building products that respect attention."
+}
+</script>
+<title>Free tech meetup — "Designing for Calm" · Thu Aug 28, 2026 · EventPulse24</title>
+<meta property="og:title" content="Free tech meetup — Designing for Calm">
+<meta property="og:description" content="Brooklyn Arts Council · Thu Aug 28, 6:30 PM · Free">
+<meta property="og:type" content="event">
+<meta property="og:url" content="https://eventpulse24.com/e/free-tech-meetup-designing-for-calm-2026-08-28">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --cool-public:#6E7E92;
+    --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 980px; margin: 0 auto; padding: 24px 0 80px; }
+
+  /* Topbar — minimal, public-facing */
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .topright { display: flex; gap: 8px; }
+  .ghost { padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+
+  /* Breadcrumb + slug */
+  .crumb { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); margin-bottom: 24px; }
+  .crumb a { color: var(--ink-muted); }
+  .crumb a:hover { color: var(--ink-secondary); }
+
+  /* Hero */
+  .hero { padding: 16px 0 36px; }
+  .eyebrow { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cool-public); margin-bottom: 14px; }
+  h1 { font-family: var(--family-display); font-size: 52px; font-weight: 700; line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 22px; color: var(--ink-primary); }
+
+  .meta-row { display: flex; flex-wrap: wrap; gap: 24px 32px; margin-bottom: 28px; font-size: 14px; color: var(--ink-secondary); }
+  .meta-row .item { display: inline-flex; align-items: center; gap: 8px; }
+  .meta-row .glyph { color: var(--ink-muted); font-size: 13px; }
+  .meta-row .label { color: var(--ink-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 4px; }
+
+  .srcbar { display: flex; gap: 14px; align-items: center; padding: 14px 16px; background: var(--surface-subtle); border-radius: 10px; font-size: 13px; color: var(--ink-secondary); margin-bottom: 36px; }
+  .srcbar .verified { color: var(--signal-success); font-weight: 500; display: inline-flex; gap: 8px; align-items: center; }
+  .srcbar .name { font-family: var(--family-mono); color: var(--ink-primary); }
+  .srcbar .reliability { font-family: var(--family-mono); color: var(--ink-muted); margin-left: auto; }
+
+  /* Save bar — soft-wall CTA */
+  .save-bar { background: linear-gradient(135deg, rgba(255,106,71,0.10), rgba(110,126,146,0.06)); border: 1px solid rgba(255,106,71,0.25); border-radius: 14px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 40px; }
+  .save-bar h3 { font-family: var(--family-display); font-size: 18px; margin: 0 0 4px; color: var(--ink-primary); }
+  .save-bar p { font-size: 13px; color: var(--ink-secondary); margin: 0; max-width: 520px; }
+  .save-bar .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .save-bar .btn-primary:hover { background: #FF7E5E; }
+
+  /* Body */
+  h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 40px 0 16px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .desc { font-size: 17px; line-height: 1.65; color: var(--ink-secondary); margin: 0 0 16px; max-width: 720px; }
+  .desc p + p { margin-top: 16px; }
+
+  /* Map */
+  .map { height: 280px; border-radius: 12px; background: linear-gradient(135deg, var(--surface-subtle), var(--surface-inset)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; color: var(--ink-muted); font-size: 13px; margin: 0 0 32px; }
+
+  /* Footer — public-page CTA */
+  .footer-cta { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 32px; text-align: center; margin-top: 48px; }
+  .footer-cta h3 { font-family: var(--family-display); font-size: 24px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); }
+  .footer-cta p { font-size: 14px; color: var(--ink-secondary); margin: 0 0 20px; max-width: 480px; margin-left: auto; margin-right: auto; }
+
+  /* Public footer */
+  .pubfoot { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-muted); }
+  .pubfoot a { color: var(--ink-muted); }
+  .pubfoot a:hover { color: var(--ink-secondary); }
+  .pubfoot .links { display: flex; gap: 20px; }
+
+  /* JSON-LD notice (for QA) */
+  .ld-tag { font-family: var(--family-mono); font-size: 11px; color: var(--ink-faint); background: var(--surface-subtle); border-radius: 6px; padding: 2px 8px; display: inline-block; margin-left: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar" aria-label="Public">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <div class="topright">
+        <button class="ghost">How it works</button>
+        <button class="btn-primary">Sign up free</button>
+      </div>
+    </nav>
+
+    <div class="crumb">
+      <a href="/c/brooklyn">Events in Brooklyn</a> · <a href="/c/brooklyn/tech">Tech</a> · /e/free-tech-meetup-designing-for-calm-2026-08-28 <span class="ld-tag">schema.org/Event</span>
+    </div>
+
+    <section class="hero">
+      <div class="eyebrow">Public event · Brooklyn</div>
+      <h1>Free tech meetup — "Designing for Calm"</h1>
+
+      <div class="meta-row">
+        <span class="item"><span class="glyph">📅</span> <span class="label">When</span> Thu, Aug 28 · 6:30 PM (EDT)</span>
+        <span class="item"><span class="glyph">📍</span> <span class="label">Where</span> Brooklyn Arts Council, 27 Clinton Ave</span>
+        <span class="item"><span class="glyph">💵</span> <span class="label">Cost</span> Free · No ticket required</span>
+      </div>
+
+      <div class="srcbar">
+        <span class="verified">✅ Verified · Official site</span>
+        <span class="name">brooklynartscouncil.org</span>
+        <span class="reliability">source reliability 0.91</span>
+      </div>
+
+      <div class="save-bar">
+        <div>
+          <h3>Save to your Pulse Digest</h3>
+          <p>Free, no card. We'll surface it in your morning brief with 1-day + 1-hour reminders, or pick your own.</p>
+        </div>
+        <button class="btn-primary">Save to Pulse →</button>
+      </div>
+
+      <h2>About this event</h2>
+      <div class="desc">
+        <p>A short, opinionated panel on building products that respect attention — featuring two product leads who've shipped consumer apps at scale and a research neuroscientist studying digital fatigue. Drinks and snacks from 6:00 PM. Q&amp;A until 8:30.</p>
+        <p>Brooklyn Arts Council is wheelchair accessible. Street level entry; restrooms on the same floor. ASL interpretation available with 48 hours notice — email <a href="#" style="color: var(--accent-terracotta);">access@brooklynartscouncil.org</a>.</p>
+      </div>
+
+      <h2>Where</h2>
+      <div class="map">🗺 Map — Brooklyn Arts Council, 27 Clinton Ave, Brooklyn (near Clinton–Washington Ave G stop)</div>
+
+      <h2>Organizer</h2>
+      <div class="srcbar" style="margin: 0;">
+        <span class="verified">✅ Brooklyn Arts Council</span>
+        <span class="name">brooklynartscouncil.org</span>
+        <a href="#" style="color: var(--accent-terracotta); font-size: 13px;">Follow this organizer →</a>
+      </div>
+    </section>
+
+    <section class="footer-cta">
+      <h3>Three things matter. We show you exactly those.</h3>
+      <p>EventPulse24 is the calm intelligence layer above all event sources. One daily brief. No feeds. No infinite scroll.</p>
+      <button class="btn-primary">Get my first brief →</button>
+    </section>
+
+    <footer class="pubfoot">
+      <span>© 2026 EventPulse24 · Built calm in Brooklyn.</span>
+      <div class="links">
+        <a href="/privacy">Privacy</a>
+        <a href="/about">About</a>
+        <a href="/c/brooklyn">All Brooklyn events</a>
+      </div>
+    </footer>
+  </div>
+</div>
+</body>
+</html>

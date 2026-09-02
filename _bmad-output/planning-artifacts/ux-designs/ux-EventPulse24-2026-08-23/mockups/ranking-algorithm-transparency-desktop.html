@@ -1,0 +1,255 @@
+<!--
+  EventPulse24 — Ranking Algorithm Transparency (Desktop) — DARK THEME
+  FR-22. Settings → Privacy → "Ranking algorithm version".
+  Shows current weights, last-amendment date, ADR link.
+  Trust through transparency — locked principle.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Ranking algorithm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 24px 0 80px; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .ghost { padding: 9px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+
+  .grid { display: grid; grid-template-columns: 220px 1fr; gap: 48px; }
+  .sidenav { position: sticky; top: 24px; align-self: start; }
+  .sidenav h1 { font-family: var(--family-display); font-size: 28px; font-weight: 700; margin: 0 0 18px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .sidenav ul { list-style: none; padding: 0; margin: 0; }
+  .sidenav li { margin-bottom: 2px; }
+  .sidenav a { display: block; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-muted); font-weight: 500; }
+  .sidenav a:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
+  .sidenav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
+
+  .section { padding-bottom: 32px; margin-bottom: 32px; border-bottom: 1px solid var(--border-subtle); }
+  .section:last-child { border-bottom: 0; }
+  .section h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .section .desc { font-size: 14px; color: var(--ink-secondary); margin: 0 0 20px; line-height: 1.55; max-width: 720px; }
+  .section .desc strong { color: var(--ink-primary); font-weight: 500; }
+
+  /* Version card */
+  .version-card { background: linear-gradient(135deg, rgba(255,106,71,0.06), rgba(110,126,146,0.06)); border: 1px solid rgba(255,106,71,0.25); border-radius: 12px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 28px; }
+  .version-card .left .pill { display: inline-block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 4px 10px; border-radius: 4px; font-weight: 600; margin-bottom: 8px; }
+  .version-card h3 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 4px; color: var(--ink-primary); }
+  .version-card p { font-size: 13px; color: var(--ink-secondary); margin: 0; }
+  .version-card p code { font-family: var(--family-mono); color: var(--ink-primary); }
+  .version-card .links { display: flex; gap: 12px; flex-shrink: 0; }
+  .version-card .links a { font-size: 13px; color: var(--accent-terracotta); text-decoration: underline; text-decoration-color: rgba(255,106,71,0.4); text-underline-offset: 3px; }
+
+  /* Formula card */
+  .formula { background: var(--surface-subtle); border-radius: 10px; padding: 20px 24px; font-family: var(--family-mono); font-size: 13px; line-height: 1.75; color: var(--ink-secondary); margin: 16px 0 24px; overflow-x: auto; }
+  .formula strong { color: var(--ink-primary); }
+  .formula .num { color: var(--accent-terracotta); }
+  .formula .op { color: var(--ink-muted); }
+
+  /* Weights table */
+  .weights { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+  .weights th, .weights td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+  .weights th { font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .weights td { color: var(--ink-secondary); }
+  .weights td.weight { font-family: var(--family-mono); color: var(--accent-terracotta); font-weight: 600; }
+  .weights td.component { font-family: var(--family-mono); color: var(--ink-primary); }
+  .weights td.desc { font-size: 12px; color: var(--ink-muted); max-width: 480px; line-height: 1.5; }
+
+  /* Visual weight bar */
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 16px 0 8px; background: var(--surface-inset); }
+  .bar .seg { height: 100%; }
+  .bar-legend { display: flex; gap: 18px; font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); margin-bottom: 16px; }
+  .bar-legend .item { display: flex; align-items: center; gap: 6px; }
+  .bar-legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* Amendment history */
+  .amend-list { list-style: none; padding: 0; margin: 12px 0 0; }
+  .amend-list li { display: grid; grid-template-columns: 100px 1fr auto; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border-subtle); align-items: start; }
+  .amend-list li:first-child { border-top: 0; }
+  .amend-list .date { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); padding-top: 2px; }
+  .amend-list .body strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 4px; }
+  .amend-list .body p { font-size: 12px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
+  .amend-list .body code { font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; color: var(--accent-terracotta); font-size: 11px; }
+  .amend-list .adr { font-family: var(--family-mono); font-size: 11px; color: var(--accent-terracotta); text-decoration: underline; text-decoration-color: rgba(255,106,71,0.4); text-underline-offset: 3px; white-space: nowrap; padding-top: 2px; }
+
+  /* Pledge card */
+  .pledge { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 24px; margin-top: 24px; }
+  .pledge h3 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0 0 12px; color: var(--ink-primary); }
+  .pledge ul { list-style: none; padding: 0; margin: 0; }
+  .pledge li { display: flex; gap: 12px; padding: 10px 0; font-size: 13px; color: var(--ink-secondary); line-height: 1.5; }
+  .pledge li .check { color: var(--signal-success); flex-shrink: 0; font-size: 14px; line-height: 1.5; }
+  .pledge li strong { color: var(--ink-primary); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <button class="ghost">← Back to Settings</button>
+    </nav>
+
+    <div class="grid">
+      <aside class="sidenav">
+        <h1>Privacy</h1>
+        <ul>
+          <li><a href="#">Overview</a></li>
+          <li><a href="#">Your data</a></li>
+          <li><a href="#">Location</a></li>
+          <li><a href="#" class="active">Ranking algorithm</a></li>
+          <li><a href="#">Source registry</a></li>
+          <li><a href="#">Trust report queue</a></li>
+        </ul>
+      </aside>
+
+      <main>
+        <!-- Version card -->
+        <div class="version-card">
+          <div class="left">
+            <span class="pill">Current version</span>
+            <h3>v1.0 · MVP launch</h3>
+            <p>Locked at launch · last amended <code>2026-08-29</code> · 0 user-visible changes since</p>
+          </div>
+          <div class="links">
+            <a href="#">ADR-0022 ↗</a>
+            <a href="#">Diff history ↗</a>
+          </div>
+        </div>
+
+        <section class="section">
+          <h2>How Pulse ranks your events</h2>
+          <p class="desc">Every Pulse Card shows a <strong>1–5 Confidence Pulse</strong>. The dots reflect how strongly this event matches your personal relevance score. The formula and weights below are <strong>public and locked</strong> — you can compute the Confidence Pulse for any event given its inputs.</p>
+
+          <h3 style="font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 24px 0 8px; color: var(--ink-primary); letter-spacing: -0.01em;">Formula</h3>
+          <div class="formula">
+<span class="op">relevance_score =</span> <span class="num">0.40</span> <span class="op">×</span> preference_graph_match
+           <span class="op">+</span> <span class="num">0.25</span> <span class="op">×</span> source_reliability
+           <span class="op">+</span> <span class="num">0.20</span> <span class="op">×</span> recency_fit
+           <span class="op">+</span> <span class="num">0.15</span> <span class="op">×</span> novelty_vs_exploration
+          </div>
+
+          <h3 style="font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 24px 0 8px; color: var(--ink-primary); letter-spacing: -0.01em;">Component weights</h3>
+          <div class="bar" aria-hidden="true">
+            <div class="seg" style="width: 40%; background: var(--accent-terracotta);"></div>
+            <div class="seg" style="width: 25%; background: var(--accent-amber);"></div>
+            <div class="seg" style="width: 20%; background: var(--accent-slate);"></div>
+            <div class="seg" style="width: 15%; background: var(--ink-muted);"></div>
+          </div>
+          <div class="bar-legend">
+            <span class="item"><span class="swatch" style="background: var(--accent-terracotta);"></span> preference_graph_match · 40%</span>
+            <span class="item"><span class="swatch" style="background: var(--accent-amber);"></span> source_reliability · 25%</span>
+            <span class="item"><span class="swatch" style="background: var(--accent-slate);"></span> recency_fit · 20%</span>
+            <span class="item"><span class="swatch" style="background: var(--ink-muted);"></span> novelty_vs_exploration · 15%</span>
+          </div>
+
+          <table class="weights">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Weight</th>
+                <th>What it measures</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="component">preference_graph_match</td>
+                <td class="weight">0.40</td>
+                <td class="desc">How well this event fits your behavior-derived Preference Graph (dwell, saves, swipes, dismissals). Cold-start fallback: Bayesian-smoothed popularity.</td>
+              </tr>
+              <tr>
+                <td class="component">source_reliability</td>
+                <td class="weight">0.25</td>
+                <td class="desc">Per-Source reliability score (β-binomial, prior α=5 β=5). Drops ranking, never removes a source.</td>
+              </tr>
+              <tr>
+                <td class="component">recency_fit</td>
+                <td class="weight">0.20</td>
+                <td class="desc">How well the event's start time aligns with your typical engagement windows. Freshness boost: ≤24h ×1.5, 1–3d ×1.2, ≥3d ×1.0.</td>
+              </tr>
+              <tr>
+                <td class="component">novelty_vs_exploration</td>
+                <td class="weight">0.15</td>
+                <td class="desc">Balances familiarity (similar to past saves) against exploration (outside usual categories). Serendipity card always gets this boost.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Bucket boundaries -->
+        <section class="section">
+          <h2>How scores map to dots</h2>
+          <p class="desc">The <strong>Confidence Pulse</strong> on each Pulse Card uses these bucket boundaries. A change in <code>relevance_score</code> that doesn't cross a bucket does NOT change the displayed dots (no-flicker rule, ±0.02 hysteresis).</p>
+          <table class="weights">
+            <thead>
+              <tr><th>Score</th><th>Dots</th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="component">≥ 0.85</td><td class="weight">●●●●●</td><td class="desc">5/5 · very strong match</td></tr>
+              <tr><td class="component">≥ 0.65</td><td class="weight">●●●●○</td><td class="desc">4/5 · strong match</td></tr>
+              <tr><td class="component">≥ 0.45</td><td class="weight">●●●○○</td><td class="desc">3/5 · moderate match</td></tr>
+              <tr><td class="component">≥ 0.25</td><td class="weight">●●○○○</td><td class="desc">2/5 · light match</td></tr>
+              <tr><td class="component">&lt; 0.25</td><td class="weight">●○○○○</td><td class="desc">1/5 · weak / serendipity</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Amendment history -->
+        <section class="section">
+          <h2>Amendment history</h2>
+          <p class="desc">Weight changes require a <strong>PRD amendment</strong> with explicit product leadership sign-off. A/B testing on live users is forbidden — experimentation happens in shadow composition (internal AI Cost Dashboard).</p>
+          <ul class="amend-list">
+            <li>
+              <span class="date">2026-08-29</span>
+              <div class="body">
+                <strong>v1.0 — MVP launch (current)</strong>
+                <p>Initial weights. Adopted via 6 PRD amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports, A-5 Conflict resolution, A-6 Timezone source).</p>
+              </div>
+              <a href="#" class="adr">ADR-0022</a>
+            </li>
+            <li>
+              <span class="date">2026-08-19</span>
+              <div class="body">
+                <strong>Pre-launch review</strong>
+                <p>Final pre-launch competitive re-verification gate passed. Weights frozen.</p>
+              </div>
+              <a href="#" class="adr">ADR-0020</a>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Pledge -->
+        <section class="pledge">
+          <h3>Our pledge on ranking</h3>
+          <ul>
+            <li><span class="check" aria-hidden="true">✓</span> <span><strong>No A/B testing on live users.</strong> All weight experimentation happens in shadow composition, off the user's screen.</span></li>
+            <li><span class="check" aria-hidden="true">✓</span> <span><strong>No hidden ranking.</strong> The formula and weights are public. They are the PRD, not a secret.</span></li>
+            <li><span class="check" aria-hidden="true">✓</span> <span><strong>No dark patterns.</strong> No "trending now" boards. No urgency badges. No "Don't miss out!"</span></li>
+            <li><span class="check" aria-hidden="true">✓</span> <span><strong>Calm > engagement.</strong> The business model is misaligned with the engagement metric — and that's the moat.</span></li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</body>
+</html>

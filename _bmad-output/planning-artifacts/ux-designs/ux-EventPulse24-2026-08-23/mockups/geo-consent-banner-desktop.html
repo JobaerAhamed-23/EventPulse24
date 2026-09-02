@@ -1,0 +1,161 @@
+<!--
+  EventPulse24 — Geo-IP Consent Banner (Desktop) — DARK THEME
+  FR-2. Three states: default, after "Use this", after "Don't use my location".
+  First-visit disclosure per PRD: "Showing events near [city]. Use a different city? [Change] [Use this] [Don't use my location]"
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Geo-IP consent states</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-amber:#E89B4A;
+    --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .page { padding: 0 80px; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 40px 0 80px; }
+
+  h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .page-sub { font-size: 14px; color: var(--ink-muted); margin: 0 0 40px; max-width: 640px; line-height: 1.55; }
+
+  .state { margin-bottom: 56px; padding-bottom: 56px; border-bottom: 1px solid var(--border-subtle); }
+  .state:last-child { border-bottom: 0; }
+  .state-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+  .state-head h2 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .state-head .tag { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 4px 8px; border-radius: 4px; }
+  .state-note { font-size: 13px; color: var(--ink-secondary); margin: 0 0 20px; line-height: 1.55; max-width: 720px; }
+  .state-note code { font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-terracotta); }
+
+  /* The banner itself — three variants */
+  .geobar { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px 20px; font-size: 13px; color: var(--ink-secondary); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .geobar .left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .geobar .icon { color: var(--accent-terracotta); font-size: 14px; flex-shrink: 0; }
+  .geobar strong { color: var(--ink-primary); font-weight: 500; }
+  .geobar .actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .geobar .link { color: var(--ink-secondary); padding: 7px 12px; border-radius: 6px; font-weight: 500; font-size: 13px; }
+  .geobar .link:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .geobar .link.primary { background: rgba(255,106,71,0.12); color: var(--accent-terracotta); }
+  .geobar .link.primary:hover { background: rgba(255,106,71,0.20); }
+
+  /* State 2 — confirmed "Use this" */
+  .geobar.confirmed { background: rgba(122,170,122,0.06); border-color: rgba(122,170,122,0.25); }
+  .geobar.confirmed .icon { color: var(--signal-success); }
+
+  /* State 3 — "Don't use my location" → fallback */
+  .geobar.fallback { background: rgba(232,155,74,0.06); border-color: rgba(232,155,74,0.25); }
+  .geobar.fallback .icon { color: var(--accent-amber); }
+
+  /* Inline city picker — shown after "Change" tap */
+  .picker { display: flex; gap: 8px; align-items: center; padding: 12px 16px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 10px; margin-top: 10px; max-width: 640px; }
+  .picker input { background: var(--surface-paper); border: 1px solid var(--border-subtle); padding: 8px 12px; border-radius: 8px; font-size: 13px; color: var(--ink-primary); flex: 1; font-family: var(--family-body); }
+  .picker input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; border-color: transparent; }
+  .picker .btn { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+  .picker .btn.ghost { background: none; color: var(--ink-muted); border: 1px solid var(--border-subtle); }
+
+  /* Specs reference */
+  .specs { margin-top: 24px; padding: 16px; background: var(--surface-subtle); border-radius: 8px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-secondary); line-height: 1.65; }
+  .specs strong { color: var(--ink-primary); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="container">
+    <h1>Geo-IP consent banner — states</h1>
+    <p class="page-sub">First-visit disclosure required by FR-2. Persisted in a session cookie. Also surfaced in Settings → Privacy after signup. Three states: <strong style="color: var(--ink-secondary);">default</strong>, <strong style="color: var(--ink-secondary);">confirmed</strong>, <strong style="color: var(--ink-secondary);">fallback</strong>.</p>
+
+    <!-- STATE 1 — default -->
+    <section class="state">
+      <div class="state-head">
+        <h2>State 1 — Default (first visit)</h2>
+        <span class="tag">.geobar</span>
+      </div>
+      <p class="state-note">Geo-IP detected a city. User must make an explicit choice. <code>"Don't use my location"</code> suppresses geo-IP and falls back to NYC at MVP. <code>"Use this"</code> persists the city in a session cookie.</p>
+      <div class="geobar" role="region" aria-label="Location consent">
+        <div class="left">
+          <span class="icon">●</span>
+          <span>Showing events near <strong>Brooklyn, NY</strong>. Use a different city?</span>
+        </div>
+        <div class="actions">
+          <button class="link">Change</button>
+          <button class="link primary">Use this</button>
+          <button class="link">Don't use my location</button>
+        </div>
+      </div>
+
+      <p class="state-note" style="margin-top: 24px;">After <strong>Change</strong> tap — inline picker appears below the banner:</p>
+      <div class="picker" role="search">
+        <input type="text" placeholder="Type a city — e.g., 'Oakland, CA'" value="" />
+        <button class="btn ghost">Cancel</button>
+        <button class="btn">Use this city</button>
+      </div>
+
+      <div class="specs">
+        <strong>Specs:</strong> Position: top of page, full-width. Height: ~52px. Font: 13px Inter. Color: terracotta dot + ink-secondary text. Three buttons (Change / Use this / Don't use my location) — Use this is the primary. ARIA: <strong>role="region"</strong> + <strong>aria-label="Location consent"</strong>. Cookie persistence: <code>ep_geo_choice</code> ∈ {<code>city_id</code>, <code>none</code>}. On revisit with cookie, banner suppressed.
+      </div>
+    </section>
+
+    <!-- STATE 2 — confirmed -->
+    <section class="state">
+      <div class="state-head">
+        <h2>State 2 — Confirmed ("Use this" tap)</h2>
+        <span class="tag">.geobar.confirmed</span>
+      </div>
+      <p class="state-note">Acknowledgment state shown for 2 seconds after <code>Use this</code>, then collapses into a small footer indicator. The city pill moves into the page header.</p>
+      <div class="geobar confirmed" role="status" aria-live="polite">
+        <div class="left">
+          <span class="icon">✓</span>
+          <span>Using <strong>Brooklyn, NY</strong>. <span style="color: var(--ink-muted);">Change anytime in Settings → Privacy.</span></span>
+        </div>
+        <div class="actions">
+          <button class="link">Change</button>
+          <button class="link primary" style="background: rgba(122,170,122,0.14); color: var(--signal-success);">Confirmed</button>
+        </div>
+      </div>
+
+      <div class="specs">
+        <strong>Specs:</strong> Background tint shifts to subtle success-green (rgba(122,170,122,0.06)). Icon becomes a checkmark. Single "Confirmed" pill replaces "Use this." After 2s, banner collapses to a footer pill: <em>"📍 Brooklyn, NY · Change"</em>. Persistent until cookie cleared or user changes city.
+      </div>
+    </section>
+
+    <!-- STATE 3 — fallback -->
+    <section class="state">
+      <div class="state-head">
+        <h2>State 3 — Fallback ("Don't use my location")</h2>
+        <span class="tag">.geobar.fallback</span>
+      </div>
+      <p class="state-note">Geo-IP suppressed. Falls back to most-popular city at MVP (NYC). User can still pick a city via Change. Cookie stores <code>ep_geo_choice = none</code>.</p>
+      <div class="geobar fallback" role="status" aria-live="polite">
+        <div class="left">
+          <span class="icon">●</span>
+          <span>Showing events in <strong>New York, NY</strong> (default — your location is off). Use a different city?</span>
+        </div>
+        <div class="actions">
+          <button class="link">Change</button>
+          <button class="link">Turn on location</button>
+          <button class="link">Don't use my location</button>
+        </div>
+      </div>
+
+      <div class="specs">
+        <strong>Specs:</strong> Background tint shifts to subtle amber (rgba(232,155,74,0.06)) — neutral, not red. Copy clarifies the fallback is the default (not the user's choice). "Turn on location" replaces "Use this" — offers a re-prompt path. After confirmed in this state, the page renders Pulse Preview in NYC by default.
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

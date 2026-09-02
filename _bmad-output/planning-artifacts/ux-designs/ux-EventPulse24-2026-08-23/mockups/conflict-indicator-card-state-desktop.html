@@ -1,0 +1,156 @@
+<!--
+  EventPulse24 — Conflict Indicator Card State (Desktop, variant) — DARK THEME
+  FR-58. Wireframe-locked visual spec for the persistent amber indicator.
+  Shows TWO Pulse Cards in conflict pair, both bearing the indicator.
+  Shows the "tap to view" detail panel (non-alarming, informational).
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Conflict indicator on Pulse Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A; --warm-personal:#C8967A; --cool-public:#6E7E92;
+    --warn-amber:#D8A86A; --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 40px 0 80px; }
+
+  h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .page-sub { font-size: 14px; color: var(--ink-muted); margin: 0 0 40px; max-width: 760px; line-height: 1.55; }
+  .page-sub code { font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-terracotta); }
+
+  /* Two-card conflict pair */
+  .pair-head { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 14px; font-weight: 600; }
+  .pair-head .glyph { color: var(--warn-amber); margin-right: 6px; }
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 40px; }
+
+  /* Pulse Card variant */
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; position: relative; }
+  .card .stripe { position: absolute; left: 0; top: 24px; bottom: 24px; width: 3px; border-radius: 0 2px 2px 0; }
+  .card .stripe.public { background: var(--cool-public); }
+  .card .stripe.personal { background: var(--warm-personal); }
+
+  /* THE conflict indicator — wireframe-locked */
+  .conflict {
+    position: absolute; top: 18px; right: 18px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--warn-amber);
+    box-shadow: 0 0 0 4px rgba(216,168,106,0.14);
+    cursor: pointer;
+  }
+  .conflict:hover { box-shadow: 0 0 0 6px rgba(216,168,106,0.20); }
+
+  .card-meta { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-muted); margin-bottom: 12px; padding-left: 14px; }
+  .card-meta .sep { color: var(--ink-faint); }
+  .card-meta .type-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .card h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.22; margin: 0 0 10px; padding-left: 14px; color: var(--ink-primary); }
+  .card .where { font-size: 13px; color: var(--ink-secondary); padding-left: 14px; margin: 0 0 14px; }
+  .tags { font-style: italic; font-size: 12px; color: var(--ink-muted); padding-left: 14px; margin: 0 0 18px; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 6px; }
+
+  .pulse { display: inline-flex; gap: 4px; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot.on { background: var(--ink-primary); }
+
+  /* Tap-to-view detail panel */
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px 24px; max-width: 760px; margin: 0 0 40px; display: flex; gap: 16px; align-items: flex-start; }
+  .panel .glyph { width: 36px; height: 36px; border-radius: 50%; background: rgba(216,168,106,0.14); color: var(--warn-amber); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .panel .body strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 4px; }
+  .panel .body p { font-size: 13px; color: var(--ink-secondary); margin: 0 0 8px; line-height: 1.5; }
+  .panel .body p strong { color: var(--ink-primary); display: inline; font-weight: 500; }
+  .panel .body .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .panel .body .ghostbtn { font-size: 12px; padding: 6px 12px; border-radius: 8px; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .panel .body .ghostbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+
+  /* Specs */
+  .specs { margin-top: 40px; padding: 20px 24px; background: var(--surface-subtle); border-radius: 10px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-secondary); line-height: 1.7; }
+  .specs strong { color: var(--ink-primary); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <h1>Conflict indicator on Pulse Cards — variant</h1>
+    <p class="page-sub">FR-58 wireframe-locked visual spec. The amber circle is <strong>persistent</strong> (survives "Keep both"), <strong>symmetric</strong> (identical on both cards in a conflict pair), and <strong>distinct by shape alone</strong> from the Source Badge (icon-glyph) and Confidence Pulse (● dots). Color is <strong>not</strong> the sole carrier of meaning. <code>aria-label="Schedule conflict"</code>.</p>
+
+    <p class="pair-head"><span class="glyph" aria-hidden="true">●</span> Conflict pair · ±30 min window · both cards persistent</p>
+
+    <div class="pair">
+      <!-- Card A — personal anniversary -->
+      <article class="card" tabindex="0" aria-labelledby="ca">
+        <span class="stripe personal" aria-hidden="true"></span>
+        <span class="conflict" role="img" aria-label="Schedule conflict"></span>
+        <div class="card-meta">
+          <span class="type-label" style="color: var(--warm-personal);">Personal</span>
+          <span class="sep">·</span>
+          <span>Fri · 7:00 PM</span>
+          <span class="sep">·</span>
+          <span>Lilia, Williamsburg</span>
+        </div>
+        <h2 id="ca">Anniversary dinner with Rahul</h2>
+        <p class="where">Family · restaurant</p>
+        <p class="tags"><span class="tag">family</span><span class="dotsep">·</span><span class="tag">friday</span><span class="dotsep">·</span><span class="tag">restaurant</span></p>
+      </article>
+
+      <!-- Card B — public meetup (saved) -->
+      <article class="card" tabindex="0" aria-labelledby="cb">
+        <span class="stripe public" aria-hidden="true"></span>
+        <span class="conflict" role="img" aria-label="Schedule conflict"></span>
+        <div class="card-meta">
+          <span class="type-label" style="color: var(--cool-public);">Public · Saved</span>
+          <span class="sep">·</span>
+          <span>Fri · 6:30 PM</span>
+          <span class="sep">·</span>
+          <span>Brooklyn Arts Council</span>
+        </div>
+        <h2 id="cb">Free tech meetup — "Designing for Calm"</h2>
+        <p class="where">4 blocks from work</p>
+        <p class="tags"><span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">friday</span><span class="dotsep">·</span><span class="tag">free</span></p>
+      </article>
+    </div>
+
+    <!-- Tap-to-view detail panel -->
+    <div class="panel" role="dialog" aria-labelledby="panel-title">
+      <div class="glyph" aria-hidden="true">●</div>
+      <div class="body">
+        <strong id="panel-title">Schedule conflict — both within 30 minutes</strong>
+        <p>Your <strong>Anniversary dinner with Rahul</strong> starts at 7:00 PM. <strong>Free tech meetup — "Designing for Calm"</strong> starts at 6:30 PM, 4 blocks away. Q&amp;A until 8:30 — overlap of about 60 minutes.</p>
+        <p style="color: var(--ink-muted); font-size: 12px;">You chose <strong style="color: var(--ink-secondary);">"Keep both — I'll manage"</strong> on Aug 24. We won't ask again for this pair.</p>
+        <div class="actions">
+          <button class="ghostbtn">Open anniversary →</button>
+          <button class="ghostbtn">Open meetup →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Specs -->
+    <div class="specs">
+      <strong>Position:</strong> top-right corner of the Pulse Card · <strong>Size:</strong> 8–10 px diameter · <strong>Shape:</strong> filled circle · <strong>Color:</strong> <code>--warn-amber</code> (#D8A86A) · <strong>Glow:</strong> 4 px ring at rgba(216,168,106,0.14) — quiet, not alarming.<br><br>
+      <strong>Accessibility:</strong> <code>role="img"</code> + <code>aria-label="Schedule conflict"</code>. The indicator is keyboard-focusable (tabindex on parent card reaches the conflict via standard card activation; the indicator itself is decorative, not separately focusable).<br><br>
+      <strong>Distinct by shape alone:</strong> ● circle vs ✅/👥/🔗/📥/⚠️ icon-glyphs vs ●●●●● dot clusters. Color is not the sole carrier of meaning — but the warm amber tint is intentionally desaturated, never red, and matches the conflict-prompt glyph (consistency across surfaces).<br><br>
+      <strong>Persistence:</strong> the indicator remains on both Pulse Cards <strong>forever</strong> after the user chooses "Keep both." It is the calm, permanent reminder that the user has accepted this overlap. There is no "Hide conflict indicators" toggle in MVP (PRD: conflicts with the calm permanent-reminder design).<br><br>
+      <strong>Tap target:</strong> the entire card is the tap target; tapping the indicator opens the non-alarming detail panel (shown above), not a silent close. The indicator is informational, never an "X" affordance.
+    </div>
+  </div>
+</div>
+</body>
+</html>
