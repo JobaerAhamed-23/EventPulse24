@@ -3,7 +3,7 @@ title: "DESIGN.md — EventPulse24"
 status: final
 created: 2026-08-23
 updated: 2026-09-03
-updated_note: "Added three enforcement-tightening rules to §Color usage rules and §Token Implementation Contract, derived from the 2026-09-03 pulse-preview audit. (1) Glow rule now enumerates the two sanctioned glows and explicitly lists what does NOT glow (eyebrow glyphs, status dots, focus rings, hover targets, decorative dots). (2) Stripe color rule extended from color.warm.personal only to all category stripes, requiring both an inline label on the card AND a legend on the surface that first uses the stripe. (3) New rule scoping font-variant-numeric: tabular-nums to type.scale.numeric and time/duration strings; explicitly forbids body-wide application."
+updated_note: "Added three enforcement-tightening rules to §Color usage rules and §Token Implementation Contract, derived from the 2026-09-03 pulse-preview audit. (1) Glow rule now enumerates the two sanctioned glows and explicitly lists what does NOT glow (eyebrow glyphs, status dots, focus rings, hover targets, decorative dots). (2) Stripe color rule extended from color.warm.personal only to all category stripes, requiring both an inline label on the card AND a legend on the surface that first uses the stripe. (3) New rule scoping font-variant-numeric: tabular-nums to type.scale.numeric and time/duration strings; explicitly forbids body-wide application. Subsequent update 2026-09-03 (v1 onboarding audit): added §Layout `layout.container.form` token, §Shapes chip/input radius clarifications banning pills outside the four sanctioned round elements, §Components three new control patterns (Control.Segmented, Control.Preset, Button.Provider) with the small-control selection tint rule formalized, §Do's-and-Dont's four new rows enforcing topbar-quiet, provider parity, segmented-control ink inversion, and selection-tint pattern."
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -199,6 +199,7 @@ The grid is a **4px base**. All spacing tokens are multiples of 4. Generous whit
 - `layout.card.spacing.desktop` — `{spacing.8}` (32px). Vertical gap between cards on desktop.
 - `layout.container.max` — 1180px. Maximum content width on desktop; content is centered with the 80px gutter eating the rest.
 - `layout.container.reading` — 720px. The single-column reading width used inside event detail and explanation surfaces.
+- `layout.container.form` — 720px. Centered form / onboarding / single-decision column. Same value as `layout.container.reading` because the form column needs the same line-length to feel readable; the two tokens are intentionally aliased (1:1 value) but kept distinct so semantic references don't drift. Used on `/onboarding`, `/settings/*` narrow-column layouts, and single-column auth flows.
 - `layout.section.gap` — `{spacing.16}` (64px). Vertical gap between major page sections.
 - `layout.section.gap.large` — `{spacing.20}` (80px). Hero-to-first-section gap.
 - `layout.grid.columns` — 12. Desktop grid; cards typically span 6 or 12 columns depending on density.
@@ -224,11 +225,11 @@ OLED Dark communicates depth with **tonal layering and a single shadow token**. 
 The shape language is **mostly square with subtle rounding**. Card corners are 12px (slightly more generous than the light-mode 8px to soften the harsh dark void). Inputs are 8px. Primary CTA corners are 12px. There are no pill buttons.
 
 - `radius.none` — 0.
-- `radius.subtle` — 6px. Inputs, chips, meta tags, the resting-state of small controls.
+- `radius.subtle` — 6px. **The default radius for inputs, chips, meta tags, preset/segmented buttons, time-pickers, timezone fields, and the resting-state of small controls.** Chips (interest chips, time presets) are NOT pill-shaped (`9999px` is reserved for the four sanctioned round elements per `radius.full`). Engineering must not exceed `radius.subtle` for chips in any state.
 - `radius.card` — 12px. Cards, sheets, list rows that need their own edge. (Bumped from 8px in the prior light-mode spec — darker surfaces need slightly more rounding to feel intentional rather than abrupt.)
-- `radius.control` — 12px. Reserved exclusively for `Button.Primary`. Same radius as cards in dark; the distinction comes from the terracotta fill, not the corner radius.
+- `radius.control` — 12px. **Reserved exclusively for `Button.Primary` and the calendar provider buttons on `/onboarding` step 1** (per-provider buttons share the radius-control shape language so the user perceives them as decision affordances, not as list rows). Same radius as cards in dark; the distinction comes from the terracotta fill on the active primary, or the elevated surface fill on secondary provider buttons, not from the corner radius.
 - `radius.modal` — 16px. Modals get a slightly more generous radius than cards to feel like a separate floating surface.
-- `radius.full` — 9999px. Reserved for the terracotta `Indicator.Today` dot, the dots in `Indicator.Confidence`, and the avatar. Never used for buttons or chips.
+- `radius.full` — 9999px. Reserved for the terracotta `Indicator.Today` dot, the dots in `Indicator.Confidence`, the avatar, and status dots. **Never used for buttons, chips, preset rows, or segmented controls.**
 
 Stroke language:
 
@@ -266,6 +267,13 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 - `component.input.field` — `{color.surface.elevated}` fill, 1px `{color.border.subtle}` stroke, `{radius.subtle}` (6px), padding `{spacing.3}` × `{spacing.4}`, label in `{type.scale.meta.sm}` above the field. Focus transitions stroke to `color.accent.terracotta` and adds the 2px focus ring.
 - `component.input.chip` — `{color.surface.subtle}` fill, `{color.ink.secondary}` label, `{type.scale.meta.sm}`, padding `{spacing.1}` × `{spacing.3}`, `{radius.subtle}` (6px). Used for static category labels, source filters, "applied filter" pills. No interactivity chrome — chips become buttons only when they are actually buttons.
 - `component.input.reminder.slot` — The 5d / 2d / 1d / 1hr reminder configuration chip. `{color.surface.subtle}` resting fill, `{color.ink.primary}` label, `{type.scale.meta.sm}`, padding `{spacing.2}` × `{spacing.3}`, `{radius.subtle}`. Selected state fills with `rgba(255,106,71,0.10)` and shifts the label to `color.accent.terracotta`. No terracotta fill — selection is communicated by tint + label color, not by an accent fill.
+- `component.control.segmented` — Segmented two- or three-option toggle (e.g., AM/PM in onboarding step 3 time picker, day-of-week picker in Settings → Quiet Hours). Resting state: `{color.surface.elevated}` fill, `{color.ink.secondary}` label, `{radius.subtle}`. **Selected/active state uses ink inversion** (`{color.ink.primary}` fill + `{color.ink.inverse}` label) — never terracotta fill. Terracotta on a small two-option toggle burns the accent on a control that's used once or twice in the user's life; ink inversion reserves the chromatic budget for sanctioned moments. Container around a segmented group is a single `{color.border.subtle}` stroke at 1px, no inner dividers between segments.
+- `component.control.preset` — A horizontal row of preset buttons used for low-stakes single-select choices (e.g., the time-preset row "8:00 AM / 7:00 AM / 9:00 AM / 12:00 PM / 6:00 PM" on onboarding step 3). Resting state: `{color.surface.elevated}` fill, 1px `{color.border.subtle}` stroke, `{color.ink.secondary}` label, `{radius.subtle}`. **Active state uses the small-control selection tint** (`background: rgba(255,106,71,0.10)`, `border-color: rgba(255,106,71,0.30)`, `label: color.accent.terracotta`). The same 10%-terracotta tint pattern used for `component.input.reminder.slot` is the canonical small-control selection treatment across the system.
+- `component.button.provider` — Calendar-provider connect button on `/onboarding` step 1 (Google / Apple / Outlook). `{color.surface.elevated}` fill, 1px `{color.border.subtle}` stroke, `{radius.control}` (12px), `{spacing.4}` × `{spacing.5}` padding, full-width per provider. Each provider renders a small monogram tile (36×36, `{color.surface.inset}` fill) and a label group (provider name in `{type.scale.body.md}` `{color.ink.primary}` weight 600; sub-label in `{type.scale.meta.sm}` `{color.ink.muted}`). The provider list is a **vertical stack of equal-weight decision buttons** — no single provider is visually elevated above the others (Google is not the "primary CTA" and Apple/Outlook are not "secondary ghost links"). On hover, the stroke transitions to `{color.border.strong}` and the fill to `{color.surface.subtle}` — same hover affordance as `component.surface.card`. Focus shows the 2px terracotta ring.
+
+### Calendar Connect Provider Parity (v1)
+
+All three providers (Google, Apple, Outlook) ship at MVP per PRD FR-3 / FR-50. The provider list renders with **provider parity** — identical visual weight, identical button affordance, identical affordance copy. The handshake differs (OAuth 2.0 vs. CalDAV app-specific password), but the user should never perceive one provider as "the real one" and the others as "secondary." Engineering must not ship a state where Google is `Button.Primary` and Apple/Outlook are `Button.Ghost` text links — that visual hierarchy would falsely signal preference and contradict the parity contract.
 
 ### Cards
 
@@ -313,6 +321,11 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 | Use the sanctioned glow only on `Indicator.Today` and the brand mark. | Glow other elements, buttons, or accents. Glow is rationed. |
 | Use the gradient background only on `component.card.pro.upsell`. | Apply gradients to hero sections, cards, or any other surface. |
 | Ship dark mode as the default. Make light mode an opt-in swap. | Treat light mode as the source and dark as a swap. The visual identity is dark-first. |
+| Keep the topbar for identity only — brand mark + tagline. All action affordances (Skip, Sign in, Sign up, Open menu, etc.) live in the page footer or in surface-level CTAs, never in the topbar. | Place action buttons, benefit claims, or "Skip — take me to X" affordances in the topbar. The topbar carries *who we are*, never *what you should do*. (See `EXPERIENCE.md` §3 Zone roles.) |
+| Render all three calendar providers (Google / Apple / Outlook) at identical visual weight on `/onboarding` step 1. | Render Google as `Button.Primary` and Apple/Outlook as ghost links or text-only. The three providers have parity per PRD FR-3 / FR-50. |
+| Use `component.control.segmented` (ink-inversion selected state) for AM/PM and small two- or three-option toggles. | Fill a segmented control's selected state with terracotta. Terracotta is rationed; small toggles use ink inversion. |
+| Use the `rgba(255,106,71,0.10)` small-control selection tint for preset rows and reminder slots. | Fill the active state of a small chip/preset/segmented control with solid terracotta. Tint is the canonical selection treatment. |
+| Use `radius.subtle` (6px) for chips, inputs, presets, segmented controls, and meta tags. | Render any of those as pills (`9999px`). Pills are reserved for the four sanctioned round elements in `radius.full`. |
 
 ## Assumptions
 
@@ -342,3 +355,13 @@ All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry h
   - Status: RESOLVED
   - Owner: design
   - Affects: §Shapes
+
+- **ASSUM-5.** `layout.container.form` is a 720px-centered narrow column aliased to `layout.container.reading` (same value, distinct token for semantic clarity). Used on `/onboarding` (all three steps), `/settings/*` narrow forms, and single-decision auth flows. The token exists so semantic references don't drift across docs (e.g., the onboarding mockup saying "max-width: 720px" doesn't accidentally borrow `reading` semantics).
+  - Status: RESOLVED
+  - Owner: design
+  - Affects: §Layout & Spacing → Layout tokens; all `/onboarding` and `/settings/*` mockups
+
+- **ASSUM-6.** The `rgba(255,106,71,0.10)` + `rgba(255,106,71,0.30)` border + `color.accent.terracotta` label pattern is the canonical "small-control selected state" treatment across the system. Originally introduced for `component.input.reminder.slot`, now generalized to time-preset rows, interest-chip selected state, and any future small-toggle selection. **Do not** substitute a solid terracotta fill for the tint; tint is the contract.
+  - Status: RESOLVED
+  - Owner: design
+  - Affects: §Components → Inputs (`Input.ReminderSlot`); §Components → Control (`Control.Preset`); §Color usage rules → selection treatment
