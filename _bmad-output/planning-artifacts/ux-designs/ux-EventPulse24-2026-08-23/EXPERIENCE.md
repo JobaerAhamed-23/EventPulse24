@@ -3,6 +3,7 @@ title: "EXPERIENCE.md — EventPulse24"
 status: final
 created: 2026-08-23
 updated: 2026-09-03
+updated_note: "Added three enforcement-tightening rules to §3 Voice and Tone and §7 Accessibility Floor, derived from the 2026-09-03 pulse-preview audit. (1) Two new rows in the §3 microcopy contract table — hero preview header ('Three picks, every morning.' / no 'We show you exactly those.') and soft-wall on anonymous action ('we'll hold your seat.' / no '→ Sign up to save.'). (2) New 'Zone roles' paragraph in §3: topbar carries identity (brand + tagline), hero carries benefit (eyebrow + h1 + lede). Inversions forbidden. (3) New bullet in §7 Screen-Reader Specifics: visible helper text must live in the DOM, not in ::before/::after pseudo-elements (screen readers don't announce pseudo-element content)."
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -119,6 +120,8 @@ Total: 12 routes.
 | State-change email subject | "EventPulse24: {event name} was moved to {new date}" | "⚠️ Important update about your event!" |
 | Source transparency page intro | "Here's where events come from and how we trust each one." | "We work with the best event sources in the world!" |
 | Empty onboarding-interest step | "We'll figure this out from your calendar. Skip?" | "Tell us what you love so we can personalize!" |
+| Pulse Preview hero / preview header | "Three picks, every morning." | "We show you exactly those." |
+| Soft-wall on anonymous action (Save / Follow) | "We'll hold your seat." / "We'll save your spot." | "→ Sign up to save." / "Sign up to continue." |
 | Adaptive-digest inline expand | "Show all 5" | "Unlock the full Pulse experience!" |
 | Free-tier save-cap prompt | "You saved one event today. Save more with Pro." | "LIMITED TIME: Upgrade now and get UNLIMITED saves!" |
 | Status page incident copy | "Source X paused. ~3% of events affected. We are working on it." | "We're aware of an issue and working hard to fix it ASAP!" |
@@ -127,6 +130,8 @@ Total: 12 routes.
 | Streak-broken (Pulse Streak, Phase 3 §11) — _no copy at MVP; see §11_ | (no copy — silence on broken streak) | "You broke your 12-day streak! Don't lose your progress!" | Listed to document the principle: §11 Pulse Streak forbids any streak-broken copy at MVP. The Do cell intentionally shows _no copy_, not "Welcome back." — that form is not approved microcopy for streak breakage and must not be substituted. |
 
 **Why-this Tags are first-class.** A Why-this Tag is the smallest unit of trust. The exact three keywords on a Pulse Card are repeated on the Detail Screen (PRD §4.6 FR-21). The tags use sentence-case nouns and short verb-free phrases (`nearby, tonight, music` not `you might enjoy this because it is nearby and tonight and music`).
+
+**Zone roles — topbar carries identity, hero carries the benefit.** Each visible zone on a public-facing surface has a fixed role. The topbar (brand mark + tagline) carries *identity* — who the product is and what its posture is. The hero (eyebrow + h1 + lede paragraph) carries the *benefit* — what the product does for the visitor today. The hero never carries the positioning tagline ("the calm intelligence layer for events"); that lives in the topbar. The topbar never carries a benefit claim; it never asks the visitor to do anything. Inversions of this rule (positioning taglines in the hero, benefit claims in the topbar) are forbidden microcopy placements. Locked examples: hero eyebrow is a *what you get* sentence (`Three events a day. Hand-picked, not algorithmic.`); topbar brand lockup is the *who we are* lockup (`EventPulse24 · calm intelligence for events`).
 
 **Voice in error states.** Errors are honest and brief. "Couldn't reach Pulse. Try again." — no apologies, no exclamation marks, no emoji. (See §6 Error Patterns.)
 
@@ -417,6 +422,7 @@ Color is never the sole carrier of meaning:
 - **Source Badge:** Full label announced, e.g., "Official site. Verified venue."
 - **Why-this Tags:** Announced as comma-separated text: "nearby, tonight, music."
 - **Adaptive digest expand:** When the digest expands from 3 → 5 cards, announced: "Pulse Digest has 5 events today. Showing 3."
+- **Visible helper text is in the DOM, not in pseudo-elements.** Helper text that a sighted user reads (e.g., the line under a "Save" button explaining what happens next) is rendered as a real text element in the DOM, not injected via CSS `::before` / `::after`. Screen readers do not announce `::after` content by default; visible-to-sighted, invisible-to-screen-reader is an accessibility regression. If the helper is decoration-only, hide it with `aria-hidden="true"`; if it carries information, render it in the DOM and pair it with the trigger via `aria-describedby`.
 
 ### Motion
 
