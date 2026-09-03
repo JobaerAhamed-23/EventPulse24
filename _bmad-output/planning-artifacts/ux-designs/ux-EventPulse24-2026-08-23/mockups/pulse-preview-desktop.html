@@ -24,7 +24,10 @@
     --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
   }
   *,*::before,*::after { box-sizing: border-box; }
-  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  body { font-feature-settings: "ss01", "ss02", "cv11"; font-variant-numeric: tabular-nums; }
+  /* Premium top hairline (1px at 0.04 opacity, like Linear) */
+  body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: 1px; background: rgba(242,242,244,0.04); z-index: 100; pointer-events: none; }
   a { color: inherit; text-decoration: none; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
@@ -69,7 +72,7 @@
 
   .preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding-bottom: 80px; }
 
-  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 24px; position: relative; transition: background 180ms; display: flex; flex-direction: column; min-height: 280px; }
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 24px; padding-top: 56px; position: relative; transition: background 180ms; display: flex; flex-direction: column; min-height: 280px; }
   .card:hover { background: var(--surface-subtle); }
   .card .stripe { position: absolute; left: 0; top: 24px; bottom: 24px; width: 3px; border-radius: 0 2px 2px 0; }
   .card .stripe.public { background: var(--cool-public); }
@@ -78,7 +81,7 @@
 
   .meta { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 12px; padding-left: 14px; }
   .meta .sep { color: var(--ink-faint); margin: 0 6px; text-transform: none; }
-  .card h3 { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.28; margin: 0 0 8px; padding-left: 14px; color: var(--ink-primary); }
+  .card h3 { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.28; letter-spacing: -0.015em; margin: 0 0 8px; padding-left: 14px; color: var(--ink-primary); }
   .where { font-size: 14px; color: var(--ink-secondary); padding-left: 14px; margin: 0 0 12px; }
   .tags { font-style: italic; font-size: 12px; color: var(--ink-muted); padding-left: 14px; margin: 0 0 18px; }
   .tags .tag { color: var(--ink-secondary); }
@@ -89,17 +92,48 @@
   .save-btn:hover { background: rgba(255,106,71,0.18); }
   .save-btn::after { content: " → Sign up to save"; opacity: 0.7; font-weight: 400; }
 
-  .srcbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-secondary); margin-left: 14px; }
-  .srcbadge.verified { color: var(--accent-terracotta); }
-  .pulse { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; }
+  /* Trust-signal row (top-right of card) — Confidence Pulse + Source Badge */
+  .trust { position: absolute; top: 24px; right: 24px; display: flex; align-items: center; gap: 10px; }
+  .pulse { display: inline-flex; gap: 4px; align-items: center; }
   .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
   .pulse .dot.on { background: var(--ink-primary); }
+  .srcbadge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--ink-secondary); white-space: nowrap; }
+  .srcbadge .glyph { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; line-height: 1; }
+  .srcbadge.verified { color: var(--accent-terracotta); }
+  .srcbadge.community { color: var(--ink-primary); font-style: italic; }
+  .srcbadge.aggregator { color: var(--ink-secondary); }
+
+  /* Why-this Tags use type.scale.microtag (13px italic) */
+  .tags { font-style: italic; font-size: 13px; line-height: 1.40; color: var(--ink-muted); padding-left: 14px; margin: 0 0 18px; }
 
   /* Value props */
   .props { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding: 64px 0 96px; border-top: 1px solid var(--border-subtle); }
   .prop .num { font-family: var(--family-mono); font-size: 12px; color: var(--accent-terracotta); letter-spacing: 0.06em; margin-bottom: 12px; font-weight: 600; }
   .prop h4 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); }
   .prop p { font-size: 14px; line-height: 1.55; color: var(--ink-secondary); margin: 0; }
+
+  /* Below-cards signup CTA (UJ-3 Flow 2 step 2) */
+  .signup { padding: 64px 0 96px; text-align: center; border-top: 1px solid var(--border-subtle); }
+  .signup h3 { font-family: var(--family-display); font-size: 28px; font-weight: 600; line-height: 1.20; letter-spacing: -0.015em; margin: 0 0 12px; color: var(--ink-primary); }
+  .signup .lede { font-size: 15px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 24px; }
+  .signup .btn-primary { padding: 12px 28px; font-size: 15px; }
+  .signup .meta-line { display: block; font-size: 12px; color: var(--ink-muted); margin-top: 14px; }
+
+  /* Footer */
+  footer { border-top: 1px solid var(--border-subtle); padding: 32px 0 48px; margin-top: 0; }
+  .footer-row { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .footer-brand { display: flex; align-items: center; gap: 8px; font-family: var(--family-display); font-size: 14px; color: var(--ink-muted); }
+  .footer-brand .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 10px rgba(255,106,71,0.4); }
+  .footer-links { display: flex; gap: 24px; }
+  .footer-links a { font-size: 13px; color: var(--ink-muted); transition: color 160ms; }
+  .footer-links a:hover { color: var(--ink-primary); }
+  .footer-copy { font-size: 12px; color: var(--ink-faint); }
+
+  /* Tooltip.Source (EXPERIENCE.md §4 — overlay on hover/focus) */
+  .srcwrap { position: relative; display: inline-flex; }
+  .srcwrap .tooltip { position: absolute; top: calc(100% + 8px); right: 0; background: var(--surface-elevated); color: var(--ink-secondary); font-size: 12px; line-height: 1.45; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,0.40); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 160ms ease-out; z-index: 10; }
+  .srcwrap:hover .tooltip, .srcwrap:focus-within .tooltip { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .srcwrap .tooltip { transition: none; } }
 </style>
 </head>
 <body>
@@ -130,13 +164,12 @@
       <h1>Three things matter. <em>We show you exactly those.</em></h1>
       <p>EventPulse24 reads the open web — concerts, meetups, classes, neighborhood events — and gives you a daily brief of three worth your attention. No feeds. No badges. No infinite scroll.</p>
       <div class="ctas">
-        <button class="btn-primary">Get my first brief</button>
-        <button class="ghost">See today's preview ↓</button>
+        <button class="ghost" onclick="document.getElementById('today').scrollIntoView({behavior:'smooth'})">See today's preview ↓</button>
         <span class="meta-link">Free. No card.</span>
       </div>
     </section>
 
-    <section>
+    <section id="today">
       <div class="preview-head">
         <h2>Today in Brooklyn</h2>
         <span class="city-pill"><span class="dot"></span> 3 events, all free</span>
@@ -145,6 +178,13 @@
 
         <article class="card">
           <span class="stripe mustknow"></span>
+          <div class="trust">
+            <span class="pulse" aria-label="4 of 5"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span></span>
+            <span class="srcwrap">
+              <button class="srcbadge verified" aria-describedby="tt-1"><span class="glyph">✓</span> Official</button>
+              <span role="tooltip" id="tt-1" class="tooltip">Verified venue or organizer</span>
+            </span>
+          </div>
           <div class="meta">Must-know <span class="sep">·</span> Today · 7:00 PM</div>
           <h3>Brooklyn Symphony open rehearsal</h3>
           <p class="where">BAM Howard Gilman Opera House</p>
@@ -156,6 +196,13 @@
 
         <article class="card">
           <span class="stripe public"></span>
+          <div class="trust">
+            <span class="pulse" aria-label="3 of 5"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></span>
+            <span class="srcwrap">
+              <button class="srcbadge community" aria-describedby="tt-2"><span class="glyph">✓</span> Community</button>
+              <span role="tooltip" id="tt-2" class="tooltip">Posted by a community member</span>
+            </span>
+          </div>
           <div class="meta">Nearby <span class="sep">·</span> Thu · 6:30 PM</div>
           <h3>Free tech meetup — "Designing for Calm"</h3>
           <p class="where">2 blocks from work · Brooklyn Arts Council</p>
@@ -167,6 +214,13 @@
 
         <article class="card">
           <span class="stripe discovery"></span>
+          <div class="trust">
+            <span class="pulse" aria-label="3 of 5"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></span>
+            <span class="srcwrap">
+              <button class="srcbadge aggregator" aria-describedby="tt-3"><span class="glyph">⎘</span> Listing site</button>
+              <span role="tooltip" id="tt-3" class="tooltip">Aggregated from a public listing</span>
+            </span>
+          </div>
           <div class="meta">Discovery <span class="sep">·</span> Sat · 8:00 PM</div>
           <h3>Sunny Jain Quartet — outdoor rooftop set</h3>
           <p class="where">Rooftop, Greenpoint</p>
@@ -176,6 +230,13 @@
           </div>
         </article>
       </div>
+    </section>
+
+    <section class="signup">
+      <h3>Get Pulse like this in your inbox.</h3>
+      <p class="lede">One calm email a morning. Three events worth your time. No feeds, no badges.</p>
+      <button class="btn-primary">Sign up</button>
+      <span class="meta-line">Free. No card. Skip anything you don't want.</span>
     </section>
 
     <section class="props">
@@ -195,6 +256,19 @@
         <p>One calm Pulse Ping at your chosen time. Multi-tier reminders for the events you actually save. Counter-metric: <em>fewer</em> pings means we're doing our job.</p>
       </div>
     </section>
+
+    <footer>
+      <div class="footer-row">
+        <div class="footer-brand"><span class="dot"></span> EventPulse24</div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="#">How it works</a>
+          <a href="#">About</a>
+          <a href="#">Privacy</a>
+          <a href="#">Contact</a>
+        </nav>
+        <div class="footer-copy">© 2026 EventPulse24 · Made in Brooklyn</div>
+      </div>
+    </footer>
   </div>
 </div>
 </body>

@@ -2,7 +2,7 @@
 title: "EXPERIENCE.md — EventPulse24"
 status: final
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-03
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -473,7 +473,7 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 
 **Path:**
 1. SEO page renders 3 Pulse Cards for Brooklyn today, plus the headline "Events near Brooklyn today." Each card has Why-this Tags, a Confidence Pulse, and a Source Badge. The cards are crawlable, Schema.org JSON-LD embedded.
-2. Pary taps "See today's full Pulse" → routes to `/preview`. Pulse Preview shows 3 cards in `Card.PulseDigest`. Above the cards: "Get Pulse like this in your inbox." Below: a single CTA "Sign up" (primary, terracotta-filled).
+2. Pary taps "See today's full Pulse" → routes to `/preview`. Pulse Preview shows 3 cards in `Card.PulseDigest`, each with Why-this Tags, a Confidence Pulse, and a Source Badge. **Below the cards** (in its own decision moment, separated by `spacing.16`+ from the grid): a section with copy "Get Pulse like this in your inbox." and a single primary CTA "Sign up" (terracotta-filled). The section is wrapped in `<section class="signup">` and is the second `Button.primary` on the surface (the topbar "Sign up" is the first, in a separate visual zone).
 3. Pary taps "Sign up" → routes to `/onboarding` step 1.
 4. Step 1: "Connect a calendar (optional)." Two buttons: "Connect Google Calendar" (primary) and "Skip" (secondary). The Skip is at equal visual weight to a "Continue" affordance — onboarding is genuinely skippable.
 5. Pary taps Connect Google → OAuth round-trip → returns to step 2.

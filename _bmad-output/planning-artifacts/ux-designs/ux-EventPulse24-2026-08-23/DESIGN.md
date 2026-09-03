@@ -2,7 +2,7 @@
 title: "DESIGN.md — EventPulse24"
 status: final
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-03
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -274,11 +274,13 @@ Components are named in dotted path notation so `EXPERIENCE.md` can cross-refere
 
 ### Badges and indicators
 
-- `component.badge.source` — Inline source attribution badge. Three variants, distinguished by glyph + label color, not by fill:
-  - `verified` — `color.accent.terracotta` label, no fill. One of the four sanctioned terracotta uses. The only one that appears on a card body besides the `Indicator.Today` dot.
-  - `official` — `{color.ink.primary}` label, no fill.
-  - `community` — `{color.ink.muted}` label, no fill.
-  - Always inline on the card (next to the headline), never behind a tap.
+- `component.badge.source` — Inline source attribution badge. Five variants, distinguished by glyph + label color, not by fill. (Canonical list — also enumerated in `EXPERIENCE.md §4`.)
+  - `official_site` — `color.accent.terracotta` label, terracotta-filled checkmark icon. One of the four sanctioned terracotta uses. The only one that appears on a card body besides the `Indicator.Today` dot.
+  - `community` — `{color.ink.primary}` label, 1.5px ink-bordered checkmark (no fill). Italic label.
+  - `aggregator` — `{color.ink.secondary}` label, ink-bordered link/chain glyph.
+  - `user_imported` — `{color.ink.secondary}` label, ink-bordered inbox icon.
+  - `crawled_html` — Small `color.warn.amber` warning triangle. One-time "Why does this show ⚠?" tooltip on first view per user per event.
+  - Always inline on the card (top-right zone, in the trust-signal row with `Indicator.Confidence`), never behind a tap. Every variant includes a visible inline text label, not icon-only (WCAG 1.1.1).
 - `component.indicator.confidence` — A row of 1–5 small dots (`{radius.full}`, 6px diameter) in `{color.ink.faint}` for unfilled positions and `{color.ink.primary}` for filled positions. The numeric count is rendered in `{type.scale.numeric}` next to the dots. Five positions, always; never a bar.
 - `component.indicator.today` — A single 6px `{radius.full}` dot in `{color.accent.terracotta}` with the sanctioned glow `box-shadow: 0 0 12px rgba(255,106,71,0.55)`. Placed inline next to today's date label. Not a background fill, not a bar — a single glowing dot.
 - `component.indicator.conflict` — An 8–10px filled circle in `{color.warn.amber}` (PRD FR-58). Top-right of the affected Pulse Card, symmetric across the conflict pair. Distinct in shape and position from the Source Badge and Confidence Pulse. `aria-label="Schedule conflict"`. Never red.
