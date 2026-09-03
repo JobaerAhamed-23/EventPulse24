@@ -13,7 +13,7 @@
 <meta property="og:title" content="EventPulse24 — Find the three things that matter">
 <meta property="og:description" content="A calm daily brief of three events worth your attention. No feeds, no badges.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><circle cx='4' cy='4' r='4' fill='%23FF6A47'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='none' stroke='%23FF6A47' stroke-width='2'/><circle cx='8' cy='8' r='2' fill='%23FF6A47'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
@@ -52,9 +52,10 @@
   /* Topbar */
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 16px; }
   .brand-wrap { display: flex; align-items: center; gap: 12px; }
-  .brand-mark { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 20px; font-weight: 600; }
-  .brand-mark .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 14px rgba(255,106,71,0.55); }
-  .brand-tag { font-family: var(--family-display); font-size: 13px; font-style: italic; color: var(--ink-muted); padding-left: 12px; border-left: 1px solid var(--border-subtle); }
+  .brand-logo { width: 36px; height: 36px; display: block; }
+  .brand-wordmark { display: flex; flex-direction: column; gap: 2px; }
+  .brand-mark { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.1; }
+  .brand-tag { font-family: var(--family-display); font-size: 13px; font-style: italic; color: var(--ink-muted); padding-left: 0; border-left: 0; line-height: 1.1; }
   .brand-anchor { color: inherit; text-decoration: none; display: inline-block; }
   .topright { display: flex; gap: 12px; align-items: center; }
   .ghost { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
@@ -167,8 +168,11 @@
     <nav class="topbar">
       <a class="brand-anchor" href="#top" aria-label="EventPulse24 — top of page">
       <div class="brand-wrap">
-        <div class="brand-mark"><span class="dot"></span> EventPulse24</div>
-        <div class="brand-tag">calm intelligence for events</div>
+        <img class="brand-logo" src="EventPulse24-latest-logo.png" alt="" width="36" height="36" />
+        <div class="brand-wordmark">
+          <div class="brand-mark">EventPulse24</div>
+          <div class="brand-tag">calm intelligence for events</div>
+        </div>
       </div>
       </a>
       <div class="topright">
