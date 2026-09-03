@@ -2,7 +2,7 @@
 title: "PRD: EventPulse24"
 status: amended-2026-08-29
 created: 2026-08-19
-updated: 2026-08-29
+updated: 2026-09-03
 project: EventPulse24
 author: Jobaer
 sources:
@@ -120,7 +120,7 @@ EventPulse24 is **not** for v1:
 **Entry state:** First visit. No auth. Browser cookie only.
 
 **Path:**
-1. Pulse Preview (home page) shows 3 events in her inferred city (geo-IP default), each with `Why this?` micro-tags.
+1. Pulse Preview (home page) shows 3 events in her inferred city (geo-IP default), each with `Why this?` micro-tags, an inline `Source Badge` (FR-23), and a 1–5 dot `Confidence Pulse` (FR-22). Trust signals are inline and first-class — not behind a tap.
 2. She clicks "Sign up" → onboarding flow: 30 seconds, max 3 steps.
 3. Step 1: optionally connect Google Calendar (1-click OAuth) or skip.
 4. Step 2: optionally pick 3 interest chips (or skip).
