@@ -22,6 +22,8 @@
     --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
     --family-display:"Source Serif 4",Fraunces,Georgia,serif;
     --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    /* Motion vocabulary — shared across all 3 onboarding steps */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
   *,*::before,*::after { box-sizing: border-box; }
   html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
@@ -38,7 +40,7 @@
   .steps { display: flex; gap: 8px; margin-bottom: 48px; }
   .step { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-inset); position: relative; overflow: hidden; }
   .step.done::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); }
-  .step.current::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); animation: fillbar 400ms ease-out; }
+  .step.current::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); animation: fillbar 280ms var(--ease-out); }
   @keyframes fillbar { from { transform: translateX(-100%); } to { transform: translateX(0); } }
   @media (prefers-reduced-motion: reduce) {
     .step.current::after { animation: none; }
@@ -67,6 +69,14 @@
   .btn-primary:hover { background: #FF7E5E; }
 
   .note { font-size: 12px; color: var(--ink-muted); margin-top: 24px; line-height: 1.5; }
+
+  /* Universal press feedback — shared across all 3 onboarding steps */
+  .provider:active, .btn-primary:active, .skip-link:active { transform: scale(0.97); }
+  .provider, .btn-primary, .skip-link { transition: transform 120ms var(--ease-out), border-color 160ms var(--ease-out), background 160ms var(--ease-out), color 160ms var(--ease-out); }
+  @media (prefers-reduced-motion: reduce) {
+    .provider:active, .btn-primary:active, .skip-link:active { transform: none; }
+    .provider, .btn-primary, .skip-link { transition: none; }
+  }
 </style>
 </head>
 <body>
