@@ -3,7 +3,7 @@ title: "EXPERIENCE.md — EventPulse24"
 status: final
 created: 2026-08-23
 updated: 2026-09-03
-updated_note: "Added three enforcement-tightening rules to §3 Voice and Tone and §7 Accessibility Floor, derived from the 2026-09-03 pulse-preview audit. (1) Two new rows in the §3 microcopy contract table — hero preview header ('Three picks, every morning.' / no 'We show you exactly those.') and soft-wall on anonymous action ('we'll hold your seat.' / no '→ Sign up to save.'). (2) New 'Zone roles' paragraph in §3: topbar carries identity (brand + tagline), hero carries benefit (eyebrow + h1 + lede). Inversions forbidden. (3) New bullet in §7 Screen-Reader Specifics: visible helper text must live in the DOM, not in ::before/::after pseudo-elements (screen readers don't announce pseudo-element content)."
+updated_note: "Added three enforcement-tightening rules to §3 Voice and Tone and §7 Accessibility Floor, derived from the 2026-09-03 pulse-preview audit. (1) Two new rows in the §3 microcopy contract table — hero preview header ('Three picks, every morning.' / no 'We show you exactly those.') and soft-wall on anonymous action ('we'll hold your seat.' / no '→ Sign up to save.'). (2) New 'Zone roles' paragraph in §3: topbar carries identity (brand + tagline), hero carries benefit (eyebrow + h1 + lede). Inversions forbidden. (3) New bullet in §7 Screen-Reader Specifics: visible helper text must live in the DOM, not in ::before/::after pseudo-elements (screen readers don't announce pseudo-element content). Subsequent update 2026-09-03 (v1 onboarding audit): updated Flow 2 to surface all three calendar providers at v1 (Google OAuth 2.0 + Apple CalDAV + Outlook Microsoft Graph), updated §3 microcopy contract table with new provider-row examples, added §3 onboarding skip-rules clarifying the topbar-quiet discipline and footer-skip pattern."
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -115,6 +115,12 @@ Total: 12 routes.
 | Reminder Picker label | "Remind me:" | "Set up smart reminders to never miss out!" |
 | Quiet Hours label | "10pm–8am. Nothing during this window." | "Sleep tight! We've got your back." |
 | Onboarding step header | "Connect a calendar (optional)" | "Let's supercharge your events!" |
+| Onboarding step 1 — provider button label (Google) | "Google Calendar · Read-only · 1-click OAuth" | "Connect Google (recommended)" |
+| Onboarding step 1 — provider button label (Apple) | "Apple Calendar · CalDAV · app-specific password" | "Apple Calendar (iCloud only — Pro tier)" |
+| Onboarding step 1 — provider button label (Outlook) | "Outlook Calendar · Microsoft Graph · 1-click OAuth" | "Outlook Calendar (work accounts — Pro tier)" |
+| Onboarding step 1 — provider parity | All three providers render with identical visual weight (no "primary" Google + ghost Apple/Outlook). Provider parity per PRD FR-3 / FR-50 + `DESIGN.md` `component.button.provider`. | Visually elevate Google as the "real" provider; demote Apple/Outlook to secondary ghost links or text. |
+| Onboarding step 1 — Apple CalDAV failure | "We couldn't reach your iCloud calendar. Double-check the app-specific password." + inline help link "How do I get this password?" | "Invalid credentials (HTTP 401)." / "OAuth failed." / "Apple Calendar is not supported on your plan." |
+| Onboarding step 1 — any-provider failure | "Connection failed. Skip for now?" with two equal-weight buttons | "We could not connect to your calendar. Please try again later or contact support." (no skip, no retry, no escape) |
 | Conflict Resolution sheet header | "These overlap." | "Uh oh! Looks like you have a scheduling conflict!" |
 | Conflict Resolution three-action labels | "Move dinner earlier / Skip concert / Keep both — I'll manage" | "Quickly resolve this clash to keep your calendar tidy" |
 | State-change email subject | "EventPulse24: {event name} was moved to {new date}" | "⚠️ Important update about your event!" |
@@ -132,6 +138,8 @@ Total: 12 routes.
 **Why-this Tags are first-class.** A Why-this Tag is the smallest unit of trust. The exact three keywords on a Pulse Card are repeated on the Detail Screen (PRD §4.6 FR-21). The tags use sentence-case nouns and short verb-free phrases (`nearby, tonight, music` not `you might enjoy this because it is nearby and tonight and music`).
 
 **Zone roles — topbar carries identity, hero carries the benefit.** Each visible zone on a public-facing surface has a fixed role. The topbar (brand mark + tagline) carries *identity* — who the product is and what its posture is. The hero (eyebrow + h1 + lede paragraph) carries the *benefit* — what the product does for the visitor today. The hero never carries the positioning tagline ("the calm intelligence layer for events"); that lives in the topbar. The topbar never carries a benefit claim; it never asks the visitor to do anything. Inversions of this rule (positioning taglines in the hero, benefit claims in the topbar) are forbidden microcopy placements. Locked examples: hero eyebrow is a *what you get* sentence (`Three events a day. Hand-picked, not algorithmic.`); topbar brand lockup is the *who we are* lockup (`EventPulse24 · calm intelligence for events`).
+
+**Topbar-quiet rule (locked).** The topbar of every surface holds only the brand mark + (optionally) the tagline. Action affordances — "Skip — take me to my brief", "Sign in", "Sign up", "Open menu" — live in the page footer, in surface-level CTAs, or in section-level decision moments. The topbar never carries a Skip button; the Skip lives in the footer (`← Back` / `Skip for now` / `Continue →`). This rule applies to `/onboarding` Step 1–3, `/settings/*`, `/preview`, and any future anonymous or authed surface with a topbar. Inversions are bugs.
 
 **Voice in error states.** Errors are honest and brief. "Couldn't reach Pulse. Try again." — no apologies, no exclamation marks, no emoji. (See §6 Error Patterns.)
 
@@ -481,8 +489,8 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 1. SEO page renders 3 Pulse Cards for Brooklyn today, plus the headline "Events near Brooklyn today." Each card has Why-this Tags, a Confidence Pulse, and a Source Badge. The cards are crawlable, Schema.org JSON-LD embedded.
 2. Pary taps "See today's full Pulse" → routes to `/preview`. Pulse Preview shows 3 cards in `Card.PulseDigest`, each with Why-this Tags, a Confidence Pulse, and a Source Badge. **Below the cards** (in its own decision moment, separated by `spacing.16`+ from the grid): a section with copy "Get Pulse like this in your inbox." and a single primary CTA "Sign up" (terracotta-filled). The section is wrapped in `<section class="signup">` and is the second `Button.primary` on the surface (the topbar "Sign up" is the first, in a separate visual zone).
 3. Pary taps "Sign up" → routes to `/onboarding` step 1.
-4. Step 1: "Connect a calendar (optional)." Two buttons: "Connect Google Calendar" (primary) and "Skip" (secondary). The Skip is at equal visual weight to a "Continue" affordance — onboarding is genuinely skippable.
-5. Pary taps Connect Google → OAuth round-trip → returns to step 2.
+4. Step 1: "Connect a calendar (optional)." Three equal-weight provider buttons render in a vertical stack: **Google Calendar**, **Apple Calendar (CalDAV)**, **Outlook Calendar**. Each provider button is `component.button.provider` per `DESIGN.md §Components` — identical visual weight, no primary elevation between providers. Below the stack: a single `Button.Secondary` "Skip for now" + a `Button.Primary` "Continue →" in the footer. The Skip is at equal visual weight to a Continue affordance — onboarding is genuinely skippable either per-provider (don't tap a provider) or per-step (tap Skip). All three providers ship at MVP per PRD FR-3 / FR-50; provider parity is enforced by the visual system.
+5. Pary taps Connect Google → OAuth round-trip → returns to step 2. (Alternative: Pary taps Apple Calendar → CalDAV credentials form → returns to step 2. Alternative: Pary taps Outlook → Microsoft Graph OAuth round-trip → returns to step 2. All three paths are first-class.)
 6. Step 2: "Pick a few interests (optional)." A grid of ~12 chips (Music, Tech, Food, Sports, Family, Arts, etc.). "Skip" and "Pick 3" buttons. Pary picks 3.
 7. Step 3: "When should we send your daily Pulse?" A time picker (default 8:00 am). Timezone pre-filled from browser. "Done" button.
 8. Pary lands on `/` (Pulse Digest). The first Pulse Digest is rendered from the cached composition (PRD FR-1 consequence) — 3 cards for Brooklyn, calibrated to her 3 interests.
@@ -491,7 +499,8 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 
 **Failure modes:**
 - Geo-IP wrong (shows NYC instead of Brooklyn): a calm banner at the top of Pulse Preview reads "Showing events near NYC. Use a different city?" with "Change" / "Use this" / "Don't use my location" buttons. (PRD FR-2 consequence.)
-- Calendar OAuth fails: "Connection failed. Skip for now?" Pary skips; Pulse infers from her 3 interest chips and geo-IP.
+- Calendar connect fails (any provider): "Connection failed. Skip for now?" Pary skips; Pulse infers from her 3 interest chips and geo-IP. The handler is provider-agnostic (no "Google failed but Apple/Outlook are still options to try" branching on a single failure). Failed connect leaves no half-state — the provider button returns to its resting state and the user can retry or move on.
+- Apple CalDAV credentials pasted incorrectly: a calm inline error reads "We couldn't reach your iCloud calendar. Double-check the app-specific password." Below the field, an inline help link "How do I get this password?" (opens a single help article, not a modal). The user can retry or skip without leaving the step.
 - Pary abandons at step 2: resumed at step 2 within 7 days. (PRD FR-1 consequence.)
 
 ### Flow 3 — Conflict Resolution (MVP, PRD FR-58)
@@ -829,6 +838,12 @@ All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry h
 - **ASSUM-9.** _Derived from §4 `Badge.Source`._ Tooltip text per source variant (`official_site`, `community`, `aggregator`, `user_imported`, `crawled_html`) is locked in §4 — `Tooltip.Source` is approved microcopy. No additional source types are accepted without a Trust Review pass; if the source roster grows, the variant list in §4 must be updated and reviewed.
   - Status: OPEN. Owner: design. Decision deadline: before source ingestion pipeline ships.
 
+- **ASSUM-10.** _Locked 2026-09-03 (v1 onboarding audit, Amendment A-7)._ All three calendar providers (Google OAuth 2.0, Apple CalDAV, Outlook Microsoft Graph) ship at MVP per PRD FR-3 / FR-50. Provider parity is enforced visually — no provider is rendered as `Button.Primary` over the others. Provider parity copy is in §3 microcopy contract. Apple CalDAV credential UX requires an inline help link to a single article (not a modal). The topbar of every onboarding step holds the brand mark only; Skip/Continue affordances live in the footer.
+  - Status: RESOLVED. Owner: design + engineering. Decision deadline: before token implementation begins.
+
+- **ASSUM-11.** _Locked 2026-09-03 (v1 onboarding audit)._ The topbar-quiet rule: topbar holds only brand + tagline; action affordances (Skip, Sign in, Sign up, Open menu) live in the footer or in surface-level CTAs. Inversions of this rule are bugs. Applies to `/onboarding`, `/settings/*`, `/preview`, and any future anonymous or authed surface with a topbar.
+  - Status: RESOLVED. Owner: design.
+
 ---
 
 _End of EventPulse24 experience spine. Generated 2026-08-23; last revised 2026-08-30 to add dark-first theme, lift conflict prompt to MVP per PRD FR-58, and lock the surface-coverage map below. Paired with `DESIGN.md`. Source PRD: `prd-EventPulse24-2026-08-19`. Reconciles: `reconcile-design-thinking.md`, `reconcile-blue-ocean.md`._
@@ -842,9 +857,9 @@ The `mockups/` directory contains 14 HTML files covering every MVP surface in bo
 | # | Surface | Route / component | Desktop mockup | Mobile mockup | Notes |
 |---|---|---|---|---|---|
 | 1 | Pulse Preview (public landing) | `/preview` | `pulse-preview-desktop.html` | `pulse-preview-mobile.html` | FR-2, UJ-3. Includes geo-IP consent banner. |
-| 2 | Onboarding — step 1 (calendar connect) | `/onboarding` step 1 | `onboarding-step1-desktop.html` | `onboarding-step1-mobile.html` | FR-1 / FR-3. Step is skippable. |
-| 3 | Onboarding — step 2 (interest chips) | `/onboarding` step 2 | `onboarding-step2-desktop.html` | _(covered by step 1 mobile)_ | FR-1. Up to 3 picks. |
-| 4 | Onboarding — step 3 (digest time + timezone) | `/onboarding` step 3 | `onboarding-step3-desktop.html` | _(covered by step 1 mobile)_ | FR-1 / FR-7. Includes presets. |
+| 2 | Onboarding — step 1 (calendar connect) | `/onboarding` step 1 | `onboarding-step1-desktop.html` | `onboarding-step1-mobile.html` | FR-1 / FR-3 / FR-50. Three providers (Google / Apple / Outlook) at MVP with provider parity. Step is skippable. |
+| 3 | Onboarding — step 2 (interest chips) | `/onboarding` step 2 | `onboarding-step2-desktop.html` | `onboarding-step2-mobile.html` (pending — see coverage gaps) | FR-1. Up to 3 picks. |
+| 4 | Onboarding — step 3 (digest time + timezone) | `/onboarding` step 3 | `onboarding-step3-desktop.html` | `onboarding-step3-mobile.html` (pending — see coverage gaps) | FR-1 / FR-7. Includes time presets + AM/PM segmented control (ink inversion, not terracotta). |
 | 5 | Pulse Digest (home, 3 cards) | `/` | `pulse-digest-desktop.html` | `pulse-digest-mobile.html` | FR-5 / FR-6. Slot 1 + Slot 2 + Slot 3 with the conflict indicator on Slot 2. |
 | 6 | Event Detail | `/events/:id` | `event-detail-desktop.html` | `event-detail-mobile.html` | FR-9 / FR-24. Why-this breakdown + multi-tier reminders + neighbors. |
 | 7 | Personal Event creation | `/events/new` modal | `personal-event-create-desktop.html` | _(desktop-first; mobile uses bottom sheet, same tokens)_ | FR-18. |
@@ -861,3 +876,5 @@ The `mockups/` directory contains 14 HTML files covering every MVP surface in bo
 - Mobile empty-state confirmation (still pending — the desktop variant is canonical).
 
 **Visual identity rule for all mockups:** tokens are declared in `:root` and overridden under `[data-theme="dark"]`. The dark variant is the default at `<html data-theme="dark">`. Every mockup carries the conditional layer at the top of its `<style>` so engineering can paste the same template for any new surface.
+
+**Mockup-onboarding parity rule:** the onboarding mockups (`onboarding-step1/2/3-desktop.html` + mobile) render the three calendar providers with identical visual weight per `DESIGN.md` `component.button.provider` and the §3 provider-parity microcopy. The earlier mockup variants that rendered Apple/Outlook as "Coming Phase 2 · Join the waitlist" links are **superseded**; v1 mockups render all three as first-class connect affordances. Old archived variants (if any) live in `mockups/light-archive/`.

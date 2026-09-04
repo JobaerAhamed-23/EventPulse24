@@ -19,6 +19,8 @@
     --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
     --family-display:"Source Serif 4",Fraunces,Georgia,serif;
     --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    /* Motion vocabulary — shared across all 3 onboarding steps */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
   *,*::before,*::after { box-sizing: border-box; }
   html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
@@ -28,13 +30,18 @@
   .topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 80px; border-bottom: 1px solid var(--border-subtle); }
   .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
   .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
-  .skip-all { color: var(--ink-muted); font-size: 13px; font-weight: 500; }
-  .skip-all:hover { color: var(--ink-secondary); }
+  .brand .tagline { color: var(--ink-muted); font-family: var(--family-body); font-size: 13px; font-weight: 500; margin-left: 8px; }
 
   .container { flex: 1; max-width: 720px; margin: 0 auto; padding: 64px 24px 48px; width: 100%; }
   .steps { display: flex; gap: 8px; margin-bottom: 48px; }
-  .step { flex: 1; height: 4px; border-radius: 2px; background: var(--accent-terracotta); }
+  .step { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-inset); position: relative; overflow: hidden; }
+  .step.done::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); }
+  .step.current::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); animation: fillbar 280ms var(--ease-out); }
   .step.pending { background: var(--surface-inset); }
+  @keyframes fillbar { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .step.current::after { animation: none; }
+  }
 
   .step-label { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; }
   .step-label .count { color: var(--accent-terracotta); }
@@ -42,30 +49,37 @@
   .lede { font-size: 16px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 32px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
-  .chip { padding: 10px 16px; border-radius: 999px; border: 1px solid var(--border-subtle); font-size: 14px; color: var(--ink-secondary); background: var(--surface-elevated); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
-  .chip:hover { background: var(--surface-subtle); }
-  .chip.selected { border-color: var(--accent-terracotta); background: rgba(255,106,71,0.10); color: var(--accent-terracotta); }
+  .chip { padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border-subtle); font-size: 14px; color: var(--ink-secondary); background: var(--surface-elevated); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out), transform 120ms var(--ease-out); }
+  .chip:hover { background: var(--surface-subtle); border-color: var(--border-strong); }
+  .chip.selected { border-color: rgba(255,106,71,0.30); background: rgba(255,106,71,0.10); color: var(--accent-terracotta); }
+  .chip:active { transform: scale(0.97); }
   .chip .glyph { font-size: 13px; opacity: 0.7; }
 
   .footer-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; }
-  .skip-link { color: var(--ink-muted); font-size: 14px; font-weight: 500; padding: 10px 16px; }
+  .skip-link { color: var(--ink-muted); font-size: 14px; font-weight: 500; padding: 10px 16px; transition: color 160ms var(--ease-out); }
   .skip-link:hover { color: var(--ink-secondary); }
-  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: transform 120ms var(--ease-out), background 160ms var(--ease-out); }
   .btn-primary:disabled { background: var(--surface-inset); color: var(--ink-muted); cursor: not-allowed; }
   .btn-primary:hover:not(:disabled) { background: #FF7E5E; }
+  .btn-primary:active:not(:disabled) { transform: scale(0.97); }
+
+  /* Universal press feedback — shared across all 3 onboarding steps */
+  @media (prefers-reduced-motion: reduce) {
+    .step.current::after, .chip, .btn-primary, .skip-link { animation: none; transition: none; }
+    .chip:active, .btn-primary:active:not(:disabled) { transform: none; }
+  }
 </style>
 </head>
 <body>
 <div class="frame">
   <header class="topbar">
-    <div class="brand"><span class="dot"></span> EventPulse24</div>
-    <button class="skip-all">Skip — take me to my brief →</button>
+    <div class="brand"><span class="dot"></span> EventPulse24 <span class="tagline">· calm intelligence for events</span></div>
   </header>
   <main class="container">
-    <div class="steps">
-      <div class="step"></div>
-      <div class="step"></div>
-      <div class="step pending"></div>
+    <div class="steps" aria-label="Onboarding progress">
+      <div class="step done" aria-label="Step 1 of 3 — done"></div>
+      <div class="step current" aria-label="Step 2 of 3 — current"></div>
+      <div class="step pending" aria-label="Step 3 of 3 — pending"></div>
     </div>
     <div class="step-label">
       <span>Step 2 of 3 · Optional</span>
@@ -75,9 +89,9 @@
     <p class="lede">Pick up to three. We'll bias your brief toward them — and your serendipity slot toward something <em>else</em>. Skip and we'll learn from your first week instead.</p>
 
     <div class="chips">
-      <button class="chip selected">● Music <span class="glyph">✓</span></button>
+      <button class="chip selected"><span class="glyph" aria-hidden="true">✓</span> Music</button>
       <button class="chip">Tech &amp; meetups</button>
-      <button class="chip selected">● Food &amp; dining <span class="glyph">✓</span></button>
+      <button class="chip selected"><span class="glyph" aria-hidden="true">✓</span> Food &amp; dining</button>
       <button class="chip">Sports &amp; fitness</button>
       <button class="chip">Arts &amp; culture</button>
       <button class="chip">Family &amp; kids</button>
