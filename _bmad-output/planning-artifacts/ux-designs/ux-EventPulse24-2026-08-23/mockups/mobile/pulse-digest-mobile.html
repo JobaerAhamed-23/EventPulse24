@@ -1,0 +1,165 @@
+<!--
+  EventPulse24 — Pulse Digest (Mobile, 375px) — DARK THEME
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --warm-personal:#C8967A; --cool-public:#6E7E92; --warn-amber:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { max-width: 420px; margin: 0 auto; min-height: 100vh; padding: 0 20px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 0 12px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.6); }
+  .topright { display: flex; gap: 8px; }
+  .iconbtn { width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-secondary); }
+
+  .pagehead { padding: 28px 0 24px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+  .eyebrow .today-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 8px rgba(255,106,71,0.5); }
+  .pagehead h1 { font-family: var(--family-display); font-size: 30px; font-weight: 700; line-height: 1.12; letter-spacing: -0.02em; margin: 0 0 10px; color: var(--ink-primary); }
+  .pagehead .lede { font-size: 15px; line-height: 1.5; color: var(--ink-secondary); margin: 0; }
+
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; position: relative; margin-bottom: 14px; }
+  .card .stripe { position: absolute; left: 0; top: 20px; bottom: 20px; width: 3px; border-radius: 0 2px 2px 0; }
+  .card.slot-1 .stripe { background: var(--accent-amber); }
+  .card.slot-2 .stripe { background: var(--cool-public); }
+  .card.slot-3 .stripe { background: var(--accent-slate); opacity: 0.85; }
+  .conflict { position: absolute; top: 16px; right: 16px; width: 9px; height: 9px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 0 3px rgba(216,168,106,0.18); }
+
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px; color: var(--ink-muted); margin-bottom: 8px; padding-left: 12px; }
+  .meta .sep { color: var(--ink-faint); }
+  .meta .type-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+  .card h2 { font-family: var(--family-display); font-size: 18px; font-weight: 600; line-height: 1.28; margin: 0 0 6px; padding-left: 12px; color: var(--ink-primary); }
+  .tags { font-style: italic; font-size: 12px; line-height: 1.4; color: var(--ink-muted); margin: 0 0 14px; padding-left: 12px; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 4px; }
+  .foot { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid var(--border-subtle); padding-left: 12px; }
+  .foot-left { display: flex; gap: 10px; align-items: center; font-size: 11px; color: var(--ink-muted); }
+  .pulse { display: inline-flex; gap: 3px; align-items: center; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot.on { background: var(--ink-primary); }
+  .pulse .n { font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-secondary); margin-left: 4px; }
+  .srcbadge { display: inline-flex; gap: 4px; align-items: center; }
+  .srcbadge.verified { color: var(--accent-terracotta); }
+
+  /* Bottom nav */
+  .bottomnav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface-elevated); border-top: 1px solid var(--border-subtle); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); display: flex; justify-content: space-around; }
+  .bottomnav .item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 10px; color: var(--ink-muted); font-size: 10px; font-weight: 500; }
+  .bottomnav .item.active { color: var(--accent-terracotta); }
+  .bottomnav svg { width: 22px; height: 22px; }
+
+  body { padding-bottom: 80px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="topbar">
+    <div class="brand"><span class="dot"></span> EventPulse24</div>
+    <div class="topright">
+      <button class="iconbtn" aria-label="Search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+      <button class="iconbtn" aria-label="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <header class="pagehead">
+    <div class="eyebrow"><span class="today-dot"></span> Tue · Aug 26 · Brooklyn</div>
+    <h1>Three things matter today.</h1>
+    <p class="lede">Your morning brief, kept short on purpose.</p>
+  </header>
+
+  <main>
+    <article class="card slot-1" aria-labelledby="m1">
+      <span class="stripe"></span>
+      <div class="meta">
+        <span class="type-label" style="color: var(--warm-personal);">Personal</span>
+        <span class="sep">·</span><span>Tonight · 7:00 PM</span>
+      </div>
+      <h2 id="m1">Anniversary dinner with Rahul</h2>
+      <p class="tags"><span class="tag">family</span><span class="dotsep">·</span><span class="tag">tonight</span><span class="dotsep">·</span><span class="tag">restaurant</span></p>
+      <div class="foot">
+        <div class="foot-left">
+          <span class="srcbadge">📥 Personal</span>
+          <span class="pulse" aria-label="5 of 5"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="n">5/5</span></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="card slot-2" aria-labelledby="m2">
+      <span class="stripe"></span>
+      <span class="conflict" role="img" aria-label="Schedule conflict"></span>
+      <div class="meta">
+        <span class="type-label" style="color: var(--cool-public);">Public</span>
+        <span class="sep">·</span><span>Thu · 6:30 PM</span>
+      </div>
+      <h2 id="m2">Free tech meetup — "Designing for Calm"</h2>
+      <p class="tags"><span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">free</span></p>
+      <div class="foot">
+        <div class="foot-left">
+          <span class="srcbadge verified">✅ Verified</span>
+          <span class="pulse" aria-label="4 of 5"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="n">4/5</span></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="card slot-3" aria-labelledby="m3">
+      <span class="stripe"></span>
+      <div class="meta">
+        <span class="type-label" style="color: var(--ink-muted);">Discovery</span>
+        <span class="sep">·</span><span>Sat · 8:00 PM</span>
+      </div>
+      <h2 id="m3">Sunny Jain Quartet — rooftop set</h2>
+      <p class="tags"><span class="tag">discovery</span><span class="dotsep">·</span><span class="tag">new-to-you</span></p>
+      <div class="foot">
+        <div class="foot-left">
+          <span class="srcbadge">👥 Community</span>
+          <span class="pulse" aria-label="3 of 5"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="n">3/5</span></span>
+        </div>
+      </div>
+    </article>
+  </main>
+</div>
+
+<nav class="bottomnav" aria-label="Bottom">
+  <a class="item active" href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg>
+    Today
+  </a>
+  <a class="item" href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    Timeline
+  </a>
+  <a class="item" href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    Saved
+  </a>
+  <a class="item" href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    Discover
+  </a>
+</nav>
+</body>
+</html>

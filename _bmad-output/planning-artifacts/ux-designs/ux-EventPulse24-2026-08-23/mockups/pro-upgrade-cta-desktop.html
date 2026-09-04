@@ -1,0 +1,169 @@
+<!--
+  EventPulse24 — Pro Upgrade Soft-Wall (Desktop) — DARK THEME
+  FR-48 free-tier 2nd-save cap. "Calm in-app CTA, no modal interruption."
+  Shows 3 states: inline toast after 2nd save, expanded panel form, dismissed.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Pro soft-wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92;
+    --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .page { padding: 0 80px; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 40px 0 80px; }
+
+  h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .page-sub { font-size: 14px; color: var(--ink-muted); margin: 0 0 40px; max-width: 720px; line-height: 1.55; }
+  .page-sub code { font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-terracotta); }
+
+  .state { margin-bottom: 64px; padding-bottom: 64px; border-bottom: 1px solid var(--border-subtle); }
+  .state:last-child { border-bottom: 0; }
+  .state-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .state-head h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0; }
+  .state-head .tag { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 4px 8px; border-radius: 4px; }
+  .state-note { font-size: 13px; color: var(--ink-secondary); margin: 0 0 20px; line-height: 1.55; max-width: 720px; }
+
+  /* Faux Pulse Digest below the toast */
+  .faux-frame { background: var(--surface-paper); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 32px; max-width: 760px; }
+  .faux-head { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .faux-sub { font-size: 13px; color: var(--ink-muted); margin: 0 0 24px; }
+  .faux-card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 18px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .faux-card .left .meta { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px; }
+  .faux-card .left h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 0; }
+  .faux-card .saved { font-size: 11px; color: var(--signal-success); font-family: var(--family-mono); }
+
+  /* STATE 1 — inline toast (the actual soft-wall) */
+  .toast-inline { display: flex; align-items: center; gap: 16px; padding: 14px 18px; background: linear-gradient(135deg, rgba(255,106,71,0.10), rgba(110,126,146,0.08)); border: 1px solid rgba(255,106,71,0.30); border-radius: 12px; margin-bottom: 20px; }
+  .toast-inline .glyph { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,106,71,0.18); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .toast-inline .body { flex: 1; min-width: 0; }
+  .toast-inline .body strong { display: block; font-size: 13px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .toast-inline .body p { font-size: 12px; color: var(--ink-secondary); margin: 0; line-height: 1.45; }
+  .toast-inline .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .toast-inline .ghost { padding: 7px 12px; border-radius: 8px; font-size: 12px; color: var(--ink-muted); }
+  .toast-inline .ghost:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
+  .toast-inline .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+
+  /* STATE 2 — expanded panel form (sticky in sidebar) */
+  .expanded-panel { background: var(--surface-elevated); border: 1px solid rgba(255,106,71,0.30); border-radius: 14px; padding: 24px; max-width: 460px; box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+  .expanded-panel .pill { display: inline-block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 4px 10px; border-radius: 4px; font-weight: 600; margin-bottom: 12px; }
+  .expanded-panel h3 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .expanded-panel .sub { font-size: 13px; color: var(--ink-secondary); margin: 0 0 18px; line-height: 1.5; }
+  .expanded-panel ul { list-style: none; padding: 0; margin: 0 0 20px; }
+  .expanded-panel li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 13px; color: var(--ink-secondary); }
+  .expanded-panel li .check { color: var(--accent-terracotta); flex-shrink: 0; font-size: 14px; line-height: 1.2; }
+  .expanded-panel .price-row { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); margin-bottom: 14px; }
+  .expanded-panel .price-row .num { font-family: var(--family-display); font-size: 28px; font-weight: 700; color: var(--ink-primary); }
+  .expanded-panel .price-row .num em { font-style: normal; font-size: 13px; color: var(--ink-muted); font-family: var(--family-body); font-weight: 400; }
+  .expanded-panel .price-row .alt { font-size: 12px; color: var(--ink-muted); text-align: right; }
+  .expanded-panel .price-row .alt strong { color: var(--ink-secondary); }
+  .expanded-panel .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; width: 100%; }
+  .expanded-panel .dismiss { font-size: 12px; color: var(--ink-muted); text-align: center; margin-top: 10px; }
+  .expanded-panel .dismiss:hover { color: var(--ink-secondary); }
+
+  /* STATE 3 — muted footer (after dismiss) */
+  .muted-footer { font-size: 12px; color: var(--ink-muted); padding: 12px 16px; background: var(--surface-subtle); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; max-width: 460px; }
+  .muted-footer a { color: var(--accent-terracotta); }
+  .muted-footer a:hover { color: #FF7E5E; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="container">
+    <h1>Pro upgrade soft-wall — states</h1>
+    <p class="page-sub">FR-48. Free-tier users hit a <strong>1-save-per-24h cap</strong>. The 2nd save triggers a <strong>calm in-app CTA</strong> — no modal interruption. Three states: <strong style="color: var(--ink-secondary);">inline toast</strong>, <strong style="color: var(--ink-secondary);">expanded panel</strong>, <strong style="color: var(--ink-secondary);">muted footer</strong>.</p>
+
+    <!-- STATE 1 — inline toast -->
+    <section class="state">
+      <div class="state-head">
+        <h2>State 1 — Inline toast (the soft-wall itself)</h2>
+        <span class="tag">.toast-inline</span>
+      </div>
+      <p class="state-note">Triggered when a free user taps <code>Save</code> on a 2nd card within a 24h window. Appears <strong>inline</strong> at the top of the Pulse Digest — replaces the saved-card sidebar moment. Auto-dismisses after 8 seconds. NOT a modal, NOT a popup.</p>
+
+      <div class="faux-frame">
+        <div class="toast-inline" role="status" aria-live="polite">
+          <div class="glyph" aria-hidden="true">ⓘ</div>
+          <div class="body">
+            <strong>You've saved your 1 free event today.</strong>
+            <p>Save unlimited events, custom quiet hours, and Google Calendar sync with Pro.</p>
+          </div>
+          <div class="actions">
+            <button class="ghost">Not now</button>
+            <button class="btn-primary">Upgrade →</button>
+          </div>
+        </div>
+        <p class="faux-head">Today, three things matter.</p>
+        <p class="faux-sub">Your morning brief, kept short on purpose.</p>
+        <div class="faux-card">
+          <div class="left">
+            <div class="meta">Public · Saved</div>
+            <h3>Free tech meetup — "Designing for Calm"</h3>
+          </div>
+          <span class="saved">✓ Saved · 1d + 1h reminders</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATE 2 — expanded panel -->
+    <section class="state">
+      <div class="state-head">
+        <h2>State 2 — Expanded panel ("Upgrade →" tapped)</h2>
+        <span class="tag">.expanded-panel</span>
+      </div>
+      <p class="state-note">Replaces the toast. Calm copy, no urgency badge, no countdown timer, no "limited time" framing. Pricing per PRD: <code>$4.99/mo</code> or <code>$49/yr</code>. Pro subscribers at MVP retain grandfathered pricing for 12 months.</p>
+
+      <div class="expanded-panel" role="dialog" aria-labelledby="upgrade-title">
+        <span class="pill">Pro</span>
+        <h3 id="upgrade-title">Fewer interruptions, more control.</h3>
+        <p class="sub">Pro keeps the calm promise — better filtering, smarter reminders, your data on your terms.</p>
+        <ul>
+          <li><span class="check" aria-hidden="true">✓</span> Unlimited saves &amp; named collections</li>
+          <li><span class="check" aria-hidden="true">✓</span> Google Calendar sync (read-only)</li>
+          <li><span class="check" aria-hidden="true">✓</span> Per-day-of-week quiet hours</li>
+          <li><span class="check" aria-hidden="true">✓</span> JSON + ICS data export (GDPR-ready)</li>
+          <li><span class="check" aria-hidden="true">✓</span> Priority support from Brooklyn</li>
+        </ul>
+        <div class="price-row">
+          <span class="num">$4.99<em>/mo</em></span>
+          <span class="alt">or <strong>$49/yr</strong><br>save 18%</span>
+        </div>
+        <button class="btn-primary">Continue to Stripe checkout →</button>
+        <button class="dismiss">Maybe later</button>
+      </div>
+    </section>
+
+    <!-- STATE 3 — muted footer -->
+    <section class="state">
+      <div class="state-head">
+        <h2>State 3 — Muted footer ("Not now" / "Maybe later")</h2>
+        <span class="tag">.muted-footer</span>
+      </div>
+      <p class="state-note">After dismiss. Persists until the next 24h save cap reset. No nag modals. No countdown. Single-line reminder in the sidebar.</p>
+
+      <div class="muted-footer">
+        <span>1 of 1 free save used today · resets at 8:00 AM</span>
+        <a href="#">Upgrade →</a>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

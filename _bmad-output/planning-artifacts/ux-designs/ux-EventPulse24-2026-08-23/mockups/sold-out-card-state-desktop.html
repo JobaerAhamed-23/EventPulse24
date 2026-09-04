@@ -1,0 +1,157 @@
+<!--
+  EventPulse24 — Sold Out Card State (Desktop, variant) — DARK THEME
+  FR-53 / FR-54. Event state sync. Sold-out badge, removed "Save Reminder" CTA.
+  Shows Pulse Digest card variant + Event Detail state.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Sold out state</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-amber:#E89B4A; --warm-personal:#C8967A; --cool-public:#6E7E92;
+    --signal-success:#7AAA7A; --signal-mute:#7A7A82;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 40px 0 80px; }
+
+  h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .page-sub { font-size: 14px; color: var(--ink-muted); margin: 0 0 40px; max-width: 720px; line-height: 1.55; }
+  .page-sub code { font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-terracotta); }
+
+  .state { margin-bottom: 56px; padding-bottom: 56px; border-bottom: 1px solid var(--border-subtle); }
+  .state:last-child { border-bottom: 0; }
+  .state-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
+  .state-head h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0; }
+  .state-head .tag { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 4px 8px; border-radius: 4px; }
+
+  /* Sold-out card variant */
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 28px; position: relative; max-width: 760px; }
+  .card.soldout { opacity: 0.85; }
+  .card.soldout .stripe { background: var(--signal-mute); opacity: 0.5; }
+  .card .stripe { position: absolute; left: 0; top: 28px; bottom: 28px; width: 3px; border-radius: 0 2px 2px 0; background: var(--cool-public); }
+
+  .card-row { display: flex; justify-content: space-between; gap: 28px; padding-left: 18px; }
+  .card-meta { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-muted); margin-bottom: 14px; }
+  .card-meta .sep { color: var(--ink-faint); }
+  .card-meta .type-label { color: var(--ink-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .card h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; line-height: 1.22; margin: 0 0 12px; color: var(--ink-primary); }
+  .card .where { font-size: 14px; color: var(--ink-secondary); margin: 0 0 16px; }
+  .tags { font-style: italic; font-size: 13px; color: var(--ink-muted); margin: 0 0 22px; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 6px; }
+
+  /* Sold-out badge */
+  .soldout-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; background: var(--surface-subtle); border: 1px solid var(--border-strong); font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .soldout-badge .glyph { color: var(--ink-muted); }
+
+  /* Card footer */
+  .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+  .card-foot-left { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--ink-muted); }
+  .pulse { display: inline-flex; gap: 4px; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot.on { background: var(--ink-primary); }
+
+  .card-actions { display: flex; gap: 8px; }
+  .ghostbtn { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .ghostbtn:disabled { color: var(--ink-faint); border-color: var(--border-subtle); cursor: not-allowed; }
+  .ghostbtn:hover:not(:disabled) { background: var(--surface-subtle); color: var(--ink-primary); }
+
+  /* Inline state-change banner */
+  .banner { background: rgba(122,170,122,0.06); border: 1px solid rgba(122,170,122,0.30); border-radius: 12px; padding: 16px 20px; max-width: 760px; margin-bottom: 24px; display: flex; gap: 14px; align-items: flex-start; }
+  .banner .glyph { width: 32px; height: 32px; border-radius: 50%; background: rgba(122,170,122,0.18); color: var(--signal-success); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .banner .body strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .banner .body p { font-size: 12px; color: var(--ink-secondary); margin: 0 0 8px; line-height: 1.5; }
+  .banner .body a { font-size: 12px; color: var(--signal-success); text-decoration: underline; text-decoration-color: rgba(122,170,122,0.4); text-underline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <h1>Sold-out state — variant</h1>
+    <p class="page-sub">FR-53 / FR-54. When a saved event becomes sold out, the system sends <strong>one</strong> calm in-app + email notification (one-time per event). The Pulse Card shows a <strong>Sold Out</strong> badge; the "Save Reminder" CTA is removed. <code>👥 Neighbor count</code> still renders (privacy-preserving).</p>
+
+    <!-- In-app banner above the digest -->
+    <div class="banner" role="status" aria-live="polite">
+      <div class="glyph" aria-hidden="true">●</div>
+      <div class="body">
+        <strong>Sunny Jain Quartet is sold out.</strong>
+        <p>We won't send any more reminders for this event. You can still see it in your timeline.</p>
+        <a href="#">View event →</a>
+      </div>
+    </div>
+
+    <!-- The Pulse Card itself, sold-out variant -->
+    <div class="card soldout" tabindex="0" aria-labelledby="ev-title">
+      <span class="stripe" aria-hidden="true"></span>
+      <div class="card-row">
+        <div class="card-main">
+          <div class="card-meta">
+            <span class="type-label">Public event</span>
+            <span class="sep">·</span>
+            <span>Sat · 8:00 PM</span>
+            <span class="sep">·</span>
+            <span>Rooftop, Greenpoint</span>
+          </div>
+          <div class="soldout-badge"><span class="glyph" aria-hidden="true">●</span> Sold out</div>
+          <h2 id="ev-title">Sunny Jain Quartet — outdoor rooftop set</h2>
+          <p class="tags"><span class="tag">discovery</span><span class="dotsep">·</span><span class="tag">new-to-you</span></p>
+          <div class="card-footer">
+            <div class="card-foot-left">
+              <span style="color: var(--ink-secondary);">👥 Community · Barbican listing</span>
+              <span class="pulse" aria-label="3 of 5 confidence"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></span>
+            </div>
+            <div class="card-actions">
+              <button class="ghostbtn">View</button>
+              <button class="ghostbtn" disabled aria-disabled="true" title="Sold out — reminders paused">Save Reminder</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail-state excerpt: detail page variant note -->
+    <div class="state" style="margin-top: 56px;">
+      <div class="state-head">
+        <h2>Detail Screen — sold-out banner</h2>
+        <span class="tag">.event-detail.soldout</span>
+      </div>
+      <p class="page-sub" style="margin-bottom: 20px;">Same single calm banner as the digest (above). Detail Screen also pins a soft <strong>"Sold out</strong>" stripe under the title, removes the <em>"Save Reminder"</em> CTA, and keeps the <strong>"Find similar events"</strong> link — quietly surfacing the next three options without an upsell.</p>
+
+      <div class="banner" role="status">
+        <div class="glyph" aria-hidden="true">●</div>
+        <div class="body">
+          <strong>Sold out — tickets no longer available.</strong>
+          <p>3 similar outdoor jazz events in your area this month. Browse →</p>
+          <a href="#">Find similar events →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Specs -->
+    <div class="state">
+      <div class="state-head">
+        <h2>Spec reference</h2>
+        <span class="tag">FR-53 / FR-54</span>
+      </div>
+      <p class="page-sub"><strong>Badge:</strong> inline pill at the top of the title — desaturated neutral (not red), <code>signal-mute</code> token. Tone: factual, not alarming. <strong>Save Reminder CTA:</strong> removed (not greyed, not "Notify me when available"). <strong>Find similar events:</strong> surfaced only on sold-out Detail Screen (not on the card) — quietly resolves the user's likely next intent. <strong>Notification frequency:</strong> one state-change notification per event per day max. Future state changes (e.g., a cancellation) replace, not stack.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

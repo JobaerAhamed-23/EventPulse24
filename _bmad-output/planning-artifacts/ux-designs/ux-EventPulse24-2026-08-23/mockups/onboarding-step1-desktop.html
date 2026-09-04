@@ -1,0 +1,133 @@
+<!--
+  EventPulse24 — Onboarding Step 1 of 3 (Desktop) — DARK THEME
+  Calendar connect. Optional. Skippable.
+  v1 (Amendment A-7): Three providers at MVP — Google OAuth 2.0, Apple CalDAV, Outlook Microsoft Graph.
+  Provider parity per DESIGN.md component.button.provider + EXPERIENCE.md §3.
+  Topbar carries identity only (brand + tagline). Skip/Continue live in footer.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Connect your calendar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    /* Motion vocabulary — shared across all 3 onboarding steps */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 80px; border-bottom: 1px solid var(--border-subtle); }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .brand .tagline { color: var(--ink-muted); font-family: var(--family-body); font-size: 13px; font-weight: 500; margin-left: 8px; }
+
+  .container { flex: 1; max-width: 720px; margin: 0 auto; padding: 64px 24px 48px; width: 100%; }
+
+  .steps { display: flex; gap: 8px; margin-bottom: 48px; }
+  .step { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-inset); position: relative; overflow: hidden; }
+  .step.done::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); }
+  .step.current::after { content: ""; position: absolute; inset: 0; background: var(--accent-terracotta); animation: fillbar 280ms var(--ease-out); }
+  @keyframes fillbar { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .step.current::after { animation: none; }
+  }
+
+  .step-label { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 12px; }
+  h1 { font-family: var(--family-display); font-size: 40px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; color: var(--ink-primary); }
+  .lede { font-size: 16px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 32px; }
+
+  .providers { display: grid; gap: 12px; margin-bottom: 28px; }
+  .provider { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-elevated); transition: border-color 160ms, background 160ms; cursor: pointer; text-align: left; width: 100%; }
+  .provider:hover { border-color: var(--border-strong); background: var(--surface-subtle); }
+  .provider .logo { width: 36px; height: 36px; border-radius: 6px; background: var(--surface-inset); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: var(--ink-secondary); flex-shrink: 0; }
+  .provider .body { flex: 1; }
+  .provider .body strong { display: block; font-size: 15px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .provider .body span { font-size: 13px; color: var(--ink-muted); }
+  .provider .arrow { color: var(--ink-muted); }
+
+  .privacy { display: flex; gap: 10px; padding: 14px 16px; background: var(--surface-subtle); border-radius: 6px; margin-bottom: 28px; font-size: 13px; color: var(--ink-secondary); line-height: 1.5; }
+  .privacy .glyph { color: var(--ink-muted); flex-shrink: 0; margin-top: 2px; font-size: 14px; }
+
+  .footer-actions { display: flex; justify-content: space-between; align-items: center; }
+  .skip-link { color: var(--ink-muted); font-size: 14px; font-weight: 500; padding: 10px 16px; }
+  .skip-link:hover { color: var(--ink-secondary); }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+  .btn-primary:hover { background: #FF7E5E; }
+
+  .note { font-size: 12px; color: var(--ink-muted); margin-top: 24px; line-height: 1.5; }
+
+  /* Universal press feedback — shared across all 3 onboarding steps */
+  .provider:active, .btn-primary:active, .skip-link:active { transform: scale(0.97); }
+  .provider, .btn-primary, .skip-link { transition: transform 120ms var(--ease-out), border-color 160ms var(--ease-out), background 160ms var(--ease-out), color 160ms var(--ease-out); }
+  @media (prefers-reduced-motion: reduce) {
+    .provider:active, .btn-primary:active, .skip-link:active { transform: none; }
+    .provider, .btn-primary, .skip-link { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> EventPulse24 <span class="tagline">· calm intelligence for events</span></div>
+  </header>
+
+  <main class="container">
+    <div class="steps" aria-label="Onboarding progress">
+      <div class="step current" aria-label="Step 1 of 3"></div>
+      <div class="step" aria-label="Step 2 of 3"></div>
+      <div class="step" aria-label="Step 3 of 3"></div>
+    </div>
+
+    <div class="step-label">Step 1 of 3 · Optional</div>
+    <h1>Connect a calendar?</h1>
+    <p class="lede">We'll surface your personal events alongside public ones — birthdays, dinners, hard-to-tickets — in the same calm brief. Read-only access. You can disconnect anytime.</p>
+
+    <div class="providers">
+      <button class="provider">
+        <span class="logo" aria-hidden="true">G</span>
+        <span class="body"><strong>Google Calendar</strong><span>Read-only · 1-click OAuth</span></span>
+        <span class="arrow">→</span>
+      </button>
+      <button class="provider">
+        <span class="logo" aria-hidden="true">A</span>
+        <span class="body"><strong>Apple Calendar <span style="color: var(--ink-muted); font-weight: 400;">(CalDAV)</span></strong><span>Read-only · app-specific password</span></span>
+        <span class="arrow">→</span>
+      </button>
+      <button class="provider">
+        <span class="logo" aria-hidden="true">O</span>
+        <span class="body"><strong>Outlook Calendar</strong><span>Read-only · Microsoft Graph · 1-click OAuth</span></span>
+        <span class="arrow">→</span>
+      </button>
+    </div>
+
+    <div class="privacy">
+      <span class="glyph" aria-hidden="true">ⓘ</span>
+      <div>We never write to your calendar. Your events stay yours. Read-only access lets us see what's coming up — we never add anything. Free tier connects 1 provider; Pro tier connects all three.</div>
+    </div>
+
+    <div class="footer-actions">
+      <button class="skip-link">← Back</button>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <button class="skip-link">Skip for now</button>
+        <button class="btn-primary">Continue →</button>
+      </div>
+    </div>
+    <div class="note">All steps are skippable. You can update these any time in Settings.</div>
+  </main>
+</div>
+</body>
+</html>

@@ -354,13 +354,15 @@ This addendum preserves depth from the discovery conversation and source documen
 
 (These augment the named FRs in PRD §4.9 with architectural/brief hints.)
 
-### FR-31 Calendar Sync (Phase 2)
+### FR-31 Two-Way Calendar Sync (Phase 2 — augments MVP FR-3 / FR-50)
 
-- **OAuth flow:** Google + Outlook in Phase 2; CalDAV for Apple.
-- **Sync interval:** 15 min pull + push on write.
-- **Conflict resolution:** Server-side wins on field-level merge with user-visible conflict log.
-- **Recurring events:** Handle RRULE expansion; show instance as separate row.
-- **Two-way or one-way:** One-way read in MVP calendar sync; write-back in Phase 3.
+> **Amendment A-7 note (v1):** The MVP three-provider read-only sync (Google / Apple / Outlook) now ships at MVP per FR-3 and FR-50. FR-31 is the Phase 2 *augmentation* — not the v1 calendar feature. The behavioral notes below describe the Phase 2 delta only.
+
+- **OAuth flow:** Google + Outlook already in production for MVP read-only; same flows power two-way in Phase 2. CalDAV for Apple (already in production for MVP read).
+- **Sync interval:** MVP reads on a 60-minute pull; Phase 2 tightens to 15 min pull + push on write.
+- **Conflict resolution:** Server-side wins on field-level merge with user-visible conflict log (Phase 2 only; MVP uses last-write-wins for personal-event edits in our own UI).
+- **Recurring events:** MVP surfaces recurring events as a single row per series; Phase 2 expands RRULE and shows individual instances with edit-this-instance / edit-the-series controls.
+- **Two-way or one-way:** MVP is one-way read; Phase 2 adds write-back (event create / edit / delete in EventPulse24 → push to source calendar).
 
 ### FR-32 Unified Timeline (Phase 2)
 

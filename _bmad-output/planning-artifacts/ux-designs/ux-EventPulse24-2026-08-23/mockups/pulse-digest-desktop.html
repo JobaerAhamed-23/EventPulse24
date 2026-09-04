@@ -1,0 +1,396 @@
+<!--
+  EventPulse24 — Pulse Digest (Desktop, 1280px) — DARK THEME
+  Person: Maya Patel, Brooklyn. Today: Thursday, Aug 27, 2026.
+  Visual identity: OLED-dark primary. Near-black canvas, terracotta glow accent.
+  Slot composition: Slot 1 personal anniversary (warm-personal stripe),
+  Slot 2 nearby public meetup (must-know amber stripe + schedule conflict),
+  Slot 3 serendipity discovery (slate stripe at 0.85).
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Today</title>
+<!-- Brand: EventPulse24 logo (cyan pulse waveform + single coral peak). -->
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* DARK tokens — canonical */
+    --surface-paper:        #0A0A0B;
+    --surface-elevated:     #131316;
+    --surface-subtle:       #1B1B1F;
+    --surface-inset:        #232328;
+    --ink-primary:          #F2F2F4;
+    --ink-secondary:        #C9C9CF;
+    --ink-muted:            #8A8A92;
+    --ink-faint:            #3A3A40;
+    --ink-inverse:          #0A0A0B;
+    --accent-terracotta:    #FF6A47;
+    --accent-slate:         #6E7E92;
+    --accent-amber:         #E89B4A;
+    --warm-personal:        #C8967A;
+    --cool-public:          #6E7E92;
+    --warn-amber:           #D8A86A;
+    --signal-success:       #7AAA7A;
+    --signal-warn:          #D8A86A;
+    --signal-error:         #C66A5C;
+    --border-subtle:        rgba(242, 242, 244, 0.08);
+    --border-strong:        rgba(242, 242, 244, 0.16);
+
+    --family-display: "Source Serif 4", Fraunces, Georgia, serif;
+    --family-body:    "Inter", -apple-system, system-ui, sans-serif;
+    --family-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+    --pad-page: 88px;
+    --gap-cards: 36px;
+    --gap-cols: 40px;
+    --pad-card: 32px;
+    --r-card: 14px;
+    --container-max: 1180px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .frame { min-height: 100vh; padding: 0 var(--pad-page); }
+  .container { max-width: var(--container-max); margin: 0 auto; }
+
+  /* Top app bar — Apple-class: airy, borderless, calm. */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 36px 0 32px; }
+  /* Brand: PNG logo + display wordmark. Logo glow is the only sanctioned terracotta carry-over (today indicator's twin). */
+  .brand { display: inline-flex; align-items: center; gap: 12px; font-family: var(--family-display); font-size: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); text-decoration: none; }
+  .brand .brand-mark { height: 32px; width: auto; display: block; }
+  .brand .brand-text { line-height: 1; padding-top: 1px; }
+  .topnav { display: flex; gap: 32px; }
+  .topnav a { position: relative; color: var(--ink-muted); font-size: 13px; font-weight: 500; letter-spacing: 0.005em; padding: 6px 0; transition: color 160ms ease; }
+  .topnav a::after { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 2px; border-radius: 2px; background: transparent; transition: background 180ms ease, transform 180ms ease; transform: scaleX(0.4); transform-origin: center; }
+  .topnav a:hover { color: var(--ink-secondary); }
+  .topnav a:hover::after { background: rgba(242,242,244,0.18); transform: scaleX(0.6); }
+  .topnav a.active { color: var(--ink-primary); }
+  .topnav a.active::after { background: var(--accent-terracotta); transform: scaleX(1); }
+  .topright { display: flex; align-items: center; gap: 16px; }
+  .iconbtn { width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-secondary); transition: background 160ms ease, color 160ms ease; }
+  .iconbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 12px; font-weight: 600; }
+
+  /* Page header — Apple-class: quieter lede, narrower column, calmer rhythm. */
+  .pagehead { padding: 72px 0 56px; max-width: 720px; position: relative; }
+  .pagehead .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--ink-muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 22px; }
+  .pagehead .eyebrow .today-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); }
+  .pagehead h1 { font-family: var(--family-display); font-size: 56px; font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; margin: 0 0 18px; color: var(--ink-primary); }
+  .pagehead .lede { font-family: var(--family-body); font-size: 17px; line-height: 1.55; color: var(--ink-secondary); margin: 0; max-width: 540px; letter-spacing: 0.005em; }
+  /* Header quick-action — Add personal event, aligned to the page head on wide viewports. */
+  .pagehead .quickadd { position: absolute; top: 72px; right: 0; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--accent-terracotta); border: 1px solid rgba(255,106,71,0.45); background: transparent; transition: background 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease; }
+  .pagehead .quickadd:hover { background: rgba(255,106,71,0.10); border-color: var(--accent-terracotta); transform: translateY(-1px); }
+  .pagehead .quickadd:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .pagehead .quickadd svg { width: 14px; height: 14px; }
+  @media (max-width: 1023px) {
+    .pagehead { padding-right: 0; }
+    .pagehead .quickadd { position: static; margin: 24px 0 0; }
+  }
+
+  /* Two-column grid */
+  .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gap-cols); padding-bottom: 80px; }
+  @media (max-width: 1023px) { .grid { grid-template-columns: 1fr; } }
+
+  /* Card — Apple-class: softer edge, calmer hover. */
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: var(--pad-card); position: relative; transition: background 180ms ease, border-color 180ms ease; cursor: pointer; }
+  .card:hover { background: var(--surface-subtle); border-color: var(--border-strong); }
+  /* EXPERIENCE §4 Card.PulseDigest Focus state: 2px terracotta ring at AA contrast. */
+  /* EXPERIENCE §4 Hover: trailing ▸ affordance (decorative — entire card is the tap target). */
+  .card:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .card:focus-visible::after,
+  .card:hover::after { content: "▸"; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); color: var(--ink-secondary); font-family: var(--family-mono); font-size: 14px; transition: color 160ms ease, transform 160ms ease; }
+  .card:hover::after { color: var(--ink-primary); transform: translateY(-50%) translateX(2px); }
+  .card .stripe { position: absolute; left: 0; top: var(--pad-card); bottom: var(--pad-card); width: 3px; border-radius: 0 2px 2px 0; }
+  /* Slot 1 = personal event — DESIGN §Components.pulse.digest.category.personal: warm-personal stripe. */
+  /* Slot 2 = must-know public — accent-amber stripe (warm-secondary, max ~10% of cards). */
+  /* Slot 3 = discovery — accent-slate at 0.85 opacity. */
+  .card.slot-1 .stripe { background: var(--warm-personal); }
+  .card.slot-2 .stripe { background: var(--accent-amber); }
+  .card.slot-3 .stripe { background: var(--accent-slate); opacity: 0.85; }
+
+  .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding-left: 18px; }
+  .card-main { flex: 1; min-width: 0; }
+  .card-meta { display: flex; gap: 10px; align-items: center; font-size: 12px; font-weight: 500; color: var(--ink-muted); letter-spacing: 0.02em; margin-bottom: 14px; }
+  .card-meta .sep { color: var(--ink-faint); }
+  .card-meta .type-label { color: var(--ink-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .card h2 { font-family: var(--family-display); font-size: 24px; font-weight: 600; line-height: 1.22; letter-spacing: -0.014em; margin: 0 0 12px; color: var(--ink-primary); }
+  .card .where { font-size: 14px; color: var(--ink-secondary); margin: 0 0 16px; }
+  .tags { font-family: var(--family-body); font-style: italic; font-size: 13px; line-height: 1.40; color: var(--ink-muted); margin: 0 0 22px; letter-spacing: 0.005em; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 6px; }
+  /* Why-this Tags are announced as comma-separated text per EXPERIENCE §7. */
+  .tags .comma { color: var(--ink-faint); }
+
+  .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid var(--border-subtle); margin-top: 6px; }
+  .card-foot-left { display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--ink-muted); }
+  .pulse { display: inline-flex; gap: 4px; align-items: center; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); transition: background 180ms ease; }
+  .pulse .dot.on { background: var(--ink-primary); }
+/* EXPERIENCE §4 Indicator.Confidence: "Dots only. No numeric label visible." Numeric is announced via aria-label on the .pulse wrapper. */
+  .pulse .n { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .srcbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-secondary); }
+  .srcbadge .glyph { font-size: 13px; }
+  .srcbadge.verified { color: var(--accent-terracotta); }
+
+  .card-actions { display: flex; gap: 8px; }
+  .ghostbtn { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .ghostbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); border-color: var(--border-strong); }
+  /* Tinted ghost buttons — borrow color from the slot stripe so action matches category. */
+  .ghostbtn.tint-amber { color: var(--accent-amber); border-color: rgba(232,155,74,0.45); }
+  .ghostbtn.tint-amber:hover { background: rgba(232,155,74,0.10); color: var(--accent-amber); border-color: var(--accent-amber); }
+  .ghostbtn.tint-violet { color: #B59CE8; border-color: rgba(181,156,232,0.45); }
+  .ghostbtn.tint-violet:hover { background: rgba(181,156,232,0.10); color: #B59CE8; border-color: #B59CE8; }
+  /* Filled action — terracotta pill for must-tap "Open" affordance. */
+  .ghostbtn.filled { background: var(--accent-terracotta); color: var(--ink-inverse); border-color: var(--accent-terracotta); font-weight: 600; }
+  .ghostbtn.filled:hover { background: #FF7E5E; border-color: #FF7E5E; color: var(--ink-inverse); }
+  /* Verified checkmark badge — success-green instead of terracotta so "verified" reads as a positive state. */
+  .srcbadge.verified { color: var(--signal-success); }
+  .srcbadge.verified .glyph { color: var(--signal-success); }
+
+  /* Conflict indicator — softened glow ring. */
+  .conflict { position: absolute; top: 18px; right: 18px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 0 4px rgba(216,168,106,0.14); }
+  .conflict[aria-label]::after { content: ""; }
+
+  /* Sidebar — Apple-class: same softness, larger saved-row titles. */
+  .side h3 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 22px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .side .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: 22px; margin-bottom: 22px; }
+  .saved-row { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid var(--border-subtle); align-items: center; }
+  .saved-row:first-of-type { border-top: 0; }
+  .saved-row .when { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; padding-top: 2px; min-width: 64px; }
+  .saved-row .cat-icon { width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .saved-row .cat-icon svg { width: 18px; height: 18px; }
+  .saved-row .cat-icon.tint-pottery { background: rgba(200,150,122,0.16); color: var(--warm-personal); }
+  .saved-row .cat-icon.tint-book    { background: rgba(110,126,146,0.18); color: var(--accent-slate); }
+  .saved-row .cat-icon.tint-leaf    { background: rgba(122,170,122,0.16); color: var(--signal-success); }
+  .saved-row .title { font-size: 14px; font-weight: 500; color: var(--ink-primary); line-height: 1.35; }
+  .saved-row .where-sm { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
+
+  .pro-cta { background: linear-gradient(135deg, rgba(255,106,71,0.08), rgba(110,126,146,0.08)); border: 1px solid rgba(255,106,71,0.20); border-radius: var(--r-card); padding: 22px; }
+  .pro-cta .pill { display: inline-block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 4px 10px; border-radius: 4px; font-weight: 600; margin-bottom: 12px; }
+  .pro-cta h4 { font-family: var(--family-display); font-size: 18px; font-weight: 600; line-height: 1.25; margin: 0 0 16px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .pro-cta .pro-icons { display: flex; gap: 18px; margin-bottom: 18px; padding-top: 4px; }
+  .pro-cta .pro-icons .pi { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 56px; }
+  .pro-cta .pro-icons .pi .ring { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,106,71,0.10); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; }
+  .pro-cta .pro-icons .pi svg { width: 18px; height: 18px; }
+  .pro-cta .pro-icons .pi span { font-size: 11px; color: var(--ink-secondary); font-weight: 500; }
+  .pro-cta p { font-size: 13px; color: var(--ink-secondary); line-height: 1.5; margin: 0 0 16px; }
+
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: background 160ms ease, transform 160ms ease; }
+
+  /* Screen-reader only utility. */
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .btn-primary:hover { background: #FF7E5E; }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+</style>
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar" aria-label="Primary">
+      <a href="#" class="brand" aria-label="EventPulse24 — Home">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="32" height="32" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </a>
+      <div class="topnav">
+        <a href="#" class="active">Today</a>
+        <a href="#">Timeline</a>
+        <a href="#">Saved</a>
+        <a href="#">Discover</a>
+      </div>
+      <div class="topright">
+        <button class="iconbtn" aria-label="Search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
+        <button class="iconbtn" aria-label="Notifications">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+        </button>
+        <div class="avatar" aria-label="Account: Maya Patel">MP</div>
+      </div>
+    </nav>
+
+    <header class="pagehead">
+      <div class="eyebrow"><span class="today-dot"></span> Thursday · Aug 27, 2026 · Brooklyn, NY</div>
+      <h1>Today, three things matter.</h1>
+      <p class="lede">Your morning brief, kept short on purpose. Open one, save one, or close the app and let it go.</p>
+      <button class="quickadd" type="button" aria-label="Add a personal event">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span>Add personal event</span>
+      </button>
+    </header>
+
+    <div class="grid">
+      <main aria-label="Pulse Digest">
+        <!-- EXPERIENCE §7 Live Regions: Pulse Digest ready announcement. -->
+        <div role="status" class="sr-only" aria-live="polite" aria-atomic="true">Pulse Digest ready. 3 events for today.</div>
+        <!-- SLOT 1 — must-know: personal event (warm stripe) -->
+        <article class="card slot-1" style="margin-bottom: var(--gap-cards);" tabindex="0" aria-labelledby="c1" aria-label="Anniversary dinner with Rahul, Thu 7:30 PM at Lilia, Williamsburg. Personal calendar.">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row">
+            <div class="card-main">
+              <div class="card-meta">
+                <span class="type-label" style="color: var(--warm-personal);">Personal</span>
+                <span class="sep">·</span>
+                <span>Thu · 7:30 PM</span>
+                <span class="sep">·</span>
+                <span>Lilia, Williamsburg</span>
+              </div>
+              <h2 id="c1">Anniversary dinner with Rahul</h2>
+              <p class="tags">
+                <span class="tag">family</span><span class="comma">, </span><span class="tag">thursday</span><span class="comma">, </span><span class="tag">restaurant</span>
+              </p>
+              <div class="card-footer">
+                <div class="card-foot-left">
+                  <span class="srcbadge"><span class="glyph">📥</span> Personal calendar</span>
+                </div>
+                <div class="card-actions">
+                  <button class="ghostbtn filled">Open</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- SLOT 2 — nearby: public event (cool stripe) -->
+        <article class="card slot-2" style="margin-bottom: var(--gap-cards);" tabindex="0" aria-labelledby="c2" aria-label="Free tech meetup, Designing for Calm, Thu 6:30 PM, 2 blocks from work. Verified by Brooklyn Arts Council. Schedule conflict. Why this: nearby, thursday, free. Confidence 4 of 5.">
+          <span class="stripe" aria-hidden="true"></span>
+          <span class="conflict" role="img" aria-label="Schedule conflict"></span>
+          <div class="card-row">
+            <div class="card-main">
+              <div class="card-meta">
+                <span class="type-label" style="color: var(--cool-public);">Public event</span>
+                <span class="sep">·</span>
+                <span>Thu · 6:30 PM</span>
+                <span class="sep">·</span>
+                <span>2 blocks from work</span>
+              </div>
+              <h2 id="c2">Free tech meetup — "Designing for Calm"</h2>
+              <p class="tags">
+                <span class="tag">nearby</span><span class="comma">, </span><span class="tag">thursday</span><span class="comma">, </span><span class="tag">free</span>
+              </p>
+              <div class="card-footer">
+                <div class="card-foot-left">
+                  <span class="srcbadge verified"><span class="glyph">✅</span> Verified · Brooklyn Arts Council</span>
+                  <span class="pulse" aria-label="4 of 5 confidence" aria-describedby="tooltip-c2">
+                    <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
+                    <span class="n">4/5</span>
+                  </span>
+                  <span role="tooltip" id="tooltip-c2" hidden>4 of 5. Strong match on nearby tech meetups and within 2 km of your work.</span>
+                </div>
+                <div class="card-actions">
+                  <button class="ghostbtn tint-amber">Why this?</button>
+                  <button class="ghostbtn">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- SLOT 3 — serendipity -->
+        <article class="card slot-3" tabindex="0" aria-labelledby="c3" aria-label="Sunny Jain Quartet outdoor rooftop set, Sat 8 PM, Rooftop Greenpoint. Community source, Barbican listing. Why this: discovery, new-to-you. Confidence 3 of 5.">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row">
+            <div class="card-main">
+              <div class="card-meta">
+                <span class="type-label" style="color: var(--ink-muted);">Discovery</span>
+                <span class="sep">·</span>
+                <span>Sat · 8:00 PM</span>
+                <span class="sep">·</span>
+                <span>Rooftop, Greenpoint</span>
+              </div>
+              <h2 id="c3">Sunny Jain Quartet — outdoor rooftop set</h2>
+              <p class="tags">
+                <span class="tag">discovery</span><span class="comma">, </span><span class="tag">new-to-you</span>
+              </p>
+              <div class="card-footer">
+                <div class="card-foot-left">
+                  <span class="srcbadge"><span class="glyph">👥</span> Community · Barbican listing</span>
+                  <span class="pulse" aria-label="3 of 5 confidence" aria-describedby="tooltip-c3">
+                    <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span>
+                    <span class="n">3/5</span>
+                  </span>
+                  <span role="tooltip" id="tooltip-c3" hidden>3 of 5. New-to-you discovery in your least-engaged category.</span>
+                </div>
+                <div class="card-actions">
+                  <button class="ghostbtn tint-violet">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </main>
+
+      <aside class="side" aria-label="Saved and discovery">
+        <h3>Saved this week</h3>
+        <div class="panel">
+          <div class="saved-row">
+            <div class="when">Thu<br>7:30 PM</div>
+            <span class="cat-icon tint-pottery" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/></svg>
+            </span>
+            <div>
+              <div class="title">Pottery &amp; coffee morning</div>
+              <div class="where-sm">Bushwick · free</div>
+            </div>
+          </div>
+          <div class="saved-row">
+            <div class="when">Fri<br>6:00 PM</div>
+            <span class="cat-icon tint-book" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h7a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2Z"/><path d="M22 4h-7a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h8Z"/></svg>
+            </span>
+            <div>
+              <div class="title">Book launch: "Quiet Tech"</div>
+              <div class="where-sm">Greenpoint · verified</div>
+            </div>
+          </div>
+          <div class="saved-row">
+            <div class="when">Sat<br>9:00 AM</div>
+            <span class="cat-icon tint-leaf" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96c1.4 1 2 5.04 2 7.04 0 5.52-4.48 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>
+            </span>
+            <div>
+              <div class="title">Park cleanup volunteer</div>
+              <div class="where-sm">Prospect Park · community</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pro-cta">
+          <span class="pill">Pro · $4.99/mo</span>
+          <h4>Fewer interruptions, more control.</h4>
+          <div class="pro-icons">
+            <div class="pi">
+              <span class="ring" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"/></svg>
+              </span>
+              <span>Smart filtering</span>
+            </div>
+            <div class="pi">
+              <span class="ring" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+              </span>
+              <span>Priority alerts</span>
+            </div>
+            <div class="pi">
+              <span class="ring" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+              </span>
+              <span>Focus mode</span>
+            </div>
+          </div>
+          <button class="btn-primary">Upgrade →</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!--
+  EventPulse24 — Personal Event Edit (Desktop) — DARK THEME
+  FR-18. "A user can edit or delete a Personal Event."
+  Pre-filled form, edit-mode destructive guard, save/cancel pattern.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Edit personal event</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A; --warm-personal:#C8967A;
+    --warn-amber:#D8A86A; --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input, textarea, select { font: inherit; color: inherit; background: none; border: 0; padding: 0; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 24px 0 80px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .back { font-size: 13px; color: var(--ink-muted); }
+  .back:hover { color: var(--ink-secondary); }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 40px; }
+  @media (max-width: 1023px) { .grid { grid-template-columns: 1fr; } }
+
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--warm-personal); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warm-personal); }
+  h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .lede { font-size: 14px; color: var(--ink-secondary); margin: 0 0 32px; max-width: 600px; line-height: 1.55; }
+  .lede strong { color: var(--ink-primary); font-weight: 500; }
+
+  /* Form */
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; margin-bottom: 16px; }
+  .panel h2 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0 0 6px; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .panel .sub { font-size: 13px; color: var(--ink-muted); margin: 0 0 20px; line-height: 1.5; }
+
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  .label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .label span { font-size: 12px; font-weight: 600; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+  .label .required { color: var(--accent-terracotta); font-family: var(--family-mono); font-size: 11px; }
+  .input { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px 14px; font-size: 14px; color: var(--ink-primary); width: 100%; transition: border-color 160ms; }
+  .input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; border-color: transparent; }
+  textarea.input { font-family: var(--family-body); line-height: 1.5; min-height: 80px; resize: vertical; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row.three { grid-template-columns: 2fr 1fr 1fr; }
+
+  .toggle { width: 38px; height: 22px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
+  .toggle::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
+  .toggle.on { background: var(--accent-terracotta); }
+  .toggle.on::after { transform: translateX(16px); background: var(--ink-primary); }
+
+  .inline { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+  .inline:first-of-type { border-top: 0; padding-top: 0; }
+  .inline strong { display: block; font-size: 14px; font-weight: 500; color: var(--ink-primary); margin-bottom: 2px; }
+  .inline span { font-size: 12px; color: var(--ink-muted); line-height: 1.45; }
+
+  /* Conflict warning — appears when time conflicts with another event */
+  .conflict-warn { background: rgba(216,168,106,0.08); border: 1px solid rgba(216,168,106,0.30); border-radius: 10px; padding: 12px 14px; margin-top: 12px; display: flex; gap: 12px; align-items: flex-start; }
+  .conflict-warn .glyph { width: 20px; height: 20px; border-radius: 50%; background: rgba(216,168,106,0.18); color: var(--warn-amber); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+  .conflict-warn strong { display: block; font-size: 13px; color: var(--ink-primary); font-weight: 600; margin-bottom: 2px; }
+  .conflict-warn p { font-size: 12px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
+  .conflict-warn a { color: var(--warn-amber); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Sidebar */
+  .aside h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); margin: 0 0 12px; letter-spacing: -0.01em; }
+  .aside .mini { display: flex; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--border-subtle); font-size: 13px; color: var(--ink-secondary); }
+  .aside .mini:first-of-type { border-top: 0; padding-top: 0; }
+  .aside .mini strong { color: var(--ink-primary); font-weight: 500; }
+
+  .danger-zone { background: rgba(255,106,71,0.04); border: 1px solid rgba(255,106,71,0.20); border-radius: 12px; padding: 18px; margin-top: 16px; }
+  .danger-zone h3 { color: var(--accent-terracotta); }
+  .danger-zone p { font-size: 12px; color: var(--ink-muted); margin: 0 0 12px; line-height: 1.5; }
+  .danger-zone button { color: var(--accent-terracotta); font-size: 13px; font-weight: 500; }
+  .danger-zone button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Footer actions */
+  .footer-actions { display: flex; justify-content: space-between; gap: 12px; padding: 24px 0; border-top: 1px solid var(--border-subtle); margin-top: 8px; }
+  .footer-actions .left { display: flex; gap: 8px; }
+  .footer-actions .right { display: flex; gap: 8px; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .btn-primary:hover { background: #FF7E5E; }
+  .btn-primary:disabled { background: var(--surface-inset); color: var(--ink-muted); cursor: not-allowed; }
+  .ghost { padding: 11px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+
+  /* Dirty-state indicator */
+  .dirty { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--warn-amber); margin-left: 8px; }
+  .dirty::before { content: "●"; font-size: 8px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <a href="#" class="back">← Anniversary dinner with Rahul</a>
+    </nav>
+
+    <div class="grid">
+      <main>
+        <div class="eyebrow"><span class="dot"></span> Personal event · Edit <span class="dirty">Unsaved changes</span></div>
+        <h1>Edit personal event</h1>
+        <p class="lede">Personal events appear in your Pulse Digest alongside public ones — <strong>warm tone</strong>, eligible for Slot 1 ("must-know") within 48 hours. Reminders default to <strong>1 day + 1 hour before</strong>.</p>
+
+        <!-- Basic info -->
+        <div class="panel">
+          <h2>What &amp; when</h2>
+          <p class="sub">The two required fields. Everything else is optional — add notes, location, or end time when it helps.</p>
+
+          <div class="field">
+            <div class="label"><span>Event name</span><span class="required">required</span></div>
+            <input class="input" type="text" value="Anniversary dinner with Rahul" aria-label="Event name" />
+          </div>
+
+          <div class="field">
+            <div class="label"><span>Start time</span><span class="required">required</span></div>
+            <div class="row three">
+              <input class="input" type="text" value="Friday, Aug 29, 2026" aria-label="Date" />
+              <input class="input" type="text" value="7:30" aria-label="Time" />
+              <select class="input" aria-label="AM/PM"><option>PM</option><option>AM</option></select>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label"><span>End time</span></div>
+            <div class="row three">
+              <input class="input" type="text" placeholder="Same day" aria-label="End date" />
+              <input class="input" type="text" placeholder="9:30" aria-label="End time" />
+              <select class="input" aria-label="AM/PM"><option>PM</option><option>AM</option></select>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label"><span>Location</span></div>
+            <input class="input" type="text" value="Lilia, 567 Union Ave, Williamsburg" aria-label="Location" />
+          </div>
+
+          <div class="field">
+            <div class="label"><span>Notes</span></div>
+            <textarea class="input" aria-label="Notes">Reserve the corner table. Don't forget the card.</textarea>
+          </div>
+        </div>
+
+        <!-- Reminders -->
+        <div class="panel">
+          <h2>Reminders</h2>
+          <p class="sub">Default is <strong>1 day + 1 hour before</strong>. Per-event quiet hours (mute this event completely) is a Pro feature.</p>
+
+          <div class="inline">
+            <div><strong>1 day before</strong><span>Thu, Aug 28 · 7:30 PM</span></div>
+            <div class="toggle on" role="switch" aria-checked="true"></div>
+          </div>
+          <div class="inline">
+            <div><strong>1 hour before</strong><span>Fri, Aug 29 · 6:30 PM</span></div>
+            <div class="toggle on" role="switch" aria-checked="true"></div>
+          </div>
+          <div class="inline">
+            <div><strong>Add custom slot</strong><span>e.g., 30 min before, or day-of at 12pm</span></div>
+            <button class="ghost" style="font-size: 12px;">+ Add slot</button>
+          </div>
+
+          <div class="conflict-warn">
+            <div class="glyph" aria-hidden="true">●</div>
+            <div>
+              <strong>1 reminder falls in your quiet hours</strong>
+              <p>Your 1-hour reminder (Fri 6:30 PM) is in your quiet window (10 PM – 7 AM doesn't apply, but you have <strong>no reminders on Saturday morning</strong> enabled). <a href="#">Edit quiet hours</a></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pulse Digest opt-out -->
+        <div class="panel">
+          <h2>Pulse Digest</h2>
+          <p class="sub">Personal events in the next 48 hours are eligible for Slot 1 ("must-know"). Opt out to keep it private.</p>
+
+          <div class="inline">
+            <div><strong>Show in Pulse Digest</strong><span>Recommended. Stays eligible for your morning brief.</span></div>
+            <div class="toggle on" role="switch" aria-checked="true"></div>
+          </div>
+          <div class="inline">
+            <div><strong>Include in conflict detection</strong><span>Warn if it overlaps another saved event.</span></div>
+            <div class="toggle on" role="switch" aria-checked="true"></div>
+          </div>
+        </div>
+
+        <!-- Footer actions -->
+        <div class="footer-actions">
+          <div class="left">
+            <button class="ghost">Cancel</button>
+          </div>
+          <div class="right">
+            <button class="ghost">Discard changes</button>
+            <button class="btn-primary">Save event →</button>
+          </div>
+        </div>
+      </main>
+
+      <aside class="aside">
+        <!-- Event meta — for the editing user -->
+        <div class="panel">
+          <h3>Event details</h3>
+          <div class="mini"><span>Created</span><strong>Aug 24, 9:14 PM</strong></div>
+          <div class="mini"><span>Last edited</span><strong>just now</strong></div>
+          <div class="mini"><span>Source</span><strong>📥 User-created</strong></div>
+          <div class="mini"><span>Reminders</span><strong>2 of 4 active</strong></div>
+          <div class="mini"><span>Reminders sent so far</span><strong>0 (upcoming)</strong></div>
+        </div>
+
+        <!-- Linked state -->
+        <div class="panel">
+          <h3>Linked state</h3>
+          <p style="font-size: 13px; color: var(--ink-secondary); margin: 0 0 12px; line-height: 1.5;">Personal events surface across EventPulse24 wherever you see your timeline.</p>
+          <div class="mini"><span>In Pulse Digest</span><strong>✓ Eligible (Slot 1)</strong></div>
+          <div class="mini"><span>Schedule conflicts</span><strong>0 detected</strong></div>
+          <div class="mini"><span>Neighbor count</span><strong>Not shown (private)</strong></div>
+        </div>
+
+        <!-- Danger zone -->
+        <div class="danger-zone">
+          <h3>Delete this event</h3>
+          <p>Permanently removes the event and any reminders. Pulse Ping history won't reference it again. This cannot be undone.</p>
+          <button>Delete event →</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</body>
+</html>

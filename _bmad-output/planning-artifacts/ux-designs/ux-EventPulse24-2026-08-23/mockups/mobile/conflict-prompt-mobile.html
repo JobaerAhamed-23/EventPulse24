@@ -1,0 +1,87 @@
+<!--
+  EventPulse24 — Conflict Prompt (Mobile, 375px) — DARK THEME
+  Sheet-style modal anchored to bottom on mobile.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Schedule conflict</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --warn-amber:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .backdrop { position: fixed; inset: 0; background: rgba(10,10,11,0.7); backdrop-filter: blur(8px); display: flex; align-items: flex-end; }
+  .sheet { width: 100%; max-width: 420px; margin: 0 auto; background: var(--surface-elevated); border-radius: 20px 20px 0 0; border-top: 1px solid var(--border-subtle); padding: 16px 20px 32px; max-height: 88vh; overflow-y: auto; }
+  .handle { width: 36px; height: 4px; background: var(--ink-faint); border-radius: 2px; margin: 0 auto 16px; }
+
+  .glyph { width: 40px; height: 40px; margin: 0 auto 12px; border-radius: 50%; background: rgba(216,168,106,0.15); color: var(--warn-amber); display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 0 0 4px rgba(216,168,106,0.10); }
+  h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 6px; text-align: center; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .sub { font-size: 13px; line-height: 1.5; color: var(--ink-secondary); text-align: center; margin: 0 auto 18px; max-width: 320px; }
+
+  .events { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .evt { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px 14px; position: relative; }
+  .evt .when { font-size: 10px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
+  .evt .title { font-family: var(--family-display); font-size: 15px; font-weight: 600; line-height: 1.3; margin: 0 0 3px; color: var(--ink-primary); }
+  .evt .where { font-size: 12px; color: var(--ink-muted); }
+  .evt .pin { position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 0 3px rgba(216,168,106,0.20); }
+  .evt .new { border-color: var(--accent-terracotta); background: rgba(255,106,71,0.06); }
+
+  .choices { display: flex; flex-direction: column; gap: 8px; }
+  .choice { width: 100%; text-align: left; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-paper); display: flex; gap: 10px; align-items: flex-start; }
+  .choice .ico { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-inset); color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .choice strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .choice span { font-size: 12px; color: var(--ink-muted); line-height: 1.4; }
+
+  .foot { text-align: center; font-size: 11px; color: var(--ink-muted); margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="backdrop">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="handle" aria-hidden="true"></div>
+    <div style="text-align: center;">
+      <div class="glyph" aria-hidden="true">!</div>
+      <h2>This overlaps with another event.</h2>
+      <p class="sub">Your new event starts within 30 minutes of one you already saved. Choose how to handle it.</p>
+    </div>
+
+    <div class="events">
+      <div class="evt new">
+        <div class="pin" role="img" aria-label="Schedule conflict"></div>
+        <div class="when">New · Fri 7:00 PM</div>
+        <p class="title">Anniversary dinner with Rahul</p>
+        <p class="where">Lilia, Williamsburg</p>
+      </div>
+      <div class="evt">
+        <div class="pin" role="img" aria-label="Schedule conflict"></div>
+        <div class="when">Already saved · Fri 6:30 PM</div>
+        <p class="title">Free tech meetup — "Designing for Calm"</p>
+        <p class="where">Brooklyn Arts Council</p>
+      </div>
+    </div>
+
+    <div class="choices" role="group">
+      <button class="choice"><div class="ico">✓</div><div><strong>Keep both — I'll manage</strong><span>Both stay. Amber dot reminds you. No re-ask.</span></div></button>
+      <button class="choice"><div class="ico">✎</div><div><strong>Edit the new one</strong><span>Open in edit mode with the time pre-highlighted.</span></div></button>
+      <button class="choice"><div class="ico">✕</div><div><strong>Delete the new one</strong><span>Removes "Anniversary dinner". Confirm before deletion.</span></div></button>
+    </div>
+
+    <div class="foot">No dismiss button — resolve before continuing.</div>
+  </div>
+</div>
+</body>
+</html>

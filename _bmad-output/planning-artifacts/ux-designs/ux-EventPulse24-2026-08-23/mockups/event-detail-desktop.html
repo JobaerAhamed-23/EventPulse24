@@ -1,0 +1,254 @@
+<!--
+  EventPulse24 — Event Detail (Desktop) — DARK THEME
+  Tapped-card detail with Why-this, multi-tier reminders, save/share/dismiss.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Free tech meetup "Designing for Calm"</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A; --cool-public:#6E7E92; --warn-amber:#D8A86A;
+    --signal-success:#7AAA7A; --signal-warn:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+
+  .frame { padding: 0 80px; min-height: 100vh; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 24px 0 80px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .back { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 13px; font-weight: 500; }
+  .back:hover { color: var(--ink-secondary); }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px; }
+  @media (max-width: 1023px) { .grid { grid-template-columns: 1fr; } }
+
+  /* Main column */
+  .stripe { width: 4px; height: 32px; background: var(--cool-public); border-radius: 0 3px 3px 0; margin-bottom: 20px; }
+  .type-label { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cool-public); margin-bottom: 14px; }
+  h1 { font-family: var(--family-display); font-size: 40px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 16px; color: var(--ink-primary); }
+
+  .meta-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 8px; font-size: 14px; color: var(--ink-secondary); }
+  .meta-row .label { color: var(--ink-muted); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 4px; }
+  .meta-row .item { display: inline-flex; align-items: center; gap: 6px; }
+  .meta-row .glyph { color: var(--ink-muted); }
+
+  .tagsline { font-style: italic; font-size: 14px; color: var(--ink-muted); margin: 16px 0 28px; }
+  .tagsline .tag { color: var(--ink-secondary); }
+  .tagsline .dotsep { color: var(--ink-faint); margin: 0 6px; }
+
+  .desc { font-size: 16px; line-height: 1.65; color: var(--ink-secondary); margin: 0 0 32px; max-width: 720px; }
+
+  h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; color: var(--ink-primary); margin: 40px 0 16px; letter-spacing: -0.01em; }
+  h3 { font-family: var(--family-body); font-size: 14px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px; }
+
+  /* Why-this breakdown */
+  .why { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .why-row { display: flex; gap: 14px; padding: 10px 0; align-items: flex-start; }
+  .why-row + .why-row { border-top: 1px solid var(--border-subtle); }
+  .why-row .glyph { width: 28px; height: 28px; border-radius: 50%; background: rgba(255,106,71,0.12); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; flex-shrink: 0; }
+  .why-row .body strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .why-row .body p { font-size: 13px; color: var(--ink-secondary); margin: 0; line-height: 1.5; }
+
+  /* Source box */
+  .source-box { display: flex; gap: 14px; align-items: center; padding: 16px; background: var(--surface-subtle); border-radius: 10px; margin-bottom: 12px; }
+  .source-box .badge { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 500; color: var(--accent-terracotta); }
+  .source-box .name { font-size: 13px; color: var(--ink-secondary); }
+  .source-box .reliability { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); margin-left: auto; }
+
+  /* Sidebar */
+  .aside { position: sticky; top: 24px; align-self: start; }
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .panel h3 { color: var(--ink-primary); font-family: var(--family-display); font-size: 16px; text-transform: none; letter-spacing: 0; margin-bottom: 14px; }
+
+  /* Reminder picker */
+  .reminder-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .rem-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--surface-subtle); border-radius: 8px; }
+  .rem-row.on { background: rgba(255,106,71,0.10); border: 1px solid rgba(255,106,71,0.30); }
+  .rem-row .when { font-family: var(--family-mono); font-size: 13px; color: var(--ink-primary); font-weight: 600; }
+  .rem-row .rel { font-size: 11px; color: var(--ink-muted); }
+  .toggle { width: 36px; height: 20px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
+  .toggle::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
+  .toggle.on { background: var(--accent-terracotta); }
+  .toggle.on::after { transform: translateX(16px); background: var(--ink-primary); }
+
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+  .btn-primary:hover { background: #FF7E5E; }
+  .ghost { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 6px; }
+  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .actions .ghost { flex: 1; justify-content: center; }
+
+  .neighbor { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-secondary); padding: 8px 0; }
+  .neighbor .av { width: 24px; height: 24px; border-radius: 50%; background: var(--accent-slate); }
+  .neighbor .count { font-family: var(--family-mono); font-size: 13px; color: var(--ink-primary); font-weight: 600; }
+
+  .report { font-size: 12px; color: var(--ink-muted); padding: 12px 0 0; border-top: 1px solid var(--border-subtle); margin-top: 12px; }
+  .report a { color: var(--ink-secondary); text-decoration: underline; text-decoration-color: var(--ink-faint); text-underline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="container">
+    <nav class="topbar">
+      <div class="brand"><span class="dot"></span> EventPulse24</div>
+      <a href="#" class="back">← Today</a>
+    </nav>
+
+    <div class="grid">
+      <main>
+        <div class="stripe"></div>
+        <div class="type-label">Public event · nearby</div>
+        <h1>Free tech meetup — "Designing for Calm"</h1>
+
+        <div class="meta-row">
+          <span class="item"><span class="glyph">●</span> <span class="label">When</span> Thu, Aug 28 · 6:30 PM (your time)</span>
+        </div>
+        <div class="meta-row">
+          <span class="item"><span class="glyph">●</span> <span class="label">Where</span> Brooklyn Arts Council, 4 blocks from work</span>
+        </div>
+        <div class="meta-row">
+          <span class="item"><span class="glyph">●</span> <span class="label">Cost</span> Free</span>
+        </div>
+
+        <p class="tagsline">
+          <span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">free</span>
+        </p>
+
+        <p class="desc">A short, opinionated panel on building products that respect attention — featuring two product leads who've shipped consumer apps at scale and a research neuroscientist studying digital fatigue. Drinks and snacks from 6:00 PM. Q&amp;A until 8:30.</p>
+
+        <h2>Why is this in your brief?</h2>
+        <div class="why">
+          <div class="why-row">
+            <div class="glyph">📍</div>
+            <div class="body">
+              <strong>It's four blocks from your office.</strong>
+              <p>You marked "Brooklyn, NY" as your city and your work address falls within the recommended radius.</p>
+            </div>
+          </div>
+          <div class="why-row">
+            <div class="glyph">⭐</div>
+            <div class="body">
+              <strong>Confidence 4/5 — high match.</strong>
+              <p>You attended 2 similar events in the past 60 days and saved the most recent one.</p>
+            </div>
+          </div>
+          <div class="why-row">
+            <div class="glyph">🆓</div>
+            <div class="body">
+              <strong>Free, no ticket required.</strong>
+              <p>You haven't filtered by paid events.</p>
+            </div>
+          </div>
+          <div class="why-row">
+            <div class="glyph">✅</div>
+            <div class="body">
+              <strong>Verified source: Brooklyn Arts Council.</strong>
+              <p>Official-site source; reliability score 0.91 (Bayesian-smoothed).</p>
+            </div>
+          </div>
+        </div>
+
+        <h2>Source</h2>
+        <div class="source-box">
+          <span class="badge">✅ Verified · Official site</span>
+          <span class="name">brooklynartscouncil.org</span>
+          <span class="reliability">reliability 0.91</span>
+        </div>
+        <div class="report">
+          Something off? <a href="#">Report this event</a> · wrong date, wrong venue, doesn't exist, or a duplicate.
+        </div>
+
+        <h2>Map</h2>
+        <div style="height: 240px; border-radius: 12px; background: linear-gradient(135deg, var(--surface-subtle), var(--surface-inset)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; color: var(--ink-muted); font-size: 13px;">
+          🗺 Map — Brooklyn Arts Council (4 blocks from work)
+        </div>
+      </main>
+
+      <aside class="aside" aria-label="Actions">
+        <div class="panel">
+          <h3>Reminders</h3>
+          <div class="reminder-list">
+            <div class="rem-row on">
+              <div>
+                <div class="when">5 days before</div>
+                <div class="rel">Mon, Aug 25 · 6:30 PM</div>
+              </div>
+              <div class="toggle on" role="switch" aria-checked="true"></div>
+            </div>
+            <div class="rem-row on">
+              <div>
+                <div class="when">2 days before</div>
+                <div class="rel">Tue, Aug 26 · 6:30 PM</div>
+              </div>
+              <div class="toggle on" role="switch" aria-checked="true"></div>
+            </div>
+            <div class="rem-row on">
+              <div>
+                <div class="when">1 day before</div>
+                <div class="rel">Wed, Aug 27 · 6:30 PM</div>
+              </div>
+              <div class="toggle on" role="switch" aria-checked="true"></div>
+            </div>
+            <div class="rem-row on">
+              <div>
+                <div class="when">1 hour before</div>
+                <div class="rel">Thu, Aug 28 · 5:30 PM</div>
+              </div>
+              <div class="toggle on" role="switch" aria-checked="true"></div>
+            </div>
+          </div>
+          <button class="ghost" style="width: 100%; justify-content: center;">+ Add custom slot</button>
+
+          <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
+            <button class="btn-primary">Save to my Pulse →</button>
+            <div class="actions">
+              <button class="ghost">Share</button>
+              <button class="ghost">Less like this</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Neighbors</h3>
+          <div class="neighbor">
+            <div class="av"></div><div class="av" style="margin-left: -8px; background: var(--warm-personal);"></div><div class="av" style="margin-left: -8px; background: var(--accent-amber);"></div>
+            <div><span class="count">12 neighbors</span> tracking this in Brooklyn</div>
+          </div>
+          <div style="font-size: 12px; color: var(--ink-muted); margin-top: 8px;">Privacy-respecting — no identifying info.</div>
+        </div>
+
+        <div class="panel">
+          <h3>Similar events you've attended</h3>
+          <div style="font-size: 13px; color: var(--ink-secondary); padding: 8px 0; border-top: 1px solid var(--border-subtle);">
+            <strong style="color: var(--ink-primary); display: block; margin-bottom: 2px;">Design Systems NYC — April</strong>
+            Brooklyn · attended
+          </div>
+          <div style="font-size: 13px; color: var(--ink-secondary); padding: 8px 0; border-top: 1px solid var(--border-subtle);">
+            <strong style="color: var(--ink-primary); display: block; margin-bottom: 2px;">Calm Tech Conference — Feb</strong>
+            Manhattan · attended
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</body>
+</html>
