@@ -203,6 +203,10 @@ The grid is a **4px base**. All spacing tokens are multiples of 4. Generous whit
 - `layout.section.gap` — `{spacing.16}` (64px). Vertical gap between major page sections.
 - `layout.section.gap.large` — `{spacing.20}` (80px). Hero-to-first-section gap.
 - `layout.grid.columns` — 12. Desktop grid; cards typically span 6 or 12 columns depending on density.
+- `layout.timeline.grid` — CSS Grid `grid-template-columns: repeat(7, minmax(0, 1fr))` on desktop `md+`. Mobile `sm` collapses to a single column with horizontal swipe between days (see `Surface.Timeline` in EXPERIENCE.md §4, Amendment A-8).
+- `layout.bottom-tab.height` — 56px + `env(safe-area-inset-bottom)`. Fixed bottom navigation on mobile (Amendment A-8).
+- `layout.sidenav.app.width.tablet` — 220px. Desktop `md` (768–1023px) sidebar nav width.
+- `layout.sidenav.app.width.desktop` — 240px. Desktop `lg+` (≥1024px) sidebar nav width.
 
 ### Breakpoints
 
@@ -230,6 +234,7 @@ The shape language is **mostly square with subtle rounding**. Card corners are 1
 - `radius.control` — 12px. **Reserved exclusively for `Button.Primary` and the calendar provider buttons on `/onboarding` step 1** (per-provider buttons share the radius-control shape language so the user perceives them as decision affordances, not as list rows). Same radius as cards in dark; the distinction comes from the terracotta fill on the active primary, or the elevated surface fill on secondary provider buttons, not from the corner radius.
 - `radius.modal` — 16px. Modals get a slightly more generous radius than cards to feel like a separate floating surface.
 - `radius.full` — 9999px. Reserved for the terracotta `Indicator.Today` dot, the dots in `Indicator.Confidence`, the avatar, and status dots. **Never used for buttons, chips, preset rows, or segmented controls.**
+- `radius.timeline-cell` — 10px. **Used exclusively on `component.timeline.cell` outer corners** (Amendment A-8). Slightly tighter than `radius.card` (12px) so the 7-column week grid reads as one continuous grid rather than as 7 separate cards. Inner dividers are 1px straight strokes, no radius on the shared edges.
 
 Stroke language:
 
@@ -304,6 +309,17 @@ All three providers (Google, Apple, Outlook) ship at MVP per PRD FR-3 / FR-50. T
 
 - `component.card.pro.upsell` — The single sanctioned use of a tinted background gradient: `linear-gradient(135deg, rgba(255,106,71,0.10), rgba(110,126,146,0.10))`. 1px border `rgba(255,106,71,0.25)`, `{radius.card}` (12px), 20px padding. Used only on the Pulse Digest sidebar and the Settings → Plan section. No other surface uses a gradient background.
 
+### Timeline (Amendment A-8)
+
+- `component.timeline.cell` — A single day cell in the 7-column week grid at `/timeline`. `{color.surface.elevated}` resting fill; `{color.surface.subtle}` fill on the "today" cell (highlight). 1px `{color.border.subtle}` vertical dividers between adjacent cells; no horizontal border. Outer corners (top-left of the first column, top-right of the last) use `{radius.timeline-cell}` (10px); inner shared corners are not rounded so the grid reads as continuous. Padding `{spacing.3}` (12px) desktop, `{spacing.4}` (16px) mobile. Empty state: centered `{type.scale.meta.md}` "Quiet day." in `{color.ink.muted}`. (Locked in EXPERIENCE.md §4 `Surface.Timeline` and §5 Empty Patterns.)
+- `component.timeline.day-header` — The Mon/Tue/Wed… column header in the week grid. `{type.scale.meta.sm}` `{color.ink.muted}` for the day-of-week label; `{type.scale.meta.md}` `{color.ink.primary}` for the date number. **Today:** date number rendered in `{color.accent.terracotta}` with the sanctioned glow (`box-shadow: 0 0 12px rgba(255,106,71,0.55)`) — same treatment as `Indicator.Today` on Pulse Cards. Background `{color.surface.paper}` on all cells; no fill differentiation by default. Sticky on scroll (desktop `md+`).
+- `component.timeline.event-block` — A single event rendered inside a day cell. `{color.surface.subtle}` resting fill, 1px `{color.border.subtle}` stroke, 2px left-edge category stripe (`{color.warm.personal}` for personal events, `{color.cool.public}` for public events), `{radius.subtle}` (6px) corners. Padding `{spacing.2}` × `{spacing.3}`. Content: event name in `{type.scale.meta.md}` `{color.ink.primary}` (single line, ellipsis on overflow) + time row in `{type.scale.meta.sm}` `{color.ink.muted}`. The "Personal" / "Public event" text label sits in the top-right corner of the block as `{type.scale.meta.sm}` `{color.ink.muted}` — color is never the sole carrier of meaning (WCAG 1.4.1; mirrors the existing Pulse Card category stripe rule). Hover: fill swaps to `{color.surface.inset}` (subtle elevation in the dark surface); no shadow, no border color shift. Conflict indicator: 6px filled circle in `{color.warn.amber}` at the top-right corner of the block, mirroring `component.indicator.conflict` on Pulse Cards. `aria-label="Schedule conflict"`. Reduced motion: no fade-in on mount.
+
+### Navigation (Amendment A-8)
+
+- `component.bottom-tab` — Mobile bottom navigation. Fixed at bottom of the viewport on viewports `<768px`. Full-width, height `{layout.bottom-tab.height}` (56px + safe-area inset). Background `{color.surface.elevated}`. Top edge: 1px `{color.border.subtle}`. Four equal-width slots (25% each) for the four routes: **Digest / Timeline / Add / Settings**. Each slot: 16×16 stroke-only SVG icon (never filled chromatic) + label in `{type.scale.meta.sm}`. Resting state: icon + label in `{color.ink.muted}`. Active state: **ink-inverted background on the slot only** (`{color.ink.primary}` fill + `{color.ink.inverse}` icon + `{color.ink.inverse}` label), mirroring the `Control.Segmented` pattern. **Never** a full-bar `{color.accent.terracotta}` fill — terracotta on a small-control toggle burns the accent on a control used many times per day. Active indicator: a 2px `{color.accent.terracotta}` underline bar above the active slot (the only chromatic use in the bottom-tab, mirrors the desktop topnav active pattern from `mockups/pulse-digest-desktop.html` L75–76). Z-index above page content, below modals. Tap → route navigation; long-press disabled.
+- `component.sidenav.app` — Desktop left-rail navigation on viewports `≥768px`. Sticky `<aside>`. Width `{layout.sidenav.app.width.tablet}` (220px) on `md`, `{layout.sidenav.app.width.desktop}` (240px) on `lg+`. Background `{color.surface.paper}` (same as canvas — the sidenav is a layout container, not a visual element). Inset from page edge: `{spacing.6}` (24px) on top and sides. Items, top-to-bottom: (1) Brand mark — 28×28 logo + "EventPulse24" wordmark in `{type.scale.body.md}` `{color.ink.primary}`. Below: 1px `{color.border.subtle}` divider. (2) Four route items: **Digest / Timeline / Add / Settings** in `{type.scale.body.md}` `{color.ink.secondary}`. Resting state on the page background. Active item: `{color.ink.primary}` label on a `{color.surface.subtle}` pill background with 1px `{color.border.subtle}` stroke — mirrors the `Control.Segmented` ink-inversion pattern in miniature. **Never** terracotta fill on the active route. Keyboard: `Tab` cycles sidenav links after the topbar (topbar first in tab order, per ASSUM-11) and before page content. The topbar still carries only the brand mark + (optionally) the tagline; the sidenav is the nav, the topbar is the identity zone.
+
 ## Do's and Don'ts
 
 | Do | Don't |
@@ -326,6 +342,9 @@ All three providers (Google, Apple, Outlook) ship at MVP per PRD FR-3 / FR-50. T
 | Use `component.control.segmented` (ink-inversion selected state) for AM/PM and small two- or three-option toggles. | Fill a segmented control's selected state with terracotta. Terracotta is rationed; small toggles use ink inversion. |
 | Use the `rgba(255,106,71,0.10)` small-control selection tint for preset rows and reminder slots. | Fill the active state of a small chip/preset/segmented control with solid terracotta. Tint is the canonical selection treatment. |
 | Use `radius.subtle` (6px) for chips, inputs, presets, segmented controls, and meta tags. | Render any of those as pills (`9999px`). Pills are reserved for the four sanctioned round elements in `radius.full`. |
+| Pair every category stripe (`color.warm.personal`, `color.cool.public`, `color.warn.amber`) on `component.timeline.event-block` with a visible text label in the top-right corner ("Personal" / "Public event"). | Use category stripe color as the sole carrier of meaning on Timeline event-blocks. WCAG 1.4.1 — color is never the only signal. |
+| Render the mobile bottom-tab active slot with **ink inversion** (slot fill in `color.ink.primary` + label/icon in `color.ink.inverse`) plus a 2px `color.accent.terracotta` underline bar above the active slot. | Fill the entire bottom-tab bar with `color.accent.terracotta` on the active route, or fill the active slot solid terracotta. Both burn the accent on a control used many times per day. |
+| Reach `/timeline` and `/conflicts` from the bottom-tab nav on mobile (`sm`) and from the left sidebar nav on desktop (`md+`). | Add Timeline or Conflicts links to the topbar. Topbar carries identity only (EXPERIENCE.md ASSUM-11). |
 
 ## Assumptions
 
@@ -365,3 +384,8 @@ All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry h
   - Status: RESOLVED
   - Owner: design
   - Affects: §Components → Inputs (`Input.ReminderSlot`); §Components → Control (`Control.Preset`); §Color usage rules → selection treatment
+
+- **ASSUM-7.** _Amendment A-8 (2026-09-06)._ Timeline at MVP is **read-only** — no edit-from-Timeline, no drag-to-reschedule, no inline conflict resolution on Timeline itself. Conflicts surface on Pulse Cards and Timeline event-blocks as `component.indicator.conflict` (8–10 px filled amber circle, `aria-label="Schedule conflict"`); tapping routes to Detail Screen for resolution via the FR-33 three-action pattern. The `/conflicts` route is a review surface for system-recorded conflict pairs (active + resolved) — no user-added notes. Navigation to `/timeline` and `/conflicts` happens exclusively from `Component.BottomTab` (mobile `sm`) and `Component.Sidenav.App` (desktop `md+`). The topbar stays brand-only (topbar-quiet rule, EXPERIENCE.md ASSUM-11). Cross-reference: EXPERIENCE.md ASSUM-12.
+  - Status: RESOLVED
+  - Owner: design + engineering
+  - Affects: §Components → Timeline; §Components → Navigation; §Do's and Don'ts → topbar nav rule; EXPERIENCE.md §4 `Surface.Timeline`, §4 `Component.BottomTab`, §4 `Component.Sidenav.App`

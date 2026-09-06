@@ -3,7 +3,7 @@ title: "EXPERIENCE.md — EventPulse24"
 status: final
 created: 2026-08-23
 updated: 2026-09-03
-updated_note: "Added three enforcement-tightening rules to §3 Voice and Tone and §7 Accessibility Floor, derived from the 2026-09-03 pulse-preview audit. (1) Two new rows in the §3 microcopy contract table — hero preview header ('Three picks, every morning.' / no 'We show you exactly those.') and soft-wall on anonymous action ('we'll hold your seat.' / no '→ Sign up to save.'). (2) New 'Zone roles' paragraph in §3: topbar carries identity (brand + tagline), hero carries benefit (eyebrow + h1 + lede). Inversions forbidden. (3) New bullet in §7 Screen-Reader Specifics: visible helper text must live in the DOM, not in ::before/::after pseudo-elements (screen readers don't announce pseudo-element content). Subsequent update 2026-09-03 (v1 onboarding audit): updated Flow 2 to surface all three calendar providers at v1 (Google OAuth 2.0 + Apple CalDAV + Outlook Microsoft Graph), updated §3 microcopy contract table with new provider-row examples, added §3 onboarding skip-rules clarifying the topbar-quiet discipline and footer-skip pattern."
+updated_note: "Added three enforcement-tightening rules to §3 Voice and Tone and §7 Accessibility Floor, derived from the 2026-09-03 pulse-preview audit. (1) Two new rows in the §3 microcopy contract table — hero preview header ('Three picks, every morning.' / no 'We show you exactly those.') and soft-wall on anonymous action ('we'll hold your seat.' / no '→ Sign up to save.'). (2) New 'Zone roles' paragraph in §3: topbar carries identity (brand + tagline), hero carries benefit (eyebrow + h1 + lede). Inversions forbidden. (3) New bullet in §7 Screen-Reader Specifics: visible helper text must live in the DOM, not in ::before/::after pseudo-elements (screen readers don't announce pseudo-element content). Subsequent update 2026-09-03 (v1 onboarding audit): updated Flow 2 to surface all three calendar providers at v1 (Google OAuth 2.0 + Apple CalDAV + Outlook Microsoft Graph), updated §3 microcopy contract table with new provider-row examples, added §3 onboarding skip-rules clarifying the topbar-quiet discipline and footer-skip pattern. Subsequent update 2026-09-06 (Amendment A-8 lift): promoted `/timeline` (FR-32) and `/conflicts` (FR-33) from Phase 2 to MVP. Updated §2 IA table (routes 10 and 11 are now MVP), §2 state-coverage table (Phase 2 annotations removed), §3 microcopy contract (new rows for `/conflicts` page header and FR-33 three-action labels), §4 components (new Surface.Timeline, Component.BottomTab, Component.Sidenav.App), §5 state patterns (empty/loading/error for `/timeline` and `/conflicts`), §6 interaction primitives (bottom-tab and sidebar nav, `g t` shortcut Phase 2 annotation removed), §8 flows (Flow 5 Timeline, Flow 6 Conflict review), §10 responsive & platform (sm bottom-tab, md+ sidebar), §13 adaptive density (Timeline event-block row), surface coverage map (rows 12 and 13 added, count updated to 16), and Assumptions (ASSUM-12 added)."
 project: EventPulse24
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
@@ -61,8 +61,8 @@ Numbered site map. Each route is reachable; each route defines default / empty /
 | 7 | `/settings/quiet-hours` | Quiet Hours window editor (single window Free; per-day Pro) | MVP | Authed |
 | 8 | `/settings/sources` | Source transparency — list of sources, reliability, mute controls | MVP | Authed |
 | 9 | `/settings/privacy` | Data inventory, export (FR-52), deletion, training opt-out | MVP | Authed |
-| 10 | `/timeline` | **Unified Timeline** — Personal + Public events, week/month | Phase 2 | Authed |
-| 11 | `/conflicts` | **Conflict Resolution** — three-action pattern (Move / Skip / Keep) | Phase 2 | Authed |
+| 10 | `/timeline` | **Unified Timeline** — Personal + Public events, week view (Amendment A-8) | MVP | Authed |
+| 11 | `/conflicts` | **Conflict Review** — list of active + resolved conflict pairs (Amendment A-8); the three-action pattern itself lives in `Sheet.ConflictResolution` (FR-58 / Amendment A-5) and on Detail Screen (FR-33 / Amendment A-8) | MVP | Authed |
 | 12 | `/groups/:id` | **Pulse the Group** — small-group coordination, vote, RSVP | Phase 2 | Authed |
 
 Total: 12 routes.
@@ -80,8 +80,8 @@ Total: 12 routes.
 | `/settings/quiet-hours` | Default 10pm–8am window | n/a | Inline save spinner | "Couldn't save." |
 | `/settings/sources` | Grouped source list (official/community/aggregator/crawled) | "No sources muted." | List skeletons | "Couldn't load sources. Refresh." |
 | `/settings/privacy` | Data inventory + Export/Delete CTAs | n/a | Inline spinner on export trigger | "Couldn't start export. Email us." |
-| `/timeline` | Week-view, Personal+Public events | "Quiet day — no events." (Phase 2) | Week-row skeletons | "Couldn't reach Timeline. Try again." |
-| `/conflicts` | Conflict list with 3 actions per conflict | "No conflicts." (Phase 2) | Skeleton rows | "Couldn't analyze conflicts. Try again." |
+| `/timeline` | Week-view, Personal+Public events (read-only at MVP — Amendment A-8) | "Your week is quiet. Pulse Digest is the place to discover." | Week-row skeletons | "Couldn't reach Timeline. Try again." |
+| `/conflicts` | Conflict list grouped by Active / Resolved (Amendment A-8) | "No overlaps." | Skeleton rows | "Couldn't analyze conflicts. Try again." |
 | `/groups/:id` | Group home, members, next event proposal | "No group yet. Create or join one." (Phase 2) | Skeleton | "Couldn't load group. Try again." |
 
 **Notes:**
@@ -123,6 +123,11 @@ Total: 12 routes.
 | Onboarding step 1 — any-provider failure | "Connection failed. Skip for now?" with two equal-weight buttons | "We could not connect to your calendar. Please try again later or contact support." (no skip, no retry, no escape) |
 | Conflict Resolution sheet header | "These overlap." | "Uh oh! Looks like you have a scheduling conflict!" |
 | Conflict Resolution three-action labels | "Move dinner earlier / Skip concert / Keep both — I'll manage" | "Quickly resolve this clash to keep your calendar tidy" |
+| `/conflicts` page heading (Amendment A-8) | "These days overlap." | "Your Schedule Conflicts" / "Conflict Center" / "Conflicts (12)" |
+| `/conflicts` empty state (Amendment A-8) | "No overlaps. Conflicts appear here as you save events." | "You're all clear! 🎉" |
+| FR-33 three-action labels (Personal↔Public, Amendment A-8) | "Move {personal event} earlier / Skip {public event} / Keep both — I'll manage" | "Quickly resolve this overlap to keep your schedule tidy" |
+| Timeline empty day (Amendment A-8) | "Quiet day." | "Nothing scheduled." / "Free as a bird!" |
+| Timeline empty week (Amendment A-8) | "Your week is quiet. Pulse Digest is the place to discover." | "No events this week." |
 | State-change email subject | "EventPulse24: {event name} was moved to {new date}" | "⚠️ Important update about your event!" |
 | Source transparency page intro | "Here's where events come from and how we trust each one." | "We work with the best event sources in the world!" |
 | Empty onboarding-interest step | "We'll figure this out from your calendar. Skip?" | "Tell us what you love so we can personalize!" |
@@ -229,6 +234,41 @@ Generic behavior for all routes:
 - **Loading:** Skeleton: 3 paper rectangles (`color.surface.paper`) fading 1px toward `color.ink.faint` at 60% opacity, then back. No spinners.
 - **Error:** "Couldn't reach {surface}. Try again." with a single retry button. No stack traces. Error copies to status page on SEV-2+ events.
 
+### `Surface.Timeline` (Amendment A-8 — MVP)
+The Unified Timeline surface at `/timeline`. Week view combining Personal Events (warm tone) and Public Events (cool tone) on one grid. Read-only at MVP — no inline edits, no drag-to-reschedule.
+
+- **Default (desktop `md+`):** 7-column week grid, Mon–Sun, each column a stack of event-blocks time-ordered. Header row shows day-of-week + date number in `Text.Meta`. Today is highlighted via `Indicator.Today` (the sanctioned terracotta dot with glow). Week navigator above the grid: `←` / `Today` / `→` in `Text.Meta`.
+- **Default (mobile `sm`):** Single-column day view, one day visible at a time. Day navigator: `← Sep 7 →` centered, "Today" pill in `Text.Meta`. Horizontal swipe advances/retreats the day.
+- **Personal vs Public event rendering:** Each event-block carries a 2px left-edge category stripe (`color.warm.personal` for personal, `color.cool.public` for public) AND a visible text label in the top-right corner ("Personal" / "Public event" in `Text.Meta`). Color is never the sole carrier of meaning. (Locked rule from DESIGN.md §Color usage rules and §Stripe color rule.)
+- **Conflict indicator:** When a saved public event overlaps a saved personal event by >15 minutes, both events render `Indicator.Conflict` (the 8–10 px filled amber circle, `aria-label="Schedule conflict"`). Tapping either indicator opens a Detail Screen header panel that surfaces the FR-33 three-action pattern.
+- **Tap an event block:** Routes to `/events/:id`. Read-only from Timeline — no edit affordance in the block.
+- **Empty day:** Centered "Quiet day." in `Text.Meta` muted. No CTA, no upsell, no carousel.
+- **Empty week:** "Your week is quiet. Pulse Digest is the place to discover." in `Text.Display.sm` headline, with a single `Text.Meta` "Open Pulse Digest" link below.
+- **Hover (desktop):** `color.surface.subtle` fill swap on the event-block. The tap target stays the entire block; the affordance is communicated by the fill swap, not a `▸` chevron (the timeline is denser than the digest).
+- **Focus (keyboard):** Visible 2px focus ring in `color.accent.terracotta` at AA contrast. `aria-label` exposes event name + time + "Personal" / "Public event" label.
+- **Reduced motion:** All entrance animations collapse to instant render. No skeleton pulse on load.
+- **Read-only at MVP:** Edits happen on Detail Screen or in the Personal Event modal — never from Timeline. Drag-to-reschedule is out of scope at MVP per FR-32 deferrals (Phase 3).
+
+### `Component.BottomTab` (mobile `sm` — Amendment A-8)
+Mobile bottom navigation. Replaces any topbar nav. Four slots: **Digest / Timeline / Add / Settings**.
+
+- **Layout:** `position: fixed; bottom: 0; left: 0; right: 0;` height 56px + `env(safe-area-inset-bottom)`. Background `color.surface.elevated`. 1px `color.border.subtle` top edge. Four equal-width slots (25% each).
+- **Resting slot:** Icon (16×16 stroke-only SVG, never filled chromatic) + label in `color.ink.muted` (`Text.Meta`).
+- **Active slot:** Ink-inverted background on the slot only (`color.ink.primary` fill + `color.ink.inverse` icon + `color.ink.inverse` label) per the locked `Control.Segmented` pattern in DESIGN.md §Components. **Never** a full-bar terracotta fill — terracotta on a small-control toggle burns the accent on a control used many times per day.
+- **Active indicator:** A 2px `color.accent.terracotta` underline bar above the active slot, mirroring the desktop topnav active pattern (`pulse-digest-desktop.html` L75–76). The only chromatic use in the bottom-tab.
+- **Tap:** Routes to the destination. Long-press is disabled.
+- **Z-index:** Above page content, below modals/sheets.
+- **Reduced motion:** No slide-in on mount.
+
+### `Component.Sidenav.App` (desktop `md+` — Amendment A-8)
+Desktop left-rail navigation. Replaces any topbar nav on desktop. Same four routes as `Component.BottomTab`.
+
+- **Layout:** Sticky left `<aside>`. Width 220px on `md`, 240px on `lg+`. Background `color.surface.paper` (same as canvas — the sidenav is a layout container, not a visual element). Inset from page edge: `spacing.6` (24px) on top and sides.
+- **Brand mark:** At the top of the sidenav — 28×28 logo + "EventPulse24" wordmark in `Text.Body` `color.ink.primary`. Below the brand: 1px `color.border.subtle` divider.
+- **Route items:** Four links (Digest / Timeline / Add / Settings) in `Text.Body` `color.ink.secondary`. Resting state on the page background. Active item: `color.ink.primary` label on a `color.surface.subtle` pill background with 1px `color.border.subtle` stroke. The active pill mirrors the `Control.Segmented` ink-inversion pattern in miniature — no terracotta fill on the active route.
+- **Keyboard:** `Tab` cycles through sidenav links after the topbar (topbar comes first in tab order) and before page content. `g d` / `g t` / `g a` / `g s` shortcuts (already in §6) route directly.
+- **Topbar interaction:** The topbar still carries only the brand mark + (optionally) the tagline. The sidenav is the nav, the topbar is the identity zone (topbar-quiet rule, ASSUM-11). No affordance duplication.
+
 ---
 
 ## 5. State Patterns
@@ -250,7 +290,11 @@ Global state decisions. Each pattern is invoked wherever the relevant state is e
 
 **Empty onboarding interests (step 2 skipped):** "We'll figure this out from your calendar." Single Skip button.
 
-**Empty Timeline day (Phase 2):** "Quiet day." No card, no CTA. (PRD §14 wireframe Screen 3.)
+**Empty Timeline day (Amendment A-8 — MVP):** "Quiet day." No card, no CTA. (PRD §14 wireframe Screen 3.)
+
+**Empty Timeline week (Amendment A-8 — MVP):** "Your week is quiet. Pulse Digest is the place to discover." A single `Text.Meta` "Open Pulse Digest" link below the headline routes to `/`. No carousel, no upsell.
+
+**Empty `/conflicts` (Amendment A-8 — MVP):** "No overlaps. Conflicts appear here as you save events." A single `Text.Meta` "What counts as a conflict?" inline help link below — opens a single help article, not a modal. (No CTAs, no upsell.)
 
 **Empty Search (Phase 3):** "No matches." No suggestions, no "Did you mean."
 
@@ -261,6 +305,10 @@ Global state decisions. Each pattern is invoked wherever the relevant state is e
 **Detail Screen skeleton:** One full-width header block + one meta row + 3 chip skeletons. Same fade animation.
 
 **Settings list skeletons:** N rows (where N matches expected content length), each a 40px-tall `color.surface.paper` rectangle fading identically.
+
+**Timeline skeletons (Amendment A-8):** Week-grid skeletons — 7 columns desktop (each column a stack of 3–5 `color.surface.elevated` rectangles fading identically, 40px tall each) or 1 column mobile (single stack). No day labels in the skeleton frame. Same 1800ms pulse period as other skeletons.
+
+**`/conflicts` skeletons (Amendment A-8):** Two section skeletons (Active / Resolved) with row skeletons inside each, identical fade pattern. No spinners.
 
 **No spinners, anywhere.** PRD §13.1 and §13.2: "No urgency badges." A spinner is a visual urgency badge.
 
@@ -276,9 +324,13 @@ Global state decisions. Each pattern is invoked wherever the relevant state is e
 
 **Reminder save failure:** Inline below the chip row, 1 line: "Couldn't save. We'll try again on your next change." No modal, no toast.
 
+**Timeline load failure (Amendment A-8):** "Couldn't reach Timeline. Try again." Single retry button (terracotta-filled `Button.Primary`). The bottom-tab (mobile) and sidebar (desktop) nav remain functional so the user can escape.
+
+**`/conflicts` load failure (Amendment A-8):** "Couldn't analyze conflicts. Try again." Single retry button. The conflict indicator on Pulse Cards remains accurate (it's a separate read path) so the user is not blocked from seeing conflicts elsewhere.
+
 **Status page integration (PRD §10.5):** SEV-1 errors propagate to `status.eventpulse24.com` (or equivalent) within 30 minutes. The product surfaces a calm inline banner on relevant surfaces when a known incident affects the user.
 
-### Conflict Patterns (Phase 2)
+### Conflict Patterns (MVP via FR-58 + Amendment A-8)
 
 The three-action pattern (PRD FR-33). See `Sheet.ConflictResolution` in §4. The sheet:
 - **Header:** "These overlap."
@@ -336,7 +388,7 @@ All primary actions have a keyboard shortcut, shown in a `?` help menu (visible 
 | `Esc` | Close sheet / cancel edit | Any |
 | `g d` | Go to Digest | Global |
 | `g s` | Go to Settings | Global |
-| `g t` | Go to Timeline (Phase 2) | Global |
+| `g t` | Go to Timeline (Amendment A-8 — MVP) | Global |
 | `n` | Create new personal event | Global |
 | `/` | Focus search (Phase 3+) | Global |
 
@@ -344,7 +396,7 @@ All primary actions have a keyboard shortcut, shown in a `?` help menu (visible 
 
 **Reminder picker keyboard support:** Reminder chips are focusable. `Tab` cycles through chips; `Enter` toggles; arrow keys move within the chip group; `Esc` closes the picker.
 
-**Conflict Resolution keyboard support (Phase 2):** The three actions are focusable in order (`Move / Skip / Keep both`). `Tab` cycles; `Enter` confirms the focused action; `Esc` cancels (treated as `Keep both`).
+**Conflict Resolution keyboard support (MVP, FR-33 / Amendment A-8):** The three actions are focusable in order (`Move / Skip / Keep both`). `Tab` cycles; `Enter` confirms the focused action; `Esc` cancels (treated as `Keep both`).
 
 ### Touch
 
@@ -422,7 +474,7 @@ Color is never the sole carrier of meaning:
 
 - **Pulse Digest ready:** When the 3 cards finish loading and render, a live region announces "Pulse Digest ready, 3 events for today." `aria-live="polite"`.
 - **Save / Dismiss confirmation:** Announced via live region: "Saved. {event name}" / "Dismissed. {event name}."
-- **Conflict Resolution (Phase 2):** When the conflict sheet opens, focus moves to the header ("These overlap.") and the live region announces the conflict summary.
+- **Conflict Resolution (MVP, FR-33 / Amendment A-8):** When the conflict sheet opens, focus moves to the header ("These overlap.") and the live region announces the conflict summary.
 
 ### Screen-Reader Specifics
 
@@ -545,6 +597,54 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 - Adaptive expansion violates the 3-card default for an engaged user: this is the explicit adaptive exception (PRD §4.5.1 reconcile, locked in this brief). The setting is opt-out, not opt-in (locked decision).
 - User engagement drops below threshold (e.g., 10 saves/30d no longer holds): Pulse Digest returns to 3 cards. No announcement.
 
+### Flow 5 — Maya's week planning (PRD UJ-2, Amendment A-8 — MVP)
+
+**Persona:** Maya, 32, senior product designer in Brooklyn. Has connected Google Calendar. Friday evening, planning the week ahead.
+
+**Entry state:** Maya taps the **Timeline** item in the bottom-tab (mobile) or left sidebar (desktop). She lands on `/timeline`, current week (Mon Sep 7 – Sun Sep 13).
+
+**Path:**
+1. The week grid renders with `motion.fadeIn` (240ms, disabled under reduced-motion). Today's column is highlighted via `Indicator.Today` (the terracotta dot with the sanctioned glow). The week navigator at the top reads "Sep 7 – Sep 13" with `←` / `Today` / `→` affordances in `Text.Meta`.
+2. Maya scans the week. She sees:
+   - **Monday:** Quiet day. (Empty cell — centered "Quiet day." in `Text.Meta` muted.)
+   - **Tuesday:** Work standup 9:00 am (Personal, warm stripe) + saved "Designers coffee chat" 9:15 am (Public, cool stripe). Both carry `Indicator.Conflict` (amber dots, top-right of each block).
+   - **Wednesday:** Quiet day.
+   - **Thursday:** Yoga class 7:00 pm (Personal) — no conflict.
+   - **Friday:** Sam's birthday dinner 7:00 pm (Personal) + saved "Poetry reading" 7:15 pm (Public). Both carry `Indicator.Conflict`.
+   - **Saturday:** Anniversary dinner with Rahul 8:30 pm (Personal) — no conflict.
+   - **Sunday:** Free comedy show 4:00 pm (Public) — no conflict.
+3. Maya notices the Tuesday conflict first. She taps the work standup block (Personal). Routes to `/events/:work-standup-tuesday`. From there she can shift the standup earlier in the day. The conflict indicator on the Tuesday column clears on the next Timeline render.
+4. She returns to `/timeline` (back button). She now notices the Friday conflict (Sam's birthday dinner vs. Poetry reading). She taps the Poetry reading block. Routes to `/events/:poetry-reading`. She decides to skip the public event (one-tap dismiss from the Detail Screen's FR-33 three-action panel: "Skip this public event"). The conflict indicator clears on both Friday blocks.
+5. She is done. The week is now conflict-free.
+
+**Climax:** "Glanceable week in 6 seconds. No edits from Timeline — just see." Maya saw the whole week's shape, identified the two conflicts, resolved them by jumping to Detail Screen, and was back on Timeline in under a minute. No modal opened, no carousel spun, no upsell shown.
+
+**Failure modes:**
+- Maya tries to drag a block to reschedule: nothing happens. Timeline is read-only at MVP. A subtle `Text.Meta` cursor hint ("Read-only — open event to edit") appears on hover (desktop) or long-press (mobile).
+- Maya taps an empty day expecting to add an event: nothing happens. The "Add Personal Event" affordance lives in the bottom-tab (or sidebar), not on the Timeline grid.
+- Maya is on the Friday conflict and the Detail Screen fails to load: `Sheet.ConflictResolution` is not opened automatically; the conflict indicator on the Friday blocks remains. Maya retries from Detail Screen or returns to Timeline. The indicator persists across retries — it is a calm permanent reminder, not a transient toast.
+
+### Flow 6 — Conflict review (Amendment A-8 — MVP)
+
+**Persona:** Maya, on Sunday afternoon. Curious about how many overlaps she has accumulated. She taps a conflict indicator on her Pulse Digest earlier in the day and saw the Detail Screen header panel. Now she wants to see them all in one place.
+
+**Entry state:** Maya taps the conflict indicator on her Pulse Digest `Indicator.Conflict` dot. A Detail Screen header panel opens with the FR-33 three actions + a new affordance: "See all overlaps." (The "See all overlaps" link is the only route into `/conflicts` from a non-bottom-tab surface — Conflicts is not in the bottom-tab set, which stays Digest / Timeline / Add / Settings.)
+
+**Path:**
+1. Maya taps "See all overlaps." Routes to `/conflicts`.
+2. The page heading renders: "These days overlap." (Locked microcopy, §3.) Below, two sections:
+   - **Active (0)** — none right now; Maya resolved both Friday's and Tuesday's. The section renders with a single `Text.Meta` line "None this week." (No "0 conflicts!" celebration, no upsell.)
+   - **Resolved (2)** — collapsed list of the two pairs she resolved this week. Each row shows the pair side-by-side (Personal + Public blocks), the resolution method (e.g., "Skipped public · Poetry reading · Fri Sep 11"), and a `Text.Meta` timestamp.
+3. Maya scrolls, sees the resolved pairs, and feels calmer — the system kept the receipts, no anxiety, no judgment.
+4. She taps the back button (or the topbar's brand mark) to return to Pulse Digest.
+
+**Climax:** "Every conflict, one place, no anxiety." Maya reviews her conflict history in 15 seconds. No modal opens, no upsell asks her to "prevent future conflicts with Pro," no streak badge shows up.
+
+**Failure modes:**
+- Maya has many conflicts (e.g., 12 active): the Active section renders a scrollable list (no pagination, no "show more" — the list is bounded to a reasonable count per week by design; conflicts beyond the visible window are grouped into "Older overlaps" with a `Text.Meta` week label).
+- Maya tries to delete a resolved conflict: no edit affordance. Resolved pairs are immutable history. A subtle `Text.Meta` cursor hint on hover ("History — cannot be edited") explains.
+- Maya is on `/conflicts` and a new conflict is detected (e.g., a saved public event moves to overlap her birthday dinner): the page does not auto-refresh. The next user interaction triggers a fetch. (Auto-refresh on `/conflicts` would be a passive pressure element — banned per §3 microcopy and §9 anti-patterns.)
+
 ---
 
 ## 9. Inspiration & Anti-patterns
@@ -556,7 +656,7 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 - **Headspace** — calmer moments. The brand is "a friend who knows you well and isn't trying to sell you." We borrow the visual restraint and the empty-state-as-feature instinct. PRD §13.1 cites Headspace as the aesthetic anchor for "Headspace of events."
 - **Bandcamp** — editorial card design. Cards are dense with information but never noisy; the editorial posture makes the user feel like they're being shown, not sold to. We borrow the card composition and the absence of promotional badges.
 - **Notion** — decision-friendly minimalism. The UI is a quiet workspace, not a sales surface. We borrow the minimalism and the "no shouting" voice. PRD §13.1.
-- **Apple Calendar** — week-view restraint. PRD §13.1. We borrow the calm layout pattern for the Timeline (Phase 2) and the absence of badges, urgency, or color-noise.
+- **Apple Calendar** — week-view restraint. PRD §13.1. We borrow the calm layout pattern for the Timeline (Amendment A-8 — MVP) and the absence of badges, urgency, or color-noise.
 - **Day One / iA Writer** (cited from `experience-example-mobile.md` Quill spine) — the single daily framing and the no-toolbar discipline. We borrow the "one moment per day" calibration of Pulse Digest and the "compose without chrome" rhythm of personal event creation.
 
 ### Anti-patterns We Explicitly Avoid
@@ -594,9 +694,9 @@ If a future contributor can only remember three lines from this section, these a
 
 | Breakpoint | Width | Behavior |
 |---|---|---|
-| `sm` | ≤767 px (default MVP target: 375 px) | Mobile. Bottom-tab navigation. Single-column digest. Sheet-based overlays. Card stack vertical. |
-| `md` | 768–1023 px | Tablet. Sidebar visible (Digest / Timeline / Add / Settings). Two-column digest on landscape; single-column portrait. |
-| `lg` | 1024–1179 px | Desktop. Sidebar visible. Two-column digest: today's pulse on the left, "this week" preview on the right. |
+| `sm` | ≤767 px (default MVP target: 375 px) | Mobile. Bottom-tab navigation (Digest / Timeline / Add / Settings — see `Component.BottomTab`). Single-column digest. Single-column timeline (one day visible, swipe or `←` / `→` to advance days). Sheet-based overlays. Card stack vertical. |
+| `md` | 768–1023 px | Tablet. Left sidebar nav (220 px, see `Component.Sidenav.App`). Two-column digest on landscape; single-column portrait. Timeline renders as a 7-day week grid. |
+| `lg` | 1024–1179 px | Desktop. Sidebar visible (240 px). Two-column digest: today's pulse on the left, "this week" preview on the right. Timeline as 7-day week grid. |
 | `xl` | ≥1180 px | Max canvas. Content constrained to 1180 px. Whitespace expands outward. No content reflow. |
 
 **Desktop does not add features.** Desktop adds whitespace and (optionally) reveals hover affordances on `Badge.Source` and `Indicator.Confidence`. No new screens, no new actions, no new copy. PRD §13.1: "Whitespace over density."
@@ -611,7 +711,8 @@ If a future contributor can only remember three lines from this section, these a
 - **Web Share API:** for outbound shares (Pulse share-link, PRD FR-28).
 - **Service worker:** for offline-cached Pulse Digest (24h TTL) and queued local actions (§5 Offline Patterns).
 - **No push notifications to mobile** at MVP (email digest only, PRD FR-11; push in Phase 2 with native apps).
-- **No iOS / Android conventions** beyond standard responsive web behavior — no bottom-sheet-from-bottom on desktop, no hamburger menu on mobile (bottom-tab navigation instead).
+- **No iOS / Android conventions** beyond standard responsive web behavior — no bottom-sheet-from-bottom on desktop, no hamburger menu on mobile (bottom-tab navigation instead — see `Component.BottomTab`).
+**Bottom-tab and sidebar nav (Amendment A-8).** `/timeline` and `/conflicts` are reachable from the bottom-tab nav on mobile and a left sidebar nav on desktop (md+). The topbar stays brand-only (topbar-quiet rule, ASSUM-11) — the topbar never gains nav links even on authed surfaces. The sidebar (desktop) replaces any topnav; the bottom-tab (mobile) replaces any topbar nav. See `Component.BottomTab` and `Component.Sidenav.App` in §4.
 
 ### Browser Support
 
@@ -750,6 +851,8 @@ That's it. No description, no image, no map, no price, no attendee count, no sha
 | **Hovered (desktop)** | Mouse hover | Background shifts to `color.surface.paper.darker`. `▸` affordance appears. Tooltips available on Source Badge and Confidence Pulse. |
 | **Long-pressed (mobile)** | Long-press on card | Quick-actions sheet anchored to card: Save, Dismiss, Less like this. |
 | **Adaptive expansion** | ≥10 saves in 30d | Card count grows from 3 to 5 (top of the responsive matrix) or 7 (Phase 3 max). Inline "Show all 5" link below the last card. |
+| **Default (Timeline event-block, mobile)** | Always | Event name, time, "Personal" / "Public event" label, conflict indicator if active |
+| **Hovered / focused (Timeline event-block, desktop)** | Mouse hover or Tab focus | Adds location (`Text.Meta`) and 1 Why-this Tag (read-only at MVP — full Why-this breakdown expansion is on Detail Screen, never on Timeline). |
 
 ### Anti-pattern: progressive disclosure that hides trust signals
 
@@ -794,7 +897,10 @@ All behavior in this spine references `DESIGN.md` tokens by `{path.to.token}` sy
 - `Input.ReminderSlot` — reminder picker chips.
 - `Indicator.Confidence` — 5-dot confidence indicator.
 - `Badge.Source` — source type indicator.
-- `Sheet.ConflictResolution` — Phase 2 conflict sheet.
+- `Sheet.ConflictResolution` — FR-58 / Amendment A-5 conflict prompt (modal on Personal Event creation; three forced choices, no dismiss).
+- `Surface.Timeline` — Unified Timeline surface at `/timeline` (Amendment A-8 — MVP). Read-only week view, Personal + Public events on one grid, conflict indicator on overlapping pairs.
+- `Component.BottomTab` — Mobile bottom-tab navigation (Amendment A-8). Digest / Timeline / Add / Settings. Active slot uses ink inversion + 2px terracotta underline above the slot.
+- `Component.Sidenav.App` — Desktop left-sidebar navigation (Amendment A-8). Same four routes as the bottom-tab. Active route uses ink-inversion pill, no terracotta fill.
 - `motion.fadeIn` — 240ms entrance transition (disabled under reduced-motion).
 - `Button.Primary` — terracotta-filled CTA.
 - `Button.Secondary` — ink-bordered CTA.
@@ -844,6 +950,9 @@ All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry h
 - **ASSUM-11.** _Locked 2026-09-03 (v1 onboarding audit)._ The topbar-quiet rule: topbar holds only brand + tagline; action affordances (Skip, Sign in, Sign up, Open menu) live in the footer or in surface-level CTAs. Inversions of this rule are bugs. Applies to `/onboarding`, `/settings/*`, `/preview`, and any future anonymous or authed surface with a topbar.
   - Status: RESOLVED. Owner: design.
 
+- **ASSUM-12.** _Locked 2026-09-06 (Amendment A-8 lift)._ `/timeline` at MVP is a **read-only** Week view combining Personal + Public events (Amendment A-8). No edit-from-Timeline, no drag-to-reschedule, no inline conflict resolution on Timeline itself. Edits happen on Detail Screen or the Personal Event modal; conflict resolution happens via the FR-33 three-action pattern on the Detail Screen header panel. The `/conflicts` route is a review surface for conflict pairs the system has recorded (active + resolved) — it does not surface user-added notes. Both routes are reachable from `Component.BottomTab` (mobile) and `Component.Sidenav.App` (desktop md+); the topbar stays brand-only (topbar-quiet rule, ASSUM-11).
+  - Status: RESOLVED. Owner: design + engineering. Decision deadline: before token implementation begins.
+
 ---
 
 _End of EventPulse24 experience spine. Generated 2026-08-23; last revised 2026-08-30 to add dark-first theme, lift conflict prompt to MVP per PRD FR-58, and lock the surface-coverage map below. Paired with `DESIGN.md`. Source PRD: `prd-EventPulse24-2026-08-19`. Reconciles: `reconcile-design-thinking.md`, `reconcile-blue-ocean.md`._
@@ -852,7 +961,7 @@ _End of EventPulse24 experience spine. Generated 2026-08-23; last revised 2026-0
 
 ## Surface Coverage Map (mockups)
 
-The `mockups/` directory contains 14 HTML files covering every MVP surface in both Desktop and Mobile breakpoints where applicable. Old light-mode mocks are preserved in `mockups/light-archive/` for reference. **Spines win on conflict with any mockup** — if a mockup diverges from a token in `DESIGN.md` or a behavior in this spine, fix the mockup, not the spine. The mockups exist to anchor visual decisions; they are not the source of truth.
+The `mockups/` directory contains 32 HTML files covering every MVP surface in both Desktop and Mobile breakpoints where applicable (26 in `mockups/` + 6 in `mockups/mobile/`). The 4 light-mode mocks in `mockups/light-archive/` are preserved for reference but excluded from the MVP count. **Spines win on conflict with any mockup** — if a mockup diverges from a token in `DESIGN.md` or a behavior in this spine, fix the mockup, not the spine. The mockups exist to anchor visual decisions; they are not the source of truth.
 
 | # | Surface | Route / component | Desktop mockup | Mobile mockup | Notes |
 |---|---|---|---|---|---|
@@ -867,6 +976,8 @@ The `mockups/` directory contains 14 HTML files covering every MVP surface in bo
 | 9 | Empty Pulse Digest | `/` empty state | `empty-pulse-digest-desktop.html` | _(covered by pulse-digest-mobile empty)_ | FR-8. Includes suggested-sources strip. |
 | 10 | Settings (theme, notifications, quiet hours, calendar, account, plan) | `/settings/*` | `settings-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-7 / FR-12 / FR-48 / FR-49 / FR-51 / FR-52. |
 | 11 | Public share-link landing | `/share/:slug` | `share-link-desktop.html` | _(deferred — desktop-first at MVP)_ | UJ-5. SEO public URL with Schema.org Event JSON-LD. |
+| 12 | Unified Timeline (week view) | `/timeline` | `timeline-desktop.html` | `mobile/timeline-mobile.html` | FR-32 (Amendment A-8). Read-only week view, Personal + Public, sidebar nav (desktop) + bottom-tab (mobile) — first mockups to render these nav components. |
+| 13 | Conflict Review list | `/conflicts` | `conflicts-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-33 (Amendment A-8). List of active + resolved conflict pairs. The Conflict Resolution prompt itself (`Sheet.ConflictResolution`, FR-58) is row 8 above. |
 
 **Coverage gaps to fill before launch** _(logged here as `mockups/pending` items)_:
 
@@ -874,6 +985,10 @@ The `mockups/` directory contains 14 HTML files covering every MVP surface in bo
 - Mobile share-link landing (small follow-up).
 - Personal Event creation on mobile (bottom-sheet variant — pattern already shown in the conflict-prompt mobile mock, just applied here).
 - Mobile empty-state confirmation (still pending — the desktop variant is canonical).
+- Mobile `/conflicts` page (can follow `conflicts-desktop.html` 1:1 using tokens; the desktop pattern is canonical).
+- Mobile Timeline empty-week state (single-column variant of the desktop empty-state).
+- Mobile empty-Timeline-day state (the `Quiet day.` row, vertical-stack variant).
+- Mobile bottom-tab nav variants beyond Timeline (Digest / Add / Settings — pattern locked in `mobile/timeline-mobile.html` and reused).
 
 **Visual identity rule for all mockups:** tokens are declared in `:root` and overridden under `[data-theme="dark"]`. The dark variant is the default at `<html data-theme="dark">`. Every mockup carries the conditional layer at the top of its `<style>` so engineering can paste the same template for any new surface.
 

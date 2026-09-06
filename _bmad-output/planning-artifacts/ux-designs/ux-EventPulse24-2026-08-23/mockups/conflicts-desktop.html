@@ -1,0 +1,236 @@
+<!--
+  EventPulse24 — Conflict Review (Desktop, 1280px) — DARK THEME
+  FR-33 / Amendment A-8 — /conflicts route, list of active + resolved conflict pairs.
+  Reached via "See all overlaps" link on the conflict indicator panel, or Settings → Conflicts.
+  Sidebar nav (component.sidenav.app). Topbar stays brand-only.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Conflicts</title>
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:        #0A0A0B;
+    --surface-elevated:     #131316;
+    --surface-subtle:       #1B1B20;
+    --surface-inset:        #232328;
+    --ink-primary:          #F2F2F4;
+    --ink-secondary:        #C9C9CF;
+    --ink-muted:            #8A8A92;
+    --ink-faint:            #3A3A40;
+    --ink-inverse:          #0A0A0B;
+    --accent-terracotta:    #FF6A47;
+    --warm-personal:        #C8967A;
+    --cool-public:          #6E7E92;
+    --warn-amber:           #D8A86A;
+    --signal-success:       #7AAA7A;
+    --border-subtle:        rgba(242, 242, 244, 0.08);
+    --border-strong:        rgba(242, 242, 244, 0.16);
+
+    --family-display: "Source Serif 4", Fraunces, Georgia, serif;
+    --family-body:    "Inter", -apple-system, system-ui, sans-serif;
+
+    --container-max: 1180px;
+    --sidenav-w: 240px;
+    --page-pad: 32px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  /* Topbar (brand-only) */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  /* Sidebar */
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  /* Page header */
+  .crumb { font-size: 12px; color: var(--ink-muted); margin: 24px 0 8px; }
+  .crumb a { color: var(--ink-secondary); }
+  h1 { font-family: var(--family-display); font-size: 32px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.015em; }
+  .lede { font-size: 14px; color: var(--ink-secondary); margin: 0 0 32px; max-width: 560px; line-height: 1.5; }
+
+  /* Section heading */
+  .section { margin-top: 36px; }
+  .section h2 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0 0 12px; color: var(--ink-primary); display: flex; align-items: center; gap: 12px; }
+  .section h2 .count { font-family: var(--family-body); font-size: 12px; color: var(--ink-muted); font-weight: 500; padding: 2px 8px; border: 1px solid var(--border-subtle); border-radius: 9999px; }
+
+  /* Pair card */
+  .pair { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; padding: 18px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-elevated); margin-bottom: 12px; }
+  .pair .pair-side { position: relative; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 14px 14px 18px; }
+  .pair .pair-side::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 8px 0 0 8px; }
+  .pair .pair-side.personal::before { background: var(--warm-personal); }
+  .pair .pair-side.public::before { background: var(--cool-public); }
+  .pair .pair-side .when { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 6px; }
+  .pair .pair-side .title { font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 0 0 4px; color: var(--ink-primary); }
+  .pair .pair-side .where { font-size: 12px; color: var(--ink-muted); }
+  .pair .pair-side .tag { position: absolute; top: 12px; right: 12px; font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .pair .actions { display: flex; flex-direction: column; align-items: end; justify-content: center; gap: 8px; min-width: 200px; }
+  .pair .actions .meta { font-size: 11px; color: var(--ink-muted); margin-bottom: 4px; }
+
+  .btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-subtle); color: var(--ink-primary); font-size: 13px; font-weight: 500; width: 100%; justify-content: flex-start; }
+  .btn-secondary:hover { background: var(--surface-inset); }
+  .btn-secondary .glyph { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--ink-muted); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink-muted); }
+
+  /* Resolved list (compact) */
+  .resolved-list { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-elevated); overflow: hidden; }
+  .resolved-row { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
+  .resolved-row:last-child { border-bottom: none; }
+  .resolved-row .summary { display: flex; flex-direction: column; gap: 4px; }
+  .resolved-row .pair-line { font-size: 13px; color: var(--ink-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .resolved-row .pair-line .stripe { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .resolved-row .pair-line .stripe.personal { background: var(--warm-personal); }
+  .resolved-row .pair-line .stripe.public { background: var(--cool-public); }
+  .resolved-row .pair-line .arrow { color: var(--ink-muted); font-size: 12px; }
+  .resolved-row .resolution { font-size: 12px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
+  .resolved-row .resolution .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal-success); }
+  .resolved-row .when { font-size: 11px; color: var(--ink-muted); white-space: nowrap; }
+
+  /* Empty state */
+  .empty-state { padding: 56px 24px; text-align: center; border: 1px dashed var(--border-strong); border-radius: 12px; background: var(--surface-elevated); }
+  .empty-state h3 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); }
+  .empty-state p { font-size: 13px; color: var(--ink-muted); margin: 0 0 16px; line-height: 1.5; }
+  .empty-state a { font-size: 12px; color: var(--ink-secondary); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Footer note */
+  .note { font-size: 12px; color: var(--ink-muted); margin-top: 32px; padding: 12px 16px; border-left: 2px solid var(--border-subtle); line-height: 1.5; max-width: 640px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <div class="crumb">
+      <a href="#">Settings</a> · Conflicts
+    </div>
+
+    <h1>These days overlap.</h1>
+    <p class="lede">Every conflict pair the system has recorded. Active pairs need a decision; resolved pairs are immutable history.</p>
+
+    <section class="section" aria-labelledby="active-h">
+      <h2 id="active-h">Active <span class="count">1</span></h2>
+
+      <div class="pair" role="article" aria-label="Active conflict between Work standup and Designers coffee chat on Tuesday Sep 8">
+        <div class="pair-side personal">
+          <span class="tag">Personal</span>
+          <div class="when">Tue Sep 8 · 9:00 – 9:30 AM</div>
+          <p class="title">Work standup</p>
+          <div class="where">Remote · Google Meet</div>
+        </div>
+        <div class="pair-side public">
+          <span class="tag">Public</span>
+          <div class="when">Tue Sep 8 · 9:15 – 10:30 AM</div>
+          <p class="title">Designers coffee chat</p>
+          <div class="where">Devoción · 25 E 13th St</div>
+        </div>
+        <div class="actions">
+          <span class="meta">Three actions, no escape</span>
+          <button class="btn-secondary" aria-label="Move Work standup to a different time">
+            <span class="glyph" aria-hidden="true">✎</span>
+            Move standup earlier
+          </button>
+          <button class="btn-secondary" aria-label="Skip Designers coffee chat">
+            <span class="glyph" aria-hidden="true">✕</span>
+            Skip coffee chat
+          </button>
+          <button class="btn-secondary" aria-label="Keep both events. The conflict indicator remains on both.">
+            <span class="glyph" aria-hidden="true">✓</span>
+            Keep both — I'll manage
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="resolved-h">
+      <h2 id="resolved-h">Resolved <span class="count">3</span></h2>
+
+      <div class="resolved-list">
+        <div class="resolved-row">
+          <div class="summary">
+            <div class="pair-line">
+              <span class="stripe personal" aria-hidden="true"></span> Sam's birthday dinner <span class="arrow">↔</span>
+              <span class="stripe public" aria-hidden="true"></span> Poetry reading · Greenlight
+            </div>
+            <div class="resolution"><span class="dot" aria-hidden="true"></span> Skipped public · Poetry reading · Fri Sep 11</div>
+          </div>
+          <div class="when">Fri Sep 11 · 7:00 PM</div>
+        </div>
+
+        <div class="resolved-row">
+          <div class="summary">
+            <div class="pair-line">
+              <span class="stripe personal" aria-hidden="true"></span> Anniversary dinner · Rahul <span class="arrow">↔</span>
+              <span class="stripe public" aria-hidden="true"></span> Free comedy show
+            </div>
+            <div class="resolution"><span class="dot" aria-hidden="true"></span> Kept both — I'll manage · Sat Sep 12</div>
+          </div>
+          <div class="when">Sat Sep 12 · 8:30 PM</div>
+        </div>
+
+        <div class="resolved-row">
+          <div class="summary">
+            <div class="pair-line">
+              <span class="stripe personal" aria-hidden="true"></span> Yoga · Williamsburg <span class="arrow">↔</span>
+              <span class="stripe public" aria-hidden="true"></span> Free tech meetup
+            </div>
+            <div class="resolution"><span class="dot" aria-hidden="true"></span> Edited personal · Moved yoga to 6:00 AM · Thu Sep 10</div>
+          </div>
+          <div class="when">Thu Sep 10 · 7:00 PM</div>
+        </div>
+      </div>
+    </section>
+
+    <p class="note">Resolved pairs are immutable history. The system never re-prompts for a pair you've already decided on. The conflict indicator on a Pulse Card or Timeline event-block persists only when "Keep both — I'll manage" was chosen.</p>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!--
+  EventPulse24 — Unified Timeline (Mobile, 375px) — DARK THEME
+  FR-32 / Amendment A-8 — Single-day view, swipe or ←/→ to advance.
+  Bottom-tab nav (component.bottom-tab) — first mockup to render this component.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47;
+    --warm-personal:#C8967A; --cool-public:#6E7E92; --warn-amber:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+
+  /* Page shell — content padded for bottom-tab safe area */
+  .shell { max-width: 420px; margin: 0 auto; min-height: 100vh; padding: 0 20px 96px; }
+
+  /* Topbar (brand-only, topbar-quiet rule) */
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 0 12px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
+  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.6); }
+
+  /* Day navigator */
+  .day-nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 8px; }
+  .day-nav button { width: 36px; height: 36px; border-radius: 8px; color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; }
+  .day-nav button:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .day-nav .label { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .day-nav .dow { font-family: var(--family-display); font-size: 20px; font-weight: 600; color: var(--ink-primary); }
+  .day-nav .date { font-size: 12px; color: var(--ink-muted); }
+  .day-nav .today-pill { font-size: 11px; color: var(--ink-secondary); padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: 6px; margin-top: 4px; }
+
+  /* Day stack */
+  .day { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
+
+  /* Event block (mobile variant — slightly more padding than desktop) */
+  .event { position: relative; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px 12px 16px; display: flex; flex-direction: column; gap: 3px; }
+  .event::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 8px 0 0 8px; }
+  .event.personal::before { background: var(--warm-personal); }
+  .event.public::before { background: var(--cool-public); }
+  .event .name { font-size: 15px; font-weight: 500; color: var(--ink-primary); padding-right: 60px; }
+  .event .time { font-size: 12px; color: var(--ink-muted); }
+  .event .tag { position: absolute; top: 10px; right: 12px; font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+  .event .conflict { position: absolute; top: 12px; right: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 6px rgba(216,168,106,0.6); }
+  .event.has-conflict .tag { display: none; }
+  .event.has-conflict .name { padding-right: 24px; }
+
+  /* Bottom-tab nav (component.bottom-tab) */
+  .bottom-tab { position: fixed; bottom: 0; left: 0; right: 0; height: 64px; padding-bottom: env(safe-area-inset-bottom, 0); background: var(--surface-elevated); border-top: 1px solid var(--border-subtle); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 5; }
+  .bottom-tab .slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; color: var(--ink-muted); font-size: 11px; font-weight: 500; position: relative; }
+  .bottom-tab .slot svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .bottom-tab .slot:hover { color: var(--ink-secondary); }
+  .bottom-tab .slot.active { background: var(--ink-primary); color: var(--ink-inverse); border-radius: 12px; margin: 6px 4px; }
+  .bottom-tab .slot.active::before { content: ""; position: absolute; top: -2px; left: 25%; right: 25%; height: 2px; background: var(--accent-terracotta); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="topbar" aria-label="Brand">
+    <span class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      EventPulse24
+    </span>
+  </nav>
+
+  <div class="day-nav" role="group" aria-label="Day navigator">
+    <button aria-label="Previous day">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="label">
+      <span class="dow">Tuesday</span>
+      <span class="date">Sep 8 · Today</span>
+    </div>
+    <button aria-label="Next day">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </div>
+
+  <section class="day" aria-label="Events on Tuesday Sep 8">
+    <div class="event personal has-conflict" tabindex="0" aria-label="Work standup 9:00 AM, Personal. Schedule conflict.">
+      <span class="conflict" aria-hidden="true"></span>
+      <span class="name">Work standup</span>
+      <span class="time">9:00 – 9:30 AM</span>
+    </div>
+
+    <div class="event public has-conflict" tabindex="0" aria-label="Designers coffee chat 9:15 AM, Public event. Schedule conflict.">
+      <span class="conflict" aria-hidden="true"></span>
+      <span class="name">Designers coffee chat</span>
+      <span class="time">9:15 – 10:30 AM · Devoción</span>
+    </div>
+
+    <div class="event personal" tabindex="0" aria-label="Yoga 6:30 PM, Personal.">
+      <span class="tag">Personal</span>
+      <span class="name">Yoga · Williamsburg</span>
+      <span class="time">6:30 – 7:30 PM</span>
+    </div>
+
+    <div class="event public" tabindex="0" aria-label="Live jazz 8:30 PM, Public event.">
+      <span class="tag">Public</span>
+      <span class="name">Live jazz · Bar Bonjour</span>
+      <span class="time">8:30 – 10:00 PM</span>
+    </div>
+  </section>
+</div>
+
+<nav class="bottom-tab" aria-label="Primary">
+  <a href="#" class="slot">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+    Digest
+  </a>
+  <a href="#" class="slot active" aria-current="page">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    Timeline
+  </a>
+  <a href="#" class="slot">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    Add
+  </a>
+  <a href="#" class="slot">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>
+    Settings
+  </a>
+</nav>
+</body>
+</html>

@@ -364,12 +364,14 @@ This addendum preserves depth from the discovery conversation and source documen
 - **Recurring events:** MVP surfaces recurring events as a single row per series; Phase 2 expands RRULE and shows individual instances with edit-this-instance / edit-the-series controls.
 - **Two-way or one-way:** MVP is one-way read; Phase 2 adds write-back (event create / edit / delete in EventPulse24 → push to source calendar).
 
-### FR-32 Unified Timeline (Phase 2)
+### FR-32 Unified Timeline (MVP — lifted by Amendment A-8, 2026-09-06)
 
-- **View modes:** Week / Month / Day.
-- **Color differentiation:** Warm tones (personal) vs. cool tones (public).
+- **View modes at MVP:** Week only. (Month and Day views deferred to Phase 3.)
+- **Read-only at MVP:** No inline edits, no drag-to-reschedule. Edits happen on Detail Screen or the Personal Event modal.
+- **Color differentiation:** Warm tones (personal) vs. cool tones (public), each paired with a visible text label so color is never the sole carrier of meaning.
 - **Conflict markers:** Subtle (no red, no sound). Typological (work vs. social) not just temporal.
-- **Empty state:** "Your week is quiet — Pulse Digest is the place to discover."
+- **Empty state:** "Your week is quiet. Pulse Digest is the place to discover."
+- **Navigation:** Bottom-tab nav on mobile, left sidebar nav on desktop (md+). The topbar stays brand-only (EXPERIENCE.md ASSUM-11, topbar-quiet rule).
 
 ### FR-34 Pulse the Group (Phase 2)
 
