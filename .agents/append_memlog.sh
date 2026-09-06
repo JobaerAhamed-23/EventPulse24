@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+WORKSPACE="/Users/jobaer/Documents/EventPulse24/_bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23"
+
+uv run /Users/jobaer/Documents/EventPulse24/_bmad/scripts/memlog.py append --workspace "$WORKSPACE" --type decision --text "Amendment A-12 Browse city-page merge: one authed route at /browse. Adopt pre-auth city-page visual structure (hero with eyebrow plus terracotta italic h1 em plus city-meta pill; section heads; 3-column grid at 1280px and up) inside the A-8 shell. Drop chips. Drop Sign-up and How-it-works CTAs and seo-foot markup entirely. Drop discovery stripe. Pre-auth city-page-desktop.html stays as-is for SEO crawlers per PRD FR-27."
+
+uv run /Users/jobaer/Documents/EventPulse24/_bmad/scripts/memlog.py append --workspace "$WORKSPACE" --type decision --text "Browse stripe cap locked at 2 colors: slate public (unlimited) plus amber must-know (max 1 per page, the existing less-than-10% rule). Discovery vocabulary from pre-auth city-page is pre-auth SEO framing and does not migrate to the authed Browse surface. Three stripe colors would create a category-color flood that violates the anti-pattern list."
+
+uv run /Users/jobaer/Documents/EventPulse24/_bmad/scripts/memlog.py append --workspace "$WORKSPACE" --type change --text "browse-desktop.html rewritten from list-style to grid-style. CSS: drop day-divider rule, add 3-column grid at 1280px and up with 2-col at 1024-1279px and 1-col on mobile, reduce card padding to 22px, drop card headline from 22px to 18px. New .hero plus .city-meta pill tokens reused from city-page. Hero CTAs and seo-foot omitted from markup. Sibling browse-desktop-filtered.html and browse-desktop-empty.html also rewritten for the new grid layout."
+
+uv run /Users/jobaer/Documents/EventPulse24/_bmad/scripts/memlog.py append --workspace "$WORKSPACE" --type event --text "spines finalized: Amendment A-12 Browse city-page merge. DESIGN.md plus EXPERIENCE.md updated; both frontmatter updated_note fields extended; 3 Browse mockups in place (default, filtered, empty-result). city-page-desktop.html untouched as pre-auth SEO surface."

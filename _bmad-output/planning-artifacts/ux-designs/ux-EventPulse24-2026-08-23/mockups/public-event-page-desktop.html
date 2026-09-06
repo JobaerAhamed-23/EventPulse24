@@ -55,11 +55,14 @@
   .frame { padding: 0 80px; min-height: 100vh; }
   .container { max-width: 980px; margin: 0 auto; padding: 24px 0 80px; }
 
-  /* Topbar — minimal, public-facing */
-  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 32px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
-  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
-  .topright { display: flex; gap: 8px; }
+  /* Topbar — brand-wrap lockup (Component.Topbar.PreAuth, Amendment A-9) */
+  .topbar { display: flex; align-items: center; justify-content: flex-start; padding: 16px 0 32px; }
+  .brand-wrap { display: flex; align-items: center; gap: 12px; }
+  .brand-logo { width: 36px; height: 36px; display: block; }
+  .brand-wordmark { display: flex; flex-direction: column; gap: 2px; }
+  .brand-mark { font-family: var(--family-display); font-size: 18px; font-weight: 600; line-height: 1.1; }
+  .brand-tag { font-family: var(--family-display); font-size: 12px; font-style: italic; color: var(--ink-muted); line-height: 1.1; }
+  .brand-anchor { color: inherit; text-decoration: none; display: inline-block; }
   .ghost { padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
   .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
   .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
@@ -118,11 +121,15 @@
 <div class="frame">
   <div class="container">
     <nav class="topbar" aria-label="Public">
-      <div class="brand"><span class="dot"></span> EventPulse24</div>
-      <div class="topright">
-        <button class="ghost">How it works</button>
-        <button class="btn-primary">Sign up free</button>
-      </div>
+      <a class="brand-anchor" href="/" aria-label="EventPulse24 — top of page">
+        <div class="brand-wrap">
+          <img class="brand-logo" src="EventPulse24-latest-logo.png" alt="" width="36" height="36" />
+          <div class="brand-wordmark">
+            <div class="brand-mark">EventPulse24</div>
+            <div class="brand-tag">calm intelligence for events</div>
+          </div>
+        </div>
+      </a>
     </nav>
 
     <div class="crumb">
@@ -179,9 +186,12 @@
     <footer class="pubfoot">
       <span>© 2026 EventPulse24 · Built calm in Brooklyn.</span>
       <div class="links">
+        <a href="/how">How it works</a>
         <a href="/privacy">Privacy</a>
         <a href="/about">About</a>
         <a href="/c/brooklyn">All Brooklyn events</a>
+        <a href="/login">Log in</a>
+        <a href="/signup" style="color: var(--accent-terracotta);">Sign up free</a>
       </div>
     </footer>
   </div>
