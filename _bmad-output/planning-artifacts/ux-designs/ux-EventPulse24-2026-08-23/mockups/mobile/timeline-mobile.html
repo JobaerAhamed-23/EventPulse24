@@ -17,7 +17,8 @@
     --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
     --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
     --accent-terracotta:#FF6A47;
-    --warm-personal:#C8967A; --cool-public:#6E7E92; --warn-amber:#D8A86A;
+    --accent-slate:#6E7E92;
+    --warm-personal:#C8967A; --warn-amber:#D8A86A;
     --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
     --family-display:"Source Serif 4",Fraunces,Georgia,serif;
     --family-body:"Inter",-apple-system,system-ui,sans-serif;
@@ -51,16 +52,16 @@
   .event { position: relative; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px 12px 16px; display: flex; flex-direction: column; gap: 3px; }
   .event::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 8px 0 0 8px; }
   .event.personal::before { background: var(--warm-personal); }
-  .event.public::before { background: var(--cool-public); }
+  .event.public::before { background: var(--accent-slate); }
   .event .name { font-size: 15px; font-weight: 500; color: var(--ink-primary); padding-right: 60px; }
   .event .time { font-size: 12px; color: var(--ink-muted); }
   .event .tag { position: absolute; top: 10px; right: 12px; font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-  .event .conflict { position: absolute; top: 12px; right: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 6px rgba(216,168,106,0.6); }
-  .event.has-conflict .tag { display: none; }
-  .event.has-conflict .name { padding-right: 24px; }
+  /* Conflict dot at top-left so the Personal/Public text label at top-right remains visible (WCAG 1.4.1). */
+  .event .conflict { position: absolute; top: 12px; left: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 6px rgba(216,168,106,0.6); }
+  .event.has-conflict .name { padding-right: 60px; padding-left: 24px; }
 
-  /* Bottom-tab nav (component.bottom-tab) */
-  .bottom-tab { position: fixed; bottom: 0; left: 0; right: 0; height: 64px; padding-bottom: env(safe-area-inset-bottom, 0); background: var(--surface-elevated); border-top: 1px solid var(--border-subtle); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 5; }
+  /* Bottom-tab nav (component.bottom-tab) — height per layout.bottom-tab.height token */
+  .bottom-tab { position: fixed; bottom: 0; left: 0; right: 0; height: calc(56px + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0); background: var(--surface-elevated); border-top: 1px solid var(--border-subtle); display: grid; grid-template-columns: repeat(5, 1fr); z-index: 5; }
   .bottom-tab .slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; color: var(--ink-muted); font-size: 11px; font-weight: 500; position: relative; }
   .bottom-tab .slot svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6; }
   .bottom-tab .slot:hover { color: var(--ink-secondary); }
@@ -129,6 +130,10 @@
   <a href="#" class="slot">
     <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
     Add
+  </a>
+  <a href="#" class="slot">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+    Conflicts
   </a>
   <a href="#" class="slot">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>

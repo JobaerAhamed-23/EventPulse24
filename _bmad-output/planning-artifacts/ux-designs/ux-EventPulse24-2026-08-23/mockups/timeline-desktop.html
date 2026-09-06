@@ -19,7 +19,7 @@
   :root {
     --surface-paper:        #0A0A0B;
     --surface-elevated:     #131316;
-    --surface-subtle:       #1B1B20;
+    --surface-subtle:       #1B1B1F;
     --surface-inset:        #232328;
     --ink-primary:          #F2F2F4;
     --ink-secondary:        #C9C9CF;
@@ -29,7 +29,6 @@
     --accent-terracotta:    #FF6A47;
     --accent-slate:         #6E7E92;
     --warm-personal:        #C8967A;
-    --cool-public:          #6E7E92;
     --warn-amber:           #D8A86A;
     --border-subtle:        rgba(242, 242, 244, 0.08);
     --border-strong:        rgba(242, 242, 244, 0.16);
@@ -79,9 +78,11 @@
   .week-nav .label { padding: 0 8px; font-size: 13px; color: var(--ink-primary); font-weight: 500; }
 
   /* ===== Week grid ===== */
-  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--border-subtle); border-radius: var(--r-timeline-cell); background: var(--surface-elevated); overflow: hidden; }
+  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--border-subtle); background: var(--surface-elevated); overflow: hidden; }
+  /* Per `radius.timeline-cell` (DESIGN.md §Shapes): only the first and last outer corners of the grid round (radius.timeline-cell = 10px). Inner shared edges are not rounded so the grid reads as continuous. */
+  .week .day:first-child { border-top-left-radius: var(--r-timeline-cell); border-bottom-left-radius: var(--r-timeline-cell); }
+  .week .day:last-child { border-top-right-radius: var(--r-timeline-cell); border-bottom-right-radius: var(--r-timeline-cell); border-right: none; }
   .day { padding: 12px 10px 16px; min-height: 480px; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid var(--border-subtle); position: relative; }
-  .day:last-child { border-right: none; }
   .day .day-head { display: flex; align-items: baseline; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); }
   .day .dow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; }
   .day .date { font-size: 16px; font-weight: 600; color: var(--ink-primary); }
@@ -93,15 +94,14 @@
   .event { position: relative; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px 8px 12px; display: flex; flex-direction: column; gap: 2px; transition: background 160ms ease, border-color 160ms ease; }
   .event::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; border-radius: 6px 0 0 6px; }
   .event.personal::before { background: var(--warm-personal); }
-  .event.public::before { background: var(--cool-public); }
+  .event.public::before { background: var(--accent-slate); }
   .event:hover { background: var(--surface-inset); }
   .event .name { font-size: 13px; font-weight: 500; color: var(--ink-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; }
   .event .time { font-size: 11px; color: var(--ink-muted); }
   .event .tag { position: absolute; top: 6px; right: 6px; font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-  .event .conflict { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 6px rgba(216,168,106,0.6); }
-  /* When a block has a conflict dot, suppress the visible text label to keep visual quiet. */
-  .event.has-conflict .tag { display: none; }
-  .event.has-conflict .name { padding-right: 0; }
+  /* Conflict dot at top-left so the Personal/Public text label at top-right remains visible (WCAG 1.4.1 — color is never the sole carrier of meaning). */
+  .event .conflict { position: absolute; top: 4px; left: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 6px rgba(216,168,106,0.6); }
+  .event.has-conflict .name { padding-right: 16px; padding-left: 12px; }
 
   /* ===== Conflict section footer (legend) ===== */
   .legend { display: flex; align-items: center; gap: 16px; margin-top: 20px; font-size: 12px; color: var(--ink-muted); }
@@ -131,6 +131,10 @@
     <a href="#" class="nav-item">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
     </a>
     <a href="#" class="nav-item">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>

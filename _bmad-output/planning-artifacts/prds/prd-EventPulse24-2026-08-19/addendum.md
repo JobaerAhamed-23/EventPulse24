@@ -373,6 +373,17 @@ This addendum preserves depth from the discovery conversation and source documen
 - **Empty state:** "Your week is quiet. Pulse Digest is the place to discover."
 - **Navigation:** Bottom-tab nav on mobile, left sidebar nav on desktop (md+). The topbar stays brand-only (EXPERIENCE.md ASSUM-11, topbar-quiet rule).
 
+### FR-33 Conflict-Aware Scheduling (MVP — lifted by Amendment A-8, 2026-09-06)
+
+- **Trigger:** A *saved* public event overlaps a *saved* personal event by **strictly more than 15 minutes** (overlap evaluated in absolute UTC intervals — see FR-60 timezone contract; cross-midnight overlaps are evaluated per-day boundary). Public-vs-public conflicts and unsaved-vs-saved conflicts are **out of scope at MVP** (deferred to Phase 3).
+- **Indicator:** Both events render `component.indicator.conflict` (6px filled `{color.warn.amber}` circle, `aria-label="Schedule conflict"`) on Pulse Card AND Timeline event-block. Indicator is symmetric across the pair.
+- **Resolution pattern (three actions, fixed order):** (1) "Move {personal event} earlier/later", (2) "Skip {public event}" (one-tap dismiss), (3) "Keep both — I'll manage" (no further prompting). No fourth action, no dismiss, no escape — PRD FR-58 contract.
+- **`/conflicts` review route:** Lists all conflict pairs the system has recorded (active + resolved). Reachable from the conflict-indicator panel and from the 5th bottom-tab / sidebar slot. Immutable history — resolved pairs are never re-prompted.
+- **Persistence:** After "Keep both", indicator remains permanently on both events as a calm permanent reminder. After "Skip public" or "Move personal", indicator is removed from both events on the next Pulse Card AND Timeline event-block render; `/conflicts` Active count updates; Pulse Card invalidates cache on return navigation.
+- **Edge cases:** (a) Three+ mutually-overlapping events: pairwise prompt caps at first 2 (existing PRD FR-58 contract); remaining events show `Indicator.Conflict` and appear in the "Also overlaps with" list. (b) Recurring personal events: if not RRULE-expanded (per MVP scope), skip instance conflict unless the instance falls within the displayed week's window. (c) State change (FR-53/54/55 cancel/postpone/move): recompute conflict; remove indicator from a cancelled or postponed-past-partner event. (d) Backgrounded conflict sheet: prompt remains open on return; no timeout. (e) Multi-day events: indicator repeats on each day-cell the event spans.
+- **Free-tier parity:** FR-33 fires regardless of tier for any saved public event overlapping a saved personal event. The free-tier save cap does not gate conflict detection.
+- **Empty state:** "No overlaps. Conflicts appear here as you save events." For a brand-new user with zero events, render "No events saved yet. Open Pulse Digest." instead.
+
 ### FR-34 Pulse the Group (Phase 2)
 
 - **Group size cap:** 10 people.

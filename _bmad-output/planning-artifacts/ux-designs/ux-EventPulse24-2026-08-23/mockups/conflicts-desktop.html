@@ -18,7 +18,7 @@
   :root {
     --surface-paper:        #0A0A0B;
     --surface-elevated:     #131316;
-    --surface-subtle:       #1B1B20;
+    --surface-subtle:       #1B1B1F;
     --surface-inset:        #232328;
     --ink-primary:          #F2F2F4;
     --ink-secondary:        #C9C9CF;
@@ -26,8 +26,8 @@
     --ink-faint:            #3A3A40;
     --ink-inverse:          #0A0A0B;
     --accent-terracotta:    #FF6A47;
+    --accent-slate:         #6E7E92;
     --warm-personal:        #C8967A;
-    --cool-public:          #6E7E92;
     --warn-amber:           #D8A86A;
     --signal-success:       #7AAA7A;
     --border-subtle:        rgba(242, 242, 244, 0.08);
@@ -79,7 +79,7 @@
   .pair .pair-side { position: relative; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 14px 14px 18px; }
   .pair .pair-side::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 8px 0 0 8px; }
   .pair .pair-side.personal::before { background: var(--warm-personal); }
-  .pair .pair-side.public::before { background: var(--cool-public); }
+  .pair .pair-side.public::before { background: var(--accent-slate); }
   .pair .pair-side .when { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 6px; }
   .pair .pair-side .title { font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 0 0 4px; color: var(--ink-primary); }
   .pair .pair-side .where { font-size: 12px; color: var(--ink-muted); }
@@ -99,7 +99,7 @@
   .resolved-row .pair-line { font-size: 13px; color: var(--ink-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .resolved-row .pair-line .stripe { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   .resolved-row .pair-line .stripe.personal { background: var(--warm-personal); }
-  .resolved-row .pair-line .stripe.public { background: var(--cool-public); }
+  .resolved-row .pair-line .stripe.public { background: var(--accent-slate); }
   .resolved-row .pair-line .arrow { color: var(--ink-muted); font-size: 12px; }
   .resolved-row .resolution { font-size: 12px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
   .resolved-row .resolution .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal-success); }
@@ -113,6 +113,9 @@
 
   /* Footer note */
   .note { font-size: 12px; color: var(--ink-muted); margin-top: 32px; padding: 12px 16px; border-left: 2px solid var(--border-subtle); line-height: 1.5; max-width: 640px; }
+
+  /* Visually-hidden helper for live regions (per a11y best practice — content is read by screen readers, hidden from sighted users). */
+  .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 </style>
 </head>
 <body>
@@ -136,6 +139,10 @@
       Add
     </a>
     <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       Settings
     </a>
@@ -150,13 +157,16 @@
     </nav>
 
     <div class="crumb">
-      <a href="#">Settings</a> · Conflicts
+      Conflicts
     </div>
 
     <h1>These days overlap.</h1>
     <p class="lede">Every conflict pair the system has recorded. Active pairs need a decision; resolved pairs are immutable history.</p>
 
-    <section class="section" aria-labelledby="active-h">
+    <!-- Live region for screen-reader entry: announces Active count on render, re-announces on count change. -->
+    <div role="status" aria-live="polite" class="visually-hidden">Conflicts page loaded. 1 active pair needs a decision. 3 resolved pairs in history.</div>
+
+    <section class="section" aria-labelledby="active-h" aria-live="polite" aria-atomic="false">
       <h2 id="active-h">Active <span class="count">1</span></h2>
 
       <div class="pair" role="article" aria-label="Active conflict between Work standup and Designers coffee chat on Tuesday Sep 8">

@@ -13,8 +13,8 @@ sources:
   - _bmad-output/blue-ocean-strategy-2026-08-19.md
   - docs/scope.txt
 amendments:
-  - 7 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source, A-8 Timeline + Conflict-Aware at MVP) merged on 2026-09-06
-  - 43 MVP FRs (was 41; +2 from FR-59 and FR-60); 17 named FRs for Phase 2/3+
+  - 8 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source, A-7 Calendar Connect at MVP, A-8 Timeline + Conflict-Aware at MVP) merged on 2026-09-06
+  - 45 MVP FRs (was 41; +2 from Amendment A-4 / FR-59 and FR-60, +2 from Amendment A-8 / FR-32 and FR-33); 15 named FRs for Phase 2/3+ (FR-31, FR-34 through FR-47)
 ---
 
 # PRD: EventPulse24
@@ -975,7 +975,7 @@ Small group (≤10 people) coordination via AI-assisted availability heatmap and
 
 The MVP Pro tier (FR-48) is augmented in Phase 2 to add: **two-way** calendar sync + recurring-event expansion (FR-31), Pulse the Group (FR-34), and Why Now? (FR-38). (Unified Timeline FR-32 and Conflict-Aware Scheduling FR-33 lifted to MVP per Amendment A-8 — they are no longer Phase 2 Pro Augmentation features. Apple/Outlook read-only sync already ships at MVP per Amendment A-7.) Phase 2 may revise pricing. Subscribers at MVP retain grandfathered pricing for 12 months.
 
-**Behavioral notes:** Free tier caps in Phase 2: 1 group, 1 calendar (Google only at MVP; Apple/Outlook at Phase 2), unlimited saved collections. Pricing open (see §8 Open Questions).
+**Behavioral notes:** Free tier caps in Phase 2: 1 group, 1 calendar (all three providers — Google, Apple, Outlook — are eligible per Amendment A-7; the free-tier cap is on count, not on provider), unlimited saved collections. Pricing open (see §8 Open Questions).
 
 #### FR-36: Voice Quick-Add — Phase 3
 
@@ -1164,6 +1164,7 @@ Ship-ready functional requirements for the launch MVP:
 - FR-21, FR-22, FR-23, FR-24, FR-25, FR-59 — Explainability & Trust
 - FR-26, FR-27, FR-28 — Sharing & Discovery
 - FR-29, FR-30 — AI Cost Discipline
+- FR-32, FR-33 — Unified Timeline + Conflict-Aware Scheduling (Amendment A-8 lift, 2026-09-06; Week view only, read-only)
 - FR-53, FR-54, FR-55 — Event State Sync (cancel/postpone/move/sold-out)
 - FR-48, FR-49, FR-50, FR-51, FR-52 — MVP Pro Tier (shipped at launch)
 
@@ -1179,7 +1180,7 @@ Ship-ready functional requirements for the launch MVP:
 | ~~FR-32 Unified Personal+Public Timeline~~ | Promoted to MVP by Amendment A-8 (2026-09-06) — Week view only; Month/Day views deferred | Phase 3 (Month/Day only) |
 | ~~FR-33 Conflict-Aware Scheduling~~ | Promoted to MVP by Amendment A-8 (2026-09-06) — Three-action pattern + `/conflicts` review route; auto-rebook and alternatives deferred | Phase 3 (auto-rebook) |
 | FR-34 Pulse the Group | Needs trust established first; solo must be excellent first | Phase 2 |
-| FR-35 Pro Tier Augmentation (Apple/Outlook sync, Pulse the Group, Pricing A/B) | Augments MVP Pro tier; needs Phase 2 anchors | Phase 2 |
+| FR-35 Pro Tier Augmentation (Pulse the Group, Pricing A/B; Apple/Outlook read-only sync already ships at MVP per Amendment A-7) | Augments MVP Pro tier; needs Phase 2 anchors | Phase 2 |
 | FR-36 Voice Quick-Add | Demo magnet, niche adoption | Phase 3 |
 | FR-37 Email-to-Event Forwarding (user-forwarded) | Power-user only, niche; **source-side email-ICS is now MVP via FR-56** | Phase 3 |
 | FR-38 Why Now? | Augments not replaces Why-this Tags | Phase 3 |
@@ -1615,7 +1616,7 @@ This is a **launch blocker**, not a polish item. Live competitive re-verificatio
 
 ### 15.3 Future
 
-- **Phase 2 Pro Augmentation (FR-35):** Apple/Outlook sync, Pulse the Group, A/B-tested pricing. (Unified Timeline and Conflict-Aware Scheduling lifted to MVP by Amendment A-8 — they are no longer Phase 2 Pro Augmentation features.)
+- **Phase 2 Pro Augmentation (FR-35):** Pulse the Group, A/B-tested pricing. (Apple/Outlook read-only sync already ships at MVP per Amendment A-7; Unified Timeline and Conflict-Aware Scheduling lifted to MVP by Amendment A-8 — they are no longer Phase 2 Pro Augmentation features.)
 - **B2B2C (Year 2+):** White-label for universities, tourism boards.
 - **B2B Insights API (Year 2+):** Aggregated event trend queries for enterprise.
 
