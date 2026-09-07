@@ -1,0 +1,448 @@
+<!--
+  EventPulse24 — Sign Up (Account Creation, Desktop 1280px) — DARK THEME
+  Amendment A-20 — Component.Auth.SignUp. Pre-auth route, no authed shell.
+  Realizes FR-1 (30s onboarding) by splitting account creation off calendar
+  connect. Trigger: hero "Sign up" CTA on /preview + footer "Sign up free"
+  link on all pre-auth surfaces.
+
+  Anatomy per Amendment A-20:
+    - Component.Topbar.PreAuth (byte-identical to pulse-preview-desktop.html)
+    - Centered form on layout.container.form (720px max-width)
+    - OAuth stack first (Google / Apple / Outlook at equal weight per
+      onboarding-step1-desktop.html parity rule, DESIGN.md L286)
+    - "or" separator (Text.Meta)
+    - component.input.field × 3: Email + Password + Confirm password
+      (third only renders after first two pass client-side validation,
+      per the spec — but rendered here for the visual demo)
+    - component.auth.input.password × 2 (Password + Confirm both have reveal)
+    - component.input.field.error (per-field inline error pattern)
+    - Button.Primary "Create account" (terracotta)
+    - Footer block: "Already have an account? Sign in →" + privacy footnote
+
+  3 inline state showcases (variants strip below):
+    State A — all three fields valid, primary enabled (the rendered state above)
+    State B — password mismatch (cross-field validation)
+    State C — email already exists (server-side error with ghost link to /signin)
+
+  Splitting signup off onboarding-step1 keeps the post-signup flow at ≤3
+  user-visible steps (FR-1). OAuth users skip calendar connect entirely
+  (their calendar is auto-attached during the OAuth handshake).
+
+  All tokens reused; auth errors use color.signal.warn (#D8A86A dark / #B8893A
+  light) NOT color.signal.error. WCAG 1.4.1 satisfied via glyph + label pair.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Create your account</title>
+<meta name="description" content="Create an EventPulse24 account to receive a daily brief of three events worth your attention.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='none' stroke='%23FF6A47' stroke-width='2'/><circle cx='8' cy='8' r='2' fill='%23FF6A47'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --signal-warn:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  body { text-rendering: optimizeLegibility; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  /* ===== Component.Topbar.PreAuth (byte-identical to pulse-preview-desktop.html) ===== */
+  .frame { min-height: 100vh; padding: 0 80px; display: flex; flex-direction: column; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 16px; }
+  .brand-wrap { display: flex; align-items: center; gap: 12px; }
+  .brand-logo { width: 36px; height: 36px; display: block; }
+  .brand-wordmark { display: flex; flex-direction: column; gap: 2px; }
+  .brand-mark { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.1; color: var(--ink-primary); }
+  .brand-tag { font-family: var(--family-display); font-size: 13px; font-style: italic; color: var(--ink-muted); line-height: 1.1; }
+  .brand-anchor { color: inherit; text-decoration: none; display: inline-block; }
+
+  /* ===== Auth form container ===== */
+  .auth-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px 0 64px; }
+  .auth-card { width: 100%; max-width: 520px; }
+  .auth-head { margin-bottom: 28px; text-align: center; }
+  .auth-head h1 { font-family: var(--family-display); font-size: 32px; font-weight: 700; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.015em; line-height: 1.15; }
+  .auth-head p { font-size: 14px; color: var(--ink-secondary); margin: 0; line-height: 1.55; }
+
+  /* ===== OAuth stack (component.button.provider parity rule) ===== */
+  .providers { display: grid; gap: 10px; margin-bottom: 24px; }
+  .provider { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-elevated); transition: border-color 160ms ease, background 160ms ease; cursor: pointer; text-align: left; width: 100%; }
+  .provider:hover { border-color: var(--border-strong); background: var(--surface-subtle); }
+  .provider:focus-visible { outline: none; border-color: var(--accent-terracotta); box-shadow: 0 0 0 2px rgba(255,106,71,0.25); }
+  .provider .logo { width: 32px; height: 32px; border-radius: 6px; background: var(--surface-inset); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; color: var(--ink-secondary); flex-shrink: 0; }
+  .provider .body { flex: 1; }
+  .provider .body strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 1px; }
+  .provider .body span { font-size: 12px; color: var(--ink-muted); }
+  .provider .arrow { color: var(--ink-muted); font-size: 14px; }
+
+  /* ===== "or" separator ===== */
+  .or-separator { display: flex; align-items: center; gap: 14px; margin: 24px 0 20px; }
+  .or-separator::before, .or-separator::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
+  .or-separator .label { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+
+  /* ===== component.input.field (Amendment A-20 default state) ===== */
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block;
+    font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .field-input {
+    display: block;
+    width: 100%;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: var(--family-body); font-size: 14px;
+    color: var(--ink-primary);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .field-input::placeholder { color: var(--ink-faint); }
+  .field-input:focus {
+    outline: none;
+    border-color: var(--accent-terracotta);
+    box-shadow: 0 0 0 2px rgba(255,106,71,0.25);
+  }
+
+  /* ===== component.input.field.error (Amendment A-20) ===== */
+  .field.has-error .field-input {
+    border-color: var(--signal-warn);
+  }
+  .field.has-error .field-input:focus {
+    border-color: var(--signal-warn);
+    box-shadow: 0 0 0 2px rgba(216,168,106,0.25);
+  }
+  .field-error {
+    display: flex; align-items: flex-start; gap: 6px;
+    margin-top: 6px;
+    font-family: var(--family-body); font-size: 12px;
+    color: var(--ink-secondary);
+    line-height: 1.5;
+  }
+  .field-error .glyph {
+    width: 14px; height: 14px; flex-shrink: 0;
+    color: var(--signal-warn);
+    margin-top: 2px;
+  }
+  .field-error .glyph svg { display: block; }
+  .field-error .text strong { color: var(--ink-primary); font-weight: 600; }
+  .field-error .text a {
+    color: var(--signal-warn);
+    text-decoration: underline;
+    text-decoration-color: rgba(216,168,106,0.4);
+    text-underline-offset: 3px;
+    font-weight: 500;
+  }
+  .field-error .text a:hover { color: #E8B97A; }
+
+  /* ===== component.auth.input.password (Amendment A-20) ===== */
+  .password-field { position: relative; }
+  .password-field .field-input { padding-right: 44px; }
+  .reveal-toggle {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 32px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-muted);
+    border-radius: 6px;
+    transition: color 160ms ease, background 160ms ease;
+  }
+  .reveal-toggle:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
+  .reveal-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255,106,71,0.45);
+  }
+  .reveal-toggle[aria-pressed="true"] {
+    color: var(--accent-terracotta);
+    background: rgba(255,106,71,0.10);
+  }
+  .reveal-toggle svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  /* ===== Password-strength hint (optional, metadata only) ===== */
+  .field-meta {
+    margin-top: 6px;
+    font-family: var(--family-mono); font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+
+  /* ===== Form actions (Button.Primary) ===== */
+  .form-actions { display: flex; justify-content: flex-end; margin-top: 28px; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; transition: background 160ms ease; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary:hover:not(:disabled) { background: #FF7E5E; }
+  .btn-primary:disabled { background: var(--surface-inset); color: var(--ink-faint); cursor: not-allowed; }
+  .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(255,106,71,0.45); }
+
+  /* ===== Spinner (in-flight state, mirrors A-17) ===== */
+  .spinner { width: 14px; height: 14px; border: 2px solid rgba(10,10,11,0.30); border-top-color: var(--ink-inverse); border-radius: 50%; animation: spin 720ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+  /* ===== Form footer (cross-link + privacy footnote) ===== */
+  .form-footer { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-subtle); text-align: center; }
+  .form-footer .alt-cta { font-size: 13px; color: var(--ink-secondary); margin: 0 0 10px; line-height: 1.55; }
+  .form-footer .alt-cta a { color: var(--accent-terracotta); font-weight: 500; text-decoration: underline; text-decoration-color: rgba(255,106,71,0.4); text-underline-offset: 3px; }
+  .form-footer .alt-cta a:hover { color: #FF7E5E; }
+  .form-footer .privacy-foot { font-size: 12px; color: var(--ink-muted); margin: 0; line-height: 1.55; }
+  .form-footer .privacy-foot a { color: var(--ink-secondary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+  .form-footer .privacy-foot a:hover { color: var(--ink-primary); }
+
+  /* ===== Page footer ===== */
+  footer { padding: 32px 0 40px; margin-top: auto; border-top: 1px solid var(--border-subtle); }
+  .footer-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .footer-brand { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-secondary); font-weight: 500; }
+  .footer-brand .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 6px rgba(255,106,71,0.55); }
+  .footer-links { display: inline-flex; gap: 20px; flex-wrap: wrap; }
+  .footer-links a { font-size: 13px; color: var(--ink-muted); transition: color 160ms ease; }
+  .footer-links a:hover { color: var(--ink-secondary); }
+  .footer-copy { font-size: 12px; color: var(--ink-muted); }
+
+  /* ===== Variants strip ===== */
+  .variants { padding: 48px 0 64px; max-width: 1180px; margin: 0 auto; }
+  .variants h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); }
+  .variants .lead { font-size: 13px; color: var(--ink-muted); margin: 0 0 32px; max-width: 720px; line-height: 1.55; }
+  .variant { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 32px; margin-bottom: 20px; }
+  .variant h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 0 0 6px; color: var(--ink-primary); display: flex; align-items: baseline; gap: 12px; }
+  .variant .tag { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 3px 8px; border-radius: 4px; font-weight: 500; }
+  .variant p.note { font-size: 13px; color: var(--ink-secondary); margin: 0 0 20px; line-height: 1.55; }
+  .variant pre { background: var(--surface-subtle); border-radius: 8px; padding: 12px 16px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-secondary); overflow-x: auto; margin: 16px 0 0; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<!-- ===== Component.Topbar.PreAuth (byte-identical to pulse-preview-desktop.html) ===== -->
+<div class="frame">
+  <nav class="topbar" aria-label="Brand">
+    <a class="brand-anchor" href="/preview" aria-label="EventPulse24 home">
+      <span class="brand-wrap">
+        <img class="brand-logo" src="EventPulse24-latest-logo.png" alt="" width="36" height="36" aria-hidden="true">
+        <span class="brand-wordmark">
+          <span class="brand-mark">EventPulse24</span>
+          <span class="brand-tag">calm intelligence for events</span>
+        </span>
+      </span>
+    </a>
+  </nav>
+
+  <!-- ===== Auth form (the rendered default state — State A) ===== -->
+  <main class="auth-wrap">
+    <div class="auth-card">
+
+      <div class="auth-head">
+        <h1>Create your account</h1>
+        <p>Three events a day, one notification, no feeds. Free in Brooklyn and 200+ cities.</p>
+      </div>
+
+      <!-- OAuth stack — equal weight per onboarding-step1 parity (DESIGN.md L286) -->
+      <div class="providers" role="group" aria-label="Continue with calendar provider">
+        <button type="button" class="provider" aria-label="Continue with Google">
+          <span class="logo" aria-hidden="true">G</span>
+          <span class="body">
+            <strong>Continue with Google</strong>
+            <span>Auto-connects your calendar</span>
+          </span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </button>
+        <button type="button" class="provider" aria-label="Continue with Apple">
+          <span class="logo" aria-hidden="true"></span>
+          <span class="body">
+            <strong>Continue with Apple</strong>
+            <span>Auto-connects your iCloud calendar</span>
+          </span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </button>
+        <button type="button" class="provider" aria-label="Continue with Outlook">
+          <span class="logo" aria-hidden="true">O</span>
+          <span class="body">
+            <strong>Continue with Outlook</strong>
+            <span>Auto-connects your Microsoft calendar</span>
+          </span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <div class="or-separator" aria-hidden="true"><span class="label">or</span></div>
+
+      <form id="signup-form" novalidate>
+        <!-- Email -->
+        <div class="field">
+          <label for="signup-email">Email</label>
+          <input id="signup-email" class="field-input" type="email" name="email" autocomplete="email" spellcheck="false" placeholder="you@example.com" required>
+        </div>
+
+        <!-- Password -->
+        <div class="field password-field">
+          <label for="signup-password">Password</label>
+          <input id="signup-password" class="field-input" type="password" name="password" autocomplete="new-password" placeholder="At least 8 characters" required aria-describedby="signup-password-meta">
+          <button type="button" id="signup-password-toggle" class="reveal-toggle" aria-pressed="false" aria-label="Show password" title="Show password">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <p class="field-meta" id="signup-password-meta">8 characters minimum</p>
+        </div>
+
+        <!-- Confirm password -->
+        <div class="field password-field">
+          <label for="signup-password-confirm">Confirm password</label>
+          <input id="signup-password-confirm" class="field-input" type="password" name="password_confirm" autocomplete="new-password" placeholder="Re-enter your password" required>
+          <button type="button" id="signup-password-confirm-toggle" class="reveal-toggle" aria-pressed="false" aria-label="Show confirmed password" title="Show confirmed password">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" aria-label="Create your EventPulse24 account">Create account</button>
+        </div>
+      </form>
+
+      <div class="form-footer">
+        <p class="alt-cta">Already have an account? <a href="/signin">Sign in →</a></p>
+        <p class="privacy-foot">By creating an account, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Page footer (pre-auth) ===== -->
+  <footer>
+    <div class="footer-row">
+      <div class="footer-brand"><span class="dot"></span> EventPulse24</div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/how">How it works</a>
+        <a href="#">About</a>
+        <a href="/privacy">Privacy</a>
+        <a href="#">Contact</a>
+        <a href="/signin">Log in</a>
+        <a href="/signup" aria-current="page">Sign up free</a>
+      </nav>
+      <div class="footer-copy">© 2026 EventPulse24 · Available in 200+ cities</div>
+    </div>
+  </footer>
+</div>
+
+<!-- ===== Variants strip — demonstrates State B + State C ===== -->
+<div class="frame">
+  <div class="variants">
+    <h2>States</h2>
+    <p class="lead">Three render states per <code style="font-family: var(--family-mono); background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-terracotta);">component.input.field.error</code>. State A (above) is the rendered default — fresh form, all fields valid, primary enabled.</p>
+
+    <!-- State B — Password mismatch -->
+    <div class="variant">
+      <h3>State B — Passwords don't match <span class="tag">cross-field validation</span></h3>
+      <p class="note">The only cross-field validation on this surface. The error renders beneath the Confirm field (the one the user is filling); the Password field stays valid (don't blame the first input after the user already typed it correctly).</p>
+
+      <form novalidate style="max-width: 520px;">
+        <div class="field">
+          <label for="signup-b-email">Email</label>
+          <input id="signup-b-email" class="field-input" type="email" value="maya@example.com" autocomplete="email" readonly>
+        </div>
+        <div class="field password-field">
+          <label for="signup-b-password">Password</label>
+          <input id="signup-b-password" class="field-input" type="password" value="correct-horse" autocomplete="new-password" readonly>
+        </div>
+        <div class="field password-field has-error">
+          <label for="signup-b-confirm">Confirm password</label>
+          <input id="signup-b-confirm" class="field-input" type="password" value="correct-horse-typo" autocomplete="new-password" aria-invalid="true" aria-describedby="signup-b-error">
+          <button type="button" class="reveal-toggle" aria-pressed="false" aria-label="Show confirmed password" title="Show confirmed password">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <div class="field-error" id="signup-b-error" role="alert">
+            <span class="glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            </span>
+            <span class="text">Passwords don't match.</span>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Create account</button>
+        </div>
+      </form>
+
+      <pre>// cross-field validation runs on Confirm blur AND on form submit
+if (signup-password.value !== signup-password-confirm.value) {
+  confirmField.classList.add('has-error');
+  confirmField.querySelector('.field-error .text').textContent
+    = "Passwords don't match.";
+  confirmField.querySelector('input').setAttribute('aria-invalid', 'true');
+}
+
+// ENGINEERING NOTE: the Password field's value is NOT cleared on mismatch.
+// The user already typed it correctly; clearing it would be unkind.</pre>
+    </div>
+
+    <!-- State C — Email already exists -->
+    <div class="variant">
+      <h3>State C — Email already exists <span class="tag">server-side error + ghost link to /signin</span></h3>
+      <p class="note">Server-side 409 conflict. Per the soft-wall pattern, the email field carries the error AND the inline ghost link routes the user to <code style="font-family: var(--family-mono); font-size: 11px; background: var(--surface-subtle); padding: 2px 5px; border-radius: 3px;">/signin</code> — don't make them start over.</p>
+
+      <form novalidate style="max-width: 520px;">
+        <div class="field has-error">
+          <label for="signup-c-email">Email</label>
+          <input id="signup-c-email" class="field-input" type="email" value="maya@example.com" autocomplete="email" aria-invalid="true" aria-describedby="signup-c-error">
+          <div class="field-error" id="signup-c-error" role="alert">
+            <span class="glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            </span>
+            <span class="text">An account with that email already exists. <a href="/signin">Sign in →</a></span>
+          </div>
+        </div>
+        <div class="field password-field">
+          <label for="signup-c-password">Password</label>
+          <input id="signup-c-password" class="field-input" type="password" placeholder="At least 8 characters" autocomplete="new-password" readonly>
+        </div>
+        <div class="field password-field">
+          <label for="signup-c-confirm">Confirm password</label>
+          <input id="signup-c-confirm" class="field-input" type="password" placeholder="Re-enter your password" autocomplete="new-password" readonly>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Create account</button>
+        </div>
+      </form>
+
+      <pre>server returns 409 Conflict on POST /api/signup
+  → .field.has-error applied to email field
+  → .field-error renders inline: "An account with that email
+    already exists. Sign in →" with the ghost link
+  → role="alert" announces to screen readers
+  → Password fields stay intact (don't clear them; user
+    may have started typing + scrolled past the error)
+
+exception to the account-enumeration rule: SIGNUP is opt-in
+registration, so revealing "this email is taken" is acceptable
+(it actually helps the user recover). The enumeration guard
+applies to SIGNIN, where attackers probe for valid emails.</pre>
+    </div>
+
+    <!-- State D — In-flight / success transition (locked copy only) -->
+    <div class="variant">
+      <h3>Success transition <span class="tag">copy-locked · visual deferred</span></h3>
+      <p class="note">Submit succeeds → primary CTA morphs to spinner + "Creating account…" (mirrors <code style="font-family: var(--family-mono); font-size: 11px; background: var(--surface-subtle); padding: 2px 5px; border-radius: 3px;">Component.Auth.SignIn</code> State C). On 200 OK, the form morphs to a single inline notice: "Account created. Taking you to onboarding…" with a 1.5s hold, then <code style="font-family: var(--family-mono); font-size: 11px; background: var(--surface-subtle); padding: 2px 5px; border-radius: 3px;">location.href = '/onboarding'</code>. OAuth providers skip onboarding-step1 entirely — their calendar was auto-attached during the handshake.</p>
+
+      <pre>submit → POST /api/signup → 200 OK
+  → single Text.Meta inline notice: "Account created. Taking you
+    to onboarding…"
+  → 1500ms hold (prefers-reduced-motion: 0ms)
+  → location.href = '/onboarding' (step 1 calendar connect)
+  → OAuth users: skip step 1 entirely (auto-connect already done)
+
+post-signup flow stays within FR-1's ≤3 user-visible steps:
+  OAuth users: 0 calendar steps (auto-skip) + interests + digest time = 3
+  Email/password users: calendar connect + interests + digest time = 3
+  Both routes reach the first Pulse Digest in ≤30s as required.</pre>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

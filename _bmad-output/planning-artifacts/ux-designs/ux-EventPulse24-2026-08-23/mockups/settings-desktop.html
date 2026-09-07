@@ -1,6 +1,8 @@
 <!--
   EventPulse24 — Settings (Desktop) — DARK THEME
   Theme, quiet hours, digest time, account, privacy, pro.
+  Amendment A-13 — Ranking algorithm amendment-history timeline inlined into #privacy §Amendment history.
+  Amendment A-14 — Geo-IP consent toggle inlined into #privacy (above Training opt-out).
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -92,6 +94,16 @@
   .switch.on { background: var(--accent-terracotta); }
   .switch.on::after { transform: translateX(16px); background: var(--ink-primary); }
 
+  /* Geo-IP toggle (Amendment A-14) — 2-position segmented, ink-inversion selected */
+  .geo-toggle { display: flex; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 3px; flex-shrink: 0; }
+  .geo-toggle button { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-muted); transition: background 160ms ease, color 160ms ease; }
+  .geo-toggle button.active { background: var(--ink-primary); color: var(--ink-inverse); }
+  .geo-toggle button:hover:not(.active) { color: var(--ink-secondary); }
+
+  /* Inline-meta link — used under the geo-toggle off-state hint */
+  .inline-meta { font-size: 12px; color: var(--ink-muted); }
+  .inline-meta:hover { color: var(--ink-secondary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+
   /* Time input */
   .time-row { display: flex; align-items: center; gap: 10px; }
   .time-input { background: var(--surface-elevated); border: 1px solid var(--border-subtle); padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-primary); width: 80px; text-align: center; font-family: var(--family-body); }
@@ -157,6 +169,19 @@
 
   /* Sub-section heading inside a section (e.g., "Formula" under "How Pulse ranks") */
   .sub-h { font-family: var(--family-display); font-size: 15px; font-weight: 600; margin: 24px 0 8px; color: var(--ink-primary); letter-spacing: -0.01em; }
+
+  /* Amendment-history timeline (Amendment A-13) */
+  .timeline { list-style: none; padding: 0; margin: 12px 0 24px; border-left: 1px solid var(--border-subtle); }
+  .timeline-item { position: relative; padding: 0 0 18px 24px; }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item .dot { position: absolute; left: -4px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); }
+  .timeline-item:first-child .dot { background: var(--accent-terracotta); box-shadow: 0 0 8px rgba(255,106,71,0.45); }
+  .timeline-item .entry-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 4px; }
+  .timeline-item .entry-tag { font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-primary); text-transform: uppercase; letter-spacing: 0.06em; }
+  .timeline-item .entry-date { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); }
+  .timeline-item .entry-body { font-size: 13px; color: var(--ink-secondary); line-height: 1.5; }
+  .timeline-item .entry-body code { font-family: var(--family-mono); font-size: 12px; background: var(--surface-subtle); padding: 1px 5px; border-radius: 4px; color: var(--ink-primary); }
+  .timeline-item .entry-adr { display: inline-block; margin-top: 6px; font-family: var(--family-mono); font-size: 12px; color: var(--accent-terracotta); text-decoration: underline; text-decoration-color: rgba(255,106,71,0.4); text-underline-offset: 3px; }
 
   /* Data inventory mini-table */
   .inventory { width: 100%; border-collapse: collapse; margin: 12px 0 16px; }
@@ -346,6 +371,15 @@
         <div class="row-label"><strong>Training opt-out</strong><span>Your events never train any model.</span></div>
         <div class="switch on" role="switch" aria-checked="true"></div>
       </div>
+      <!-- ===== Amendment A-14 — Geo-IP consent toggle ===== -->
+      <div class="row">
+        <div class="row-label"><strong>Use my approximate location</strong><span>Helps us default to events in your city.</span></div>
+        <div class="geo-toggle" role="radiogroup" aria-label="Geo-IP location usage">
+          <button class="active" role="radio" aria-checked="true">On</button>
+          <button role="radio" aria-checked="false">Off</button>
+        </div>
+      </div>
+      <p class="desc" style="margin: -4px 0 8px; padding-left: 0;">If off, we'll show events from the most popular city instead. <a href="#" class="inline-meta">Change city →</a></p>
       <div class="row">
         <div class="row-label"><strong>Source your data</strong><span>Download JSON + ICS archive. Link delivered to your inbox.</span></div>
         <button class="ghost">Request export</button>
@@ -415,6 +449,34 @@
           <tr><td class="component">&lt; 0.25</td><td class="weight">●○○○○</td><td class="desc">1/5 · weak / serendipity</td></tr>
         </tbody>
       </table>
+
+      <!-- ===== Amendment A-13 — ranking amendment-history timeline ===== -->
+      <h3 class="sub-h">Amendment history</h3>
+      <p class="desc" style="margin-top:0;">The ranking algorithm is <strong>locked at MVP launch</strong>. Future amendments require a PRD change with explicit product sign-off. Each entry below is permanent and links to its decision record.</p>
+      <ol class="timeline" aria-label="Ranking algorithm amendment history">
+        <li class="timeline-item">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="entry">
+            <div class="entry-head">
+              <span class="entry-tag">v1.0 · MVP launch</span>
+              <span class="entry-date">2026-08-29</span>
+            </div>
+            <div class="entry-body">Weights locked at <code>w1=0.40 · w2=0.25 · w3=0.20 · w4=0.15</code>. Hysteresis ±0.02 on bucket boundaries. No A/B testing on live users — shadow composition only.</div>
+            <a href="#" class="entry-adr">ADR-0022 ↗</a>
+          </div>
+        </li>
+        <li class="timeline-item">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="entry">
+            <div class="entry-head">
+              <span class="entry-tag">pre-launch review</span>
+              <span class="entry-date">2026-08-19</span>
+            </div>
+            <div class="entry-body">Initial formula + weights reviewed against calm principle. Added pledge block; rejected gamification chrome (streaks, leaderboards).</div>
+            <a href="#" class="entry-adr">ADR-0020 ↗</a>
+          </div>
+        </li>
+      </ol>
 
       <h3 class="sub-h">Our pledge on ranking</h3>
       <div class="pledge">

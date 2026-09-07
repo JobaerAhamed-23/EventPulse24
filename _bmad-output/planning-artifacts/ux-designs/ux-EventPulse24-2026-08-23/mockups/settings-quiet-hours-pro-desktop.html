@@ -1,0 +1,404 @@
+<!--
+  EventPulse24 — Settings → Quiet Hours Pro (Desktop, full page) — DARK THEME
+  Amendment A-19 — Component.Settings.QuietHours.Pro + component.control.day-picker.
+  Closes the C-5 substantive gap. EXPERIENCE.md §2 row 7 references the
+  "day-of-week picker in Settings → Quiet Hours" for Pro tier, but no 7-row
+  vocabulary existed and settings-desktop.html only shows the Free single-window
+  + "Upgrade to Pro →" CTA.
+
+  Page anatomy per Amendment A-19 / DESIGN.md:
+    - component.sidenav.app 6-route variant + component.sidenav.footer
+    - component.topbar brand-only
+    - pagehead h1 "Quiet hours" + sub copy
+    - Pro tier badge (terracotta dot, mono uppercase) on the right of h1
+    - 7-row vertical list (Mon–Sun), each row:
+        day-name (display weight) + active-window chip "10pm–8am" +
+        ink-inversion activation toggle on the right (NOT terracotta).
+    - Inline time-range picker slides in beneath the active row (mockup shows
+      the Monday row expanded to demonstrate; the rest are collapsed by default).
+    - Footer ghost button: "Reset all to default 10pm–8am" (matches the
+      Free-tier default so the bulk reset is non-destructive).
+    - component.emptystate.quiet fallback: the Free-tier locked-state variant
+      is referenced via a banner card at the top of the page for tier-upgrade
+      visibility (kept here as a small inline note rather than a separate page
+      state — the locked-state is already covered in settings-desktop.html).
+
+  No new tokens. Tier-gate affordances use existing component.badge.source.verified
+  pattern (terracotta dot, mono uppercase) and component.control.toggle.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Settings · Quiet Hours (Pro)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-amber:#E89B4A; --warm-personal:#C8967A; --cool-public:#6E7E92;
+    --signal-success:#7AAA7A; --signal-warn:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+    --container-max:1180px; --sidenav-w:240px; --page-pad:32px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Page chrome ===== */
+  .pagehead { padding: 40px 0 28px; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+  .pagehead h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; margin: 0 0 10px; color: var(--ink-primary); letter-spacing: -0.015em; }
+  .pagehead .sub { font-size: 14px; color: var(--ink-secondary); margin: 0; max-width: 720px; line-height: 1.55; }
+
+  /* Pro tier badge — uses component.badge.source.verified pattern */
+  .pro-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--family-mono); font-size: 10px; font-weight: 600;
+    color: var(--accent-terracotta); text-transform: uppercase; letter-spacing: 0.10em;
+    padding: 5px 10px; border-radius: 4px;
+    background: rgba(255,106,71,0.06);
+    border: 1px solid rgba(255,106,71,0.30);
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 12px;
+  }
+  .pro-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 6px rgba(255,106,71,0.55); }
+
+  .section-nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 0 24px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 32px; }
+  .section-nav a { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-muted); font-weight: 500; }
+  .section-nav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
+
+  /* ===== Day-picker (Amendment A-19 — component.control.day-picker) ===== */
+  .day-picker {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .day-row {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .day-row:last-child { border-bottom: 0; }
+  .day-row.locked .day-toggle { opacity: 0.4; cursor: not-allowed; }
+
+  .day-head {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 24px;
+    padding: 18px 24px;
+    cursor: pointer;
+    transition: background 160ms ease;
+  }
+  .day-head:hover { background: var(--surface-subtle); }
+  .day-row.expanded .day-head { background: var(--surface-subtle); }
+
+  .day-name-block { display: flex; align-items: baseline; gap: 14px; }
+  .day-name { font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .day-name-block .lock-glyph {
+    width: 14px; height: 14px;
+    color: var(--ink-faint);
+    display: inline-flex; align-items: center;
+    font-size: 11px;
+  }
+
+  .day-window-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    font-family: var(--family-mono); font-size: 12px;
+    color: var(--ink-secondary);
+    font-weight: 500;
+  }
+  .day-window-chip.inactive { color: var(--ink-muted); font-style: italic; }
+  .day-window-chip .glyph {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ink-faint);
+  }
+  .day-window-chip.active .glyph { background: var(--signal-success); box-shadow: 0 0 4px rgba(122,170,122,0.55); }
+
+  /* Ink-inversion toggle (NOT terracotta — small-control pattern) */
+  .day-toggle {
+    position: relative;
+    width: 44px; height: 24px;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    transition: background 160ms ease;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .day-toggle::after {
+    content: "";
+    position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px;
+    background: var(--ink-faint);
+    border-radius: 50%;
+    transition: transform 160ms ease, background 160ms ease;
+  }
+  .day-toggle.on {
+    background: var(--ink-primary);
+    border-color: var(--ink-primary);
+  }
+  .day-toggle.on::after {
+    background: var(--ink-inverse);
+    transform: translateX(20px);
+  }
+  .day-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255,106,71,0.45);
+  }
+
+  /* Inline time-range picker (slides in beneath the active row) */
+  .day-body {
+    display: none;
+    padding: 0 24px 24px;
+    background: var(--surface-subtle);
+  }
+  .day-row.expanded .day-body { display: block; }
+
+  .time-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    padding: 16px 18px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+  }
+  .time-col h4 {
+    font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted);
+    text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .preset-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preset {
+    padding: 6px 12px; border-radius: 8px;
+    font-family: var(--family-mono); font-size: 12px;
+    color: var(--ink-secondary);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-subtle);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  .preset:hover { background: var(--surface-inset); color: var(--ink-primary); }
+  .preset.selected {
+    background: rgba(255,106,71,0.10);
+    border-color: rgba(255,106,71,0.30);
+    color: var(--accent-terracotta);
+  }
+
+  .day-actions {
+    display: flex; justify-content: flex-end; gap: 12px;
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .ghost-mini {
+    padding: 7px 14px; border-radius: 8px;
+    font-size: 12px; color: var(--ink-muted);
+    transition: color 160ms ease, background 160ms ease;
+  }
+  .ghost-mini:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
+
+  /* Bulk reset footer */
+  .bulk-footer { padding: 24px 0 32px; }
+  .bulk-footer .ghost {
+    padding: 8px 14px; border-radius: 8px; font-size: 13px;
+    color: var(--ink-secondary); border: 1px solid var(--border-subtle);
+    font-weight: 500;
+  }
+  .bulk-footer .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .bulk-footer .note { font-size: 12px; color: var(--ink-muted); margin: 0 0 16px; line-height: 1.5; max-width: 720px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>Digest</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Timeline</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>Browse</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>Conflicts</a>
+    <a href="#" class="nav-item active" aria-current="page"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <header class="pagehead">
+      <div>
+        <h1>Quiet hours</h1>
+        <p class="sub">We won't push any notifications — email, in-app, or text — during your quiet hours. Set one window for every day, or fine-tune each day of the week with Pro.</p>
+      </div>
+      <span class="pro-badge" aria-label="Pro tier unlocked">
+        <span class="dot" aria-hidden="true"></span> Pro · per-day
+      </span>
+    </header>
+
+    <nav class="section-nav" aria-label="Settings sections">
+      <a href="#">Appearance</a><a href="#">Notifications</a><a href="#" class="active">Quiet hours</a>
+      <a href="#">Calendar sync</a><a href="#">Account</a><a href="#">Plan</a>
+      <a href="#">Privacy</a><a href="#">Sources</a>
+    </nav>
+
+    <!-- ===== Day-picker (Amendment A-19 — component.control.day-picker) ===== -->
+    <div class="day-picker" role="list" aria-label="Per-day quiet hours">
+
+      <!-- Monday — expanded to demonstrate the inline time-range picker -->
+      <div class="day-row expanded" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="true" aria-controls="day-body-mon">
+          <div class="day-name-block">
+            <span class="day-name">Monday</span>
+          </div>
+          <span class="day-window-chip active" aria-label="Active window 10pm to 8am">
+            <span class="glyph" aria-hidden="true"></span> 10pm – 8am
+          </span>
+          <button class="day-toggle on" type="button" aria-pressed="true" aria-label="Toggle quiet hours for Monday"></button>
+        </div>
+        <div class="day-body" id="day-body-mon">
+          <div class="time-grid">
+            <div class="time-col">
+              <h4>Start time</h4>
+              <div class="preset-row">
+                <button class="preset">9pm</button>
+                <button class="preset selected">10pm</button>
+                <button class="preset">11pm</button>
+                <button class="preset">12am</button>
+              </div>
+            </div>
+            <div class="time-col">
+              <h4>End time</h4>
+              <div class="preset-row">
+                <button class="preset">6am</button>
+                <button class="preset">7am</button>
+                <button class="preset selected">8am</button>
+                <button class="preset">9am</button>
+              </div>
+            </div>
+          </div>
+          <div class="day-actions">
+            <button class="ghost-mini" aria-label="Clear Monday quiet hours">Clear</button>
+            <button class="ghost-mini" aria-label="Apply 10pm–8am default to Monday">Reset to default</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tuesday -->
+      <div class="day-row" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="false" aria-controls="day-body-tue">
+          <div class="day-name-block"><span class="day-name">Tuesday</span></div>
+          <span class="day-window-chip active" aria-label="Active window 10pm to 8am"><span class="glyph"></span> 10pm – 8am</span>
+          <button class="day-toggle on" type="button" aria-pressed="true" aria-label="Toggle quiet hours for Tuesday"></button>
+        </div>
+      </div>
+
+      <!-- Wednesday -->
+      <div class="day-row" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="false" aria-controls="day-body-wed">
+          <div class="day-name-block"><span class="day-name">Wednesday</span></div>
+          <span class="day-window-chip active" aria-label="Active window 10pm to 8am"><span class="glyph"></span> 10pm – 8am</span>
+          <button class="day-toggle on" type="button" aria-pressed="true" aria-label="Toggle quiet hours for Wednesday"></button>
+        </div>
+      </div>
+
+      <!-- Thursday -->
+      <div class="day-row" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="false" aria-controls="day-body-thu">
+          <div class="day-name-block"><span class="day-name">Thursday</span></div>
+          <span class="day-window-chip active" aria-label="Active window 11pm to 9am (later on gig nights)"><span class="glyph"></span> 11pm – 9am</span>
+          <button class="day-toggle on" type="button" aria-pressed="true" aria-label="Toggle quiet hours for Thursday"></button>
+        </div>
+      </div>
+
+      <!-- Friday -->
+      <div class="day-row" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="false" aria-controls="day-body-fri">
+          <div class="day-name-block"><span class="day-name">Friday</span></div>
+          <span class="day-window-chip active" aria-label="Active window 1am to 11am (late nights)"><span class="glyph"></span> 1am – 11am</span>
+          <button class="day-toggle on" type="button" aria-pressed="true" aria-label="Toggle quiet hours for Friday"></button>
+        </div>
+      </div>
+
+      <!-- Saturday -->
+      <div class="day-row" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="false" aria-controls="day-body-sat">
+          <div class="day-name-block"><span class="day-name">Saturday</span></div>
+          <span class="day-window-chip inactive" aria-label="Quiet hours turned off"><span class="glyph"></span> Off</span>
+          <button class="day-toggle" type="button" aria-pressed="false" aria-label="Toggle quiet hours for Saturday"></button>
+        </div>
+      </div>
+
+      <!-- Sunday -->
+      <div class="day-row" role="listitem">
+        <div class="day-head" tabindex="0" role="button" aria-expanded="false" aria-controls="day-body-sun">
+          <div class="day-name-block"><span class="day-name">Sunday</span></div>
+          <span class="day-window-chip active" aria-label="Active window 9pm to 10am (weekend mornings)"><span class="glyph"></span> 9pm – 10am</span>
+          <button class="day-toggle on" type="button" aria-pressed="true" aria-label="Toggle quiet hours for Sunday"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Bulk reset footer ===== -->
+    <div class="bulk-footer">
+      <p class="note">Tap "Reset all to default" to set every day back to <strong style="color: var(--ink-secondary);">10pm–8am</strong>. This is the same window Free users see — so a downgrade never changes what you've previously configured.</p>
+      <button class="ghost" aria-label="Reset all days to default 10pm–8am">Reset all to default 10pm–8am</button>
+    </div>
+  </main>
+</div>
+</body>
+</html>
