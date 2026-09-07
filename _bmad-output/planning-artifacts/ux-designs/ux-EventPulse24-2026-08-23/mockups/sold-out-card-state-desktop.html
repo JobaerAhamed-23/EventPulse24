@@ -1,5 +1,7 @@
 <!--
   EventPulse24 — Sold Out Card State (Desktop, variant) — DARK THEME
+  Amendment A-15 — Component.Badge.SoldOut. Replaces the mockup-local `--signal-mute`
+  token with the canonical `color.signal.warn` per DESIGN.md §Colors. No new tokens.
   FR-53 / FR-54. Event state sync. Sold-out badge, removed "Save Reminder" CTA.
   Shows Pulse Digest card variant + Event Detail state.
 -->
@@ -17,7 +19,7 @@
     --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
     --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
     --accent-terracotta:#FF6A47; --accent-amber:#E89B4A; --warm-personal:#C8967A; --cool-public:#6E7E92;
-    --signal-success:#7AAA7A; --signal-mute:#7A7A82;
+    --signal-success:#7AAA7A; --signal-warn:#D8A86A;
     --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
     --family-display:"Source Serif 4",Fraunces,Georgia,serif;
     --family-body:"Inter",-apple-system,system-ui,sans-serif;
@@ -43,7 +45,7 @@
   /* Sold-out card variant */
   .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 28px; position: relative; max-width: 760px; }
   .card.soldout { opacity: 0.85; }
-  .card.soldout .stripe { background: var(--signal-mute); opacity: 0.5; }
+  .card.soldout .stripe { background: var(--cool-public); opacity: 0.5; }
   .card .stripe { position: absolute; left: 0; top: 28px; bottom: 28px; width: 3px; border-radius: 0 2px 2px 0; background: var(--cool-public); }
 
   .card-row { display: flex; justify-content: space-between; gap: 28px; padding-left: 18px; }
@@ -56,9 +58,9 @@
   .tags .tag { color: var(--ink-secondary); }
   .tags .dotsep { color: var(--ink-faint); margin: 0 6px; }
 
-  /* Sold-out badge */
-  .soldout-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; background: var(--surface-subtle); border: 1px solid var(--border-strong); font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
-  .soldout-badge .glyph { color: var(--ink-muted); }
+  /* Sold-out badge — Amendment A-15: uses color.signal.warn (canonical), not --signal-mute */
+  .soldout-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: var(--surface-subtle); border: 1px solid var(--border-strong); font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .soldout-badge .glyph { color: var(--signal-warn); }
 
   /* Card footer */
   .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
@@ -149,7 +151,7 @@
         <h2>Spec reference</h2>
         <span class="tag">FR-53 / FR-54</span>
       </div>
-      <p class="page-sub"><strong>Badge:</strong> inline pill at the top of the title — desaturated neutral (not red), <code>signal-mute</code> token. Tone: factual, not alarming. <strong>Save Reminder CTA:</strong> removed (not greyed, not "Notify me when available"). <strong>Find similar events:</strong> surfaced only on sold-out Detail Screen (not on the card) — quietly resolves the user's likely next intent. <strong>Notification frequency:</strong> one state-change notification per event per day max. Future state changes (e.g., a cancellation) replace, not stack.</p>
+      <p class="page-sub"><strong>Badge:</strong> inline pill at the top of the title — desaturated amber (not red), <code>color.signal.warn</code> token per Amendment A-15. Tone: factual, not alarming. <strong>Save Reminder CTA:</strong> removed (not greyed, not "Notify me when available"). <strong>Find similar events:</strong> surfaced only on sold-out Detail Screen (not on the card) — quietly resolves the user's likely next intent. <strong>Notification frequency:</strong> one state-change notification per event per day max. Future state changes (e.g., a cancellation) replace, not stack.</p>
     </div>
   </div>
 </div>

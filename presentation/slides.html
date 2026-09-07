@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EventPulse24 — BMAD Presentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Reset & Tokens ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:      #0b0f1e;
+      --navy-mid:  #111827;
+      --navy-card: #151d30;
+      --blue:      #3b82f6;
+      --blue-light:#60a5fa;
+      --cyan:      #22d3ee;
+      --purple:    #a78bfa;
+      --green:     #34d399;
+      --amber:     #fbbf24;
+      --rose:      #fb7185;
+      --white:     #f8fafc;
+      --muted:     #94a3b8;
+      --border:    rgba(255,255,255,0.08);
+      --glow:      rgba(59,130,246,0.15);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--navy);
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--white);
+    }
+
+    /* ─── Deck Container ─────────────────────────────────────────────── */
+    #deck {
+      width: 100%; height: 100vh;
+      display: flex;
+      transition: transform 0.6s cubic-bezier(0.77,0,0.18,1);
+    }
+
+    /* ─── Individual Slides ──────────────────────────────────────────── */
+    .slide {
+      min-width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      padding: 0 64px;
+    }
+
+    /* shared noise texture overlay */
+    .slide::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    /* ─── Navigation ─────────────────────────────────────────────────── */
+    #nav {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 100;
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      padding: 8px 16px;
+    }
+
+    .nav-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: var(--white);
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .nav-btn:hover { background: var(--blue); border-color: var(--blue); }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .dot.active { background: var(--blue); width: 24px; border-radius: 4px; }
+
+    #slide-counter {
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 36px;
+      text-align: center;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Shared Components ──────────────────────────────────────────── */
+    .slide-header {
+      padding-top: 40px;
+      padding-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid currentColor;
+    }
+
+    .slide-number {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       SLIDE 1 — PROJECT PITCH
+    ═══════════════════════════════════════════════════════════════════ */
+    #slide-1 {
+      background:
+        radial-gradient(ellipse 70% 60% at 80% 50%, rgba(59,130,246,0.12) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 50% at 10% 80%, rgba(167,139,250,0.08) 0%, transparent 60%),
+        var(--navy);
+    }
+
+    .s1-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+      padding-bottom: 80px;
+    }
+
+    .s1-left {}
+
+    .s1-eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 16px;
+    }
+
+    .s1-title {
+      font-size: clamp(32px, 3.5vw, 52px);
+      font-weight: 900;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+
+    .s1-title .calm { color: var(--cyan); }
+    .s1-title .intel { color: var(--blue-light); }
+
+    .s1-tagline {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 28px;
+      max-width: 400px;
+    }
+
+    .s1-persona {
+      background: var(--navy-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .s1-persona::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: linear-gradient(180deg, var(--rose), var(--amber));
+    }
+    .s1-persona-name {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .s1-persona-quote {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    .s1-problems {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .problem-chip {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      background: rgba(251,113,133,0.12);
+      border: 1px solid rgba(251,113,133,0.25);
+      color: var(--rose);
+    }
+
+    /* Right column */
+    .s1-right {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .solution-card {
+      background: var(--navy-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+    .solution-card:hover { border-color: rgba(59,130,246,0.4); }
+
+    .solution-icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .solution-card-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .solution-card-desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .s1-northstar {
+      background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(34,211,238,0.08));
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 4px;
+    }
+    .s1-northstar-icon {
+      font-size: 24px;
+    }
+    .s1-northstar-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--blue-light);
+      margin-bottom: 3px;
+    }
+    .s1-northstar-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--white);
+    }
+
+    /* incumbent table */
+    .incumbent-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .incumbent-chip {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+    }
+    .incumbent-chip .name { font-weight: 700; color: var(--white); margin-bottom: 2px; }
+    .incumbent-chip .optimizes { color: var(--muted); }
+    .vs-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin: 4px 0;
+    }
+    .vs-us {
+      background: linear-gradient(135deg, rgba(34,211,238,0.1), rgba(59,130,246,0.1));
+      border: 1px solid rgba(34,211,238,0.25);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-align: center;
+    }
+
+
+    /* ═══════════════════════════════════════════════════════════════════
+       SLIDE 2 — BMAD WORKFLOW JOURNEY
+    ═══════════════════════════════════════════════════════════════════ */
+    #slide-2 {
+      background:
+        radial-gradient(ellipse 60% 60% at 50% 0%, rgba(167,139,250,0.1) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 40% at 90% 90%, rgba(34,211,238,0.07) 0%, transparent 60%),
+        var(--navy);
+    }
+
+    .s2-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 80px;
+    }
+
+    .s2-title {
+      font-size: clamp(22px, 2.5vw, 34px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .s2-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    .pipeline {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .pipeline-step {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .pipeline-connector {
+      width: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding-top: 40px; /* align with card top */
+    }
+
+    .connector-arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .connector-line {
+      width: 2px;
+      flex: 1;
+      max-height: 60px;
+      background: linear-gradient(180deg, var(--border), var(--blue) 50%, var(--border));
+      margin: 4px 0;
+    }
+
+    .connector-skill {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--blue-light);
+      text-transform: uppercase;
+      writing-mode: horizontal-tb;
+      white-space: nowrap;
+      background: rgba(59,130,246,0.12);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+
+    .step-card {
+      background: var(--navy-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.2s;
+    }
+    .step-card:hover { border-color: rgba(167,139,250,0.4); }
+
+    .step-num {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--purple);
+      text-transform: uppercase;
+    }
+    .step-title {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .step-file {
+      font-size: 10px;
+      font-family: 'Courier New', monospace;
+      color: var(--cyan);
+      background: rgba(34,211,238,0.08);
+      border: 1px solid rgba(34,211,238,0.15);
+      border-radius: 4px;
+      padding: 3px 7px;
+      display: inline-block;
+    }
+    .step-output {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+      flex: 1;
+    }
+    .step-output strong {
+      color: var(--green);
+      font-weight: 600;
+    }
+    .step-skill-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      color: var(--purple);
+      background: rgba(167,139,250,0.1);
+      border: 1px solid rgba(167,139,250,0.2);
+      display: inline-block;
+    }
+
+    /* horizontal arrows between pipeline steps */
+    .h-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      width: 32px;
+      flex-shrink: 0;
+      gap: 6px;
+    }
+    .h-arrow-line {
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--blue), var(--purple));
+    }
+    .h-arrow-head {
+      color: var(--purple);
+      font-size: 14px;
+      margin-top: -18px;
+    }
+    .h-arrow-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue-light);
+      white-space: nowrap;
+    }
+
+
+    /* ═══════════════════════════════════════════════════════════════════
+       SLIDE 3 — CHALLENGES & RESOLUTIONS
+    ═══════════════════════════════════════════════════════════════════ */
+    #slide-3 {
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 100%, rgba(251,191,36,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 90% 10%, rgba(52,211,153,0.08) 0%, transparent 60%),
+        var(--navy);
+    }
+
+    .s3-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 80px;
+    }
+
+    .s3-title {
+      font-size: clamp(22px, 2.5vw, 34px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .s3-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    .challenge-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    .challenge-card {
+      background: var(--navy-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .challenge-card:hover {
+      transform: translateY(-3px);
+    }
+
+    /* accent stripe */
+    .challenge-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .challenge-card.c1::after { background: linear-gradient(90deg, var(--amber), var(--rose)); }
+    .challenge-card.c2::after { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+    .challenge-card.c3::after { background: linear-gradient(90deg, var(--green), var(--cyan)); }
+
+    .challenge-card.c1:hover { border-color: rgba(251,191,36,0.35); }
+    .challenge-card.c2:hover { border-color: rgba(59,130,246,0.35); }
+    .challenge-card.c3:hover { border-color: rgba(52,211,153,0.35); }
+
+    .challenge-num {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .c1 .challenge-num { color: var(--amber); }
+    .c2 .challenge-num { color: var(--blue-light); }
+    .c3 .challenge-num { color: var(--green); }
+
+    .challenge-icon { font-size: 28px; }
+
+    .challenge-title {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+    }
+
+    .discovery-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .discovery-tag span {
+      font-family: 'Courier New', monospace;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .challenge-problem {
+      font-size: 12px;
+      color: rgba(248,250,252,0.7);
+      line-height: 1.55;
+    }
+
+    .resolution-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-top: auto;
+    }
+
+    .resolution-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .c1 .resolution-label { color: var(--amber); }
+    .c2 .resolution-label { color: var(--blue-light); }
+    .c3 .resolution-label { color: var(--green); }
+
+    .resolution-items {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .resolution-items li {
+      font-size: 11px;
+      color: var(--white);
+      line-height: 1.4;
+      display: flex;
+      gap: 6px;
+    }
+    .resolution-items li::before {
+      content: '→';
+      flex-shrink: 0;
+      font-weight: 700;
+    }
+    .c1 .resolution-items li::before { color: var(--amber); }
+    .c2 .resolution-items li::before { color: var(--blue-light); }
+    .c3 .resolution-items li::before { color: var(--green); }
+
+    .bmad-discovered {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .bmad-pill {
+      background: rgba(167,139,250,0.12);
+      border: 1px solid rgba(167,139,250,0.2);
+      color: var(--purple);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─── DECK ─────────────────────────────────────────────────────────── -->
+<div id="deck">
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       SLIDE 1 — PROJECT PITCH
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="slide" id="slide-1">
+    <div class="slide-header">
+      <span class="badge" style="color:var(--cyan);border-color:rgba(34,211,238,0.4);">EventPulse24</span>
+      <span class="slide-number">01 / 03 — Project Pitch</span>
+    </div>
+
+    <div class="s1-body">
+      <!-- LEFT: Problem + Persona -->
+      <div class="s1-left">
+        <div class="s1-eyebrow">AI-Powered Event Discovery</div>
+        <h1 class="s1-title">
+          The <span class="calm">calm</span><br>
+          <span class="intel">intelligence layer</span><br>
+          for events.
+        </h1>
+        <p class="s1-tagline">
+          Every existing platform optimises for <em>more engagement, more notifications, more transactions.</em>
+          EventPulse24 takes the opposite bet — <strong>calm, intelligent, and signal-first.</strong>
+        </p>
+
+        <div class="s1-persona">
+          <div class="s1-persona-name">Maya, 32 — Senior Product Designer, Brooklyn</div>
+          <div class="s1-persona-quote">
+            "I don't want MORE things to do. I want someone to tell me the 3 things actually worth doing this week."
+          </div>
+        </div>
+
+        <div class="s1-problems">
+          <span class="problem-chip">📵 Notification blindness</span>
+          <span class="problem-chip">📅 Calendar fragmentation</span>
+          <span class="problem-chip">😰 FOMO anxiety</span>
+          <span class="problem-chip">🤷 Trust gap with AI</span>
+          <span class="problem-chip">📱 4+ separate surfaces</span>
+          <span class="problem-chip">💬 Group coordination hell</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: Solution + North Star -->
+      <div class="s1-right">
+
+        <!-- Competitors vs us -->
+        <div style="margin-bottom:4px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Every incumbent optimises for…</div>
+          <div class="incumbent-row">
+            <div class="incumbent-chip"><div class="name">Eventbrite</div><div class="optimizes">Ticket sales revenue</div></div>
+            <div class="incumbent-chip"><div class="name">Facebook Events</div><div class="optimizes">Time-on-app engagement</div></div>
+            <div class="incumbent-chip"><div class="name">Meetup</div><div class="optimizes">Community growth</div></div>
+            <div class="incumbent-chip"><div class="name">Google Calendar</div><div class="optimizes">Passive time storage</div></div>
+          </div>
+          <div class="vs-arrow">↓ &nbsp;we optimise for &nbsp;↓</div>
+          <div class="vs-us">✦ &nbsp; Calm · Intelligence · Signal-to-Noise &nbsp; ✦</div>
+        </div>
+
+        <!-- Solution pillars -->
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;">What we ship (MVP)</div>
+        <div class="solution-card">
+          <div class="solution-icon" style="background:rgba(34,211,238,0.12);">🧠</div>
+          <div>
+            <div class="solution-card-title">Pulse Digest — 3 cards/day</div>
+            <div class="solution-card-desc">1 must-know · 1 nearby · 1 surprise. Bounded by design — decision fatigue is the enemy.</div>
+          </div>
+        </div>
+        <div class="solution-card">
+          <div class="solution-icon" style="background:rgba(167,139,250,0.12);">🔍</div>
+          <div>
+            <div class="solution-card-title">"Why this?" Explainability</div>
+            <div class="solution-card-desc">Every card shows 3-keyword reasoning + confidence pulse. Trust through transparency.</div>
+          </div>
+        </div>
+        <div class="solution-card">
+          <div class="solution-icon" style="background:rgba(251,191,36,0.12);">⏰</div>
+          <div>
+            <div class="solution-card-title">Multi-tier Reminders</div>
+            <div class="solution-card-desc">5d / 2d / 1d / 1hr chips. Default = Pulse Ping (one daily) — replaces per-event spam.</div>
+          </div>
+        </div>
+        <div class="solution-card">
+          <div class="solution-icon" style="background:rgba(52,211,153,0.12);">⚡</div>
+          <div>
+            <div class="solution-card-title">30-Second Onboarding</div>
+            <div class="solution-card-desc">Connect calendar OR skip. See 3 relevant events instantly. No quiz, no forms.</div>
+          </div>
+        </div>
+
+        <!-- North star -->
+        <div class="s1-northstar">
+          <div class="s1-northstar-icon">⭐</div>
+          <div>
+            <div class="s1-northstar-label">North Star Metric</div>
+            <div class="s1-northstar-value">&gt;40% of users say Pulse made their week better <span style="color:var(--muted);font-size:12px;font-weight:400">(by Month 6)</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       SLIDE 2 — BMAD WORKFLOW JOURNEY
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="slide" id="slide-2">
+    <div class="slide-header">
+      <span class="badge" style="color:var(--purple);border-color:rgba(167,139,250,0.4);">BMAD Workflow</span>
+      <span class="slide-number">02 / 03 — How We Got Here</span>
+    </div>
+
+    <div class="s2-body">
+      <h2 class="s2-title">From raw idea → production-ready brief</h2>
+      <p class="s2-subtitle">The complete BMAD journey: 6 stages, 4 AI strategy frameworks, 119+ logged ideas</p>
+
+      <div class="pipeline">
+
+        <!-- Step 1: Scope -->
+        <div class="pipeline-step">
+          <div class="step-card">
+            <div>
+              <div class="step-num">Stage 01</div>
+              <div class="step-title">Raw Scope Intent</div>
+            </div>
+            <div class="step-file">docs/scope.txt</div>
+            <div class="step-output">
+              Plain-language description of what to build. AI-powered event discovery platform for global, national, local &amp; personal events with smart notifications.<br><br>
+              <strong>Output:</strong> Single intent document — unstructured, full of assumptions
+            </div>
+            <div class="step-skill-badge">📝 Scope Input</div>
+          </div>
+        </div>
+
+        <!-- Arrow 1 -->
+        <div class="h-arrow" style="align-self:center;">
+          <div style="font-size:20px;color:var(--blue);">→</div>
+          <div class="h-arrow-label">bmad-brainstorming</div>
+        </div>
+
+        <!-- Step 2: Brainstorming -->
+        <div class="pipeline-step">
+          <div class="step-card">
+            <div>
+              <div class="step-num">Stage 02</div>
+              <div class="step-title">Ideation Brainstorm</div>
+            </div>
+            <div class="step-file">brain-event-discovery</div>
+            <div class="step-output">
+              8 techniques: First Principles, SCAMPER, Cross-Pollination, Worst Possible Idea, Analogical Thinking, Reverse Brainstorm, Constraint Mapping, Question Storming<br><br>
+              <strong>Output:</strong> 119+ logged ideas, feature angles &amp; gaps
+            </div>
+            <div class="step-skill-badge">💡 bmad-brainstorming</div>
+          </div>
+        </div>
+
+        <!-- Arrow 2 -->
+        <div class="h-arrow" style="align-self:center;">
+          <div style="font-size:20px;color:var(--blue);">→</div>
+          <div class="h-arrow-label">bmad-analyst</div>
+        </div>
+
+        <!-- Step 3: Strategy Frameworks -->
+        <div class="pipeline-step">
+          <div class="step-card">
+            <div>
+              <div class="step-num">Stage 03</div>
+              <div class="step-title">Strategy Frameworks</div>
+            </div>
+            <div class="step-file">innovation · design · blue-ocean</div>
+            <div class="step-output">
+              <strong>Innovation Strategy:</strong> JTBD + Force Field → 3 strategic options<br>
+              <strong>Design Thinking:</strong> Empathy Map, 8 affinity clusters → persona "Maya"<br>
+              <strong>Blue Ocean:</strong> 4-Actions, strategy canvas → "calm" positioning<br><br>
+              <strong>Output:</strong> 3 synthesis docs, tagline, MVP scope direction
+            </div>
+            <div class="step-skill-badge">🔬 bmad-agent-analyst</div>
+          </div>
+        </div>
+
+        <!-- Arrow 3 -->
+        <div class="h-arrow" style="align-self:center;">
+          <div style="font-size:20px;color:var(--blue);">→</div>
+          <div class="h-arrow-label">bmad-brainstorming</div>
+        </div>
+
+        <!-- Step 4: Pre-PRD Gaps -->
+        <div class="pipeline-step">
+          <div class="step-card">
+            <div>
+              <div class="step-num">Stage 04</div>
+              <div class="step-title">Pre-PRD Gap Fill</div>
+            </div>
+            <div class="step-file">brain-pre-prd-gaps</div>
+            <div class="step-output">
+              Discovered 3 critical gaps the brief missed: Legal &amp; Compliance, Monetisation validation, User bet validation.<br><br>
+              <strong>Output:</strong> brainstorm-intent.md — 10 locked decisions, 6 open questions
+            </div>
+            <div class="step-skill-badge">🔎 bmad-brainstorming</div>
+          </div>
+        </div>
+
+        <!-- Arrow 4 -->
+        <div class="h-arrow" style="align-self:center;">
+          <div style="font-size:20px;color:var(--blue);">→</div>
+          <div class="h-arrow-label">bmad-product-brief</div>
+        </div>
+
+        <!-- Step 5: Product Brief -->
+        <div class="pipeline-step">
+          <div class="step-card">
+            <div>
+              <div class="step-num">Stage 05</div>
+              <div class="step-title">Product Brief</div>
+            </div>
+            <div class="step-file">brief.md + addendum.md</div>
+            <div class="step-output">
+              Full MVP scope locked. Problem, solution, personas, success criteria, IN/OUT features, risks, 3-year vision, open questions.<br><br>
+              <strong>Output:</strong> 283-line brief + 270-line addendum — PRD-ready
+            </div>
+            <div class="step-skill-badge">📋 bmad-product-brief</div>
+          </div>
+        </div>
+
+        <!-- Arrow 5 -->
+        <div class="h-arrow" style="align-self:center;">
+          <div style="font-size:20px;color:var(--blue);">→</div>
+          <div class="h-arrow-label">bmad-ux</div>
+        </div>
+
+        <!-- Step 6: UX Designs -->
+        <div class="pipeline-step">
+          <div class="step-card" style="border-color:rgba(52,211,153,0.3);">
+            <div>
+              <div class="step-num">Stage 06</div>
+              <div class="step-title">UX Designs &amp; Mockups</div>
+            </div>
+            <div class="step-file">ux-EventPulse24-2026-08-23</div>
+            <div class="step-output">
+              30+ HTML mockups — desktop &amp; mobile: Pulse Digest, Timeline, Reminder Picker, Onboarding, City Page, Share Link, Pro CTA, Pricing, Settings…<br><br>
+              <strong>Output:</strong> Browser-ready, interactive HTML mockups
+            </div>
+            <div class="step-skill-badge" style="color:var(--green);background:rgba(52,211,153,0.1);border-color:rgba(52,211,153,0.2);">🎨 bmad-ux</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       SLIDE 3 — CHALLENGES & RESOLUTIONS
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="slide" id="slide-3">
+    <div class="slide-header">
+      <span class="badge" style="color:var(--green);border-color:rgba(52,211,153,0.4);">BMAD Evaluation</span>
+      <span class="slide-number">03 / 03 — Challenges &amp; Resolutions</span>
+    </div>
+
+    <div class="s3-body">
+      <h2 class="s3-title">What changed — and how BMAD caught it</h2>
+      <p class="s3-subtitle">
+        Key pivots discovered through the BMAD process that the original scope could not have anticipated
+      </p>
+
+      <div class="challenge-grid">
+
+        <!-- Challenge 1 -->
+        <div class="challenge-card c1">
+          <div>
+            <div class="challenge-num">Challenge 01</div>
+            <div class="challenge-icon">🌍</div>
+          </div>
+          <div class="challenge-title">Scope was US-centric — missed the real user base</div>
+          <div>
+            <div class="discovery-tag">Discovered in: <span>brain-pre-prd-gaps-2026-08-19</span></div>
+          </div>
+          <div class="challenge-problem">
+            The initial <code style="font-size:10px;color:var(--cyan);">scope.txt</code> assumed a US-centric product (Eventbrite, Meetup, NYC/SF beachhead). The brainstorming session revealed the actual user context required a Bangladesh-first launch with completely different infrastructure, language, and payment needs.
+          </div>
+          <div class="resolution-box">
+            <div class="resolution-label">✓ Resolution</div>
+            <ul class="resolution-items">
+              <li>Pivoted to BD-primary launch (Dhaka focus)</li>
+              <li>Added Bangla language support from day 1</li>
+              <li>bKash + Nagad payment integration for Pro tier</li>
+              <li>Dual persona: Maya (US) + Rumi (BD Dhaka professional)</li>
+              <li>BD event sources: events.com.bd, FB groups, university calendars</li>
+            </ul>
+          </div>
+          <div class="bmad-discovered">
+            <span class="bmad-pill">BMAD Skill</span>
+            bmad-brainstorming — Pre-PRD Gap Fill session
+          </div>
+        </div>
+
+        <!-- Challenge 2 -->
+        <div class="challenge-card c2">
+          <div>
+            <div class="challenge-num">Challenge 02</div>
+            <div class="challenge-icon">⚖️</div>
+          </div>
+          <div class="challenge-title">Web crawling treated as a feature, not a legal cliff</div>
+          <div>
+            <div class="discovery-tag">Discovered in: <span>brainstorm-intent.md — Gap L1</span></div>
+          </div>
+          <div class="challenge-problem">
+            The brief mentioned crawling as a "risk" but treated it as a core feature. The gap-fill brainstorm identified that this was fundamentally wrong — crawling is <em>optional</em>. Building it as MVP would expose the product to legal liability before it had any users.
+          </div>
+          <div class="resolution-box">
+            <div class="resolution-label">✓ Resolution</div>
+            <ul class="resolution-items">
+              <li>MVP flipped to official APIs only — Eventbrite, PredictHQ, Bandsintown, Songkick</li>
+              <li>RSS feeds from tourism boards &amp; universities as secondary</li>
+              <li>Web crawling deferred to Phase 2 with per-source legal review</li>
+              <li>Partnership deals scoped for Year 2 (venues send data directly)</li>
+              <li>US-only for MVP; EU deferred until legal review complete</li>
+            </ul>
+          </div>
+          <div class="bmad-discovered">
+            <span class="bmad-pill">BMAD Skill</span>
+            bmad-brainstorming — Gap L1: Legal &amp; Compliance
+          </div>
+        </div>
+
+        <!-- Challenge 3 -->
+        <div class="challenge-card c3">
+          <div>
+            <div class="challenge-num">Challenge 03</div>
+            <div class="challenge-icon">🧪</div>
+          </div>
+          <div class="challenge-title">Core product bets were assumptions, not validated facts</div>
+          <div>
+            <div class="discovery-tag">Discovered in: <span>brainstorm-intent.md — Gaps V1–V5</span></div>
+          </div>
+          <div class="challenge-problem">
+            The brief assumed the 3-card limit, "Why this?" micro-tag, and Maya persona were correct. None were validated. Building a PRD on unvalidated bets risked 2+ months of rework if even one bet failed in user testing.
+          </div>
+          <div class="resolution-box">
+            <div class="resolution-label">✓ Resolution</div>
+            <ul class="resolution-items">
+              <li>Defined a 1-week, ~$300 validation sprint before PRD freeze</li>
+              <li>5 user interviews with BD + US knowledge workers ($25 gift cards)</li>
+              <li>Fake-door A/B mockup to test 3-card vs 10-card preference</li>
+              <li>"Why this?" mapped to GDPR Art 22 compliance — dual purpose unlocked</li>
+              <li>Van Westendorp survey for BD WTP ($1–3 USD vs US $5–8)</li>
+            </ul>
+          </div>
+          <div class="bmad-discovered">
+            <span class="bmad-pill">BMAD Skill</span>
+            bmad-brainstorming — Gap V: User Validation Sprint
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer note -->
+      <div style="margin-top:18px;text-align:center;font-size:11px;color:var(--muted);">
+        BMAD surfaced all three pivots <strong style="color:var(--white);">before</strong> any code was written — saving significant rework and de-risking the product fundamentally.
+      </div>
+    </div>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- ─── NAVIGATION ────────────────────────────────────────────────────── -->
+<div id="nav">
+  <button class="nav-btn" id="btn-prev" aria-label="Previous slide">←</button>
+  <div id="dots">
+    <div class="dot active" data-slide="0"></div>
+    <div class="dot" data-slide="1"></div>
+    <div class="dot" data-slide="2"></div>
+  </div>
+  <span id="slide-counter">1 / 3</span>
+  <button class="nav-btn" id="btn-next" aria-label="Next slide">→</button>
+</div>
+
+<script>
+  const deck = document.getElementById('deck');
+  const dots = document.querySelectorAll('.dot');
+  const counter = document.getElementById('slide-counter');
+  const total = 3;
+  let current = 0;
+
+  function goTo(n) {
+    current = Math.max(0, Math.min(total - 1, n));
+    deck.style.transform = `translateX(-${current * 100}vw)`;
+    dots.forEach((d, i) => d.classList.toggle('active', i === current));
+    counter.textContent = `${current + 1} / ${total}`;
+  }
+
+  document.getElementById('btn-prev').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('btn-next').addEventListener('click', () => goTo(current + 1));
+
+  dots.forEach(d => d.addEventListener('click', () => goTo(parseInt(d.dataset.slide))));
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+  });
+
+  // Touch/swipe support
+  let touchX = 0;
+  deck.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
+  deck.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 50) goTo(current + (dx < 0 ? 1 : -1));
+  });
+</script>
+
+</body>
+</html>

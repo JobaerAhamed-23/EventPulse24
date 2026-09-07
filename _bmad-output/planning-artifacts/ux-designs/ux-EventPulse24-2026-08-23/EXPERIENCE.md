@@ -2,9 +2,8 @@
 title: "EXPERIENCE.md — EventPulse24"
 status: final
 created: 2026-08-23
-updated: 2026-09-03
-updated_note: "Added three enforcement-tightening rules to §3 Voice and Tone and §7 Accessibility Floor, derived from the 2026-09-03 pulse-preview audit. (1) Two new rows in the §3 microcopy contract table — hero preview header ('Three picks, every morning.' / no 'We show you exactly those.') and soft-wall on anonymous action ('we'll hold your seat.' / no '→ Sign up to save.'). (2) New 'Zone roles' paragraph in §3: topbar carries identity (brand + tagline), hero carries benefit (eyebrow + h1 + lede). Inversions forbidden. (3) New bullet in §7 Screen-Reader Specifics: visible helper text must live in the DOM, not in ::before/::after pseudo-elements (screen readers don't announce pseudo-element content). Subsequent update 2026-09-03 (v1 onboarding audit): updated Flow 2 to surface all three calendar providers at v1 (Google OAuth 2.0 + Apple CalDAV + Outlook Microsoft Graph), updated §3 microcopy contract table with new provider-row examples, added §3 onboarding skip-rules clarifying the topbar-quiet discipline and footer-skip pattern."
-project: EventPulse24
+updated: 2026-09-06
+updated_note: "**Spine update 2026-09-06 (Amendment A-20 — `/signin` + `/signup` pre-auth routes):** adds two pre-auth routes that close the returning-user gap (no landing surface currently exists for users whose session expired — currently they get silently redirected to onboarding, which violates the calm contract for users who have already converted). New components: `Component.Auth.SignIn` (returning-user email + password sign-in, routes to `/` on success) and `Component.Auth.SignUp` (OAuth stack + email/password account creation, splits off the calendar-connect step so the post-signup onboarding flow stays within FR-1's ≤3 user-visible steps). Both surfaces use the per-field inline validation error pattern from DESIGN.md `component.input.field.error` (Amendment A-20) — `color.signal.warn` paired with `⚠` glyph, NOT `color.signal.error` which is reserved for destructive actions. Auth-error copy bank added to §3 (7 verbatim strings). `Component.Topbar.PreAuth` listing at L301 extended in-place to include `/signin` + `/signup` in the 8-route pre-auth family — topbar-quiet rule (ASSUM-11) applies. §2 IA table: +2 rows. State coverage table: +2 rows. Surface Coverage Map: +2 rows (19, 20). §Do's-and-Dont's: 1 new row locking the auth-error color treatment. All palette tokens reused; no new hex values; no new CSS variables. 2 new mockups: `signin-desktop.html`, `signup-desktop.html`. **`mockups/city-page-desktop.html` and the other 6 pre-auth mockups remain in their pre-A-9 topbar state** — migration is part of the existing pre-auth migration backlog, NOT part of this amendment. **Spine update 2026-09-06 (Amendments A-13 → A-19 — PRD-coverage reconciliation):** seven gap-closing amendments closing the remaining PRD ↔ UX gaps surfaced in the 2026-09-06 gap audit. **A-13:** amendment-history timeline inlined into Settings → Privacy §Amendment history — vertical timeline using `color.border.subtle` divider + 8px ink-muted dots; the latest entry's dot is terracotta-glowing per Amendment A-8 Indicator.Today treatment; each entry links to its ADR record. **A-14:** Geo-IP consent toggle on Privacy — 2-position segmented control with ink-inversion selected state (per `component.control.segmented` rule), default ON, off-state persists in `ep_geo_choice` cookie + falls back to most-popular city (NYC). **A-15:** Sold Out badge spine promotion — `component.badge.soldout` adopts `color.signal.warn` (NOT a new `--signal-mute` token); lifecycle locked (appears on Pulse Card + Detail Screen when `event.status = sold_out` per FR-53; persists until event ends; Save & reminder CTAs on Detail Screen replaced by calm 'Sold out — tickets no longer available.' line). **A-16:** Delete-account confirmation modal — `component.modal.account-delete` max-width 480px; header `Text.Headline.md` 'Delete your account?'; body 3 paragraphs (what gets deleted / what survives as anonymized aggregates / 30-day grace); type-to-confirm input 'Type DELETE to confirm' gates the primary; secondary Cancel + primary terracotta 'Start 30-day deletion'. **A-17:** Data Export modal — `component.modal.export-request` carries jurisdictional copy ('You're in {country}, so this export is free.' / 'Pro is required for exports outside the EU/UK/CA/BR/AU per our retention policy.'); Free-tier non-EU routes through `component.card.pro.upsell` to `/settings/plan`; post-submit inline notice 'Export started. We'll email {user.email} within 24 hours.'. **A-18:** `/settings/sources` page — `component.control.source-mute` (3-state: `Mute / Show less / Default`) + reliability dots reusing `component.indicator.confidence` token (1–5 ink-primary dots); grouped list (Official / Community / Aggregator / Crawled); ~10 sample sources. **A-19:** Pro per-day-of-week Quiet Hours — `component.control.day-picker` 7-row vertical list (Mon–Sun), each row carries day-name + active-window chip + ink-inversion activation toggle (NOT terracotta); Free users see locked rows with `Lock` glyph + 'Upgrade for per-day' microcopy on hover; Pro tier can set 7 distinct windows. All amendments reuse existing palette tokens, no new hex values, no new CSS variables. 4 new mockup files: `settings-sources-desktop.html`, `settings-quiet-hours-pro-desktop.html`, `account-delete-confirmation-modal-desktop.html`, `export-request-modal-desktop.html`. 3 mockup edits: `settings-desktop.html` Privacy section inlined timeline + toggle; `sold-out-card-state-desktop.html` adopted `color.signal.warn`; ranking-algorithm-transparency-desktop.html unchanged (its content remains the canonical pre-deprecation reference). Numbering note: A-12 is reserved in the existing spine chronology for the Browse × city-page merge (see the prior entry); gap-closing amendments start at A-13 to avoid clashing with the existing A-12 spine lock and the mockup's internal 'Amendment A-12 — Browse × city-page merge' header in `mockups/browse-desktop.html`. §2 IA table gained 2 new rows (sources page, quiet-hours Pro); existing rows for `/settings/sources` and `/settings/quiet-hours` updated with the new sub-rows. All earlier updates preserved verbatim. Subsequent update 2026-09-06 (sidenav-footer pattern): added Component.Sidenav.Footer to §4 Component Patterns, documenting the Search + Account footer block pinned to the bottom of the 240px sidenav rail. Search + Account do not fit the route list and do not belong in the topbar (topbar-quiet rule, ASSUM-11). All tokens reused from existing DESIGN.md palette — no new colors, no new CSS variables. Pattern sourced from mockup changes to pulse-digest-desktop.html and conflicts-desktop.html, then promoted to spine so the remaining sidenav surfaces (timeline-desktop.html, settings-desktop.html, ranking-algorithm-transparency-desktop.html) can adopt it without re-derivation. Subsequent update 2026-09-06 (ranking-algorithm IA): ranking transparency (PRD FR-22) lives inside Settings → Privacy as an in-page section, not a separate route. Updated §2 IA table row 9 to spell out ranking transparency as a sub-section. **Spine update 2026-09-06 (sidenav link-reset prerequisite):** added a new bullet under Component.Sidenav.App in §4 — 'Global reset prerequisite: the page's CSS must include `a { color: inherit; text-decoration: none; }` before the sidenav is applied, otherwise the browser default underlines bleed through on every route label and the Account row.' Documents a real bug from the 2026-09-06 batch migration of pulse-digest-empty-state-desktop and personal-event-edit-desktop, both of which shipped the shell without the reset (the original pre-sidenav files had no <a> in the topbar zone). **Spine update 2026-09-06 (Amendment A-9 — pre-auth chrome + logo halo carve-out):** added Component.Topbar.PreAuth to §4 Component Patterns documenting the brand-only topbar used on the 6 pre-auth public/marketing routes (pulse-preview / city-page / public-event-page / share-link / pricing-page / pro-upgrade-cta). No sidenav, no nav links, no topbar action cluster — conversion affordances live in the hero CTA + page footer + section-level decision moments. Logo halo on the brand-mark PNG documented as a brand-asset artifact outside the token system (cross-references DESIGN.md §Color usage rules → Glow carve-out); the 36x36 canonical render size keeps the halo within marketing-page-acceptable visual weight. pro-upgrade-cta explicitly documented as a states-only showcase that omits the brand-wrap (and would gain it when engineering ships /pro/upgrade). Migration status: spine exception paragraph + Do/Don't row locked; the 6 mockups remain in their pre-migration state (some carry legacy How it works / Sign in / Sign up buttons in topright that violate the new rule) — migration deferred to the next build batch, mirroring how the authed + onboarding batches rolled out. **Spine update 2026-09-06 (Amendment A-10 — Browse surface, 6th authed route):** (1) §4 `Component.Sidenav.App` extended with a 6-route variant — adds Browse between Add and Conflicts (order: Digest / Timeline / Add / **Browse** / Conflicts / Settings). Five-route variant retained for onboarding only. New keyboard shortcut `g b` routes directly to /browse. (2) §4 new `Component.BottomTab.MoreMenu` — mobile overflow affordance for the 6th route; bottom-tab stays 5 visible primary slots, More opens a sheet listing Browse + any future overflow route. (3) §4 new `Component.Surface.Browse` — /browse surface spec: all public events in user's city, today + 7 days, day-divider labels in microtag style, no calendar-control widget, no category filter chips, soft-cap of 24 cards with in-place chunk-load past the cap. Reuses Card.PulseDigest vocabulary card-for-card. Explicit anti-pattern list (no count badges, no social proof, no category-color floods, no infinite scroll, no upsell carousels). (4) §4 new `Component.Button.Save.Inline` — quiet Save affordance spec for Browse cards: state machine (idle → saving → saved → idle), free-tier cap integration (FR-48), failure modes (quota-exceeded / conflict-detected), accessibility (aria-label includes event name, aria-live on morph). (5) §2 IA Surface Map — added row 14: Browse, /browse, browse-desktop.html, Amendment A-10. Earlier updates preserved: 2026-09-03 pulse-preview audit additions, 2026-09-03 v1 onboarding audit, 2026-09-06 Amendment A-8 lift, 2026-09-06 pre-auth migration batch. **Spine update 2026-09-06 (Amendment A-11 — Browse inline keyword search):** §4 `Component.Surface.Browse` extended with inline keyword search spec. (1) Single `<input type=\"search\">` above the first day divider, max-width 720px to match the hero column. (2) Grammar: plain words AND-matched against headline + where + why-tag tokens; `tag:<token>` literals constrain to the why-tag set only (vocabulary: music · tech · community · arts · family · food · sports · outdoor · indoor · rooftop). Free text + tag tokens AND-matched. (3) No category chips, no date pickers, no preset toggles — the calm contract requires self-contained, learnable-in-5-seconds grammar. (4) Empty-result state uses component.emptystate.quiet vocabulary: 'Nothing matched.' + a single Text.Meta 'Clear' link that resets the input — distinct from the zero-events empty state ('Nothing nearby tonight. Try a wider city?' + 'Change city'). (5) Placeholder teaches the grammar in-place: 'Search this week — jazz, free, outdoor, tag:music'. Microcopy below the input lists 1-2 example queries + the tag vocabulary. (6) Input fill uses color.surface.paper (matching the existing authed-shell inputs in browse-desktop.html / pulse-digest-desktop.html) — flagged as a deliberate deviation from the spine default of color.surface.elevated so future surfaces know. Mockup coverage: browse-desktop.html now renders the default empty-input state; new browse-desktop-filtered.html demonstrates a 2-card AND-matched result for query 'jazz free'; new browse-desktop-empty.html demonstrates the no-match empty-result state for query 'quantum poetry'. No new color tokens, no new CSS variables, no new components invented. **Spine update 2026-09-06 (Amendment A-12 — Browse × city-page merge):** §4 `Component.Surface.Browse` rewritten to adopt the pre-auth city-page visual structure inside the authed shell. (1) Hero: eyebrow (terracotta dot + Brooklyn · Tonight + 7 days) + `Text.Display.xl` h1 with terracotta-italic `<em>` ('Events in *Brooklyn.*') + lede + city-meta pill (📍 Brooklyn, NY · 147 events this week · Change city) + small mono quota note. (2) Inline keyword search (A-11) stays — replaces the city-page filter chip rail entirely. (3) Day-divider grouping replaced with two attention-tier section heads ('3 worth your attention today' / 'More this week'), each with mono meta. (4) 3-column card grid at ≥1280px (2-col at 1024-1279px, 1-col on mobile) — `grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px`. (5) Card vocabulary: A-10 card body + city-page card sizing — 22px padding (down from A-10's 24px), 18px headline (down from 22px for narrower grid widths), 3px left stripe. (6) **Discovery stripe dropped** — explicit cap of 2 stripe colors (slate public + amber must-know at <10%). (7) **Pre-auth CTA leakage forbidden**: Sign-up / How-it-works CTAs and the city-page's `<footer class='seo-foot'>` neighbor-cities rail are omitted from the markup entirely (not display:none). (8) **Filter chip rail forbidden**: city-page's `chips` vocabulary (When: This week / Weekend / Tonight / Free + Category: All / Music / Tech / Community / Arts / Family / Food & drink / Sports) does not migrate. (9) Persona-prefixed 'Maya-fit' copy from city-page L156 dropped — authed users already converted, persona copy is pre-auth framing. (10) Anti-pattern list extended with three explicit Amendment A-12 locks: no discovery stripe, no pre-auth CTA leakage, no filter chip rail. **Mockup coverage:** `browse-desktop.html` rewritten as 3-column grid (3 cards in section 1 + 3 in section 2 = 6 total). `browse-desktop-filtered.html` rewritten for grid (search `jazz free` → 2 cards in a 2-card row with `.match` tag highlighting). `browse-desktop-empty.html` rewritten for grid (search `quantum poetry` → empty-result block inside the grid container, full-width). **`mockups/city-page-desktop.html` untouched** — pre-auth SEO surface per PRD FR-27. No new color tokens, no new CSS variables, no new spacing tokens. No new component invented beyond the implicit `component.hero.citypage` vocabulary that reuses existing eyebrow / h1-em / city-meta pill tokens already declared on `city-page-desktop.html`. **Spine update 2026-09-06 (Amendment A-21 — reminder-picker shell migration):** `mockups/reminder-picker-desktop.html` migrated from standalone modal-style page (`.frame` + `.container` + topbar back-link) to the A-8 shell (240px sidenav with 6-route nav per A-10 + brand-only topbar + sidenav-footer with Search + Account). Active nav-item is **Digest** — the picker is reached by tapping 'Edit reminders' on the Event Detail surface, which itself hangs off the Digest surface in the IA (Detail is reached by tapping a Digest card). Same active-state logic as `event-detail-desktop.html`. The prior '← Free tech meetup' back link becomes a crumb segment (`Digest · Free tech meetup — 'Designing for Calm' · Edit reminders`). All reminder-picker content preserved verbatim: 4 ON reminder slots (5d/2d/1d/1h) with terracotta-tinted backgrounds + filled terracotta markers + on-state toggles, custom slot being added (with `+` marker, value='30 minutes', Add slot button), quiet-hours deferral note (amber tint + 'Edit quiet hours' link), action bar (Reset default ghost + Save reminder plan primary), 3 aside panels (this reminder plan summary / Pro per-event quiet hours upsell / 'less like this' explainer). Nested `<main>` replaced with `<section aria-label='Reminder plan editor'>` to avoid duplicate landmark (outer `<main class='main'>` is already the A-8 page landmark). `text-decoration:none` reset added for sidenav anchors per the locked prerequisite from the 2026-09-06 sidenav-link-reset rule. All tokens reused from the A-8 palette; only hex additions are `#FF7E5E` (terracotta hover, accepted convention from `browse-desktop.html`) and the avatar gradient `#C8967A` → `#6E7E92` (warm-personal → accent-slate, byte-identical to other A-8 mockups). No new CSS variables, no new component invented. Numbering note: A-13 → A-20 are already taken by PRD-coverage reconciliation (A-13 amendment-history, A-14 Geo-IP consent, A-15 Sold Out badge, A-16 Delete-account, A-17 Data Export, A-18 Settings/Sources, A-19 Pro per-day-of-week Quiet Hours, A-20 SignIn + SignUp). A-21 is reserved for this shell migration, which doesn't introduce new components — only extends shell-migration coverage to the last pre-A-8 mockup."
 source_prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
 source_brief: _bmad-output/planning-artifacts/briefs/brief-EventPulse24-2026-08-19/brief.md
 references:
@@ -60,12 +59,14 @@ Numbered site map. Each route is reachable; each route defines default / empty /
 | 6 | `/settings/reminders` | Default Reminder Plan editor | MVP | Authed |
 | 7 | `/settings/quiet-hours` | Quiet Hours window editor (single window Free; per-day Pro) | MVP | Authed |
 | 8 | `/settings/sources` | Source transparency — list of sources, reliability, mute controls | MVP | Authed |
-| 9 | `/settings/privacy` | Data inventory, export (FR-52), deletion, training opt-out | MVP | Authed |
-| 10 | `/timeline` | **Unified Timeline** — Personal + Public events, week/month | Phase 2 | Authed |
-| 11 | `/conflicts` | **Conflict Resolution** — three-action pattern (Move / Skip / Keep) | Phase 2 | Authed |
+| 9 | `/settings/privacy` | Data inventory, export (FR-52), deletion, training opt-out, **Ranking algorithm version (FR-22)** with the formula, weights table, bucket boundaries, amendment history, and pledge | MVP | Authed |
+| 10 | `/timeline` | **Unified Timeline** — Personal + Public events, week view (Amendment A-8) | MVP | Authed |
+| 11 | `/conflicts` | **Conflict Review** — list of active + resolved conflict pairs (Amendment A-8); the three-action pattern itself lives in `Sheet.ConflictResolution` (FR-58 / Amendment A-5) and on Detail Screen (FR-33 / Amendment A-8) | MVP | Authed |
 | 12 | `/groups/:id` | **Pulse the Group** — small-group coordination, vote, RSVP | Phase 2 | Authed |
+| 13 | `/signin` | **Sign In** — returning-user email + password landing surface (Amendment A-20) | MVP | Public |
+| 14 | `/signup` | **Sign Up** — account-creation step split from `/onboarding` step 1; OAuth stack (Google / Apple / Outlook at equal weight) + email/password (Amendment A-20) | MVP | Public |
 
-Total: 12 routes.
+Total: 14 routes.
 
 **State coverage per route.** Every route must handle the four canonical states. The specific copy is in §5 (State Patterns); the table below tells you which states each route is expected to ship at MVP vs Phase 2.
 
@@ -80,9 +81,11 @@ Total: 12 routes.
 | `/settings/quiet-hours` | Default 10pm–8am window | n/a | Inline save spinner | "Couldn't save." |
 | `/settings/sources` | Grouped source list (official/community/aggregator/crawled) | "No sources muted." | List skeletons | "Couldn't load sources. Refresh." |
 | `/settings/privacy` | Data inventory + Export/Delete CTAs | n/a | Inline spinner on export trigger | "Couldn't start export. Email us." |
-| `/timeline` | Week-view, Personal+Public events | "Quiet day — no events." (Phase 2) | Week-row skeletons | "Couldn't reach Timeline. Try again." |
-| `/conflicts` | Conflict list with 3 actions per conflict | "No conflicts." (Phase 2) | Skeleton rows | "Couldn't analyze conflicts. Try again." |
+| `/timeline` | Week-view, Personal+Public events (read-only at MVP — Amendment A-8) | "Your week is quiet. Pulse Digest is the place to discover." | Week-row skeletons | "Couldn't reach Timeline. Try again." |
+| `/conflicts` | Conflict list grouped by Active / Resolved (Amendment A-8) | "No overlaps." | Skeleton rows | "Couldn't analyze conflicts. Try again." |
 | `/groups/:id` | Group home, members, next event proposal | "No group yet. Create or join one." (Phase 2) | Skeleton | "Couldn't load group. Try again." |
+| `/signin` | Default (email + password empty, primary enabled when both filled) | n/a (empty is the default state — no other empty variant) | Primary CTA morphs to .spinner + "Signing in…" | Per-field inline `component.input.field.error` in `color.signal.warn` (wrong-password → Password field error; account-not-found → Password field error to avoid enumeration leak per §3 voice-and-tone). |
+| `/signup` | Default (OAuth stack + 3 input fields empty, primary enabled when all valid) | n/a (empty is the default state) | Primary CTA morphs to .spinner + "Creating account…" | Per-field inline `component.input.field.error`: password-mismatch → Confirm field error "Passwords don't match."; email-already-exists → Email field error "An account with that email already exists. Sign in →" with inline ghost link to `/signin`. |
 
 **Notes:**
 - `/settings/privacy` is implied by the PRD §14.1 Settings → Privacy sub-screen (not in the locked IA list above; see _Assumptions_ at end of document, ASSUM-2).
@@ -123,6 +126,11 @@ Total: 12 routes.
 | Onboarding step 1 — any-provider failure | "Connection failed. Skip for now?" with two equal-weight buttons | "We could not connect to your calendar. Please try again later or contact support." (no skip, no retry, no escape) |
 | Conflict Resolution sheet header | "These overlap." | "Uh oh! Looks like you have a scheduling conflict!" |
 | Conflict Resolution three-action labels | "Move dinner earlier / Skip concert / Keep both — I'll manage" | "Quickly resolve this clash to keep your calendar tidy" |
+| `/conflicts` page heading (Amendment A-8) | "These days overlap." | "Your Schedule Conflicts" / "Conflict Center" / "Conflicts (12)" |
+| `/conflicts` empty state (Amendment A-8) | "No overlaps. Conflicts appear here as you save events." | "You're all clear! 🎉" |
+| FR-33 three-action labels (Personal↔Public, Amendment A-8) | "Move {personal event} earlier / Skip {public event} / Keep both — I'll manage" | "Quickly resolve this overlap to keep your schedule tidy" |
+| Timeline empty day (Amendment A-8) | "Quiet day." | "Nothing scheduled." / "Free as a bird!" |
+| Timeline empty week (Amendment A-8) | "Your week is quiet. Pulse Digest is the place to discover." | "No events this week." |
 | State-change email subject | "EventPulse24: {event name} was moved to {new date}" | "⚠️ Important update about your event!" |
 | Source transparency page intro | "Here's where events come from and how we trust each one." | "We work with the best event sources in the world!" |
 | Empty onboarding-interest step | "We'll figure this out from your calendar. Skip?" | "Tell us what you love so we can personalize!" |
@@ -144,6 +152,20 @@ Total: 12 routes.
 **Voice in error states.** Errors are honest and brief. "Couldn't reach Pulse. Try again." — no apologies, no exclamation marks, no emoji. (See §6 Error Patterns.)
 
 **Voice in success states.** Success is quiet. "Saved." not "🎉 You saved this event!" (See §6 Empty States.)
+
+**Auth-error copy bank (Amendment A-20).** Every auth-validation error string is locked here; mockups + engineering must use these verbatim. Each line obeys the "honest, brief, no emoji, no exclamation" rule above. Color treatment is **per-field inline** in `color.signal.warn` (NOT `color.signal.error`, which is reserved for destructive actions) paired with a `⚠` glyph; full visual spec is `component.input.field.error` in DESIGN.md.
+
+| Trigger | Route | Error string |
+|---|---|---|
+| Invalid email format | `/signup` | "That doesn't look like a valid email address." |
+| Email already exists | `/signup` | "An account with that email already exists. Sign in →" |
+| Account not found | `/signin` | "We don't see an account with that email." |
+| Wrong password | `/signin` | "That password doesn't match. Try again or reset it." |
+| Password too short (< 8 chars) | `/signup` | "Use at least 8 characters." |
+| Passwords don't match | `/signup` | "Passwords don't match." |
+| Forgot-password email-sent | `/reset-password` | "We've sent a reset link to {email}." |
+
+**Account-enumeration rule (locked).** The `/signin` surface always renders errors on the **Password field**, regardless of which side actually failed (wrong email + right password vs. right email + wrong password). Telling an attacker "this email is not registered" leaks the user database — the attacker can enumerate valid accounts. The `/signup` surface may safely surface "this email is already registered" because signup is opt-in registration (the user is offering their own email); revealing that a given email is taken is information the user already half-suspected and helps them recover via the inline "Sign in →" ghost link. The enumeration guard applies to **signin only**.
 
 ---
 
@@ -221,6 +243,8 @@ The three-action conflict prompt (MVP, PRD FR-58 / Amendment A-5). This is the *
 - **Live region (a11y):** When the conflict sheet/modal opens, focus moves to the header and the live region announces: "Schedule conflict. Three choices." (`aria-live="assertive"`.) Each action button has a full `aria-label` describing both the action and its consequence (e.g., "Keep both events. The conflict indicator remains on both.").
 - **Persistence:** Once a choice is recorded for a conflict pair, the system never re-prompts. The `ConflictResolution` value object lives with the user-event pair. The `Indicator.Conflict` on each Pulse Card persists permanently after "Keep both" as a calm permanent reminder (per PRD §3 Glossary — *Conflict Indicator* entry).
 - **Edge case:** If the user backgrounds the prompt and returns later, the prompt is still open. There is no timeout that auto-dismisses the conflict.
+- **Z-index:** `Sheet.ConflictResolution` sits above the bottom-tab nav (mobile) and the sidebar nav (desktop) — it is the single overlay level on top of page content. The bottom-tab nav is always below the sheet so the user cannot tap-navigate away from a forced choice; the sidebar nav (desktop) is also below the modal backdrop. The modal/sheet backdrop itself uses `color.surface.paper` at 70% opacity (dark) with `backdrop-filter: blur(8px)` (per `component.surface.modal` in DESIGN.md).
+- **Pulse Card sync after resolution:** On any of the three actions, the system invalidates the Pulse Card cache for both events in the pair. On the next Pulse Digest render (typically the user's return to `/` via the sidebar / bottom-tab nav), the cards reflect the new state: "Keep both" keeps `Indicator.Conflict` on both cards; "Skip public" removes `Indicator.Conflict` from the public card and removes the public card from the digest on the next refresh; "Edit the new one" re-runs conflict detection on save. Timeline event-blocks sync on the next Timeline render — no manual refresh required.
 
 ### `Surface.{RouteName}`
 Generic behavior for all routes:
@@ -228,6 +252,255 @@ Generic behavior for all routes:
 - **Empty:** Empty-state copy from §6 Empty Patterns. No CTA when none is appropriate.
 - **Loading:** Skeleton: 3 paper rectangles (`color.surface.paper`) fading 1px toward `color.ink.faint` at 60% opacity, then back. No spinners.
 - **Error:** "Couldn't reach {surface}. Try again." with a single retry button. No stack traces. Error copies to status page on SEV-2+ events.
+
+### `Surface.Timeline` (Amendment A-8 — MVP)
+The Unified Timeline surface at `/timeline`. Week view combining Personal Events (warm tone) and Public Events (cool tone) on one grid. Read-only at MVP — no inline edits, no drag-to-reschedule.
+
+- **Default (desktop `md+`):** 7-column week grid, Mon–Sun, each column a stack of event-blocks time-ordered. Header row shows day-of-week + date number in `Text.Meta`. Today is highlighted via `Indicator.Today` (the sanctioned terracotta dot with glow). Week navigator above the grid: `←` / `Today` / `→` in `Text.Meta`.
+- **Default (mobile `sm`):** Single-column day view, one day visible at a time. Day navigator: `← Sep 7 →` centered, "Today" pill in `Text.Meta`. Horizontal swipe advances/retreats the day.
+- **Personal vs Public event rendering:** Each event-block carries a 2px left-edge category stripe (`color.warm.personal` for personal, `color.cool.public` for public) AND a visible text label in the top-right corner ("Personal" / "Public event" in `Text.Meta`). Color is never the sole carrier of meaning. (Locked rule from DESIGN.md §Color usage rules and §Stripe color rule.)
+- **Conflict indicator:** When a saved public event overlaps a saved personal event by >15 minutes, both events render `Indicator.Conflict` (the 6 px filled amber circle, `aria-label="Schedule conflict"`). Tapping either indicator opens a Detail Screen header panel that surfaces the FR-33 three-action pattern. For cross-midnight overlaps (a personal event runs past midnight into the next day), the `Indicator.Conflict` fires on the day-cell whose interval contains the overlap, evaluated per-day boundary per addendum FR-33 — both day-cells of a multi-day personal event show the indicator in the week grid, not just one.
+- **Tap an event block:** Routes to `/events/:id`. Read-only from Timeline — no edit affordance in the block.
+- **Empty day:** Centered "Quiet day." in `Text.Meta` muted. No CTA, no upsell, no carousel.
+- **Empty week:** "Your week is quiet. Pulse Digest is the place to discover." in `Text.Display.sm` headline, with a single `Text.Meta` "Open Pulse Digest" link below.
+- **Hover (desktop):** `color.surface.subtle` fill swap on the event-block. The tap target stays the entire block; the affordance is communicated by the fill swap, not a `▸` chevron (the timeline is denser than the digest).
+- **Focus (keyboard):** Visible 2px focus ring in `color.accent.terracotta` at AA contrast. `aria-label` exposes event name + time + "Personal" / "Public event" label.
+- **Reduced motion:** All entrance animations collapse to instant render. No skeleton pulse on load.
+- **Read-only at MVP (FR-32 deferral):** Edits happen on Detail Screen or in the Personal Event modal — never from Timeline. Drag-to-reschedule ships in Phase 3.
+
+### `Component.BottomTab` (mobile `sm` — Amendment A-8)
+Mobile bottom navigation. Replaces any topbar nav. Five slots: **Digest / Timeline / Add / Conflicts / Settings**.
+
+- **Layout:** `position: fixed; bottom: 0; left: 0; right: 0;` height 56px + `env(safe-area-inset-bottom)`. Background `color.surface.elevated`. 1px `color.border.subtle` top edge. Five equal-width slots (20% each).
+- **Resting slot:** Icon (16×16 stroke-only SVG, never filled chromatic) + label in `color.ink.muted` (`Text.Meta`).
+- **Active slot:** Ink-inverted background on the slot only (`color.ink.primary` fill + `color.ink.inverse` icon + `color.ink.inverse` label) per the locked `Control.Segmented` pattern in DESIGN.md §Components. **Never** a full-bar terracotta fill — terracotta on a small-control toggle burns the accent on a control used many times per day.
+- **Active indicator:** A 2px `color.accent.terracotta` underline bar above the active slot, mirroring the desktop topnav active pattern (`pulse-digest-desktop.html` L75–76). The only chromatic use in the bottom-tab.
+- **Tap:** Routes to the destination. Long-press is disabled.
+- **Add slot behavior:** The Add slot opens the Personal Event creation flow — `Sheet.PersonalEventCreate` (mobile, bottom sheet; desktop, modal). Tap does not route to a `/events/new` page; it opens the creation surface in place. The creation surface is `Sheet.PersonalEventCreate`, the same component reached from Pulse Digest long-press on an empty day. The Add slot's icon is a `+` glyph (16×16 stroke-only SVG). The Add slot is **always visually present** but does not carry the terracotta fill — primary fill is reserved for actions inside a decision moment, not for navigation (terracotta on a tap-anytime nav control would burn the accent). The Add slot uses the same `ink-inverted active state` (white fill on the slot only, with the 2 px terracotta underline above the active slot) as the other slots — never solid terracotta fill.
+- **Z-index:** Above page content, below modals/sheets (the `Sheet.ConflictResolution` and `Sheet.PersonalEventCreate` overlays sit above the bottom-tab).
+- **Reduced motion:** No slide-in on mount.
+
+### `Component.Sidenav.App` (desktop `md+` — Amendment A-8)
+Desktop left-rail navigation. Replaces any topbar nav on desktop. Same routes as `Component.BottomTab` plus the Browse surface (Amendment A-10).
+
+- **Layout:** Sticky left `<aside>`. Width 220px on `md`, 240px on `lg+`. Background `color.surface.paper` (same as canvas — the sidenav is a layout container, not a visual element). Inset from page edge: `spacing.6` (24px) on top and sides.
+- **Brand mark:** At the top of the sidenav — 28×28 logo + "EventPulse24" wordmark in `Text.Body` `color.ink.primary`. Below the brand: 1px `color.border.subtle` divider.
+- **Route items:** **Six-route variant (post-A-10, canonical going forward):** Digest / Timeline / Add / **Browse** / Conflicts / Settings in `Text.Body` `color.ink.secondary`. Resting state on the page background. Active item: `color.ink.primary` label on a `color.surface.subtle` pill background with 1px `color.border.subtle` stroke. The active pill mirrors the `Control.Segmented` ink-inversion pattern in miniature — no terracotta fill on the active route. **Five-route variant (onboarding only):** the same spec minus Browse, retained for the onboarding batch (transitional state — user has signed up but not entered the app, Browse is not relevant to the onboarding funnel). The onboarding batch is the only sanctioned place the 5-route order still appears in production.
+- **Browse glyph (Amendment A-10):** A stroke-only compass SVG (16×16, `stroke-width: 1.6`, `currentColor` stroke, no fill). Sanctioned alongside the 5 existing glyphs. Same nav-item row geometry; no special-casing.
+- **Keyboard:** `Tab` cycles through sidenav links after the topbar (topbar comes first in tab order) and before page content. `g d` / `g t` / `g a` / `g b` / `g c` / `g s` shortcuts route directly. (The `g b` Browse shortcut is added in Amendment A-10; existing shortcuts are unchanged.)
+- **Topbar interaction:** The topbar still carries only the brand mark + (optionally) the tagline. The sidenav is the nav, the topbar is the identity zone (topbar-quiet rule, ASSUM-11). No affordance duplication.
+- **Global reset prerequisite:** The sidenav renders five or six `<a>` route items plus an `<a>` `account-row` in the footer. The page's global CSS must include `a { color: inherit; text-decoration: none; }` (or the host CSS reset must already kill link underlines), otherwise the browser default renders visible underlines under every sidenav label and the Account row. This is a silent contract: mockups that previously had no nav anchors in the topbar zone (e.g., the empty-state and personal-event-edit files) often lack this reset until the sidenav is applied. When applying the shell to any new mockup, audit for this reset first; if missing, add it alongside `button` and `input` resets. Source incident: 2026-09-06 migration of `pulse-digest-empty-state-desktop.html` and `personal-event-edit-desktop.html` shipped the shell without the reset; user reported underlines on all five nav items + the account row. Patched both files.
+
+### `Component.BottomTab.MoreMenu` (mobile `sm` — Amendment A-10)
+Mobile overflow affordance for the 6th authed route (Browse). The bottom-tab stays 5 visible primary slots at 20% width each on mobile; Browse lives behind a 6th slot-shaped affordance ("More") on the right end of the bar that opens an overflow sheet.
+
+- **Layout:** The More slot is the 6th 20% slot on the trailing edge of `component.bottom-tab`. Renders as a `<button>` (not a route link) with the same 16×16 stroke-only SVG + `Text.Meta` label vocabulary as the primary slots. Glyph: a 3×3 grid of small stroke-only dots (or three horizontal dots stacked — both sanctioned; pick whichever the design system ships).
+- **No `aria-current="page"`** on the More slot. The corresponding overflow row inside the open sheet carries `aria-current="page"` when on `/browse`.
+- **Open behavior:** Tap → opens a `component.sheet` (mobile bottom-anchored sheet per `component.surface.sheet`) anchored above the bottom-tab. The sheet lists overflow routes (Browse today; future routes may add). Each row: 16×16 stroke-only glyph + route label in `Text.Body` `color.ink.primary`, `spacing.3` × `spacing.4` padding, `radius.subtle` (6px), 1px `color.border.subtle` between rows.
+- **Close behavior:** Tap outside the sheet (on the dimmed backdrop), swipe-down on the sheet, or `Esc` (mobile keyboards typically omit `Esc`; primary close is tap-outside and swipe-down).
+- **Z-index:** Above page content, above the bottom-tab, below modals.
+- **Reduced motion:** No slide-in on mount under `prefers-reduced-motion: reduce`; the sheet appears in place.
+- **When to omit:** The onboarding batch (no Browse in scope) renders the bottom-tab in its 5-slot 20% geometry with no More slot. The More slot ships when the user has Browse in scope — that is, on every post-onboarding mobile surface (`/digest`, `/timeline`, `/add`, `/conflicts`, `/settings`, `/browse`).
+
+### `Component.Sidenav.Footer` (desktop `md+` — Amendment A-8)
+Optional footer block pinned to the bottom of the 240px sidenav rail. Carries two affordances that do NOT fit the route list (Search and Account) but also do NOT belong in the topbar (topbar-quiet rule, ASSUM-11). The nav-item list stays the 5 routes from `Component.Sidenav.App`; the footer is additive.
+
+- **Layout:** Full-width inner column, 1px `color.border.subtle` top edge (visually echoes the divider under the brand mark). `margin-top: auto` on the wrapper so it sits flush at the bottom of the 100vh rail regardless of how many nav-items are above it. Vertical gap 4px between the two children.
+- **Search button (`footer-btn`):** 16×16 stroke-only magnifier SVG (icon-only, never filled chromatic) + "Search" label in `Text.Body` `color.ink.secondary`. Resting state on the canvas. Hover: `color.surface.subtle` fill swap, label lifts to `color.ink.primary`. Active/focus: 2px `color.accent.terracotta` focus ring at AA contrast. The button is a placeholder for an inline search overlay (PRD L447 — search is a deferred surface for archived event retrieval); route name not yet locked.
+- **Account row (`account-row`):** 28×28 circular avatar with the warm-personal → cool-public gradient (existing token usage, no new color) + two-line label (user name in `Text.Body`, "Account" subtitle in `Text.Meta` `color.ink.muted`). Hover: `color.surface.subtle` fill swap, label lifts to `color.ink.primary`. Routes to `/settings` (account has no separate profile route at MVP per PRD §4.1 "Detailed profile completion: out of scope").
+- **Keyboard:** `Tab` continues from the last nav-item into Search, then into the Account row, in that order. Both are reachable after the nav-item list, before any page content.
+- **No notification badges.** Per DESIGN.md Brand & Style anti-patterns: no unread counters, no red dots, no streak popups. If Search or Account ever needs an unread state in a future iteration, the answer is inline text ("1 saved this week") in `Text.Meta`, not a badge.
+- **Reduced motion:** No entrance animation. Appears with the page.
+- **Token alignment:** Reuses `color.surface.subtle`, `color.ink.secondary`, `color.ink.primary`, `color.ink.muted`, `color.border.subtle`, `color.accent.terracotta` (focus ring only) — all existing DESIGN.md tokens. No new hex values, no new CSS variables.
+- **When to omit:** Empty/skeleton/loading variants of the sidenav should render the footer in its resting state, not omit it. The footer is structural, not situational.
+
+### `Component.Topbar.PreAuth` (Amendment A-9 — public/marketing routes; extended A-20)
+Brand-only topbar used on the eight pre-auth public/marketing routes: **`/preview` (pulse-preview-desktop.html), `/events/near-me` (city-page-desktop.html), `/events/:id` (public-event-page-desktop.html), `/p/:slug` (share-link-desktop.html), `/pricing` (pricing-page-desktop.html), `/pro/upgrade` (pro-upgrade-cta-desktop.html, states-only showcase — no topbar in the mockup), `/signin` (signin-desktop.html, A-20), `/signup` (signup-desktop.html, A-20)**. These surfaces are anonymous — no sidenav, no nav links, no app affordances. The pre-auth topbar carries identity only (topbar-quiet rule, ASSUM-11); conversion affordances live in the hero CTA, the page footer, and section-level decision moments. The `/signin` + `/signup` addition is in-place (no new heading) — both routes inherit the pre-auth topbar verbatim because they ARE conversion surfaces; placing "Sign in" in the topbar of `/signin` would be the same topbar-quiet inversion as the existing rule forbids elsewhere.
+
+- **Layout:** Full-width top strip, `padding: 28px 0 16px` (desktop) / `padding: 20px 0 12px` (mobile `sm`). Same horizontal gutters as the page container (`spacing.6` / `spacing.10`). Flex layout: brand on the left, no right-side cluster.
+- **Brand mark (`brand-wrap`):** The brand-wrap lockup, byte-identical to the authed topbar — 36×36 `mockups/EventPulse24-latest-logo.png` (`<img class="brand-logo" src="EventPulse24-latest-logo.png" alt="" width="36" height="36">`) plus a stacked wordmark column (`EventPulse24` in `Text.Body` `color.ink.primary` weight 600 + "calm intelligence for events" in `Text.Display` italic, `color.ink.muted`, 13px). The PNG includes a near-black halo with a thin red rim — this is a brand-asset artifact shipped with the PNG, **not** a CSS-rendered glow; it is outside the token system and exempt from the terracotta glow rationing rule (DESIGN.md §Color usage rules → Glow). The 36×36 render size keeps the halo within a marketing-page-acceptable visual weight; do not upscale the logo on pre-auth surfaces beyond 40×40 without re-evaluating halo dominance against the void.
+- **No sidenav.** The authed `Component.Sidenav.App` does not render on pre-auth routes — there is no current user, no saved events, no conflicts to navigate. Adding a sidenav would falsely imply account-aware navigation (topbar-quiet rule violation by mockup-padding).
+- **No nav links, no action buttons.** "Sign in", "Sign up", "How it works", "Log in" — none of these live in the topbar. The brand-wrap carries identity; the hero CTA carries the primary conversion affordance; the page footer carries secondary affordances (Log in, Privacy, Terms, social links). Inversions are bugs.
+- **Conversion affordance placement (canonical):**
+  - **Hero CTA:** The primary sign-up affordance lives in the hero zone (eyebrow + h1 + lede + CTA cluster). `component.button.primary` "Sign up" is the first primary on the surface; the brand mark is the only thing above it in tab order.
+  - **Page footer (`seo-foot` / footer-block):** Login, Privacy, Terms, About, social links, city nav, "Made in [city]" provenance. The footer is where anonymous visitors go to evaluate the product without committing; affordances in the footer carry no conversion pressure.
+  - **Section-level decision moments:** `component.card.pro.upsell` on `/pricing` (existing pattern), the Save bar on `/events/:id` public-event-page, the dismissible expanded panel on `/pro/upgrade`. Each decision moment is its own visual zone with `spacing.12`+ whitespace from the next.
+- **Keyboard:** Tab order is (1) brand-wrap → (2) hero CTA → (3) page content → (4) footer links. No nav anchors between brand-wrap and hero CTA.
+- **Reduced motion:** No entrance animation on the topbar. The brand-wrap appears with the rest of the page.
+- **Token alignment:** Reuses `color.ink.primary`, `color.ink.muted`, `color.accent.terracotta` (hero CTA only — same rationing as authed routes). No new hex values, no new CSS variables. The brand mark PNG is the only asset that ships visual content outside the token system.
+- **Variant — `/p/:slug` (share-link):** Renders the same brand-wrap topbar; the topbar can be omitted entirely on share-link if the share is being viewed embedded in another context (the page is short, single-event). Locked example: the canonical `share-link-desktop.html` keeps the brand-wrap for shareability ("Who shared this with me?" provenance) but compresses `padding: 12px 0 32px`. Hero carries the shared-by attribution pill. Same chrome rule applies.
+- **Variant — `/pro/upgrade` (states showcase):** `pro-upgrade-cta-desktop.html` is a 3-state showcase (inline toast / expanded panel / muted footer) demonstrating the soft-wall pattern. It has no real topbar (the document-level `.page > .container` is the surface; `h1` + `.page-sub` carry the framing). It is documented here as the one pre-auth surface that does not render the brand-wrap — explicitly because it is a states mockup, not a routable surface. When engineering ships `/pro/upgrade`, the surface uses the same brand-wrap topbar as the other pre-auth routes.
+- **Migration status (2026-09-06):** Spine exception paragraph locked in this session. The six mockups remain in their prior state (some carry legacy `How it works` / `Sign in` / `Sign up` buttons in the topbar that violate this rule). Migration of those six mockups is deferred to the next build batch — they are documented as known topbar-quiet violations awaiting the same conversion the authed batch received.
+
+### `Component.Surface.Browse` (Amendment A-10 + A-12 merge)
+The Browse surface — `/browse`. Authed, location-aware, single-purpose: **browse what's happening in the user's city today + the next 7 days, save what matters.** Visual structure (Amendment A-12) inherits the pre-auth `/c/[city]` city-page vocabulary inside the A-8 shell. The pre-auth `mockups/city-page-desktop.html` is unchanged — it serves SEO crawlers per PRD FR-27, not authed users.
+
+- **When does it load:** Direct navigation to `/browse` from the sidenav (6-route variant) on desktop, from the `component.bottom-tab.more-menu` overflow sheet on mobile. The Digest does **not** deep-link to Browse — Digest is a saved/attention surface; Browse is an unsaved/discovery surface. Cross-links between the two are explicit and one-way: Digest → Browse ("Need a fuller list? Browse tonight + 7 days.") is allowed; Browse → Digest is not (no upsell back to the attention surface; saves are the conversion).
+- **Hero (Amendment A-12 — city-page vocabulary, authed content):**
+  - **Eyebrow:** `Text.Meta` terracotta dot + "Brooklyn · Tonight + 7 days" in uppercase letter-spaced ink-muted. Mirrors `city-page-desktop.html` L120.
+  - **H1:** `Text.Display.xl` (48px source-serif 700) — `Events in *Brooklyn.*` — `<em>` in `color.accent.terracotta` italic. Hero copy is benefit, not positioning.
+  - **Lede:** `Text.Body.lg` ink-secondary, max-width 600px — "Browse what's happening nearby. Tap Save to add it to your Pulse."
+  - **City-meta pill:** single rounded chip on `color.surface.elevated` 1px ink-faint border — `📍 Brooklyn, NY · 147 events this week · Change city`. The `Change city` link routes to `/settings/account` (same destination as the empty-state recovery). The pill is information-dense and replaces both a stat row and a CTA cluster.
+  - **Quota note:** `Text.Meta.md` mono — "Free plan: 0 of 1 save used today · resets 8:00 AM" — small monospace detail below the pill.
+  - **No signup row, no SEO footer.** The pre-auth city-page's `.hero .ctas` Sign-up / How-it-works row and `<footer class="seo-foot">` neighbor-cities rail are omitted from the markup entirely (not `display: none`) — they serve crawlers and unauthenticated visitors, not signed-in users.
+- **Inline keyword search (Amendment A-11 — replaces the city-page chip rail):** A single `<input type="search">` rendered below the hero, full-width up to `max-width: 720px` (matches the hero column). Field uses `component.input.field` tokens — color.surface.paper fill (documented deviation from spine default of color.surface.elevated, see Amendment A-11 entry). Placeholder: "Search this week — jazz, free, outdoor, tag:music" — teaches the grammar in-place. Replaces the city-page filter chip rail entirely; no chips, no date pickers, no preset toggles.
+  - **Query grammar:** Plain words are tokenized (whitespace-split, lowercased, trimmed) and matched AND-style against the card's headline + `where` line + the why-tag tokens. `tag:<token>` literals constrain the match to the why-tag set only and are also AND-matched against any plain words.
+  - **Tag vocabulary:** `tag:music` · `tag:tech` · `tag:community` · `tag:arts` · `tag:family` · `tag:food` · `tag:sports` · `tag:outdoor` · `tag:indoor` · `tag:rooftop`.
+  - **Empty-result state (matches-empty):** When the query returns zero cards, section heads and the grid are removed and a single `component.emptystate.quiet` block renders in their place inside the grid container, full-width: heading "Nothing matched." + `Text.Meta` "Clear" link that resets the input to empty.
+- **Section heads + 3-column grid (Amendment A-12 — replaces the day-divider grouping):** Cards are grouped into two attention-tier sections, not by day. Section heads are layout scaffolding, not interactive widgets.
+  - **Section head 1:** `Text.Display.sm` (26px serif 600) "3 worth your attention today" + mono meta "Brooklyn · Thu, Aug 27". Replaces the day-divider "Tonight · Thu, Aug 28" pattern. The persona-prefixed "Maya-fit" copy from `city-page-desktop.html` L156 is **dropped** — authed users already converted and persona copy is pre-auth framing.
+  - **Section head 2:** "More this week" + mono meta "144 events · scroll for more".
+  - **Grid:** `grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;` from city-page L68. Breakpoints: 3-col at ≥1280px (inner width ~876px → 3 × ~279px cards), 2-col at 1024-1279px, 1-col on mobile via `component.bottom-tab.more-menu`. The authed shell uses `padding: 0 32px` on `.main` — the city-page's full-bleed `padding: 0 80px .frame` wrapper is NOT adopted.
+- **Cards:** City-page card sizing + A-10 card vocabulary. 22px padding (down from A-10's 24px for the denser grid), 18px headline (down from 22px for legibility at narrower grid widths), 3px left stripe, `Text.Meta` kicker, `Text.Headline.md` headline (≤ 8 words), `Text.Microtag` italic tag row, `Text.Meta.md` source-and-time row, `component.indicator.confidence` row. Browse cards add ONE element: `component.button.save.inline` in the top-right of the kicker zone (see below).
+- **Stripes — explicit cap (Amendment A-12):** Two colors only: `color.accent.slate` for public events, `color.accent.amber` for must-know events (max 1 per page, the existing <10% rule). **Discovery stripe dropped** — the discovery vocabulary on `city-page-desktop.html` is pre-auth SEO framing and does not migrate. Three stripe colors would create a category-color flood that violates the anti-pattern list.
+- **Card count:** Soft-cap of 24 cards per surface. Past the cap, render a `Text.Meta` "More events below" anchor that loads the next chunk in place. No pagination chrome, no page-number navigation, no "Load more" button.
+- **Save affordance:** `component.button.save.inline` (DESIGN.md §Components → Browse surface) in each card's top-right zone. Tap → saves; button morphs to "Saved ✓" in `color.signal.success` over 240ms. Repeated tap → un-saves (no destructive confirmation; the morph is the confirmation). Free-tier save cap (FR-48) applies: 1 free save per 24h; additional saves from Browse count against the same quota as `/digest`. When the quota is exhausted, the Save button morphs to `component.button.ghost` "1 of 1 used today" with a link to `/settings/plan`.
+- **Anti-patterns (explicitly forbidden on this surface, sourced from DESIGN.md Brand & Style):**
+  - No category-color floods. **No discovery stripe (Amendment A-12 lock).** No more than 2 stripe colors per page (slate + amber at the existing <10% rule).
+  - No "X people going" social proof. No "234 attending" counters.
+  - No count badges anywhere. No "saved 7" or "47 nearby" or any numeric tag.
+  - No infinite scroll. The chunk-load past 24 cards is bounded, not infinite.
+  - No gamification chrome. No streaks, no "you saved 5 days in a row!", no badges.
+  - No upsell carousels. The single Pro upsell (`component.card.pro.upsell`) lives only on `/digest` and `/settings/plan`; it does not migrate to Browse.
+  - No notification badges.
+  - No streak popups.
+  - No "you might also like" rails beyond the section-head grouping.
+  - **No pre-auth CTA leakage (Amendment A-12 lock).** Sign-up / How-it-works CTAs and the city-page's SEO footer neighbor-cities rail do not migrate. The merged surface inherits the city-page's visual structure but not its conversion scaffolding.
+  - **No filter chip rail (Amendment A-11 lock).** The `chips` vocabulary from `city-page-desktop.html` (This week / Weekend / Tonight / Free + Category: All / Music / Tech / Community / Arts / Family / Food & drink / Sports) does not migrate. The inline keyword search is the only filter surface.
+- **Empty state (zero-events-in-window):** When there are no public events in the user's city within the 7-day window, render the same `component.emptystate.quiet` vocabulary as `/digest`: "Nothing nearby tonight. Try a wider city?" + a `Text.Meta` "Change city" link to `/settings/account` (PRD §4.1 settings city). No carousel, no upsell, no "you might like" rail.
+- **No-match vs no-events distinction:** The empty-result state under the search input ("Nothing matched." + "Clear filters") and the empty zero-events state ("Nothing nearby tonight." + "Change city") use the same `component.emptystate.quiet` vocabulary but different copy and recovery action — the user always knows whether the lack of results is from their query or from the data.
+- **Loading state:** Browse skeletons match the existing Pulse Digest skeleton vocabulary — paper rectangles fading 1px toward `color.ink.faint` at 60% opacity, 1800ms pulse period. No spinners. Render 12 card-shaped skeletons matching the expected initial chunk size.
+- **Error state:** Generic error pattern from §5: "Couldn't reach Browse. Try again." Single retry button. The sidenav and bottom-tab nav remain functional so the user can escape.
+- **Keyboard:** `Tab` cycles through cards (each card's Save button is the tab stop; the card body itself is not a button — Save is the single affordance per card). `g b` routes directly to `/browse`.
+- **Reduced motion:** No entrance animation on cards. The Save morph is the only motion on the surface; under `prefers-reduced-motion: reduce`, it collapses to an instant label swap (no 240ms fade).
+- **Token alignment:** Reuses every card vocabulary token from `component.card.pulse.digest` + `component.button.save.inline` + `component.input.search.browse` + `component.hero.citypage` (the hero / city-meta vocabulary inherited from the city-page, A-12). No new hex values, no new CSS variables, no new spacing tokens. Reuses the existing `component.sidenav.app` 6-route variant.
+
+### `Component.Button.Save.Inline` (Amendment A-10)
+The quiet Save affordance on Browse cards. Visual spec lives in DESIGN.md §Components → Browse surface (`component.button.save.inline`); this entry is the behavioral contract.
+
+- **State machine:** `idle → saving → saved → idle`. `idle` label: "Save". `saving` (during server roundtrip, ≤800ms local): "Saving…" in `color.ink.muted`. `saved` (after server confirms): "Saved ✓" in `color.signal.success`, persisted for at least 1500ms before another interaction is allowed (avoids flicker). From `saved`, tap again → `idle` with no destructive confirmation (the morph is the confirmation).
+- **Failure mode:** If the save fails (network, quota-exceeded, conflict detected), the button morphs to a 1-line inline message below the button — no modal, no toast. Quota-exceeded: "You've used your 1 free save today. Upgrade for unlimited." with a `Text.Meta` "Upgrade" link to `/settings/plan`. Conflict detected: "Conflicts with your saved dinner. Open Detail to resolve." with a `Text.Meta` "Open" link to `/events/:id`.
+- **Free-tier cap integration (FR-48):** When the user has used 1 of 1 free saves in the current 24h window, all Save buttons on Browse render in the muted "1 of 1 used today" state — they are still visible (so the user sees what's available) but disabled. Tapping a disabled Save button does nothing; the disabled state carries a `title="Upgrade for unlimited saves"` tooltip. This is the same soft-wall pattern as `/digest`; the implementation reuses the existing quota-check service.
+- **Pro tier:** Pro subscribers (FR-48) have no save cap. The Save button morphs and persists indefinitely, no quota-exceeded state.
+- **Accessibility:** Each Save button is a real `<button>` with `aria-label="Save {event name} to my Pulse"` (the event headline is included in the accessible name; visible label stays "Save" for visual economy). Focus: 2px `color.accent.terracotta` ring at AA contrast. The morph to "Saved ✓" includes `aria-live="polite"` on the button so screen-reader users hear the confirmation without the focus moving.
+- **Keyboard:** `Enter` or `Space` on a focused Save button triggers the state machine. `Esc` cancels an in-flight save (sets the button back to `idle`; server-side rollback is the responsibility of the save endpoint).
+- **Reduced motion:** Under `prefers-reduced-motion: reduce`, the 240ms fade collapses to an instant label swap.
+
+### `Component.Settings.QuietHours.Pro` (Amendment A-19 — Pro tier, MVP)
+Pro per-day Quiet Hours picker — extends the single-window Free control with a vertical 7-row list (Mon–Sun). Closes PRD §8.1 row 7 Pro-tier value prop. Visual spec lives in DESIGN.md §Components → Inputs (`component.control.day-picker`).
+
+- **Anatomy:** Each row contains a day-name (`Text.Body.md` display weight), an active-window chip in `Text.Meta` mono (e.g. "10pm–8am"), and an ink-inversion activation toggle on the right (NOT terracotta — the small-control selected-state rule applies). Tap a row to expand an inline time-range picker beneath it; two `control.preset` rows (start-time, end-time) let the user pick common hours. Tap "Reset to default" inside the expanded row to revert that single day.
+- **Tier-gate affordance:** A `Badge.Source.verified`-style "Pro · per-day" pill sits to the right of the h1 on this page for at-a-glance recognition of tier value. Free users who reach `/settings/quiet-hours` via a deep link see the same page but with all 7 rows locked (toggle at 0.4 opacity, lock glyph next to each day-name, microcopy "Upgrade for per-day quiet hours" on hover). The Free single-window control stays at the top of the page.
+- **Default values:** "10pm–8am" matches the Free-tier default, so a downgrade never silently changes a user's previous configuration. The "Reset all to default" footer is a bulk-action safeguard — it requires an explicit confirmation tap (not shown in the mockup; ENGINEERING NOTE: a confirmation modal analogous to `Component.Modal.AccountDelete` is required before applying the bulk reset).
+- **Propagation rules:** Quiet hours are stored in the user's home timezone (browser-detected; user can override in `Account → Timezone`). When the user travels across timezones, the system converts to local time on a per-event basis at notification-fire time (not at storage time). DST handling: the system snaps the start-time to the user's selected wall-clock hour; an event scheduled during the spring-forward gap defers by 1 hour, an event scheduled during fall-back is sent once (no duplicates).
+- **Accessibility:** Each row's heading is a `role="button"` with `aria-expanded`. The toggle is a real `<button aria-pressed>` with a visible focus ring. The expanded time-range picker inherits the modal focus-trap pattern from `Component.Modal.AccountDelete` (Amendment A-16) — Tab cycles between the two preset rows and the row's actions; Esc collapses the row.
+- **Keyboard:** `Enter` or `Space` on a focused row expands/collapses the time picker. `Tab` moves to the toggle, then to the next day's row. `Esc` collapses any expanded row.
+- **Reduced motion:** Under `prefers-reduced-motion: reduce`, the row-expansion animation collapses to an instant reveal.
+
+### `Component.Settings.Sources` (Amendment A-18 — MVP, transparency)
+Settings page that surfaces every source contributing to the user's Pulse digest. Closes PRD FR-13 transparency gap. Visual spec lives in DESIGN.md §Components → Inputs (`component.control.source-mute`).
+
+- **Anatomy:** Sources are grouped into 4 categories — Official (verified venue accounts), Community (community-maintained feeds), Aggregator (third-party aggregators like Eventbrite), Crawled (site-scraped). Each row carries a source-name (with verified-badge for Official sources), a 1–5 reliability-dot indicator (`color.ink.primary` fills — NOT the terracotta confidence pulse from `Indicator.Confidence`), and a 3-state `control.source-mute` control: `Mute / Show less / Default`. The selected state uses ink-inversion, not terracotta.
+- **Reliability scoring:** The 1–5 dot count is sourced from a transparent trust algorithm — inputs include cross-source corroboration count, last-crawl freshness, and the proportion of `event.status = cancelled` over the last 90 days. The exact formula is documented in ADR-0024 (forthcoming). The score updates weekly; users see the latest value, not a stale snapshot.
+- **Mute semantics:**
+  - **Mute** — the source is excluded entirely from the digest. Saved events from the source stay saved; new events never appear. No toast on mute (silent — the segmented control's selected state is the confirmation).
+  - **Show less** — the source contributes events but the digest ranks them below Default-tier sources. The user still sees them in `/browse` filtered to that source.
+  - **Default** — the source's natural rank; whatever the ranking algorithm produces is what the user sees.
+- **Bulk reset:** A footer ghost button "Restore all defaults" resets every source to its default visibility. Per §10.4 bulk-action safeguard, this requires an explicit confirmation tap (not shown in the mockup; ENGINEERING NOTE: reuses the type-to-confirm pattern from `Component.Modal.AccountDelete`).
+- **Privacy mirror:** `/settings/privacy` mirrors this same list (read-only) — users can see "what sources inform my ranking" without leaving the Privacy section. The Privacy mirror does not include the mute controls (mutes live on `/settings/sources`).
+- **Accessibility:** Each segmented control is a `role="group"` with an `aria-label` naming the source. The selected button carries `aria-pressed="true"`. The verified-badge is a `title` + `aria-label` "Verified by EventPulse24".
+- **Keyboard:** `Tab` moves through rows; arrow keys move within the segmented control. `Enter` selects.
+- **Reduced motion:** N/A — segmented control selection is an instant ink-inversion swap, no transition.
+
+### `Component.Modal.AccountDelete` (Amendment A-16 — MVP, account deletion)
+Confirmation modal for `Settings → Privacy → Danger zone → Delete account →`. Closes PRD §10.1 + §14.1 cascade gap. Visual spec lives in DESIGN.md §Components → Inputs (`component.modal.account-delete`).
+
+- **Anatomy:** Centered modal on `component.surface.modal`, max-width 480px, border-radius 16px. Header: `Text.Headline.md` "Delete your account?" Body: 3 paragraphs in `Text.Body.md` — (1) what gets deleted (account, personal events, saved events, preference graph within 30 days), (2) what survives (anonymized aggregates), (3) the 30-day grace period. Type-to-confirm input field with placeholder "Type DELETE to confirm" — the primary submit button stays disabled until the input value matches the literal string `DELETE` (case-sensitive).
+- **Trigger flow:** Tap `Delete account →` on Settings → Privacy → Danger zone → modal opens over a backdrop-filtered dim of the Privacy page. Focus moves to the input field; the modal traps focus.
+- **Cancel:** Closes the modal. No state change. No toast. Focus returns to the `Delete account →` button in the danger-zone row. The 30-day timer is NOT started.
+- **Confirm (after typing `DELETE`):** Submits to the delete-account endpoint. On success, the modal morphs to a state-change confirmation (not shown in mockup; ENGINEERING NOTE: analogous to `Component.Modal.ExportRequest` success-notice pattern): "Your account is scheduled for deletion in 30 days. Cancel anytime from Settings → Privacy or from the email we sent." The Privacy page's danger-zone row also updates to a cancellable state.
+- **Backdrop interaction:** Clicking outside the modal closes it (treats as Cancel). `Esc` closes it.
+- **Accessibility:** Modal uses `role="dialog"` + `aria-modal="true"` + `aria-labelledby` + `aria-describedby`. The type-to-confirm input is `aria-describedby` connected to the helper hint ("Case-sensitive. The button activates once this matches."). Submit button has `aria-disabled` reflecting its state. Focus-trap pattern from the modal shell (see `Component.Modal.ExportRequest`, A-17).
+- **Keyboard:** `Tab` cycles between input, Cancel, Confirm. `Enter` on the input does NOT submit — it must be a deliberate button tap. `Esc` closes.
+- **Reduced motion:** Under `prefers-reduced-motion: reduce`, the 240ms backdrop fade collapses to an instant dim.
+
+### `Component.Modal.ExportRequest` (Amendment A-17 — MVP, data export)
+3-state modal triggered by `Settings → Privacy → Danger zone → Request export`. Closes PRD FR-52 partial gap. Visual spec lives in DESIGN.md §Components → Inputs (`component.modal.export-request`).
+
+- **3 user states (rendered variant chosen at modal-open time, server-side):**
+  - **Free user in EU/UK/CA/BR/AU:** `jurisdiction-badge.eu` (signal-success tint), body copy "You're in {country}, so this export is free under data portability rights." Primary CTA: "Request export". On submit: success-notice replaces the footer — "Export started. We'll email {user.email} within 24 hours."
+  - **Free user outside EU/UK/CA/BR/AU:** `jurisdiction-badge.gate` (terracotta tint), body copy "You're in {country}. Data exports outside the EU/UK/CA/BR/AU require Pro — it covers the storage and routing costs beyond what free users can sustain." Primary CTA: "Upgrade to Pro → Export". On submit: routes to `/settings/plan`, NOT to the export endpoint.
+  - **Pro user:** `jurisdiction-badge.pro` (amber tint), body copy "Your archive will be ready within 24 hours. We send a one-time download link — the link expires after 7 days." Primary CTA: "Request export". On submit: same success-notice as Free-EU path.
+- **Anatomy:** Centered modal, max-width 480px. An itemized "what's included" list (saved events, personal calendar events, preference graph, mute & quiet-hours settings, audit log for Pro) sits below the body copy. Footer: secondary Cancel + primary CTA. Post-submit state: success-notice replaces the footer actions; only a Close button remains.
+- **24h SLA enforcement:** The success notice is binding — engineering must guarantee the export is emailed within 24h. Server-side debounce: only ONE active export per user at a time (a second request before the first resolves shows an inline message "Export already in flight — check your email").
+- **In-flight affordance:** The primary CTA morphs to a spinner + "Requesting…" for 720ms during the roundtrip. Under `prefers-reduced-motion`, the spinner is static.
+- **Accessibility:** Same dialog semantics as `Component.Modal.AccountDelete` (A-16). The success notice uses `role="status"` + `aria-live="polite"` so screen readers announce the confirmation without focus moving.
+- **Keyboard:** Standard modal focus-trap. `Esc` closes.
+- **Reduced motion:** 720ms spin collapses to a static indicator.
+
+### `Component.Surface.Timeline.AmendmentHistory` (Amendment A-13 — MVP, transparency)
+Inline ranking-algorithm amendment-history timeline at the bottom of `Settings → Privacy → Ranking algorithm version`. Closes PRD §10.1 + FR-22 transparency sub-gap.
+
+- **Anatomy:** A vertical timeline under the existing ranking-bucket display. Each entry is a `<li class="timeline-item">` with: a leading dot (terracotta for the latest entry, ink-muted for older entries), a title (`Text.Body.md`), a date (`Text.Meta` mono), and an ADR reference (e.g., "ADR-0022 — v1.0 MVP launch" hyperlinked to the ADR document).
+- **Lifecycle:** New entries are prepended on PRD-sign-off via the changelog mechanism documented in PRD FR-22. The oldest visible entry is "2026-08-19 — Pre-launch review (ADR-0020)"; the latest is "2026-08-29 — v1.0 MVP launch (ADR-0022)".
+- **Read-only:** Entries cannot be edited or deleted from the UI. Each entry's ADR link is the source of truth.
+- **Accessibility:** The timeline is a `<ol>` with `aria-label="Ranking algorithm amendment history"`. Each `<li>` carries the date and ADR reference in a visually-hidden `<span>` for screen readers.
+- **Keyboard:** Each ADR link is a standard focusable anchor with the global focus ring.
+
+### `Component.Control.Toggle.Location` (Amendment A-14 — MVP, privacy)
+Geo-IP opt-out toggle on `Settings → Privacy`. Closes PRD FR-2 + §10.1 persistent-toggle sub-gap. Visual spec lives in DESIGN.md §Components → Inputs (`component.control.toggle.location`).
+
+- **Anatomy:** A 2-position segmented control: "Use my approximate location" / "Don't use location". The selected state uses ink-inversion, not terracotta. Default state: ON. The row sits above the existing "Training opt-out" row in the Privacy section.
+- **Behavior:** Off-state persists in a cookie. Once toggled off, the `geo-consent-banner` never re-prompts. Off-state falls back to the most-popular city (NYC) per PRD FR-2. A `Text.Meta` line beneath the toggle reads: "We'll use the most popular city instead" so the fallback is transparent.
+- **First-visit vs persistent:** The first-visit experience is the existing `geo-consent-banner-desktop.html` modal. Once the user makes a choice (whether accept or dismiss), this toggle is the durable record of that choice.
+- **Accessibility:** The segmented control is a `role="radiogroup"` with two `role="radio"` buttons. Standard arrow-key navigation between radios.
+- **Keyboard:** `←` / `→` switches between the two options. `Enter` is a no-op (the selection is the act).
+
+### `Component.Badge.SoldOut` (Amendment A-15 — MVP, event lifecycle)
+Sold-out status badge on Pulse Card and Detail Screen. Closes PRD FR-53 / FR-54 partial gap. Visual spec lives in DESIGN.md §Components → Badges and indicators (`component.badge.soldout`).
+
+- **Anatomy:** Small (16px height) ink-bordered pill. Label: "Sold out" in `text.scale.meta.sm` (uppercase, mono, 0.08em letter-spacing). Leading `●` glyph in `color.signal.warn` (NOT terracotta). The pill background is `color.surface.subtle`; the border is `color.border.strong`. No desaturated-grey variant — the warn amber is the canonical signal.
+- **Placement:** Pulse Card: sits in the right-side zone above the title (NOT the left-edge category stripe — the 3px stripe stays visible for category identity). Detail Screen: a soft "Sold out" stripe appears under the title, sitting above the description.
+- **Lifecycle:** Appears when `event.status = sold_out` per FR-53. Persists until the event ends (no auto-removal on a state reversion). Removed entirely when the event ends or is cancelled — never recycled into another state.
+- **Pair with CTAs:** On Pulse Card: the existing "Save Reminder" CTA is **removed**, not greyed, not "Notify me when available". On Detail Screen: a calm single-line "Sold out — tickets no longer available." replaces the Save & Reminder actions. A "Find similar events" link is surfaced only on Detail Screen (not on the card) — quietly resolves the user's likely next intent without upselling.
+- **Notification pairing:** Sold-out state change triggers exactly one in-app + email notification (per FR-54), capped at one state-change notification per event per day. Future state changes (e.g., a cancellation) replace, not stack.
+- **Accessibility:** Badge uses `aria-label="Sold out"` (the visible label is also "Sold out"; aria-label makes the badge's role clear to screen readers in card contexts where the badge might be parsed as decoration). The leading `●` glyph has `aria-hidden="true"`.
+
+### `Component.Auth.SignIn` (Amendment A-20 — MVP, returning-user landing)
+`/signin` returning-user landing surface. Closes the FR-4 session-restored-routing gap — currently users whose session expired are silently redirected to onboarding, which violates the calm contract for users who have already converted. Visual spec lives in DESIGN.md §Components → Inputs (`component.input.field.error` + `component.auth.input.password`).
+
+- **Trigger:** Tap "Log in" in the footer of `/preview`, `/events/near-me`, `/events/:id` (public-only), `/pricing`, `/pro/upgrade`, or any pre-auth surface. Direct URL navigation: `/signin`. Returns the user to session if the cookie is still valid (silent redirect to `/`); otherwise renders the form.
+- **Anatomy:** Centered form on `layout.container.form` (480px column — narrower than the 720px onboarding column because auth forms are single-decision, not content-rich). Pre-auth `Component.Topbar.PreAuth` above; pre-auth page footer below (`Component.Footer.PreAuth` — the byte-identical footer block reused from `pulse-preview-desktop.html`). Form contains: `component.input.field` × 2 (Email + Password), `component.auth.input.password` reveal toggle on the Password field, a `Text.Meta` ghost link "Forgot password?" right-aligned in the actions row, and a `Button.Primary` "Sign in" (terracotta) on the same row as the forgot-password link. Below the actions row: a footer block with a cross-link "New to EventPulse24? Sign up →" + a 1-line privacy footnote ("By signing in, you agree to our Terms and Privacy Policy.").
+- **State machine:** `idle → validating → submitting → success-or-error`. `idle` shows the empty form, both fields below the validator threshold (length 0). `validating` runs as the user types — client-side email format check fires on blur of the Email field (not on every keystroke; that would be hostile). `submitting` morphs the primary CTA to a `.spinner + "Signing in…"` (mirrors A-17 `Component.Modal.ExportRequest` — 720ms linear, `prefers-reduced-motion: reduce` → static dot). On 200 OK, route to `/` (or the user's last-visited authed route if available in the session cookie; default `/`). On 4xx, re-enable the primary + render State B's error.
+- **Variant states (per the mockup variants strip):**
+  - **State A — valid input:** primary enabled. The rendered default state above the variants strip.
+  - **State B — wrong password (server-side):** the Password field receives `.has-error`; border shifts to `color.signal.warn`; `.field-error` row renders below: "That password doesn't match. Try again or reset it." with inline links "Try again" + "reset it" → `/reset-password`. Account-enumeration rule applies: even if the failure was actually "no account with that email," render the error on the Password field, not the Email field.
+  - **State C — in-flight:** primary CTA disabled (`aria-busy="true"`), label swaps to `.spinner + "Signing in…"`. Both fields become read-only to prevent flicker.
+- **Accessibility:** Standard form semantics — each input has a `<label>` (in `text.scale.meta.sm` mono uppercase); each error has `aria-describedby` linking it to the input + `role="alert"` for live announcement. The reveal toggle has `aria-pressed` reflecting current state + `aria-label` describing the *destination* state ("Show password" / "Hide password"), not the current state (screen-reader users don't need to hear "password is currently hidden" every time the toggle receives focus — they need to know what tapping will do). The page has a `<main>` landmark; the form is the only interactive region; tab order is brand-wrap → topbar skip (none here, topbar-quiet rule) → Email → Password → reveal toggle → forgot-password link → primary submit → footer links.
+- **Keyboard:** `Tab` cycles in DOM order. `Enter` on a focused input submits the form (default behavior; both inputs are inside the `<form>`). `Shift+Tab` cycles back. There is no modal focus-trap because this is a full-page route — `Esc` does nothing form-level (the inputs handle Esc natively, clearing the focused field).
+- **Reduced motion:** The 720ms spinner collapses to a static dot. Border color transition is instant.
+- **Forgot-password flow:** Tap "Forgot password?" → routes to `/reset-password` (a single-input email field + primary "Send reset link" CTA + the same locked copy "We've sent a reset link to {email}." success notice). Visual is deferred — the lock-step is one inline success notice using the existing `.form-footer` vocabulary.
+
+### `Component.Auth.SignUp` (Amendment A-20 — MVP, account creation)
+`/signup` account-creation step. Splits the auth-mechanism choice off the calendar-connect step so the post-signup onboarding flow stays within FR-1's ≤3 user-visible steps. Visual spec lives in DESIGN.md §Components → Inputs (`component.input.field.error` + `component.auth.input.password` + the existing `component.button.provider`).
+
+- **Trigger:** Tap "Sign up free" in the footer of any pre-auth surface, or the hero CTA on `/preview` / `/events/near-me`. Direct URL navigation: `/signup`.
+- **Anatomy:** Centered form on `layout.container.form` (520px column — slightly wider than `/signin` to fit the OAuth stack). Same pre-auth shell as `/signin`. Form is split into two zones, top-to-bottom:
+  1. **OAuth stack** — `component.button.provider` × 3 stacked vertically (Google → Apple → Outlook per alphabetical, with Google first because Google accounts dominate sign-up conversions). All three at *equal visual weight* per the calendar-connect parity rule in DESIGN.md L286 — no primary CTA styling on a single provider. Each button: 32×32 monogram tile + provider name in `Text.Body.md` weight 600 + sub-label "Auto-connects your {calendar}" + a right-arrow `→` affordance.
+  2. **"or" separator** — 1px `color.border.subtle` line on each side, with the word `or` in `text.scale.meta.sm` mono uppercase in the middle. Mirrors the visual rhythm of `onboarding-step1-desktop.html`'s OAuth ↔ email/password transition (same component vocabulary, just relocated to its own route).
+  3. **Email/password form** — `component.input.field` × 3 (Email, Password, Confirm password); `component.auth.input.password` reveal toggle on both Password fields; a `Text.Meta` hint below the Password field ("8 characters minimum") in `color.ink.faint`; `Button.Primary` "Create account" right-aligned below the third field.
+- **Order of operations:** OAuth buttons first, email/password below. Rationale per UX heuristic: users with existing Google/Apple/Outlook accounts (the majority of sign-up conversions) can complete in 2 taps; users without accounts email-typed the alternative path; the OAuth-first ordering reduces friction for the larger cohort without penalizing the smaller one.
+- **State machine:** `idle → client-validating → submitting → success-or-error`. `submitting` morphs the primary CTA to `.spinner + "Creating account…"`. On 200 OK, render a single `Text.Meta` inline notice "Account created. Taking you to onboarding…" (1.5s hold, then `location.href = '/onboarding'`). On 4xx, render the relevant State B or State C error.
+- **Variant states:**
+  - **State A — valid input:** all three fields filled with valid values; primary enabled. The rendered default state above the variants strip.
+  - **State B — password mismatch (cross-field):** the Confirm field receives `.has-error`; password-mismatch error renders below it. The Password field stays valid (the user already typed it correctly — clearing it would be unkind). Copy: "Passwords don't match." Validation fires on Confirm blur AND on form submit.
+  - **State C — email already exists (server-side 409):** the Email field receives `.has-error`; copy renders with an inline ghost link to `/signin`: "An account with that email already exists. Sign in →". Password fields stay intact. Account-enumeration exception applies: signup is opt-in registration, so revealing "this email is taken" is acceptable and helps the user recover.
+- **OAuth hand-off:** Tap any provider → redirect to `{provider}.com/oauth/authorize?client_id=...&redirect_uri=/api/oauth/callback&scope=calendar.readonly`. On callback, calendar is auto-attached (no onboarding-step1 needed) and the user lands at `/onboarding` step 2 (interests), skipping step 1 entirely. Email/password users go through step 1 normally.
+- **Accessibility:** Same as `/signin` — form semantics, `aria-describedby`, `role="alert"` on errors, focus order. The OAuth stack is a `role="group"` with `aria-label="Continue with calendar provider"`. The "or" separator is `aria-hidden="true"` (decorative; the OAuth ↔ email/password transition is visually clear without announcing the word "or").
+- **Keyboard:** Same as `/signin`. Tab order: brand-wrap → Google → Apple → Outlook → Email → Password → Password reveal → Confirm → Confirm reveal → primary submit → footer links.
+- **Reduced motion:** Same as `/signin`. The 1.5s success-hold collapses to 0ms (instant redirect).
+- **Skippability:** Per FR-1, no step is required. The user can close the tab at any point and resume later via `/onboarding` (their account creation is incomplete server-side; the partial account is purged after 30 days).
+- **Post-signup routing lock:** `/signup` always routes to `/onboarding` step 1 on email/password success (calendar connect still optional). OAuth users skip step 1 entirely (auto-connect already done). `/signin` routes to `/` (or last-visited authed route). Neither routes to `/` directly.
 
 ---
 
@@ -250,7 +523,11 @@ Global state decisions. Each pattern is invoked wherever the relevant state is e
 
 **Empty onboarding interests (step 2 skipped):** "We'll figure this out from your calendar." Single Skip button.
 
-**Empty Timeline day (Phase 2):** "Quiet day." No card, no CTA. (PRD §14 wireframe Screen 3.)
+**Empty Timeline day (Amendment A-8 — MVP):** "Quiet day." No card, no CTA. (PRD §14 wireframe Screen 3.)
+
+**Empty Timeline week (Amendment A-8 — MVP):** "Your week is quiet. Pulse Digest is the place to discover." A single `Text.Meta` "Open Pulse Digest" link below the headline routes to `/`. No carousel, no upsell.
+
+**Empty `/conflicts` (Amendment A-8 — MVP):** "No overlaps. Conflicts appear here as you save events." A single `Text.Meta` "What counts as a conflict?" inline help link below — opens a single help article, not a modal. (No CTAs, no upsell.)
 
 **Empty Search (Phase 3):** "No matches." No suggestions, no "Did you mean."
 
@@ -261,6 +538,10 @@ Global state decisions. Each pattern is invoked wherever the relevant state is e
 **Detail Screen skeleton:** One full-width header block + one meta row + 3 chip skeletons. Same fade animation.
 
 **Settings list skeletons:** N rows (where N matches expected content length), each a 40px-tall `color.surface.paper` rectangle fading identically.
+
+**Timeline skeletons (Amendment A-8):** Week-grid skeletons — 7 columns desktop (each column a stack of 3–5 `color.surface.elevated` rectangles fading identically, 40px tall each) or 1 column mobile (single stack). No day labels in the skeleton frame. Same 1800ms pulse period as other skeletons.
+
+**`/conflicts` skeletons (Amendment A-8):** Two section skeletons (Active / Resolved) with row skeletons inside each, identical fade pattern. No spinners.
 
 **No spinners, anywhere.** PRD §13.1 and §13.2: "No urgency badges." A spinner is a visual urgency badge.
 
@@ -276,9 +557,13 @@ Global state decisions. Each pattern is invoked wherever the relevant state is e
 
 **Reminder save failure:** Inline below the chip row, 1 line: "Couldn't save. We'll try again on your next change." No modal, no toast.
 
+**Timeline load failure (Amendment A-8):** "Couldn't reach Timeline. Try again." Single retry button (terracotta-filled `Button.Primary`). The bottom-tab (mobile) and sidebar (desktop) nav remain functional so the user can escape.
+
+**`/conflicts` load failure (Amendment A-8):** "Couldn't analyze conflicts. Try again." Single retry button. The conflict indicator on Pulse Cards remains accurate (it's a separate read path) so the user is not blocked from seeing conflicts elsewhere.
+
 **Status page integration (PRD §10.5):** SEV-1 errors propagate to `status.eventpulse24.com` (or equivalent) within 30 minutes. The product surfaces a calm inline banner on relevant surfaces when a known incident affects the user.
 
-### Conflict Patterns (Phase 2)
+### Conflict Patterns (MVP via FR-58 + Amendment A-8)
 
 The three-action pattern (PRD FR-33). See `Sheet.ConflictResolution` in §4. The sheet:
 - **Header:** "These overlap."
@@ -286,6 +571,24 @@ The three-action pattern (PRD FR-33). See `Sheet.ConflictResolution` in §4. The
 - **Three actions:** "Move {personal event name} earlier" / "Skip {public event name}" / "Keep both — I'll manage"
 
 Once "Keep both" is chosen for a pair, the system records the decision and never re-prompts.
+
+**Indicator persistence (post-resolution).** "Keep both" leaves the `Indicator.Conflict` on both Pulse Cards and Timeline event-blocks permanently — a calm permanent reminder (per PRD §3 Glossary). "Skip public" or "Move personal" removes the indicator from both events on the next render; the pair moves from `/conflicts` Active to Resolved; Pulse Card cache invalidates on return navigation.
+
+**Cross-midnight conflicts.** When a personal event runs past midnight into the next day (e.g., 11:00 pm Mon → 2:00 am Tue) and a saved public event overlaps any portion of the personal event's interval, the conflict fires. The personal event's Timeline block renders on both day-cells it spans (with the conflict dot on the day-cell whose overlap crosses midnight, evaluated per-day boundary per addendum FR-33). The `/conflicts` pair row shows the full personal event span ("11:00 PM Mon → 2:00 AM Tue") plus the public event time.
+
+**Multi-day events.** A multi-day personal event (e.g., a 3-day conference) renders `Indicator.Conflict` on every day-cell it spans when any portion of that cell's interval overlaps a public event. The Pulse Card always shows the conflict once (top-right) regardless of how many days the personal event spans.
+
+**Three+ mutually-overlapping events.** The first launch of `Sheet.ConflictResolution` always pairs the personal event with the closest-overlapping public event (largest overlap interval). If a third saved event (Personal or Public) overlaps the same personal event, it is listed at the bottom of the sheet in `Text.Meta`: "Also overlaps with: {event name}, {time}." No second sheet fires for the third event until the first pair is resolved; the third event's conflict indicator still renders on Pulse Cards and Timeline event-blocks.
+
+**Recurring personal events.** MVP scope: conflict detection runs against expanded instances within the visible week (Mon–Sun). If the recurrence is not RRULE-expanded (per MVP), the conflict indicator fires only for the single instance the user created — future recurring instances are out of scope at MVP.
+
+**State change (PRD FR-53/54/55 cancel / postpone / move).** When a source event is cancelled, postponed, or moved, the system recomputes the conflict set on the next Pulse Card render. A cancelled partner event clears its `Indicator.Conflict` immediately. A postponed event keeps its `Indicator.Conflict` if its new interval still overlaps; the indicator clears if it does not.
+
+**Backgrounded conflict sheet.** If the user backgrounds `Sheet.ConflictResolution` (browser tab change, app switch on mobile) and returns, the sheet is still open. There is no auto-timeout, no dismiss-on-background. The system waits calmly for the user to choose.
+
+**Free-tier parity.** FR-33 fires regardless of tier for any saved public event overlapping a saved personal event. The free-tier save cap does not gate conflict detection.
+
+**Empty state.** For a brand-new user with zero saved events, `/conflicts` renders "No events saved yet. Open Pulse Digest." with a single `Text.Meta` link to `/`. For a user with events but no overlaps, "No overlaps. Conflicts appear here as you save events." (matches §3 microcopy contract). For a user with resolved-but-no-active pairs, the Resolved section renders; Active is absent.
 
 ### Offline Patterns
 
@@ -336,7 +639,9 @@ All primary actions have a keyboard shortcut, shown in a `?` help menu (visible 
 | `Esc` | Close sheet / cancel edit | Any |
 | `g d` | Go to Digest | Global |
 | `g s` | Go to Settings | Global |
-| `g t` | Go to Timeline (Phase 2) | Global |
+| `g t` | Go to Timeline (Amendment A-8 — MVP) | Global |
+| `g c` | Go to Conflicts (Amendment A-8 — MVP) | Global |
+| `g a` | Open Add Personal Event sheet (Amendment A-8 — MVP) | Global |
 | `n` | Create new personal event | Global |
 | `/` | Focus search (Phase 3+) | Global |
 
@@ -344,7 +649,7 @@ All primary actions have a keyboard shortcut, shown in a `?` help menu (visible 
 
 **Reminder picker keyboard support:** Reminder chips are focusable. `Tab` cycles through chips; `Enter` toggles; arrow keys move within the chip group; `Esc` closes the picker.
 
-**Conflict Resolution keyboard support (Phase 2):** The three actions are focusable in order (`Move / Skip / Keep both`). `Tab` cycles; `Enter` confirms the focused action; `Esc` cancels (treated as `Keep both`).
+**Conflict Resolution keyboard support (MVP, FR-33 / Amendment A-8):** The three actions are focusable in order (`Move / Skip / Keep both`). `Tab` cycles; `Enter` confirms the focused action; `Esc` cancels (treated as `Keep both`).
 
 ### Touch
 
@@ -422,7 +727,7 @@ Color is never the sole carrier of meaning:
 
 - **Pulse Digest ready:** When the 3 cards finish loading and render, a live region announces "Pulse Digest ready, 3 events for today." `aria-live="polite"`.
 - **Save / Dismiss confirmation:** Announced via live region: "Saved. {event name}" / "Dismissed. {event name}."
-- **Conflict Resolution (Phase 2):** When the conflict sheet opens, focus moves to the header ("These overlap.") and the live region announces the conflict summary.
+- **Conflict Resolution (MVP, FR-33 / Amendment A-8):** When the conflict sheet opens, focus moves to the header ("These overlap.") and the live region announces the conflict summary.
 
 ### Screen-Reader Specifics
 
@@ -545,6 +850,54 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 - Adaptive expansion violates the 3-card default for an engaged user: this is the explicit adaptive exception (PRD §4.5.1 reconcile, locked in this brief). The setting is opt-out, not opt-in (locked decision).
 - User engagement drops below threshold (e.g., 10 saves/30d no longer holds): Pulse Digest returns to 3 cards. No announcement.
 
+### Flow 5 — Maya's week planning (PRD UJ-2, Amendment A-8 — MVP)
+
+**Persona:** Maya, 32, senior product designer in Brooklyn. Has connected Google Calendar. Friday evening, planning the week ahead.
+
+**Entry state:** Maya taps the **Timeline** item in the bottom-tab (mobile) or left sidebar (desktop). She lands on `/timeline`, current week (Mon Sep 7 – Sun Sep 13). (Prior weeks — Thu Sep 10 yoga vs. tech meetup and Sat Sep 12 anniversary dinner vs. comedy show — were already resolved via the FR-33 three-action pattern; those resolved pairs live in the `/conflicts` Resolved list, not on this week's Timeline.)
+
+**Path:**
+1. The week grid renders with `motion.fadeIn` (240ms, disabled under reduced-motion). Today's column is highlighted via `Indicator.Today` (the terracotta dot with the sanctioned glow). The week navigator at the top reads "Sep 7 – Sep 13" with `←` / `Today` / `→` affordances in `Text.Meta`.
+2. Maya scans the week. She sees:
+   - **Monday:** Quiet day. (Empty cell — centered "Quiet day." in `Text.Meta` muted.)
+   - **Tuesday:** Work standup 9:00 am (Personal, warm stripe) + saved "Designers coffee chat" 9:15 am (Public, cool stripe). Both carry `Indicator.Conflict` (amber dots, top-left of each block — see `Surface.Timeline` and `ASSUM-13`).
+   - **Wednesday:** Quiet day.
+   - **Thursday:** Yoga class 7:00 pm (Personal) — no conflict. (The Thu yoga vs. tech meetup overlap was resolved earlier — Maya moved yoga to 6:00 am — and the pair is now in `/conflicts` Resolved.)
+   - **Friday:** Sam's birthday dinner 7:00 pm (Personal) + saved "Poetry reading" 7:15 pm (Public). Both carry `Indicator.Conflict`.
+   - **Saturday:** Anniversary dinner with Rahul 8:30 pm (Personal) — no conflict. (The Sat anniversary vs. comedy show overlap was resolved by "Keep both — I'll manage" earlier and lives in `/conflicts` Resolved.)
+   - **Sunday:** Free comedy show 4:00 pm (Public) — no conflict.
+3. Maya notices the Tuesday conflict first. She taps the work standup block (Personal). Routes to `/events/:work-standup-tuesday`. From there she can shift the standup earlier in the day. The conflict indicator on the Tuesday column clears on the next Timeline render.
+4. She returns to `/timeline` (back button). She now notices the Friday conflict (Sam's birthday dinner vs. Poetry reading). She taps the Poetry reading block. Routes to `/events/:poetry-reading`. She decides to skip the public event (one-tap dismiss from the Detail Screen's FR-33 three-action panel: "Skip this public event"). The conflict indicator clears on both Friday blocks.
+5. She is done. The week is now conflict-free.
+
+**Climax:** "Glanceable week in 6 seconds. No edits from Timeline — just see." Maya saw the whole week's shape, identified the two active conflicts, resolved them by jumping to Detail Screen, and was back on Timeline in under a minute. No modal opened, no carousel spun, no upsell shown.
+
+**Failure modes:**
+- Maya tries to drag a block to reschedule: nothing happens. Timeline is read-only at MVP. A subtle `Text.Meta` cursor hint ("Read-only — open event to edit") appears on hover (desktop) or long-press (mobile).
+- Maya taps an empty day expecting to add an event: nothing happens. The "Add Personal Event" affordance lives in the bottom-tab (or sidebar), not on the Timeline grid.
+- Maya is on the Friday conflict and the Detail Screen fails to load: `Sheet.ConflictResolution` is not opened automatically; the conflict indicator on the Friday blocks remains. Maya retries from Detail Screen or returns to Timeline. The indicator persists across retries — it is a calm permanent reminder, not a transient toast.
+
+### Flow 6 — Conflict review (Amendment A-8 — MVP)
+
+**Persona:** Maya, on Sunday afternoon. Curious about how many overlaps she has accumulated. She has been a Pulse user for several weeks and has resolved conflicts across multiple prior weeks (Thu Sep 10 yoga vs. tech meetup, Fri Sep 11 Sam's birthday dinner vs. poetry reading, Sat Sep 12 anniversary dinner vs. comedy show). This week she has 1 unresolved pair (Tue Sep 8 work standup vs. designers coffee chat).
+
+**Entry state:** Maya taps the conflict indicator on her Pulse Digest `Indicator.Conflict` dot. A Detail Screen header panel opens with the FR-33 three actions + a new affordance: "See all overlaps." (`/conflicts` is also reachable directly from the bottom-tab Conflicts slot on mobile and the sidebar Conflicts link on desktop; the "See all overlaps" link is the route from a Pulse Card indicator.)
+
+**Path:**
+1. Maya taps "See all overlaps." Routes to `/conflicts`.
+2. The page heading renders: "These days overlap." (Locked microcopy, §3.) Below, two sections:
+   - **Active (1)** — one pair awaits a decision: Tue Sep 8, 9:00 am Work standup (Personal) ↔ 9:15 am Designers coffee chat (Public). Three actions render against the pair (Move earlier / Skip / Keep both).
+   - **Resolved (3)** — collapsed list of the three pairs Maya resolved across the past two weeks. Each row shows the pair side-by-side (Personal + Public blocks), the resolution method (e.g., "Skipped public · Poetry reading · Fri Sep 11"), and a `Text.Meta` timestamp. (Mocks this state at `conflicts-desktop.html`.)
+3. Maya scans the active pair, decides to keep the coffee chat and "Move standup earlier," and the action clears the conflict on the next render. The pair moves from Active to Resolved.
+4. She taps the back button (or the topbar's brand mark) to return to Pulse Digest.
+
+**Climax:** "Every conflict, one place, no anxiety." Maya reviews her conflict history in 15 seconds and resolves the open one in another 15 seconds. No modal opens, no upsell asks her to "prevent future conflicts with Pro," no streak badge shows up.
+
+**Failure modes:**
+- Maya has many conflicts (e.g., 12 active): the Active section renders a scrollable list (no pagination, no "show more" — the list is bounded to a reasonable count per week by design; conflicts beyond the visible window are grouped into "Older overlaps" with a `Text.Meta` week label).
+- Maya tries to delete a resolved conflict: no edit affordance. Resolved pairs are immutable history. A subtle `Text.Meta` cursor hint on hover ("History — cannot be edited") explains.
+- Maya is on `/conflicts` and a new conflict is detected (e.g., a saved public event moves to overlap her birthday dinner): the page does not auto-refresh. The next user interaction triggers a fetch. (Auto-refresh on `/conflicts` would be a passive pressure element — banned per §3 microcopy and §9 anti-patterns.)
+
 ---
 
 ## 9. Inspiration & Anti-patterns
@@ -556,7 +909,7 @@ Named-protagonist journeys. Each flow names a protagonist, an entry state, a pat
 - **Headspace** — calmer moments. The brand is "a friend who knows you well and isn't trying to sell you." We borrow the visual restraint and the empty-state-as-feature instinct. PRD §13.1 cites Headspace as the aesthetic anchor for "Headspace of events."
 - **Bandcamp** — editorial card design. Cards are dense with information but never noisy; the editorial posture makes the user feel like they're being shown, not sold to. We borrow the card composition and the absence of promotional badges.
 - **Notion** — decision-friendly minimalism. The UI is a quiet workspace, not a sales surface. We borrow the minimalism and the "no shouting" voice. PRD §13.1.
-- **Apple Calendar** — week-view restraint. PRD §13.1. We borrow the calm layout pattern for the Timeline (Phase 2) and the absence of badges, urgency, or color-noise.
+- **Apple Calendar** — week-view restraint. PRD §13.1. We borrow the calm layout pattern for the Timeline (Amendment A-8 — MVP) and the absence of badges, urgency, or color-noise.
 - **Day One / iA Writer** (cited from `experience-example-mobile.md` Quill spine) — the single daily framing and the no-toolbar discipline. We borrow the "one moment per day" calibration of Pulse Digest and the "compose without chrome" rhythm of personal event creation.
 
 ### Anti-patterns We Explicitly Avoid
@@ -594,9 +947,9 @@ If a future contributor can only remember three lines from this section, these a
 
 | Breakpoint | Width | Behavior |
 |---|---|---|
-| `sm` | ≤767 px (default MVP target: 375 px) | Mobile. Bottom-tab navigation. Single-column digest. Sheet-based overlays. Card stack vertical. |
-| `md` | 768–1023 px | Tablet. Sidebar visible (Digest / Timeline / Add / Settings). Two-column digest on landscape; single-column portrait. |
-| `lg` | 1024–1179 px | Desktop. Sidebar visible. Two-column digest: today's pulse on the left, "this week" preview on the right. |
+| `sm` | ≤767 px (default MVP target: 375 px) | Mobile. Bottom-tab navigation (Digest / Timeline / Add / Conflicts / Settings — see `Component.BottomTab`). Single-column digest. Single-column timeline (one day visible, swipe or `←` / `→` to advance days). Sheet-based overlays. Card stack vertical. |
+| `md` | 768–1023 px | Tablet. Left sidebar nav (220 px, see `Component.Sidenav.App`). Two-column digest on landscape; single-column portrait. Timeline renders as a 7-day week grid. |
+| `lg` | 1024–1179 px | Desktop. Sidebar visible (240 px). Two-column digest: today's pulse on the left, "this week" preview on the right. Timeline as 7-day week grid. |
 | `xl` | ≥1180 px | Max canvas. Content constrained to 1180 px. Whitespace expands outward. No content reflow. |
 
 **Desktop does not add features.** Desktop adds whitespace and (optionally) reveals hover affordances on `Badge.Source` and `Indicator.Confidence`. No new screens, no new actions, no new copy. PRD §13.1: "Whitespace over density."
@@ -611,7 +964,7 @@ If a future contributor can only remember three lines from this section, these a
 - **Web Share API:** for outbound shares (Pulse share-link, PRD FR-28).
 - **Service worker:** for offline-cached Pulse Digest (24h TTL) and queued local actions (§5 Offline Patterns).
 - **No push notifications to mobile** at MVP (email digest only, PRD FR-11; push in Phase 2 with native apps).
-- **No iOS / Android conventions** beyond standard responsive web behavior — no bottom-sheet-from-bottom on desktop, no hamburger menu on mobile (bottom-tab navigation instead).
+- **No iOS / Android conventions** beyond standard responsive web behavior — no bottom-sheet-from-bottom on desktop, no hamburger menu on mobile (bottom-tab navigation instead — see `Component.BottomTab` in §4; the nav includes Timeline and Conflicts as 3rd and 4th slots).
 
 ### Browser Support
 
@@ -750,6 +1103,8 @@ That's it. No description, no image, no map, no price, no attendee count, no sha
 | **Hovered (desktop)** | Mouse hover | Background shifts to `color.surface.paper.darker`. `▸` affordance appears. Tooltips available on Source Badge and Confidence Pulse. |
 | **Long-pressed (mobile)** | Long-press on card | Quick-actions sheet anchored to card: Save, Dismiss, Less like this. |
 | **Adaptive expansion** | ≥10 saves in 30d | Card count grows from 3 to 5 (top of the responsive matrix) or 7 (Phase 3 max). Inline "Show all 5" link below the last card. |
+| **Default (Timeline event-block, mobile)** | Always | Event name, time, "Personal" / "Public event" label, conflict indicator if active |
+| **Hovered / focused (Timeline event-block, desktop)** | Mouse hover or Tab focus | Adds location (`Text.Meta`) and 1 Why-this Tag (read-only at MVP — full Why-this breakdown expansion is on Detail Screen, never on Timeline). |
 
 ### Anti-pattern: progressive disclosure that hides trust signals
 
@@ -757,7 +1112,7 @@ Adaptive density must not hide the trust signals (Why-this Tags, Confidence Puls
 
 ### Anti-pattern: progressive disclosure that hides the conflict indicator
 
-If a card is in conflict (PRD FR-58), the conflict indicator is always visible — top-right of the card, in the same visual zone as Source Badge and Confidence Pulse. Adaptive density may add detail (e.g., a tooltip on the conflict indicator explaining the conflict), but the indicator itself never collapses below 8×8 px.
+If a card is in conflict (PRD FR-58), the conflict indicator is always visible — top-right of the card, in the same visual zone as Source Badge and Confidence Pulse. Adaptive density may add detail (e.g., a tooltip on the conflict indicator explaining the conflict), but the indicator itself never collapses below 6×6 px (the locked size for both Pulse Cards and Timeline event-blocks per `DESIGN.md` `component.indicator.conflict`).
 
 ### Desktop Hover Discipline
 
@@ -794,7 +1149,11 @@ All behavior in this spine references `DESIGN.md` tokens by `{path.to.token}` sy
 - `Input.ReminderSlot` — reminder picker chips.
 - `Indicator.Confidence` — 5-dot confidence indicator.
 - `Badge.Source` — source type indicator.
-- `Sheet.ConflictResolution` — Phase 2 conflict sheet.
+- `Sheet.ConflictResolution` — FR-58 / Amendment A-5 conflict prompt (modal on Personal Event creation; three forced choices, no dismiss).
+- `Surface.Timeline` — Unified Timeline surface at `/timeline` (Amendment A-8 — MVP). Read-only week view, Personal + Public events on one grid, conflict indicator on overlapping pairs.
+- `Component.BottomTab` — Mobile bottom-tab navigation (Amendment A-8). Digest / Timeline / Add / Conflicts / Settings. Active slot uses ink inversion + 2px terracotta underline above the slot.
+- `Component.Sidenav.App` — Desktop left-sidebar navigation (Amendment A-8). Same five routes as the bottom-tab. Active route uses ink-inversion pill, no terracotta fill.
+- `Component.Sidenav.Footer` — Optional footer block pinned to the bottom of the 240px sidenav rail. Search + Account affordances; lives in the sidenav (not the topbar) per topbar-quiet rule. All tokens reused from existing DESIGN.md palette.
 - `motion.fadeIn` — 240ms entrance transition (disabled under reduced-motion).
 - `Button.Primary` — terracotta-filled CTA.
 - `Button.Secondary` — ink-bordered CTA.
@@ -844,6 +1203,15 @@ All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry h
 - **ASSUM-11.** _Locked 2026-09-03 (v1 onboarding audit)._ The topbar-quiet rule: topbar holds only brand + tagline; action affordances (Skip, Sign in, Sign up, Open menu) live in the footer or in surface-level CTAs. Inversions of this rule are bugs. Applies to `/onboarding`, `/settings/*`, `/preview`, and any future anonymous or authed surface with a topbar.
   - Status: RESOLVED. Owner: design.
 
+- **ASSUM-12.** _Locked 2026-09-06 (Amendment A-8 lift)._ `/timeline` at MVP is a **read-only** Week view combining Personal + Public events (Amendment A-8). No edit-from-Timeline, no drag-to-reschedule, no inline conflict resolution on Timeline itself. Edits happen on Detail Screen or the Personal Event modal; conflict resolution happens via the FR-33 three-action pattern on the Detail Screen header panel. The `/conflicts` route is a review surface for conflict pairs the system has recorded (active + resolved) — it does not surface user-added notes. The conflict indicator is a 6px filled amber circle on both Pulse Cards and Timeline event-blocks (`aria-label="Schedule conflict"`) — color is paired with the `Indicator.Conflict` shape so color is never the sole carrier of meaning (WCAG 1.4.1). Both routes are reachable from `Component.BottomTab` (mobile, 5 slots; Conflicts is the 4th slot between Add and Settings) and `Component.Sidenav.App` (desktop md+, Conflicts link between Add and Settings); the topbar stays brand-only (topbar-quiet rule, ASSUM-11).
+  - Status: RESOLVED. Owner: design + engineering. Decision deadline: before token implementation begins.
+
+- **ASSUM-13.** _Locked 2026-09-06 (Amendment A-8 lift, FR-58 follow-on)._ The conflict indicator dot is locked at **6px diameter** for both Pulse Cards and Timeline event-blocks (`DESIGN.md` `component.indicator.conflict` and `component.timeline.event-block`). The dot sits at the top-right of the block (Pulse Card) or top-left of the event-block (Timeline) so the Personal/Public text label in the top-right remains visible (WCAG 1.4.1). The size was chosen for Timeline density (matches `Indicator.Confidence` 6px dots on Pulse Cards) and is the same value on Pulse Cards to avoid re-coding two sizes. Density: pulsing glow (`box-shadow: 0 0 6px rgba(216,168,106,0.6)`) is permitted on the dot on dark surfaces to lift it from the page — glow does not appear on the dot in light mode.
+  - Status: RESOLVED. Owner: design + engineering. Decision deadline: before conflict indicator implementation.
+
+- **ASSUM-14.** _Locked 2026-09-06 (Amendment A-8 lift)._ The `/conflicts` page renders two sections in fixed order: **Active** (1+ conflict pairs awaiting a decision) then **Resolved** (decision-recorded pairs). The Active section's last action taken by the user on any conflict in the section clears that pair from Active and moves it to Resolved on the next render. The page does not auto-refresh; the next user interaction triggers a fetch (per Flow 6 failure mode). Resolved pairs are immutable history — the system never re-prompts for a decided pair. The Active section uses `aria-live="polite" aria-atomic="false"` so screen readers re-announce count changes; the page itself ships a visually-hidden live region announcing the initial Active + Resolved counts on first render.
+  - Status: RESOLVED. Owner: design + engineering. Decision deadline: before `/conflicts` implementation.
+
 ---
 
 _End of EventPulse24 experience spine. Generated 2026-08-23; last revised 2026-08-30 to add dark-first theme, lift conflict prompt to MVP per PRD FR-58, and lock the surface-coverage map below. Paired with `DESIGN.md`. Source PRD: `prd-EventPulse24-2026-08-19`. Reconciles: `reconcile-design-thinking.md`, `reconcile-blue-ocean.md`._
@@ -852,7 +1220,7 @@ _End of EventPulse24 experience spine. Generated 2026-08-23; last revised 2026-0
 
 ## Surface Coverage Map (mockups)
 
-The `mockups/` directory contains 14 HTML files covering every MVP surface in both Desktop and Mobile breakpoints where applicable. Old light-mode mocks are preserved in `mockups/light-archive/` for reference. **Spines win on conflict with any mockup** — if a mockup diverges from a token in `DESIGN.md` or a behavior in this spine, fix the mockup, not the spine. The mockups exist to anchor visual decisions; they are not the source of truth.
+The `mockups/` directory contains 32 HTML files covering every MVP surface in both Desktop and Mobile breakpoints where applicable (26 in `mockups/` + 6 in `mockups/mobile/`). The 4 light-mode mocks in `mockups/light-archive/` are preserved for reference but excluded from the MVP count. **Spines win on conflict with any mockup** — if a mockup diverges from a token in `DESIGN.md` or a behavior in this spine, fix the mockup, not the spine. The mockups exist to anchor visual decisions; they are not the source of truth.
 
 | # | Surface | Route / component | Desktop mockup | Mobile mockup | Notes |
 |---|---|---|---|---|---|
@@ -867,6 +1235,15 @@ The `mockups/` directory contains 14 HTML files covering every MVP surface in bo
 | 9 | Empty Pulse Digest | `/` empty state | `empty-pulse-digest-desktop.html` | _(covered by pulse-digest-mobile empty)_ | FR-8. Includes suggested-sources strip. |
 | 10 | Settings (theme, notifications, quiet hours, calendar, account, plan) | `/settings/*` | `settings-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-7 / FR-12 / FR-48 / FR-49 / FR-51 / FR-52. |
 | 11 | Public share-link landing | `/share/:slug` | `share-link-desktop.html` | _(deferred — desktop-first at MVP)_ | UJ-5. SEO public URL with Schema.org Event JSON-LD. |
+| 12 | Unified Timeline (week view) | `/timeline` | `timeline-desktop.html` | `mobile/timeline-mobile.html` | FR-32 (Amendment A-8). Read-only week view, Personal + Public, sidebar nav (desktop) + bottom-tab (mobile) — first mockups to render these nav components. |
+| 13 | Conflict Review list | `/conflicts` | `conflicts-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-33 (Amendment A-8). List of active + resolved conflict pairs. The Conflict Resolution prompt itself (`Sheet.ConflictResolution`, FR-58) is row 8 above. |
+| 14 | Browse (Amendment A-10 + A-12) | `/browse` | `browse-desktop.html` + `browse-desktop-filtered.html` + `browse-desktop-empty.html` | _(desktop-first; mobile uses `component.bottom-tab.more-menu` overflow sheet)_ | FR-26 + FR-48. Merged city-page grid vocabulary (Amendment A-12). Hero with eyebrow + h1 terracotta-italic em + lede + city-meta pill. 3-column card grid (≥1280px) with section heads. Inline Save per card. Inline keyword search (A-11) replaces the city-page chip rail. 24-card soft cap. 2 stripe colors max (slate + amber at <10%); discovery stripe dropped. Pre-auth `city-page-desktop.html` stays for SEO crawlers per PRD FR-27. See `Component.Surface.Browse`. |
+| 15 | Settings — Sources (Amendment A-18) | `/settings/sources` | `settings-sources-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-13. Grouped source list (Official / Community / Aggregator / Crawled) with reliability 1–5 ink-primary dots + 3-state `component.control.source-mute` (Mute / Show less / Default). ~10 sample sources spanning all 4 categories. See `Component.Settings.Sources`. |
+| 16 | Settings — Quiet Hours Pro (Amendment A-19) | `/settings/quiet-hours` Pro variant | `settings-quiet-hours-pro-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-7 + FR-49. `component.control.day-picker` — vertical 7-row list (Mon–Sun) with active-window chip + ink-inversion activation toggle per row. Pro-tier gate via `Badge.Source.verified` pattern. Free users see locked rows. See `Component.Settings.QuietHours.Pro`. |
+| 17 | Settings — Privacy — Delete-account modal (Amendment A-16) | `component.modal.account-delete` triggered from `/settings/privacy` | `account-delete-confirmation-modal-desktop.html` | _(deferred — desktop-first at MVP)_ | §10.1 + §14.1. Type-to-confirm input ("Type DELETE to confirm") gates the primary. Backdrop `rgba(10,10,11,0.7)` + `backdrop-filter: blur(8px)`. 30-day grace period. See `Component.Modal.AccountDelete`. |
+| 18 | Settings — Privacy — Export-request modal (Amendment A-17) | `component.modal.export-request` triggered from `/settings/privacy` | `export-request-modal-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-52. 3-state showcase: Free EU/UK/CA/BR/AU (direct export), Free elsewhere (terracotta "Upgrade to Pro → Export" gate), Pro (direct export + post-submit success notice with 24h SLA binding). See `Component.Modal.ExportRequest`. |
+| 19 | Sign-in (Amendment A-20) | `/signin` | `signin-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-4. Returning-user landing surface — closes the session-restore gap. Pre-auth topbar + page footer (byte-identical to `pulse-preview-desktop.html`). Centered form on 480px column (narrower than the 720px onboarding column because auth forms are single-decision). Email + Password fields with `component.auth.input.password` reveal toggle + per-field inline validation in `color.signal.warn` (NOT `color.signal.error`). 3 render states: valid input, wrong password (account-enumeration-safe), in-flight spinner. Routes to `/` (or last-visited authed route) on success. See `Component.Auth.SignIn`. |
+| 20 | Sign-up (Amendment A-20) | `/signup` | `signup-desktop.html` | _(deferred — desktop-first at MVP)_ | FR-1. Account creation step split from calendar connect. OAuth stack first (Google / Apple / Outlook at equal weight per onboarding-step1 parity rule) + email/password form (Email + Password + Confirm password). Cross-field password-mismatch validation; server-side email-already-exists with inline ghost link to `/signin`. Routes to `/onboarding` step 1 on email/password success; OAuth users skip step 1 entirely (calendar auto-attached during handshake). Keeps post-signup flow within FR-1's ≤3 user-visible steps. See `Component.Auth.SignUp`. |
 
 **Coverage gaps to fill before launch** _(logged here as `mockups/pending` items)_:
 
@@ -874,6 +1251,10 @@ The `mockups/` directory contains 14 HTML files covering every MVP surface in bo
 - Mobile share-link landing (small follow-up).
 - Personal Event creation on mobile (bottom-sheet variant — pattern already shown in the conflict-prompt mobile mock, just applied here).
 - Mobile empty-state confirmation (still pending — the desktop variant is canonical).
+- Mobile `/conflicts` page (can follow `conflicts-desktop.html` 1:1 using tokens; the desktop pattern is canonical).
+- Mobile Timeline empty-week state (single-column variant of the desktop empty-state).
+- Mobile empty-Timeline-day state (the `Quiet day.` row, vertical-stack variant).
+- Mobile bottom-tab nav variants beyond Timeline (Digest / Add / Settings — pattern locked in `mobile/timeline-mobile.html` and reused).
 
 **Visual identity rule for all mockups:** tokens are declared in `:root` and overridden under `[data-theme="dark"]`. The dark variant is the default at `<html data-theme="dark">`. Every mockup carries the conditional layer at the top of its `<style>` so engineering can paste the same template for any new surface.
 

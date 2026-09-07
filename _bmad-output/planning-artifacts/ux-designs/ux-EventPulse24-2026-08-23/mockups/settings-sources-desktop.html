@@ -1,0 +1,463 @@
+<!--
+  EventPulse24 — Settings → Sources (Desktop, full page) — DARK THEME
+  Amendment A-18 — Component.Settings.Sources + component.control.source-mute.
+  Closes the C-3 substantive gap. EXPERIENCE.md §2 IA row 8 spec is locked
+  (grouped source list + reliability badge + 3-state mute) but no
+  mockups/settings-sources-desktop.html existed prior to this amendment.
+
+  Page anatomy per DESIGN.md:
+    - component.sidenav.app 6-route variant + component.sidenav.footer
+    - component.topbar brand-only
+    - pagehead h1 "Sources" + sub copy explaining the grouping
+    - 4 grouped sections (Official / Community / Aggregator / Crawled)
+      with reliability-badge leading text; 10 illustrative sources spanning
+      all 4 types.
+    - Each row: source-name (display weight) + reliability dots (1–5,
+      color.ink.primary fills, NOT the terracotta confidence pulse from A-8)
+      + 3-state source-mute control (Mute / Show less / Default).
+    - Footer ghost button: "Restore all defaults" — bulk reset confirmation
+      lives behind this tap (per §10.4 bulk-action safeguard; not shown in
+      this mockup but referenced).
+    - component.emptystate.quiet fallback row: empty source states.
+
+  No new tokens. Reliability dots reuse the 1–5 ink-primary dots pattern from
+  component.indicator.confidence but in the *uncolored* form (no terracotta
+  on the active state). The source-mute control is a segmented-style row
+  control: ink-inversion selected state, no terracotta.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Settings · Sources</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-amber:#E89B4A; --warm-personal:#C8967A; --cool-public:#6E7E92;
+    --signal-success:#7AAA7A; --signal-warn:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+    --container-max:1180px; --sidenav-w:240px; --page-pad:32px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Page chrome ===== */
+  .pagehead { padding: 40px 0 28px; }
+  .pagehead h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; margin: 0 0 10px; color: var(--ink-primary); letter-spacing: -0.015em; }
+  .pagehead .sub { font-size: 14px; color: var(--ink-secondary); margin: 0 0 4px; max-width: 720px; line-height: 1.55; }
+  .pagehead .legend { display: inline-flex; gap: 16px; align-items: center; font-size: 12px; color: var(--ink-muted); margin-top: 12px; }
+  .pagehead .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .pagehead .legend-dots { display: inline-flex; gap: 3px; }
+  .pagehead .legend-dots .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pagehead .legend-dots .dot.on { background: var(--ink-primary); }
+
+  .section-nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 0 24px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 32px; }
+  .section-nav a { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-muted); font-weight: 500; }
+  .section-nav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
+
+  /* ===== Sources (Amendment A-18 — component.settings.sources) ===== */
+  .source-group { margin-bottom: 40px; }
+  .source-group:last-of-type { margin-bottom: 24px; }
+  .group-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+  }
+  .group-header h2 {
+    font-family: var(--family-mono); font-size: 11px; font-weight: 600;
+    color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.10em;
+    margin: 0;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .group-header .count { font-family: var(--family-mono); font-size: 11px; color: var(--ink-faint); font-weight: 500; }
+
+  /* Source row */
+  .source-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 24px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .source-row:last-child { border-bottom: 0; }
+  .source-info { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .source-glyph {
+    width: 36px; height: 36px; flex-shrink: 0;
+    border-radius: 8px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-subtle);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--family-display); font-size: 16px; font-weight: 600;
+    color: var(--ink-secondary);
+  }
+  .source-glyph.official { color: var(--accent-terracotta); border-color: rgba(255,106,71,0.30); background: rgba(255,106,71,0.06); }
+  .source-glyph.community { color: var(--cool-public); border-color: rgba(110,126,146,0.30); background: rgba(110,126,146,0.06); }
+  .source-glyph.aggregator { color: var(--warm-personal); border-color: rgba(200,150,122,0.30); background: rgba(200,150,122,0.06); }
+  .source-glyph.crawled { color: var(--ink-muted); }
+  .source-meta { min-width: 0; }
+  .source-name { font-size: 14px; font-weight: 600; color: var(--ink-primary); display: inline-flex; align-items: center; gap: 8px; }
+  .source-name .check-badge {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent-terracotta); color: var(--ink-inverse);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .source-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+
+  /* Reliability dots (Amendment A-18 — 1–5 ink-primary, NOT terracotta) */
+  .reliability {
+    display: inline-flex; flex-direction: column; align-items: center; gap: 4px;
+    flex-shrink: 0;
+  }
+  .reliability .dots { display: inline-flex; gap: 3px; }
+  .reliability .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); }
+  .reliability .dot.on { background: var(--ink-primary); }
+  .reliability .label { font-family: var(--family-mono); font-size: 10px; color: var(--ink-muted); letter-spacing: 0.04em; }
+
+  /* Source-mute control (Amendment A-18 — component.control.source-mute) */
+  .source-mute {
+    display: inline-flex;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 3px;
+    flex-shrink: 0;
+  }
+  .source-mute button {
+    padding: 7px 12px; border-radius: 7px; font-size: 12px;
+    color: var(--ink-muted); font-weight: 500;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  .source-mute button:hover { color: var(--ink-secondary); }
+  .source-mute button.selected {
+    background: var(--ink-primary); color: var(--ink-inverse);
+  }
+  .source-mute button.muted.selected {
+    background: var(--ink-faint); color: var(--ink-muted);
+  }
+
+  /* Bulk reset footer */
+  .bulk-footer { padding: 24px 0 32px; }
+  .bulk-footer .ghost {
+    padding: 8px 14px; border-radius: 8px; font-size: 13px;
+    color: var(--ink-secondary); border: 1px solid var(--border-subtle);
+    font-weight: 500;
+  }
+  .bulk-footer .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .bulk-footer .note { font-size: 12px; color: var(--ink-muted); margin: 0 0 16px; line-height: 1.5; max-width: 720px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>Digest</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Timeline</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>Browse</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>Conflicts</a>
+    <a href="#" class="nav-item active" aria-current="page"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <header class="pagehead">
+      <h1>Sources</h1>
+      <p class="sub">Every event in your digest comes from a source. We group them so you can see who's informing your timeline, mute what you don't want, and trust what you keep.</p>
+      <div class="legend" aria-label="Reliability legend">
+        <span class="legend-item"><span class="legend-dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span></span> 5 = trusted</span>
+        <span class="legend-item"><span class="legend-dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></span> 3 = ok</span>
+        <span class="legend-item"><span class="legend-dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></span> 1 = low coverage</span>
+      </div>
+    </header>
+
+    <nav class="section-nav" aria-label="Settings sections">
+      <a href="#">Appearance</a><a href="#">Notifications</a><a href="#">Quiet hours</a>
+      <a href="#">Calendar sync</a><a href="#">Account</a><a href="#">Plan</a>
+      <a href="#">Privacy</a><a href="#" class="active">Sources</a>
+    </nav>
+
+    <!-- ===== GROUP 1 — Official ===== -->
+    <section class="source-group">
+      <div class="group-header">
+        <h2>Official <span class="count">3 sources</span></h2>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph official" aria-hidden="true">Bb</div>
+          <div class="source-meta">
+            <div class="source-name">Barbican Centre <span class="check-badge" title="Verified by EventPulse24" aria-label="Verified">✓</span></div>
+            <div class="source-sub">Performing arts · venue · London, UK</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="5 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span></div>
+          <span class="label">trust · 5</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for Barbican Centre">
+          <button>Mute</button>
+          <button>Show less</button>
+          <button class="selected" aria-pressed="true">Default</button>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph official" aria-hidden="true">St</div>
+          <div class="source-meta">
+            <div class="source-name">Stone Theatre <span class="check-badge" title="Verified by EventPulse24" aria-label="Verified">✓</span></div>
+            <div class="source-sub">Live music · venue · Brooklyn, NY</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="5 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span></div>
+          <span class="label">trust · 5</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for Stone Theatre">
+          <button>Mute</button>
+          <button>Show less</button>
+          <button class="selected" aria-pressed="true">Default</button>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph official" aria-hidden="true">Mo</div>
+          <div class="source-meta">
+            <div class="source-name">MoMA PS1 <span class="check-badge" title="Verified by EventPulse24" aria-label="Verified">✓</span></div>
+            <div class="source-sub">Museum · Long Island City, NY</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="4 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span></div>
+          <span class="label">trust · 4</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for MoMA PS1">
+          <button>Mute</button>
+          <button>Show less</button>
+          <button class="selected" aria-pressed="true">Default</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== GROUP 2 — Community ===== -->
+    <section class="source-group">
+      <div class="group-header">
+        <h2>Community <span class="count">2 sources</span></h2>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph community" aria-hidden="true">N4</div>
+          <div class="source-meta">
+            <div class="source-name">NYC Open Mic Calendar</div>
+            <div class="source-sub">Community-maintained · 14 contributors</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="3 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+          <span class="label">trust · 3</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for NYC Open Mic">
+          <button>Mute</button>
+          <button class="selected" aria-pressed="true">Show less</button>
+          <button>Default</button>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph community" aria-hidden="true">BL</div>
+          <div class="source-meta">
+            <div class="source-name">BK Listings</div>
+            <div class="source-sub">Community-maintained · 7 contributors</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="3 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+          <span class="label">trust · 3</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for BK Listings">
+          <button>Mute</button>
+          <button>Show less</button>
+          <button class="selected" aria-pressed="true">Default</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== GROUP 3 — Aggregator ===== -->
+    <section class="source-group">
+      <div class="group-header">
+        <h2>Aggregator <span class="count">2 sources</span></h2>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph aggregator" aria-hidden="true">Ev</div>
+          <div class="source-meta">
+            <div class="source-name">Eventbrite City Filter</div>
+            <div class="source-sub">Aggregator · covers 1,200 venues in 9 cities</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="4 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span></div>
+          <span class="label">trust · 4</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for Eventbrite">
+          <button>Mute</button>
+          <button>Show less</button>
+          <button class="selected" aria-pressed="true">Default</button>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph aggregator" aria-hidden="true">Me</div>
+          <div class="source-meta">
+            <div class="source-name">Meetup Public Events</div>
+            <div class="source-sub">Aggregator · 47 active groups near you</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="3 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+          <span class="label">trust · 3</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for Meetup">
+          <button class="muted selected" aria-pressed="true">Mute</button>
+          <button>Show less</button>
+          <button>Default</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== GROUP 4 — Crawled ===== -->
+    <section class="source-group">
+      <div class="group-header">
+        <h2>Crawled <span class="count">3 sources</span></h2>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph crawled" aria-hidden="true">Gr</div>
+          <div class="source-meta">
+            <div class="source-name">Greenpoint List crawl</div>
+            <div class="source-sub">Site-scraped · updated weekly · last crawl 2d ago</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="2 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <span class="label">trust · 2</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for Greenpoint List">
+          <button>Mute</button>
+          <button class="selected" aria-pressed="true">Show less</button>
+          <button>Default</button>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph crawled" aria-hidden="true">RB</div>
+          <div class="source-meta">
+            <div class="source-name">Reader's Bulletin board</div>
+            <div class="source-sub">Site-scraped · updated daily · last crawl 6h ago</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="1 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <span class="label">trust · 1</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for Reader's Bulletin">
+          <button class="muted selected" aria-pressed="true">Mute</button>
+          <button>Show less</button>
+          <button>Default</button>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <div class="source-info">
+          <div class="source-glyph crawled" aria-hidden="true">Qu</div>
+          <div class="source-meta">
+            <div class="source-name">QuietRoom calendar</div>
+            <div class="source-sub">Site-scraped · updated weekly · last crawl 4d ago</div>
+          </div>
+        </div>
+        <div class="reliability" aria-label="2 of 5 reliability">
+          <div class="dots"><span class="dot on"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <span class="label">trust · 2</span>
+        </div>
+        <div class="source-mute" role="group" aria-label="Mute controls for QuietRoom">
+          <button>Mute</button>
+          <button>Show less</button>
+          <button class="selected" aria-pressed="true">Default</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Bulk reset footer ===== -->
+    <div class="bulk-footer">
+      <p class="note">Tap "Restore all defaults" to reset every source to its default visibility. We ask once before applying — this clears custom mutes across the board.</p>
+      <button class="ghost" aria-label="Restore default visibility for all sources">Restore all defaults</button>
+    </div>
+  </main>
+</div>
+</body>
+</html>

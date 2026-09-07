@@ -1,0 +1,285 @@
+<!--
+  EventPulse24 — Unified Timeline (Desktop, 1280px) — DARK THEME
+  FR-32 / Amendment A-8 — Week view, Personal + Public, read-only.
+  Sidebar nav (component.sidenav.app) on desktop; topbar stays brand-only.
+  Week: Mon Sep 7 – Sun Sep 13, 2026.
+  Two active conflicts: Tue (work standup vs. coffee chat) and Fri (birthday dinner vs. poetry reading).
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Timeline</title>
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:        #0A0A0B;
+    --surface-elevated:     #131316;
+    --surface-subtle:       #1B1B1F;
+    --surface-inset:        #232328;
+    --ink-primary:          #F2F2F4;
+    --ink-secondary:        #C9C9CF;
+    --ink-muted:            #8A8A92;
+    --ink-faint:            #3A3A40;
+    --ink-inverse:          #0A0A0B;
+    --accent-terracotta:    #FF6A47;
+    --accent-slate:         #6E7E92;
+    --warm-personal:        #C8967A;
+    --warn-amber:           #D8A86A;
+    --border-subtle:        rgba(242, 242, 244, 0.08);
+    --border-strong:        rgba(242, 242, 244, 0.16);
+
+    --family-display: "Source Serif 4", Fraunces, Georgia, serif;
+    --family-body:    "Inter", -apple-system, system-ui, sans-serif;
+
+    --container-max: 1180px;
+    --sidenav-w: 240px;
+    --page-pad: 32px;
+    --r-timeline-cell: 10px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  /* ===== Layout shell ===== */
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  /* ===== Topbar (brand-only, topbar-quiet rule) ===== */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  /* ===== Sidebar (component.sidenav.app) ===== */
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  /* Sidenav footer — search + account pinned to the bottom of the rail.
+     Lives in the sidenav (not the topbar) per topbar-quiet rule. The rail is
+     `display: flex; flex-direction: column`, so `margin-top: auto` on this block
+     pushes it to the bottom of the 100vh rail. */
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Page header ===== */
+  .page-head { display: flex; align-items: end; justify-content: space-between; margin: 24px 0 20px; }
+  .page-head h1 { font-family: var(--family-display); font-size: 32px; font-weight: 600; margin: 0; color: var(--ink-primary); letter-spacing: -0.015em; }
+  .page-head .sub { font-size: 13px; color: var(--ink-muted); margin-top: 4px; }
+
+  .week-nav { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-elevated); }
+  .week-nav button { width: 28px; height: 28px; border-radius: 6px; color: var(--ink-secondary); display: inline-flex; align-items: center; justify-content: center; }
+  .week-nav button:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .week-nav .today-pill { padding: 4px 12px; border-radius: 6px; font-size: 12px; color: var(--ink-secondary); font-weight: 500; }
+  .week-nav .today-pill:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .week-nav .label { padding: 0 8px; font-size: 13px; color: var(--ink-primary); font-weight: 500; }
+
+  /* ===== Week grid ===== */
+  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--border-subtle); background: var(--surface-elevated); overflow: hidden; }
+  /* Per `radius.timeline-cell` (DESIGN.md §Shapes): only the first and last outer corners of the grid round (radius.timeline-cell = 10px). Inner shared edges are not rounded so the grid reads as continuous. */
+  .week .day:first-child { border-top-left-radius: var(--r-timeline-cell); border-bottom-left-radius: var(--r-timeline-cell); }
+  .week .day:last-child { border-top-right-radius: var(--r-timeline-cell); border-bottom-right-radius: var(--r-timeline-cell); border-right: none; }
+  .day { padding: 12px 10px 16px; min-height: 480px; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid var(--border-subtle); position: relative; }
+  .day .day-head { display: flex; align-items: baseline; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); }
+  .day .dow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; }
+  .day .date { font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .day.today { background: var(--surface-subtle); }
+  .day.today .date { color: var(--accent-terracotta); text-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .day .empty { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--ink-muted); font-style: italic; }
+
+  /* ===== Event block (component.timeline.event-block) ===== */
+  .event { position: relative; background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px 8px 12px; display: flex; flex-direction: column; gap: 2px; transition: background 160ms ease, border-color 160ms ease; }
+  .event::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; border-radius: 6px 0 0 6px; }
+  .event.personal::before { background: var(--warm-personal); }
+  .event.public::before { background: var(--accent-slate); }
+  .event:hover { background: var(--surface-inset); }
+  .event .name { font-size: 13px; font-weight: 500; color: var(--ink-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; }
+  .event .time { font-size: 11px; color: var(--ink-muted); }
+  .event .tag { position: absolute; top: 6px; right: 6px; font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  /* Conflict dot at top-left so the Personal/Public text label at top-right remains visible (WCAG 1.4.1 — color is never the sole carrier of meaning). */
+  .event .conflict { position: absolute; top: 4px; left: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn-amber); box-shadow: 0 0 6px rgba(216,168,106,0.6); }
+  .event.has-conflict .name { padding-right: 16px; padding-left: 12px; }
+
+  /* ===== Conflict section footer (legend) ===== */
+  .legend { display: flex; align-items: center; gap: 16px; margin-top: 20px; font-size: 12px; color: var(--ink-muted); }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .legend .swatch.personal { background: var(--warm-personal); }
+  .legend .swatch.public { background: var(--cool-public); }
+  .legend .swatch.conflict { background: var(--warn-amber); border-radius: 50%; box-shadow: 0 0 6px rgba(216,168,106,0.5); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+
+    <!-- Sidenav footer: Search + Account. Pinned to bottom of the rail via `margin-top: auto` on the wrapper.
+         Topbar stays brand-only (topbar-quiet rule). Search is a future overlay surface; Account routes to /settings. -->
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <header class="page-head">
+      <div>
+        <h1>This week</h1>
+        <div class="sub">Sep 7 – Sep 13, 2026 · Read-only · Personal and public events in one view.</div>
+      </div>
+      <div class="week-nav" role="group" aria-label="Week navigator">
+        <button aria-label="Previous week">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span class="label">Sep 7 – Sep 13</span>
+        <span class="today-pill">Today</span>
+        <button aria-label="Next week">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="week" aria-label="Week of Sep 7 to Sep 13, 2026">
+      <div class="day">
+        <div class="day-head"><span class="dow">Mon</span><span class="date">7</span></div>
+        <div class="empty">Quiet day.</div>
+      </div>
+
+      <div class="day today" aria-current="date">
+        <div class="day-head"><span class="dow">Tue</span><span class="date">8</span></div>
+        <div class="event personal has-conflict" tabindex="0" aria-label="Work standup 9:00 AM, Personal. Schedule conflict.">
+          <span class="conflict" aria-hidden="true"></span>
+          <span class="name">Work standup</span>
+          <span class="time">9:00 – 9:30 AM</span>
+        </div>
+        <div class="event public has-conflict" tabindex="0" aria-label="Designers coffee chat 9:15 AM, Public event. Schedule conflict.">
+          <span class="conflict" aria-hidden="true"></span>
+          <span class="name">Designers coffee chat</span>
+          <span class="time">9:15 – 10:30 AM</span>
+        </div>
+        <div class="event personal" tabindex="0" aria-label="Yoga 6:30 PM, Personal.">
+          <span class="tag">Personal</span>
+          <span class="name">Yoga · Williamsburg</span>
+          <span class="time">6:30 – 7:30 PM</span>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="day-head"><span class="dow">Wed</span><span class="date">9</span></div>
+        <div class="empty">Quiet day.</div>
+      </div>
+
+      <div class="day">
+        <div class="day-head"><span class="dow">Thu</span><span class="date">10</span></div>
+        <div class="event public" tabindex="0" aria-label="Free tech meetup 7:00 PM, Public event.">
+          <span class="tag">Public</span>
+          <span class="name">Free tech meetup</span>
+          <span class="time">7:00 – 9:00 PM</span>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="day-head"><span class="dow">Fri</span><span class="date">11</span></div>
+        <div class="event personal" tabindex="0" aria-label="Work standup 9:00 AM, Personal.">
+          <span class="tag">Personal</span>
+          <span class="name">Work standup</span>
+          <span class="time">9:00 – 9:30 AM</span>
+        </div>
+        <div class="event personal has-conflict" tabindex="0" aria-label="Sam's birthday dinner 7:00 PM, Personal. Schedule conflict.">
+          <span class="conflict" aria-hidden="true"></span>
+          <span class="name">Sam's birthday dinner</span>
+          <span class="time">7:00 – 9:30 PM · Lilia</span>
+        </div>
+        <div class="event public has-conflict" tabindex="0" aria-label="Poetry reading 7:15 PM, Public event. Schedule conflict.">
+          <span class="conflict" aria-hidden="true"></span>
+          <span class="name">Poetry reading · Greenlight</span>
+          <span class="time">7:15 – 8:30 PM</span>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="day-head"><span class="dow">Sat</span><span class="date">12</span></div>
+        <div class="event personal" tabindex="0" aria-label="Anniversary dinner 8:30 PM, Personal.">
+          <span class="tag">Personal</span>
+          <span class="name">Anniversary dinner · Rahul</span>
+          <span class="time">8:30 – 10:30 PM · Hart's</span>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="day-head"><span class="dow">Sun</span><span class="date">13</span></div>
+        <div class="event public" tabindex="0" aria-label="Free comedy show 4:00 PM, Public event.">
+          <span class="tag">Public</span>
+          <span class="name">Free comedy show</span>
+          <span class="time">4:00 – 5:30 PM · Knit</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="legend" aria-label="Legend">
+      <span class="item"><span class="swatch personal"></span> Personal event</span>
+      <span class="item"><span class="swatch public"></span> Public event</span>
+      <span class="item"><span class="swatch conflict"></span> Schedule conflict</span>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

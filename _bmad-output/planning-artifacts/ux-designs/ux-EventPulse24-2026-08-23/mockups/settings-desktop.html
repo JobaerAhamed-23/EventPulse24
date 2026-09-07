@@ -1,6 +1,8 @@
 <!--
   EventPulse24 — Settings (Desktop) — DARK THEME
   Theme, quiet hours, digest time, account, privacy, pro.
+  Amendment A-13 — Ranking algorithm amendment-history timeline inlined into #privacy §Amendment history.
+  Amendment A-14 — Geo-IP consent toggle inlined into #privacy (above Training opt-out).
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -16,37 +18,68 @@
     --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
     --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
     --accent-terracotta:#FF6A47; --accent-amber:#E89B4A;
+    --warm-personal:#C8967A; --cool-public:#6E7E92; --warn-amber:#D8A86A;
+    --signal-success:#7AAA7A;
     --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
     --family-display:"Source Serif 4",Fraunces,Georgia,serif;
     --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --container-max:1180px;
+    --sidenav-w:240px;
+    --page-pad:32px;
   }
   *,*::before,*::after { box-sizing: border-box; }
   html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  a { color: inherit; text-decoration: none; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
-  .frame { padding: 0 80px; min-height: 100vh; }
-  .container { max-width: 1180px; margin: 0 auto; padding: 24px 0 80px; }
+  /* ===== Layout shell (Amendment A-8) ===== */
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
 
-  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 32px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; }
-  .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  /* ===== Topbar (brand-only — topbar-quiet rule) ===== */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
 
-  .grid { display: grid; grid-template-columns: 220px 1fr; gap: 48px; }
-  .sidenav { position: sticky; top: 24px; align-self: start; }
-  .sidenav h1 { font-family: var(--family-display); font-size: 28px; font-weight: 700; margin: 0 0 18px; color: var(--ink-primary); letter-spacing: -0.01em; }
-  .sidenav ul { list-style: none; padding: 0; margin: 0; }
-  .sidenav li { margin-bottom: 2px; }
-  .sidenav a { display: block; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-muted); font-weight: 500; }
-  .sidenav a:hover { color: var(--ink-secondary); background: var(--surface-subtle); }
-  .sidenav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
+  /* ===== Sidebar (Component.Sidenav.App) ===== */
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  /* Sidenav footer — search + account pinned to bottom */
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Page header ===== */
+  .pagehead { padding: 40px 0 32px; }
+  .pagehead h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.015em; }
+  .pagehead .sub { font-size: 13px; color: var(--ink-muted); margin: 0; }
+
+  /* ===== In-page section nav (replaces old in-page sidenav) ===== */
+  .section-nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 0 24px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 32px; }
+  .section-nav a { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-muted); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .section-nav a:hover { background: var(--surface-subtle); color: var(--ink-secondary); }
+  .section-nav a.active { color: var(--ink-primary); background: var(--surface-subtle); }
 
   .section { padding-bottom: 32px; margin-bottom: 32px; border-bottom: 1px solid var(--border-subtle); }
   .section:last-child { border-bottom: 0; }
   .section h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 16px; color: var(--ink-primary); }
   .section .desc { font-size: 13px; color: var(--ink-muted); margin: -8px 0 18px; line-height: 1.5; }
 
-  .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); gap: 16px; }
   .row:first-of-type { border-top: 0; padding-top: 0; }
+  .row-label { min-width: 0; }
   .row-label strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
   .row-label span { font-size: 12px; color: var(--ink-muted); line-height: 1.4; }
 
@@ -56,10 +89,20 @@
   .theme-pick button.active { background: var(--accent-terracotta); color: var(--ink-inverse); }
 
   /* Switch */
-  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--surface-inset); position: relative; transition: background 160ms; }
+  .switch { width: 38px; height: 22px; border-radius: 9999px; background: var(--surface-inset); position: relative; transition: background 160ms; flex-shrink: 0; }
   .switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--ink-secondary); top: 3px; left: 3px; transition: transform 160ms; }
   .switch.on { background: var(--accent-terracotta); }
   .switch.on::after { transform: translateX(16px); background: var(--ink-primary); }
+
+  /* Geo-IP toggle (Amendment A-14) — 2-position segmented, ink-inversion selected */
+  .geo-toggle { display: flex; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 3px; flex-shrink: 0; }
+  .geo-toggle button { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-muted); transition: background 160ms ease, color 160ms ease; }
+  .geo-toggle button.active { background: var(--ink-primary); color: var(--ink-inverse); }
+  .geo-toggle button:hover:not(.active) { color: var(--ink-secondary); }
+
+  /* Inline-meta link — used under the geo-toggle off-state hint */
+  .inline-meta { font-size: 12px; color: var(--ink-muted); }
+  .inline-meta:hover { color: var(--ink-secondary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
 
   /* Time input */
   .time-row { display: flex; align-items: center; gap: 10px; }
@@ -72,149 +115,404 @@
   .pro-card p { font-size: 13px; color: var(--ink-secondary); margin: 0; }
   .pro-card .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; }
 
-  /* Account */
-  .account { display: flex; gap: 14px; align-items: center; }
-  .avatar { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 14px; font-weight: 600; }
+  /* Account (in-page card) */
+  .account { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+  .account .avatar-lg { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 14px; font-weight: 600; flex-shrink: 0; }
   .account strong { font-size: 14px; color: var(--ink-primary); display: block; }
   .account span { font-size: 12px; color: var(--ink-muted); }
 
-  .ghost { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .ghost { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); transition: background 160ms ease, color 160ms ease; }
   .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
   .danger { color: var(--accent-terracotta); font-size: 13px; font-weight: 500; }
+
+  /* Visually-hidden helper (a11y) */
+  .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+  /* ===== Privacy section: data inventory, ranking transparency (FR-22) ===== */
+  /* Version card — surfaces current ranking weights and last-amendment date */
+  .version-card { background: linear-gradient(135deg, rgba(255,106,71,0.06), rgba(110,126,146,0.06)); border: 1px solid rgba(255,106,71,0.25); border-radius: 12px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .version-card .left .pill { display: inline-block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-terracotta); background: rgba(255,106,71,0.10); padding: 4px 10px; border-radius: 4px; font-weight: 600; margin-bottom: 8px; }
+  .version-card h3 { font-family: var(--family-display); font-size: 18px; font-weight: 600; margin: 0 0 4px; color: var(--ink-primary); }
+  .version-card p { font-size: 13px; color: var(--ink-secondary); margin: 0; }
+  .version-card p code { font-family: var(--family-mono); color: var(--ink-primary); font-size: 12px; }
+  .version-card .links { display: flex; gap: 12px; flex-shrink: 0; }
+  .version-card .links a { font-size: 13px; color: var(--accent-terracotta); text-decoration: underline; text-decoration-color: rgba(255,106,71,0.4); text-underline-offset: 3px; }
+
+  /* Formula block */
+  .formula { background: var(--surface-subtle); border-radius: 10px; padding: 16px 20px; font-family: var(--family-mono); font-size: 13px; line-height: 1.85; color: var(--ink-secondary); margin: 12px 0 24px; overflow-x: auto; }
+  .formula .num { color: var(--accent-terracotta); }
+  .formula .op { color: var(--ink-muted); }
+
+  /* Weights table */
+  .weights { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+  .weights th, .weights td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+  .weights th { font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .weights td { color: var(--ink-secondary); vertical-align: top; }
+  .weights td.weight { font-family: var(--family-mono); color: var(--accent-terracotta); font-weight: 600; }
+  .weights td.component { font-family: var(--family-mono); color: var(--ink-primary); }
+  .weights td.desc { font-size: 12px; color: var(--ink-muted); line-height: 1.5; }
+
+  /* Stacked weight bar (visual summary of the weights table) */
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 16px 0 8px; background: var(--surface-inset); }
+  .bar .seg { height: 100%; }
+  .bar-legend { display: flex; gap: 18px; font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); margin-bottom: 20px; flex-wrap: wrap; }
+  .bar-legend .item { display: flex; align-items: center; gap: 6px; }
+  .bar-legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* Pledge card */
+  .pledge { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px 24px; margin-top: 24px; }
+  .pledge h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 0 0 12px; color: var(--ink-primary); }
+  .pledge ul { list-style: none; padding: 0; margin: 0; }
+  .pledge li { display: flex; gap: 12px; padding: 8px 0; font-size: 13px; color: var(--ink-secondary); line-height: 1.5; }
+  .pledge li .check { color: var(--signal-success); flex-shrink: 0; font-size: 14px; line-height: 1.5; }
+  .pledge li strong { color: var(--ink-primary); font-weight: 500; }
+
+  /* Sub-section heading inside a section (e.g., "Formula" under "How Pulse ranks") */
+  .sub-h { font-family: var(--family-display); font-size: 15px; font-weight: 600; margin: 24px 0 8px; color: var(--ink-primary); letter-spacing: -0.01em; }
+
+  /* Amendment-history timeline (Amendment A-13) */
+  .timeline { list-style: none; padding: 0; margin: 12px 0 24px; border-left: 1px solid var(--border-subtle); }
+  .timeline-item { position: relative; padding: 0 0 18px 24px; }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item .dot { position: absolute; left: -4px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); }
+  .timeline-item:first-child .dot { background: var(--accent-terracotta); box-shadow: 0 0 8px rgba(255,106,71,0.45); }
+  .timeline-item .entry-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 4px; }
+  .timeline-item .entry-tag { font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-primary); text-transform: uppercase; letter-spacing: 0.06em; }
+  .timeline-item .entry-date { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); }
+  .timeline-item .entry-body { font-size: 13px; color: var(--ink-secondary); line-height: 1.5; }
+  .timeline-item .entry-body code { font-family: var(--family-mono); font-size: 12px; background: var(--surface-subtle); padding: 1px 5px; border-radius: 4px; color: var(--ink-primary); }
+  .timeline-item .entry-adr { display: inline-block; margin-top: 6px; font-family: var(--family-mono); font-size: 12px; color: var(--accent-terracotta); text-decoration: underline; text-decoration-color: rgba(255,106,71,0.4); text-underline-offset: 3px; }
+
+  /* Data inventory mini-table */
+  .inventory { width: 100%; border-collapse: collapse; margin: 12px 0 16px; }
+  .inventory th, .inventory td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+  .inventory th { font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .inventory td { color: var(--ink-secondary); }
+  .inventory td.kind { color: var(--ink-primary); font-weight: 500; }
 </style>
 </head>
 <body>
-<div class="frame">
-  <div class="container">
-    <nav class="topbar">
-      <div class="brand"><span class="dot"></span> EventPulse24</div>
-      <button class="ghost">← Back to Today</button>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+
+    <!-- Sidenav footer: Search + Account. -->
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
     </nav>
 
-    <div class="grid">
-      <aside class="sidenav">
-        <h1>Settings</h1>
+    <header class="pagehead">
+      <h1>Settings</h1>
+      <p class="sub">Theme, notifications, quiet hours, calendar sync, account, plan.</p>
+    </header>
+
+    <!-- Live region for screen-reader entry -->
+    <div role="status" aria-live="polite" class="visually-hidden">Settings page loaded.</div>
+
+    <!-- In-page section nav — replaces the old in-page sidenav (which conflicted with the app sidenav). -->
+    <nav class="section-nav" aria-label="Settings sections">
+      <a href="#appearance" class="active">Appearance</a>
+      <a href="#notifications">Notifications</a>
+      <a href="#quiet-hours">Quiet hours</a>
+      <a href="#calendar-sync">Calendar sync</a>
+      <a href="#account">Account</a>
+      <a href="#plan">Plan</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#danger-zone">Danger zone</a>
+    </nav>
+
+    <section class="section" id="appearance">
+      <h2>Appearance</h2>
+      <p class="desc">Pick how EventPulse24 looks. Dark mode is recommended for low-light reading.</p>
+      <div class="row">
+        <div class="row-label"><strong>Theme</strong><span>Dark is default. Light is available.</span></div>
+        <div class="theme-pick" role="radiogroup" aria-label="Theme">
+          <button class="active" role="radio" aria-checked="true">Dark</button>
+          <button role="radio" aria-checked="false">Light</button>
+          <button role="radio" aria-checked="false">System</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Reduce motion</strong><span>Disable fades and skeleton animations.</span></div>
+        <div class="switch" role="switch" aria-checked="false"></div>
+      </div>
+    </section>
+
+    <section class="section" id="notifications">
+      <h2>Notifications</h2>
+      <p class="desc">One calm Pulse Ping per day, plus per-event reminders you turn on.</p>
+      <div class="row">
+        <div class="row-label"><strong>Pulse Ping delivery time</strong><span>Your daily brief, one tap away.</span></div>
+        <div class="time-row">
+          <input class="time-input" value="8:00" />
+          <button class="ghost">AM</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Timezone</strong><span>Auto-detected from your device.</span></div>
+        <button class="ghost">America/New_York (EDT) →</button>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Email reminders</strong><span>Multi-tier reminders for events you save.</span></div>
+        <div class="switch on" role="switch" aria-checked="true"></div>
+      </div>
+    </section>
+
+    <section class="section" id="quiet-hours">
+      <h2>Quiet hours</h2>
+      <p class="desc">No notifications or emails during this window. Free tier = one window. Pro = per day-of-week.</p>
+      <div class="row">
+        <div class="row-label"><strong>Daily quiet hours</strong><span>10:00 PM – 7:00 AM</span></div>
+        <div class="time-row">
+          <input class="time-input" value="22:00" />
+          <span style="color: var(--ink-muted);">→</span>
+          <input class="time-input" value="07:00" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Per-day quiet hours</strong><span>Pro — e.g., no pings Sat morning.</span></div>
+        <button class="ghost">Upgrade to Pro →</button>
+      </div>
+    </section>
+
+    <section class="section" id="calendar-sync">
+      <h2>Calendar sync</h2>
+      <p class="desc">Connect a calendar to see personal events alongside public ones. Read-only.</p>
+      <div class="row">
+        <div class="row-label"><strong>Google Calendar</strong><span style="color: var(--signal-success);">● Connected as maya@gmail.com</span></div>
+        <button class="ghost">Disconnect</button>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Apple Calendar</strong><span>Pro — Phase 2</span></div>
+        <button class="ghost">Join waitlist</button>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Outlook Calendar</strong><span>Pro — Phase 2</span></div>
+        <button class="ghost">Join waitlist</button>
+      </div>
+    </section>
+
+    <section class="section" id="account">
+      <h2>Account</h2>
+      <div class="account">
+        <div class="avatar-lg">MP</div>
+        <div>
+          <strong>Maya Patel</strong>
+          <span>maya@gmail.com · Free tier</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="privacy" aria-labelledby="privacy-h">
+      <h2 id="privacy-h">Privacy</h2>
+      <p class="desc">Data inventory, export, deletion, training opt-out, and ranking transparency (FR-22).</p>
+
+      <div class="row">
+        <div class="row-label"><strong>What we store</strong><span>Your data, in plain language.</span></div>
+      </div>
+      <table class="inventory" aria-label="Data inventory">
+        <thead>
+          <tr><th>Kind</th><th>Examples</th><th>Retained</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="kind">Account</td><td>Name, email, OAuth tokens (encrypted)</td><td>While account is active</td></tr>
+          <tr><td class="kind">Personal events</td><td>Title, time, location, notes you add</td><td>While account is active</td></tr>
+          <tr><td class="kind">Saved public events</td><td>Event IDs you tapped Save on</td><td>While account is active</td></tr>
+          <tr><td class="kind">Preference Graph</td><td>Saves, swipes, dismissals, dwell signals</td><td>While account is active</td></tr>
+          <tr><td class="kind">Aggregated analytics</td><td>Anonymous, no user IDs</td><td>Indefinitely</td></tr>
+        </tbody>
+      </table>
+
+      <div class="row">
+        <div class="row-label"><strong>Training opt-out</strong><span>Your events never train any model.</span></div>
+        <div class="switch on" role="switch" aria-checked="true"></div>
+      </div>
+      <!-- ===== Amendment A-14 — Geo-IP consent toggle ===== -->
+      <div class="row">
+        <div class="row-label"><strong>Use my approximate location</strong><span>Helps us default to events in your city.</span></div>
+        <div class="geo-toggle" role="radiogroup" aria-label="Geo-IP location usage">
+          <button class="active" role="radio" aria-checked="true">On</button>
+          <button role="radio" aria-checked="false">Off</button>
+        </div>
+      </div>
+      <p class="desc" style="margin: -4px 0 8px; padding-left: 0;">If off, we'll show events from the most popular city instead. <a href="#" class="inline-meta">Change city →</a></p>
+      <div class="row">
+        <div class="row-label"><strong>Source your data</strong><span>Download JSON + ICS archive. Link delivered to your inbox.</span></div>
+        <button class="ghost">Request export</button>
+      </div>
+
+      <!-- Ranking algorithm version (PRD §FR-22, locked principle) -->
+      <div class="version-card">
+        <div class="left">
+          <span class="pill">Ranking algorithm version</span>
+          <h3>v1.0 · MVP launch</h3>
+          <p>Locked at launch · last amended <code>2026-08-29</code> · 0 user-visible changes since</p>
+        </div>
+        <div class="links">
+          <a href="#">ADR-0022 ↗</a>
+          <a href="#">Diff history ↗</a>
+        </div>
+      </div>
+
+      <h3 class="sub-h">How Pulse ranks your events</h3>
+      <p class="desc" style="margin-top:0;">Every Pulse Card shows a <strong>1–5 Confidence Pulse</strong>. The dots reflect how strongly this event matches your personal relevance score. The formula and weights below are <strong>public and locked</strong> — you can compute the Confidence Pulse for any event given its inputs.</p>
+
+      <h3 class="sub-h">Formula</h3>
+      <div class="formula" aria-label="Relevance score formula">
+<span class="op">relevance_score =</span> <span class="num">0.40</span> <span class="op">×</span> preference_graph_match
++ <span class="num">0.25</span> <span class="op">×</span> source_reliability
++ <span class="num">0.20</span> <span class="op">×</span> recency_fit
++ <span class="num">0.15</span> <span class="op">×</span> novelty_vs_exploration
+      </div>
+
+      <h3 class="sub-h">Component weights</h3>
+      <div class="bar" aria-hidden="true">
+        <div class="seg" style="width: 40%; background: var(--accent-terracotta);"></div>
+        <div class="seg" style="width: 25%; background: var(--accent-amber);"></div>
+        <div class="seg" style="width: 20%; background: var(--accent-slate);"></div>
+        <div class="seg" style="width: 15%; background: var(--ink-muted);"></div>
+      </div>
+      <div class="bar-legend">
+        <span class="item"><span class="swatch" style="background: var(--accent-terracotta);"></span> preference_graph_match · 40%</span>
+        <span class="item"><span class="swatch" style="background: var(--accent-amber);"></span> source_reliability · 25%</span>
+        <span class="item"><span class="swatch" style="background: var(--accent-slate);"></span> recency_fit · 20%</span>
+        <span class="item"><span class="swatch" style="background: var(--ink-muted);"></span> novelty_vs_exploration · 15%</span>
+      </div>
+
+      <table class="weights">
+        <thead>
+          <tr><th>Component</th><th>Weight</th><th>What it measures</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="component">preference_graph_match</td><td class="weight">0.40</td><td class="desc">How well this event fits your behavior-derived Preference Graph (dwell, saves, swipes, dismissals). Cold-start fallback: Bayesian-smoothed popularity.</td></tr>
+          <tr><td class="component">source_reliability</td><td class="weight">0.25</td><td class="desc">Per-Source reliability score (β-binomial, prior α=5 β=5). Drops ranking, never removes a source.</td></tr>
+          <tr><td class="component">recency_fit</td><td class="weight">0.20</td><td class="desc">How well the event's start time aligns with your typical engagement windows. Freshness boost: ≤24h ×1.5, 1–3d ×1.2, ≥3d ×1.0.</td></tr>
+          <tr><td class="component">novelty_vs_exploration</td><td class="weight">0.15</td><td class="desc">Balances familiarity (similar to past saves) against exploration (outside usual categories). Serendipity card always gets this boost.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub-h">How scores map to dots</h3>
+      <p class="desc" style="margin-top:0;">The <strong>Confidence Pulse</strong> on each Pulse Card uses these bucket boundaries. A change in <code>relevance_score</code> that doesn't cross a bucket does NOT change the displayed dots (no-flicker rule, ±0.02 hysteresis).</p>
+      <table class="weights">
+        <thead>
+          <tr><th>Score</th><th>Dots</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="component">≥ 0.85</td><td class="weight">●●●●●</td><td class="desc">5/5 · very strong match</td></tr>
+          <tr><td class="component">≥ 0.65</td><td class="weight">●●●●○</td><td class="desc">4/5 · strong match</td></tr>
+          <tr><td class="component">≥ 0.45</td><td class="weight">●●●○○</td><td class="desc">3/5 · moderate match</td></tr>
+          <tr><td class="component">≥ 0.25</td><td class="weight">●●○○○</td><td class="desc">2/5 · light match</td></tr>
+          <tr><td class="component">&lt; 0.25</td><td class="weight">●○○○○</td><td class="desc">1/5 · weak / serendipity</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ===== Amendment A-13 — ranking amendment-history timeline ===== -->
+      <h3 class="sub-h">Amendment history</h3>
+      <p class="desc" style="margin-top:0;">The ranking algorithm is <strong>locked at MVP launch</strong>. Future amendments require a PRD change with explicit product sign-off. Each entry below is permanent and links to its decision record.</p>
+      <ol class="timeline" aria-label="Ranking algorithm amendment history">
+        <li class="timeline-item">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="entry">
+            <div class="entry-head">
+              <span class="entry-tag">v1.0 · MVP launch</span>
+              <span class="entry-date">2026-08-29</span>
+            </div>
+            <div class="entry-body">Weights locked at <code>w1=0.40 · w2=0.25 · w3=0.20 · w4=0.15</code>. Hysteresis ±0.02 on bucket boundaries. No A/B testing on live users — shadow composition only.</div>
+            <a href="#" class="entry-adr">ADR-0022 ↗</a>
+          </div>
+        </li>
+        <li class="timeline-item">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="entry">
+            <div class="entry-head">
+              <span class="entry-tag">pre-launch review</span>
+              <span class="entry-date">2026-08-19</span>
+            </div>
+            <div class="entry-body">Initial formula + weights reviewed against calm principle. Added pledge block; rejected gamification chrome (streaks, leaderboards).</div>
+            <a href="#" class="entry-adr">ADR-0020 ↗</a>
+          </div>
+        </li>
+      </ol>
+
+      <h3 class="sub-h">Our pledge on ranking</h3>
+      <div class="pledge">
         <ul>
-          <li><a href="#" class="active">General</a></li>
-          <li><a href="#">Notifications</a></li>
-          <li><a href="#">Quiet hours</a></li>
-          <li><a href="#">Calendar sync</a></li>
-          <li><a href="#">Privacy</a></li>
-          <li><a href="#">Account</a></li>
-          <li><a href="#">Data &amp; export</a></li>
-          <li><a href="#">About</a></li>
+          <li><span class="check" aria-hidden="true">✓</span><span><strong>No A/B testing on live users.</strong> All weight experimentation happens in shadow composition, off the user's screen.</span></li>
+          <li><span class="check" aria-hidden="true">✓</span><span><strong>No hidden ranking.</strong> The formula and weights are public. They are the PRD, not a secret.</span></li>
+          <li><span class="check" aria-hidden="true">✓</span><span><strong>No dark patterns.</strong> No "trending now" boards. No urgency badges. No "Don't miss out!"</span></li>
+          <li><span class="check" aria-hidden="true">✓</span><span><strong>Calm &gt; engagement.</strong> The business model is misaligned with the engagement metric — and that's the moat.</span></li>
         </ul>
-      </aside>
+      </div>
+    </section>
 
-      <main>
-        <section class="section">
-          <h2>Appearance</h2>
-          <p class="desc">Pick how EventPulse24 looks. Dark mode is recommended for low-light reading.</p>
-          <div class="row">
-            <div class="row-label"><strong>Theme</strong><span>Dark is default. Light is available.</span></div>
-            <div class="theme-pick" role="radiogroup" aria-label="Theme">
-              <button class="active" role="radio" aria-checked="true">Dark</button>
-              <button role="radio" aria-checked="false">Light</button>
-              <button role="radio" aria-checked="false">System</button>
-            </div>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Reduce motion</strong><span>Disable fades and skeleton animations.</span></div>
-            <div class="switch" role="switch" aria-checked="false"></div>
-          </div>
-        </section>
+    <section class="section" id="plan">
+      <h2>Plan</h2>
+      <div class="pro-card">
+        <div>
+          <span class="pill">Pro · $4.99/mo</span>
+          <h3>Unlimited saves, custom quiet hours, calendar sync.</h3>
+          <p>You saved 1 of 1 this week. The next one will nudge.</p>
+        </div>
+        <button class="btn-primary">Upgrade →</button>
+      </div>
+    </section>
 
-        <section class="section">
-          <h2>Notifications</h2>
-          <p class="desc">One calm Pulse Ping per day, plus per-event reminders you turn on.</p>
-          <div class="row">
-            <div class="row-label"><strong>Pulse Ping delivery time</strong><span>Your daily brief, one tap away.</span></div>
-            <div class="time-row">
-              <input class="time-input" value="8:00" />
-              <button class="ghost">AM</button>
-            </div>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Timezone</strong><span>Auto-detected from your device.</span></div>
-            <button class="ghost">America/New_York (EDT) →</button>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Email reminders</strong><span>Multi-tier reminders for events you save.</span></div>
-            <div class="switch on" role="switch" aria-checked="true"></div>
-          </div>
-        </section>
-
-        <section class="section">
-          <h2>Quiet hours</h2>
-          <p class="desc">No notifications or emails during this window. Free tier = one window. Pro = per day-of-week.</p>
-          <div class="row">
-            <div class="row-label"><strong>Daily quiet hours</strong><span>10:00 PM – 7:00 AM</span></div>
-            <div class="time-row">
-              <input class="time-input" value="22:00" />
-              <span style="color: var(--ink-muted);">→</span>
-              <input class="time-input" value="07:00" />
-            </div>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Per-day quiet hours</strong><span>Pro — e.g., no pings Sat morning.</span></div>
-            <button class="ghost">Upgrade to Pro →</button>
-          </div>
-        </section>
-
-        <section class="section">
-          <h2>Calendar sync</h2>
-          <p class="desc">Connect a calendar to see personal events alongside public ones. Read-only.</p>
-          <div class="row">
-            <div class="row-label"><strong>Google Calendar</strong><span style="color: var(--signal-success, #7AAA7A);">● Connected as maya@gmail.com</span></div>
-            <button class="ghost">Disconnect</button>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Apple Calendar</strong><span>Pro — Phase 2</span></div>
-            <button class="ghost">Join waitlist</button>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Outlook Calendar</strong><span>Pro — Phase 2</span></div>
-            <button class="ghost">Join waitlist</button>
-          </div>
-        </section>
-
-        <section class="section">
-          <h2>Account</h2>
-          <div class="account" style="padding: 14px 0; border-top: 1px solid var(--border-subtle);">
-            <div class="avatar">MP</div>
-            <div>
-              <strong>Maya Patel</strong>
-              <span>maya@gmail.com · Free tier</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="section">
-          <h2>Plan</h2>
-          <div class="pro-card">
-            <div>
-              <span class="pill">Pro · $4.99/mo</span>
-              <h3>Unlimited saves, custom quiet hours, calendar sync.</h3>
-              <p>You saved 1 of 1 this week. The next one will nudge.</p>
-            </div>
-            <button class="btn-primary">Upgrade →</button>
-          </div>
-        </section>
-
-        <section class="section">
-          <h2>Danger zone</h2>
-          <div class="row">
-            <div class="row-label"><strong>Export your data</strong><span>Download JSON + ICS archive.</span></div>
-            <button class="ghost">Request export</button>
-          </div>
-          <div class="row">
-            <div class="row-label"><strong>Delete account</strong><span>Permanent. Cannot be undone.</span></div>
-            <button class="danger">Delete account →</button>
-          </div>
-        </section>
-      </main>
-    </div>
-  </div>
+    <section class="section" id="danger-zone">
+      <h2>Danger zone</h2>
+      <div class="row">
+        <div class="row-label"><strong>Export your data</strong><span>Download JSON + ICS archive.</span></div>
+        <button class="ghost">Request export</button>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Delete account</strong><span>Permanent. Cannot be undone.</span></div>
+        <button class="danger">Delete account →</button>
+      </div>
+    </section>
+  </main>
 </div>
 </body>
 </html>

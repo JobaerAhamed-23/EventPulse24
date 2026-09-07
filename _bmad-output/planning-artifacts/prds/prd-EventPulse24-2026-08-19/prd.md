@@ -13,8 +13,8 @@ sources:
   - _bmad-output/blue-ocean-strategy-2026-08-19.md
   - docs/scope.txt
 amendments:
-  - 6 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source) merged on 2026-08-29
-  - 43 MVP FRs (was 41; +2 from FR-59 and FR-60); 17 named FRs for Phase 2/3+
+  - 8 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source, A-7 Calendar Connect at MVP, A-8 Timeline + Conflict-Aware at MVP) merged on 2026-09-06
+  - 45 MVP FRs (was 41; +2 from Amendment A-4 / FR-59 and FR-60, +2 from Amendment A-8 / FR-32 and FR-33); 15 named FRs for Phase 2/3+ (FR-31, FR-34 through FR-47)
 ---
 
 # PRD: EventPulse24
@@ -204,8 +204,8 @@ EventPulse24 is **not** for v1:
 - **Source Badge**: A small visual label on each Pulse Card and Detail Screen indicating the Source type. `official_site` = ✅, `community` = 👥, `aggregator` = 🔗, `user_imported` = 📥, `crawled_html` = ⚠️.
 - **Detail Screen**: The expanded view of a Pulse Card. Shows: full event description, location with map, reminder picker, share, save, dismiss, Why-this breakdown, similar events user has attended, neighbor count.
 - **Neighbor Count**: A signal on the Detail Screen showing how many other EventPulse24 users are in the same area and tracking the same event (`👥 X neighbors`). Revealed only when at least 1 qualifying user exists; absence is silent, not a zero. Privacy-respecting — no identifying information.
-- **Timeline**: A unified calendar view (Phase 2) showing Personal Events (warm tones) and Public Events (cool tones) in one week- or month-view. Conflicts highlighted, never alarmed.
-- **Personal Event**: A user-created or calendar-synced event (birthday, meeting). Exists in the user's Personal Calendar. Phase 2 surfaces a Personal Event in the Timeline; MVP surfaces it only via manual add in the EventPulse24 UI.
+- **Timeline**: A unified calendar view (MVP per Amendment A-8) showing Personal Events (warm tones) and Public Events (cool tones) in one Week view (Month and Day views deferred to Phase 3). Conflicts highlighted, never alarmed.
+- **Personal Event**: A user-created or calendar-synced event (birthday, meeting). Exists in the user's Personal Calendar. At MVP the Timeline surfaces Personal Events alongside Public Events in a read-only Week view (Amendment A-8); MVP also surfaces Personal Events via the Pulse Digest warm stripe and via the Personal Event modal.
 - **Conflict Indicator**: A small (8–10 px) filled, neutral-tone circle icon positioned at the top-right corner of the Pulse Card, indicating that the event overlaps with another event the user has saved or set a Reminder Plan for. Color is desaturated amber (#B8893D or equivalent), never red. Accompanied by `aria-label="Schedule conflict"`. Distinct in shape from the Source Badge (✅/👥/🔗/📥/⚠️) and the Confidence Pulse (● dots). The indicator is symmetric across the conflict pair (both events show it). The indicator persists after the user has explicitly chosen "Keep both" (FR-58) as a calm permanent reminder.
 - **Conflict Resolution**: A user decision on a conflict prompt, recorded as one of: `keep_both`, `edit_new`, `delete_new` (Personal-vs-Personal time conflict); or `keep_both`, `update_existing`, `delete_new` (Personal-vs-Personal duplicate). The resolution is recorded as a `ConflictResolution` value object. There is no `dismiss` resolution — the user must make an explicit choice.
 - **Public Event**: A Source-sourced event not created by the user.
@@ -216,7 +216,7 @@ EventPulse24 is **not** for v1:
 - **Voice Quick-Add**: Phase 3 feature: voice-input personal event creation. Demo magnet, niche adoption.
 - **On-Device Personal AI**: Phase 3 feature: local preference learning for personal events. Privacy + cost optimization.
 - **Why Now?**: Phase 3 feature: per-event "why should I attend this in particular" natural-language explanation (vs. Why-this Tags which explain *why surfaced*).
-- **Pro Tier**: The paid tier. **Ships at MVP launch** ($4.99/month or $49/year) with: unlimited saves + saved collections (FR-49), up to 3 connected calendar providers — Google + Apple + Outlook (FR-50), per-day-of-week custom quiet hours (FR-51), JSON+ICS data export (FR-52). Free tier caps saves (1/day) and connected providers (1 of 3); see FR-48. Phase 2 augmentation adds two-way calendar sync, Pulse the Group, Unified Timeline (FR-35).
+- **Pro Tier**: The paid tier. **Ships at MVP launch** ($4.99/month or $49/year) with: unlimited saves + saved collections (FR-49), up to 3 connected calendar providers — Google + Apple + Outlook (FR-50), per-day-of-week custom quiet hours (FR-51), JSON+ICS data export (FR-52). Free tier caps saves (1/day) and connected providers (1 of 3); see FR-48. Phase 2 augmentation adds two-way calendar sync (FR-31) and Pulse the Group (FR-34). (Unified Timeline FR-32 and Conflict-Aware Scheduling FR-33 ship at MVP per Amendment A-8 — they are no longer Phase 2 Pro Augmentation features.)
 - **Free Tier**: Unauthenticated browsing via Pulse Preview. Authenticated users on the free tier see the full Pulse Digest (3 cards/day) and can save up to **1 Pulse Card per 24-hour period**; the 2nd save action triggers a calm in-app CTA to upgrade to Pro (FR-48). Feature caps apply (see §15.1).
 - **Source Reliability Score**: Per-Source trust score (0.0–1.0) computed from extraction accuracy, user dismissal rate, and editorial review. Lowers ≠ removes a Source; changes its ranking.
 - **AI Cost Dashboard**: Internal-facing per-feature telemetry (FR-29) tracking spend on extraction, embeddings, classification, and personalization.
@@ -329,7 +329,7 @@ The system composes a Pulse Digest of 3 Pulse Cards per user per day using **slo
 - All three slots use personalized ranking with slot-specific weights. Slot weights are tracked on the AI Cost Dashboard and are subject to the static-weights rule (Amendment A-3 / FR-22).
 - Personalized ranking weights are NOT applied until the signal threshold in the deferred ADR-0007 is met.
 
-**Out of Scope:** More than 3 cards. User-configurable digest size. Per-event "I want more of this" in MVP — Phase 2 (FR-33).
+**Out of Scope:** More than 3 cards. User-configurable digest size. Per-event "I want more of this" in MVP — Phase 3 (deferred from FR-33 alongside auto-rebook; FR-33 itself ships at MVP per Amendment A-8 with the three-action pattern only).
 
 **Notes:** `[ASSUMPTION-2]` — A/B testing done via shadow composition in the AI Cost Dashboard, not live user experience. Live weights are static post-launch (Amendment A-3).
 
@@ -579,7 +579,7 @@ The Source Registry (FR-13) gains a `tz_coverage` field per source. Sources with
 
 ### 4.5 Personal Event Management
 
-**Description:** Users can create and manage personal events directly in EventPulse24. Personal events coexist with public events in the Pulse Digest. Phase 2 unifies them onto a Timeline.
+**Description:** Users can create and manage personal events directly in EventPulse24. Personal events coexist with public events in the Pulse Digest. At MVP (per Amendment A-8) the Timeline unifies them into a read-only Week view.
 
 #### FR-18: Manual Personal Event Creation
 
@@ -601,7 +601,7 @@ The user's Personal Events are eligible to appear in the Pulse Digest as a Pulse
 - A Personal Event in the Pulse Digest is visually distinct from a public event.
 - A user can opt out of personal events appearing in the Pulse Digest.
 
-**Out of Scope:** Personal event in Timeline (Phase 2 — FR-32).
+**Out of Scope:** Edit-from-Timeline (read-only at MVP per FR-32 / Amendment A-8). Drag-to-reschedule on Timeline (Phase 3). Month and Day views on Timeline (Phase 3 — FR-32 deferrals).
 
 #### FR-20: Personal Event Reminder Defaults
 
@@ -613,7 +613,7 @@ A Personal Event created with a default Reminder Plan inherits 1d + 1hr. The use
 
 #### FR-58: Personal Event Conflict Detection (revised by Amendment A-5)
 
-The system detects scheduling conflicts and likely-duplicate events at Personal Event creation time. Conflict prompts **require an explicit choice** from the user — there is no dismiss-without-resolution option. This is the minimum viable guard at MVP; Phase 2 unifies on a Timeline (FR-32). Realizes "calm" principle at the basic user-input level: the system should never let a user double-book without an explicit decision.
+The system detects scheduling conflicts and likely-duplicate events at Personal Event creation time. Conflict prompts **require an explicit choice** from the user — there is no dismiss-without-resolution option. This is the minimum viable guard at MVP; the MVP Timeline (FR-32, Amendment A-8) and the cross-event conflict pattern (FR-33, Amendment A-8) extend the guard. Realizes "calm" principle at the basic user-input level: the system should never let a user double-book without an explicit decision.
 
 **Conflict detection rules:**
 
@@ -651,7 +651,7 @@ For duplicate-detection prompts, option 2 is relabeled **"Update the existing on
 - A `ConflictResolution` value object is recorded for every conflict prompt, even those resolved by editing or deletion.
 - The conflict indicator is not a "Dismiss" affordance — it is informational. Tapping opens the detail panel, not a silent close.
 
-**Out of Scope:** Auto-rebook or alternative suggestions (Phase 2 — FR-33). Public-event vs. public-event conflicts at MVP (Phase 2). A "Hide conflict indicators" toggle (Phase 2 candidate; conflicts with the calm permanent-reminder design).
+**Out of Scope:** Auto-rebook or alternative suggestions (Phase 3 — FR-33 deferrals from Amendment A-8). Public-event vs. public-event conflicts at MVP (Phase 3). A "Hide conflict indicators" toggle (Phase 2 candidate; conflicts with the calm permanent-reminder design).
 
 #### FR-59: User-Reported Event Quality (added by Amendment A-4)
 
@@ -836,7 +836,7 @@ When a saved event is cancelled or moved, the system handles conflicts with the 
 - A postponed event that conflicts with another saved event: user is notified; the system surfaces a calm "this overlaps with [other event]" message in the Detail Screen.
 - A user can mute event-state-change notifications for a specific event from the Detail Screen.
 
-**Out of Scope:** Automatic rebooking or alternative suggestions (Phase 2 — FR-33 Conflict-Aware Scheduling).
+**Out of Scope:** Automatic rebooking or alternative suggestions (Phase 3 — FR-33 Conflict-Aware Scheduling; the three-action pattern itself ships at MVP per Amendment A-8).
 
 ---
 
@@ -941,17 +941,29 @@ The system performs **two-way** sync with Google Calendar, Apple Calendar (via C
 
 **Amendment A-7 (v1-spec):** The MVP read-only sync is FR-3 + FR-50 (all three providers, all tiers with Free-tier 1-provider cap). FR-31 is the Phase 2 *augmentation* — two-way write, RRULE expansion, field-level conflict UI.
 
-#### FR-32: Unified Personal+Public Timeline — Phase 2
+#### FR-32: Unified Personal+Public Timeline — MVP (lifted by Amendment A-8)
 
 The system presents a Timeline view combining Personal Events (warm tones) and Public Events (cool tones) in a week- or month-view. Conflicts highlighted, never alarmed. Realizes UJ-2.
 
 **Behavioral notes:** Conflicts are surfaced as a subtle marker (no red, no sound). Conflicts are typological (work vs. social, family vs. solo) — not just temporal.
 
-#### FR-33: Conflict-Aware Scheduling — Phase 2
+**Amendment A-8 (v1-spec, 2026-09-06):** FR-32 is **promoted from Phase 2 to MVP** at user direction. UJ-2 ("see what your week looks like before it happens") is judged MVP-critical for retention. Week view ships at MVP; Month and Day views remain Phase 3. Timeline is read-only at MVP — no edit-from-Timeline, no drag-to-reschedule; edits happen on Detail Screen or the Personal Event modal. Conflicts surface via `component.indicator.conflict` on both events in a pair; tapping routes to Detail Screen for resolution. The route is reachable from the bottom-tab nav on mobile and a left sidebar nav on desktop (md+); the topbar stays brand-only (topbar-quiet rule, EXPERIENCE.md ASSUM-11).
+
+**MVP scope:** Week view only. Read-only (no inline edits). Personal + Public events share one grid; warm/cool tones are paired with visible text labels ("Personal" / "Public event") so color is never the sole carrier of meaning. Conflicts are subtle markers (no red, no sound); tapping routes to Detail Screen.
+
+**Out of Scope at MVP:** Month view. Day view. Inline edit from Timeline. Drag-to-reschedule on Timeline. Conflict-aware rebook from Timeline (Phase 3).
+
+#### FR-33: Conflict-Aware Scheduling — MVP (lifted by Amendment A-8)
 
 The system detects scheduling conflicts between Personal Events and Public Events and suggests gentle alternatives (e.g., "Soccer practice overlaps — want a different time?"). Realizes UJ-2.
 
 **Behavioral notes:** No auto-rebook. Surface alternatives via the **three-action pattern**: (a) **Move the personal event earlier/later**, (b) **Skip the public event** (dismiss with one tap), (c) **Keep both — I'll manage** (no further prompting). User decides; no second-guessing. Conflicts are typological (work vs. social, family vs. solo) — not just temporal.
+
+**Amendment A-8 (v1-spec, 2026-09-06):** FR-33 is **promoted from Phase 2 to MVP** alongside FR-32. The system scans for *saved* public events overlapping *saved* personal events by >15 minutes; when detected, both events render `component.indicator.conflict` on the Pulse Card and Timeline event-block, and a `ConflictResolution` value object is recorded. Tapping the indicator opens a detail panel surfacing the three actions above. A `/conflicts` review route lists all conflict pairs (active + resolved). Auto-rebook and "alternative suggestions" remain Phase 3.
+
+**MVP scope:** Trigger fires only when a *saved* public event overlaps a *saved* personal event by >15 minutes. Three actions: "Move {personal event} earlier/later", "Skip {public event}", "Keep both — I'll manage". Conflict indicator is symmetric on both events in a pair; tapping opens a detail panel. The `/conflicts` route lists all pairs (active + resolved) for review.
+
+**Out of Scope at MVP:** Auto-rebook. Public-event vs. public-event conflicts (Phase 3). Suggested alternative time slots (Phase 3 — requires ranked alternatives + ranking-transparency panel).
 
 #### FR-34: Pulse the Group — Phase 2
 
@@ -961,9 +973,9 @@ Small group (≤10 people) coordination via AI-assisted availability heatmap and
 
 #### FR-35: Pro Tier — Phase 2 Augmentation
 
-The MVP Pro tier (FR-48) is augmented in Phase 2 to add: **two-way** calendar sync + recurring-event expansion (FR-31), Unified Timeline (FR-32), Pulse the Group (FR-34), and Why Now? (FR-38). (Apple/Outlook read-only sync already ships at MVP per Amendment A-7.) Phase 2 may revise pricing. Subscribers at MVP retain grandfathered pricing for 12 months.
+The MVP Pro tier (FR-48) is augmented in Phase 2 to add: **two-way** calendar sync + recurring-event expansion (FR-31), Pulse the Group (FR-34), and Why Now? (FR-38). (Unified Timeline FR-32 and Conflict-Aware Scheduling FR-33 lifted to MVP per Amendment A-8 — they are no longer Phase 2 Pro Augmentation features. Apple/Outlook read-only sync already ships at MVP per Amendment A-7.) Phase 2 may revise pricing. Subscribers at MVP retain grandfathered pricing for 12 months.
 
-**Behavioral notes:** Free tier caps in Phase 2: 1 group, 1 calendar (Google only at MVP; Apple/Outlook at Phase 2), unlimited saved collections. Pricing open (see §8 Open Questions).
+**Behavioral notes:** Free tier caps in Phase 2: 1 group, 1 calendar (all three providers — Google, Apple, Outlook — are eligible per Amendment A-7; the free-tier cap is on count, not on provider), unlimited saved collections. Pricing open (see §8 Open Questions).
 
 #### FR-36: Voice Quick-Add — Phase 3
 
@@ -1152,10 +1164,11 @@ Ship-ready functional requirements for the launch MVP:
 - FR-21, FR-22, FR-23, FR-24, FR-25, FR-59 — Explainability & Trust
 - FR-26, FR-27, FR-28 — Sharing & Discovery
 - FR-29, FR-30 — AI Cost Discipline
+- FR-32, FR-33 — Unified Timeline + Conflict-Aware Scheduling (Amendment A-8 lift, 2026-09-06; Week view only, read-only)
 - FR-53, FR-54, FR-55 — Event State Sync (cancel/postpone/move/sold-out)
 - FR-48, FR-49, FR-50, FR-51, FR-52 — MVP Pro Tier (shipped at launch)
 
-**Total:** 43 MVP FRs (FR-1 through FR-30, FR-48 through FR-60; +2 from Amendment A-4 / FR-59 and Amendment A-6 / FR-60), 17 named FRs for Phase 2/3+ (FR-31 through FR-47), 6 User Journeys, 15 Open Questions, 13 Assumptions (was 10; +3 from Amendments A-3, A-5, A-6), 18 Success Metrics (was 16; +2 from Amendments A-2 and A-4) + 6 Counter-metrics (was 5; +1 from Amendment A-6), 12 Risks.
+**Total:** 45 MVP FRs (FR-1 through FR-30, FR-32, FR-33, FR-48 through FR-60; +2 from Amendment A-4 / FR-59 and Amendment A-6 / FR-60, +2 from Amendment A-8 / FR-32 and FR-33), 15 named FRs for Phase 2/3+ (FR-31, FR-34 through FR-47), 6 User Journeys, 15 Open Questions, 14 Assumptions (was 13; +1 from Amendment A-8), 18 Success Metrics (was 16; +2 from Amendments A-2 and A-4) + 6 Counter-metrics (was 5; +1 from Amendment A-6), 12 Risks.
 
 **Operational:** AI Cost Dashboard, Source Registry, ToS review log, Pro-tier billing integration (Stripe), webhooks for source state sync, editorial review queue.
 
@@ -1164,10 +1177,10 @@ Ship-ready functional requirements for the launch MVP:
 | Feature | Reason for deferral | Target Phase |
 |---|---|---|
 | FR-31 Calendar Sync — two-way + RRULE expansion | Two-way sync + recurring-event modeling needs Phase 2 architecture | Phase 2 |
-| FR-32 Unified Personal+Public Timeline | Complex UI w/ conflict logic | Phase 2 |
-| FR-33 Conflict-Aware Scheduling | Needs unified timeline | Phase 2 |
+| ~~FR-32 Unified Personal+Public Timeline~~ | Promoted to MVP by Amendment A-8 (2026-09-06) — Week view only; Month/Day views deferred | Phase 3 (Month/Day only) |
+| ~~FR-33 Conflict-Aware Scheduling~~ | Promoted to MVP by Amendment A-8 (2026-09-06) — Three-action pattern + `/conflicts` review route; auto-rebook and alternatives deferred | Phase 3 (auto-rebook) |
 | FR-34 Pulse the Group | Needs trust established first; solo must be excellent first | Phase 2 |
-| FR-35 Pro Tier Augmentation (Apple/Outlook sync, Pulse the Group, Pricing A/B) | Augments MVP Pro tier; needs Phase 2 anchors | Phase 2 |
+| FR-35 Pro Tier Augmentation (Pulse the Group, Pricing A/B; Apple/Outlook read-only sync already ships at MVP per Amendment A-7) | Augments MVP Pro tier; needs Phase 2 anchors | Phase 2 |
 | FR-36 Voice Quick-Add | Demo magnet, niche adoption | Phase 3 |
 | FR-37 Email-to-Event Forwarding (user-forwarded) | Power-user only, niche; **source-side email-ICS is now MVP via FR-56** | Phase 3 |
 | FR-38 Why Now? | Augments not replaces Why-this Tags | Phase 3 |
@@ -1275,6 +1288,7 @@ Ship-ready functional requirements for the launch MVP:
 - **[ASSUMPTION-11]** From Amendment A-3 / FR-22 — Confidence Pulse formula weights (`w1=0.40, w2=0.25, w3=0.20, w4=0.15`) are locked at MVP launch. Any change requires a PRD amendment with a changelog entry visible in Settings → Privacy → "Ranking algorithm version." A/B testing on live weights is forbidden; shadow composition is the only sanctioned channel.
 - **[ASSUMPTION-12]** From Amendment A-5 / FR-58 — Conflict prompts require an explicit choice (Keep both / Edit the new one / Delete the new one). No dismiss-without-resolution option. The conflict indicator persists on Pulse Cards after "Keep both" is chosen as a calm permanent reminder.
 - **[ASSUMPTION-13]** From Amendment A-6 / FR-60 — Every Event has an explicit `start_time_tz`. Sources with `tz_coverage = none` (bare local time without reliable venue) are auto-rejected for corpus inclusion. The venue registry is a new infrastructure component supporting both FR-60 timezone resolution and FR-15 Event Identity `venue_fingerprint`.
+- **[ASSUMPTION-14]** From Amendment A-8 / FR-32, FR-33 (2026-09-06) — Timeline ships at MVP as a **read-only Week view** combining Personal + Public events (warm vs. cool tones, each paired with a visible text label so color is never the sole carrier of meaning, per EXPERIENCE.md §3 voice and tone rules). The `/conflicts` route surfaces all conflict pairs the system has recorded (active + resolved) for review. Both routes are reachable from the bottom-tab nav on mobile and a left sidebar nav on desktop (md+); the topbar stays brand-only per the topbar-quiet rule (EXPERIENCE.md ASSUM-11). Conflicts appear on Pulse Cards and Timeline event-blocks as `component.indicator.conflict` (8–10 px filled amber circle, `aria-label="Schedule conflict"`). The `/conflicts` route does not surface user-added notes — only system-recorded conflict pairs.
 
 ---
 
@@ -1522,7 +1536,7 @@ This is a **launch blocker**, not a polish item. Live competitive re-verificatio
 |---|---|---|
 | **Pulse Digest** (home) | 3-card daily brief | All users |
 | **Detail Screen** | Single event deep-dive | All users |
-| **Timeline** (Phase 2) | Unified calendar | All users |
+| **Timeline** (MVP, lifted by Amendment A-8) | Unified Personal + Public calendar, Week view | All users |
 | **Add Personal Event** | Manual personal event creation | All users |
 | **Settings** | Reminders, Quiet Hours, source mute, account, **Privacy (data export + deletion)** | All users |
 | **Onboarding** | First-time flow | New users |
@@ -1592,7 +1606,8 @@ This is a **launch blocker**, not a polish item. Live competitive re-verificatio
 - Two-way write-back to connected calendars (Phase 2 — FR-31)
 - Recurring-event RRULE expansion beyond simple instance listing (Phase 2 — FR-31)
 - Pulse the Group (Phase 2 — FR-34)
-- Unified Timeline (Phase 2 — FR-32)
+- Timeline Month/Day views (Phase 3 — FR-32 deferrals from Amendment A-8)
+- Conflict-aware auto-rebook (Phase 3 — FR-33 deferrals from Amendment A-8)
 - Why Now? (Phase 3 — FR-38)
 - On-Device Personal AI (Phase 3 — FR-39)
 - Travel Mode (Phase 3 — FR-40)
@@ -1601,7 +1616,7 @@ This is a **launch blocker**, not a polish item. Live competitive re-verificatio
 
 ### 15.3 Future
 
-- **Phase 2 Pro Augmentation (FR-35):** Apple/Outlook sync, Pulse the Group, Unified Timeline, A/B-tested pricing.
+- **Phase 2 Pro Augmentation (FR-35):** Pulse the Group, A/B-tested pricing. (Apple/Outlook read-only sync already ships at MVP per Amendment A-7; Unified Timeline and Conflict-Aware Scheduling lifted to MVP by Amendment A-8 — they are no longer Phase 2 Pro Augmentation features.)
 - **B2B2C (Year 2+):** White-label for universities, tourism boards.
 - **B2B Insights API (Year 2+):** Aggregated event trend queries for enterprise.
 
