@@ -1,0 +1,251 @@
+<!--
+  EventPulse24 — Account Delete Confirmation Modal (Desktop) — DARK THEME
+  Amendment A-16 — Component.Modal.AccountDelete at /settings/privacy → Danger zone.
+  Trigger: "Delete account →" row in #danger-zone opens this modal over a dimmed
+  Settings → Privacy page (settings-desktop.html shell reused, #privacy region
+  visible behind the modal backdrop).
+  Anatomy per DESIGN.md §Components (Amendment A-16):
+  - Header: Text.Headline.md "Delete your account?"
+  - Body: 3 Text.Body.md paragraphs (what's deleted / what survives / 30-day grace)
+  - Type-to-confirm input: <input type="text"> placeholder "Type DELETE to confirm"
+    The primary CTA stays disabled until input value matches "DELETE" exactly
+    (case-sensitive). For this mockup, input is pre-filled to demonstrate the
+    enabled primary state; the disabled state is rendered as a sibling variant
+    comment block in the spec reference.
+  - Footer: Button.Secondary "Cancel" + Button.Primary "Start 30-day deletion"
+  No new tokens. Backdrop: rgba(10,10,11,0.7) + backdrop-filter: blur(8px) per
+  component.surface.modal. The shell is byte-identical to settings-desktop.html;
+  the privacy section is shown behind the modal so reviewers see context.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventPulse24 — Delete account</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-amber:#E89B4A;
+    --warm-personal:#C8967A; --cool-public:#6E7E92; --warn-amber:#D8A86A;
+    --signal-success:#7AAA7A; --signal-warn:#D8A86A; --signal-error:#C66A5C;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+    --container-max:1180px; --sidenav-w:240px; --page-pad:32px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Page chrome (dimmed behind modal) ===== */
+  .pagehead { padding: 40px 0 32px; }
+  .pagehead h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.015em; }
+  .pagehead .sub { font-size: 13px; color: var(--ink-muted); margin: 0; }
+
+  .section-nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 0 24px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 32px; }
+  .section-nav a { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; font-size: 13px; color: var(--ink-muted); font-weight: 500; }
+  .section { padding-bottom: 32px; margin-bottom: 32px; border-bottom: 1px solid var(--border-subtle); }
+  .section h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; margin: 0 0 16px; color: var(--ink-primary); }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid var(--border-subtle); gap: 16px; }
+  .row-label strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-primary); margin-bottom: 2px; }
+  .row-label span { font-size: 12px; color: var(--ink-muted); }
+  .ghost { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
+  .danger { color: var(--accent-terracotta); font-size: 13px; font-weight: 500; }
+
+  /* ===== Backdrop (Amendment A-16 — modal backdrop per component.surface.modal) ===== */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(10,10,11,0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px;
+    animation: fade-in 240ms ease-out;
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .modal-backdrop { animation: none; } }
+
+  /* ===== Modal (Amendment A-16 — component.modal.account-delete) ===== */
+  .modal {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.40);
+    width: 100%;
+    max-width: 480px;
+    padding: 28px;
+    position: relative;
+  }
+  .modal h2 { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 14px; color: var(--ink-primary); letter-spacing: -0.012em; }
+  .modal .body { font-size: 14px; color: var(--ink-secondary); line-height: 1.55; margin: 0 0 20px; }
+  .modal .body p { margin: 0 0 12px; }
+  .modal .body p:last-child { margin-bottom: 0; }
+  .modal .body strong { color: var(--ink-primary); font-weight: 600; }
+
+  .confirm-row { margin: 20px 0 24px; }
+  .confirm-row label { display: block; font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; font-weight: 600; }
+  .confirm-input { width: 100%; background: var(--surface-elevated); border: 1px solid var(--border-strong); border-radius: 6px; padding: 12px 14px; font-family: var(--family-mono); font-size: 14px; color: var(--accent-terracotta); letter-spacing: 0.04em; }
+  .confirm-input::placeholder { color: var(--ink-faint); letter-spacing: normal; }
+  .confirm-input:focus { outline: none; border-color: var(--accent-terracotta); box-shadow: 0 0 0 2px rgba(255,106,71,0.25); }
+  .confirm-hint { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; line-height: 1.5; }
+
+  .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
+  .btn-secondary { background: var(--surface-subtle); border: 1px solid var(--border-subtle); color: var(--ink-primary); padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: background 160ms ease, color 160ms ease; }
+  .btn-secondary:hover { background: var(--surface-inset); }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: background 160ms ease; }
+  .btn-primary:hover:not(:disabled) { background: #FF7E5E; }
+  .btn-primary:disabled { background: var(--surface-inset); color: var(--ink-faint); cursor: not-allowed; }
+
+  /* ===== Variants strip below the demo ===== */
+  .variants { padding: 32px 0; max-width: var(--container-max); }
+  .variant { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .variant h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; margin: 0 0 12px; color: var(--ink-primary); }
+  .variant .tag { display: inline-block; font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 3px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+  .variant pre { background: var(--surface-subtle); border-radius: 8px; padding: 12px 16px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-secondary); overflow-x: auto; margin: 0; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>Digest</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Timeline</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>Browse</a>
+    <a href="#" class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>Conflicts</a>
+    <a href="#" class="nav-item active" aria-current="page"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <header class="pagehead">
+      <h1>Settings</h1>
+      <p class="sub">Theme, notifications, quiet hours, calendar sync, account, plan.</p>
+    </header>
+
+    <nav class="section-nav" aria-label="Settings sections">
+      <a href="#">Appearance</a><a href="#">Notifications</a><a href="#">Quiet hours</a>
+      <a href="#">Calendar sync</a><a href="#">Account</a><a href="#">Plan</a>
+      <a href="#">Privacy</a><a href="#" class="active">Danger zone</a>
+    </nav>
+
+    <section class="section">
+      <h2>Danger zone</h2>
+      <div class="row">
+        <div class="row-label"><strong>Export your data</strong><span>Download JSON + ICS archive.</span></div>
+        <button class="ghost">Request export</button>
+      </div>
+      <div class="row">
+        <div class="row-label"><strong>Delete account</strong><span>Permanent. Cannot be undone.</span></div>
+        <button class="danger" disabled style="opacity: 0.5;">Delete account →</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===== Modal backdrop + dialog (Amendment A-16) ===== -->
+<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-body">
+  <div class="modal">
+    <h2 id="delete-title">Delete your account?</h2>
+    <div class="body" id="delete-body">
+      <p>We'll permanently delete your account, personal events, saved events, and preference graph within <strong>30 days</strong>.</p>
+      <p><strong>Anonymized aggregates</strong> (e.g., "47 events were saved in NYC on Aug 27") survive. We can't reverse deletion.</p>
+      <p>You can cancel anytime during the 30-day grace from this page or from the email we send.</p>
+    </div>
+
+    <div class="confirm-row">
+      <label for="confirm-input">Type DELETE to confirm</label>
+      <input id="confirm-input" type="text" class="confirm-input" value="DELETE" autocomplete="off" spellcheck="false" aria-describedby="confirm-hint" />
+      <p class="confirm-hint" id="confirm-hint">Case-sensitive. The button activates once this matches.</p>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" aria-label="Cancel and close modal">Cancel</button>
+      <button type="button" class="btn-primary" aria-label="Start 30-day deletion process">Start 30-day deletion</button>
+    </div>
+  </div>
+</div>
+
+<!-- Variants strip — explains the two render states -->
+<div style="background: var(--surface-paper); padding: 32px; max-width: 1180px; margin: 0 auto;">
+  <h2 style="font-family: var(--family-display); font-size: 24px; font-weight: 600; margin: 0 0 16px;">Variants</h2>
+
+  <div class="variants">
+    <div class="variant">
+      <h3>1. Enabled primary <span class="tag">.btn-primary — after typing DELETE</span></h3>
+      <pre>input.value === "DELETE" (case-sensitive)
+  → .btn-primary enabled, terracotta fill, color.ink.inverse label
+  → aria-disabled="false"</pre>
+    </div>
+
+    <div class="variant">
+      <h3>2. Disabled primary <span class="tag">.btn-primary:disabled — initial state</span></h3>
+      <pre>input.value !== "DELETE" (or empty)
+  → .btn-primary disabled, color.surface.inset fill, color.ink.faint label
+  → aria-disabled="true"
+  → cursor: not-allowed</pre>
+    </div>
+
+    <div class="variant">
+      <h3>3. Cancel <span class="tag">.btn-secondary</span></h3>
+      <pre>Tap → modal closes, focus returns to "Delete account →" button in #danger-zone
+  → No state change, no confirmation toast
+  → 30-day timer NOT started</pre>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

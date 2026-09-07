@@ -30,11 +30,14 @@
   .frame { padding: 0 80px; min-height: 100vh; }
   .container { max-width: 1180px; margin: 0 auto; }
 
-  /* Topbar */
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 16px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 20px; font-weight: 600; }
-  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 14px rgba(255,106,71,0.55); }
-  .topright { display: flex; gap: 12px; align-items: center; }
+  /* Topbar — brand-wrap lockup (Component.Topbar.PreAuth, Amendment A-9) */
+  .topbar { display: flex; align-items: center; justify-content: flex-start; padding: 28px 0 16px; }
+  .brand-wrap { display: flex; align-items: center; gap: 12px; }
+  .brand-logo { width: 36px; height: 36px; display: block; }
+  .brand-wordmark { display: flex; flex-direction: column; gap: 2px; }
+  .brand-mark { font-family: var(--family-display); font-size: 20px; font-weight: 600; line-height: 1.1; }
+  .brand-tag { font-family: var(--family-display); font-size: 13px; font-style: italic; color: var(--ink-muted); line-height: 1.1; }
+  .brand-anchor { color: inherit; text-decoration: none; display: inline-block; }
   .ghost { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); }
   .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
   .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
@@ -42,6 +45,7 @@
 
   /* Hero — city headline + count */
   .hero { padding: 64px 0 48px; max-width: 820px; }
+  .hero .ctas { display: flex; gap: 16px; align-items: center; margin-top: 28px; }
   .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: var(--accent-terracotta); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 18px; }
   .eyebrow .glyph { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); }
   h1 { font-family: var(--family-display); font-size: 64px; font-weight: 700; line-height: 1.04; letter-spacing: -0.025em; margin: 0 0 18px; color: var(--ink-primary); }
@@ -101,11 +105,15 @@
 <div class="frame">
   <div class="container">
     <nav class="topbar">
-      <div class="brand"><span class="dot"></span> EventPulse24</div>
-      <div class="topright">
-        <button class="ghost">How it works</button>
-        <button class="btn-primary">Sign up free</button>
-      </div>
+      <a class="brand-anchor" href="#top" aria-label="EventPulse24 — top of page">
+        <div class="brand-wrap">
+          <img class="brand-logo" src="EventPulse24-latest-logo.png" alt="" width="36" height="36" />
+          <div class="brand-wordmark">
+            <div class="brand-mark">EventPulse24</div>
+            <div class="brand-tag">calm intelligence for events</div>
+          </div>
+        </div>
+      </a>
     </nav>
 
     <section class="hero">
@@ -118,6 +126,10 @@
         <span>147 events this week</span>
         <span class="sep">·</span>
         <span class="change">Change city</span>
+      </div>
+      <div class="ctas">
+        <button class="btn-primary">Sign up free</button>
+        <button class="ghost">How it works</button>
       </div>
     </section>
 
@@ -249,6 +261,7 @@
         </div>
       </div>
       <p class="about"><strong style="color: var(--ink-secondary);">About this page.</strong> EventPulse24 reads 23 public event sources across Brooklyn — official venue sites, community listings, neighborhood aggregators — and curates a daily brief of three events worth your attention. We do not run a feed. We do not surface trending events. The goal is fewer, better.</p>
+      <p class="about" style="margin-top: 16px;"><a href="#">Log in</a> · <a href="#" style="color: var(--accent-terracotta);">Sign up free →</a> · <a href="#">Privacy</a> · <a href="#">Terms</a></p>
     </div>
   </footer>
 </div>
