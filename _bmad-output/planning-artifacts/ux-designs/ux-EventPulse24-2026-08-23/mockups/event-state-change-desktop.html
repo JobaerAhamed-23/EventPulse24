@@ -1,0 +1,533 @@
+<!--
+  EventPulse24 — Event State Change (Desktop, 1280px) — DARK THEME
+  Amendment A-23 — Component.Banner.StateChange + Component.Badge.EventState.
+  PRD FR-53 (state polling) / FR-54 (user-facing notifications) / FR-55 (conflict on change).
+
+  SUPERSEDES mockups/light-archive/sold-out-card-state-desktop.html, which covered one of
+  the four states FR-54 specifies, was never migrated to the A-8 shell, rendered the
+  Save Reminder CTA `disabled` where the spine says to remove it, and tinted this banner
+  in --signal-success green on a message telling the user they could not get in.
+
+  Four states, one vocabulary:
+    cancelled  → "Cancelled" badge · headline struck · all CTAs removed · reminders suppressed
+    postponed  → "New date"  badge · old date struck before the new one · reminders rescheduled
+    moved      → "New venue" badge · old venue struck before the new one · reminders unchanged
+    sold_out   → "Sold out"  badge · Save Reminder removed from markup · reminders stopped
+  Precedence: cancelled > postponed > moved > sold_out. One badge renders, never a stack.
+
+  Colour contract (Amendment A-23 lock):
+    - The BANNER is ink-only. surface.elevated fill, border.subtle stroke, no chromatic
+      fill, no tinted border, no glyph. The state is carried by the headline text, so
+      colour is never the sole carrier of meaning because there is no colour.
+    - The BADGE keeps A-15's ● glyph in signal.warn on all four states, including
+      cancelled — signal.error is reserved for destructive actions the USER takes.
+    - line-through (type.decoration.superseded) is the non-colour signal that makes the
+      four states distinguishable at a glance. Its only two uses are here.
+
+  Shell: A-8, 7-route sidenav (A-22), Digest active — the banner's home is `/`.
+  Person: Maya Patel, Brooklyn. Today: Thursday, Aug 27, 2026.
+  The first screen is the real routable `/` view. The states matrix below it is a
+  demonstration block, not page chrome.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Event state change · EventPulse24</title>
+<link rel="icon" type="image/png" href="EventPulse24-latest-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:        #0A0A0B;
+    --surface-elevated:     #131316;
+    --surface-subtle:       #1B1B1F;
+    --surface-inset:        #232328;
+    --ink-primary:          #F2F2F4;
+    --ink-secondary:        #C9C9CF;
+    --ink-muted:            #8A8A92;
+    --ink-faint:            #3A3A40;
+    --ink-inverse:          #0A0A0B;
+    --accent-terracotta:    #FF6A47;
+    --accent-slate:         #6E7E92;
+    --accent-amber:         #E89B4A;
+    --warm-personal:        #C8967A;
+    --cool-public:          #6E7E92;
+    --signal-success:       #7AAA7A;   /* declared for palette completeness; deliberately UNUSED here — see the banner note below */
+    --signal-warn:          #D8A86A;
+    --signal-error:         #C66A5C;
+    --border-subtle:        rgba(242, 242, 244, 0.08);
+    --border-strong:        rgba(242, 242, 244, 0.16);
+
+    --family-display: "Source Serif 4", Fraunces, Georgia, serif;
+    --family-body:    "Inter", -apple-system, system-ui, sans-serif;
+    --family-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+    --gap-cards: 36px;
+    --pad-card: 32px;
+    --r-card: 14px;
+    --container-max: 1180px;
+    --sidenav-w: 240px;
+    --page-pad: 32px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+  /* ===== Layout shell (A-8) ===== */
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  /* ===== Sidebar (Component.Sidenav.App — 7-route variant, Amendment A-22) ===== */
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Digest head ===== */
+  .crumb { font-size: 12px; color: var(--ink-muted); margin: 24px 0 0; }
+  .day-head { padding: 40px 0 22px; }
+  .day-head h1 { font-family: var(--family-display); font-size: 34px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .day-head .sub { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); letter-spacing: 0.02em; }
+  .day-head .today-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-terracotta); box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+
+  /* =====================================================================
+     component.banner.statechange (Amendment A-23) — INK-ONLY.
+     No chromatic fill, no tinted border, no glyph. Compare the retired
+     sold-out mockup, which used rgba(122,170,122,*) — signal.success green.
+     ===================================================================== */
+  .banner { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: 16px 24px; max-width: 760px; margin-bottom: 28px; }
+  .banner + .banner { margin-top: -16px; }        /* 12px effective gap when stacked */
+  .banner strong { display: block; font-size: 15px; font-weight: 600; color: var(--ink-primary); margin-bottom: 4px; letter-spacing: -0.005em; }
+  .banner p { font-size: 12px; color: var(--ink-secondary); margin: 0 0 8px; line-height: 1.5; }
+  .banner a { font-size: 12px; color: var(--accent-terracotta); font-weight: 500; }
+  .banner a:hover { color: #FF7E5E; }
+  .banner-collapse { font-size: 12px; color: var(--ink-muted); max-width: 760px; margin-bottom: 28px; }
+  .banner-collapse a { color: var(--accent-terracotta); font-weight: 500; }
+
+  /* ===== Pulse Card (Card.PulseDigest — digest stack geometry) ===== */
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--r-card); padding: var(--pad-card); position: relative; margin-bottom: var(--gap-cards); }
+  .card .stripe { position: absolute; left: 0; top: var(--pad-card); bottom: var(--pad-card); width: 3px; border-radius: 0 2px 2px 0; }
+  /* Stripe follows CATEGORY per DESIGN.md component.card.pulse.digest.category.* —
+     not slot index. The category stripe stays visible in every state: a cancelled
+     public event is still a public event, it just is not happening. */
+  .card.cat-personal .stripe { background: var(--warm-personal); }
+  .card.cat-public   .stripe { background: var(--accent-slate); }
+  .card.cat-mustknow .stripe { background: var(--accent-amber); }
+  .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding-left: 18px; }
+  .card-main { flex: 1; min-width: 0; }
+  .card-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12px; font-weight: 500; color: var(--ink-muted); letter-spacing: 0.02em; margin-bottom: 14px; }
+  .card-meta .sep { color: var(--ink-faint); }
+  .card-meta .type-label { color: var(--ink-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .card h2 { font-family: var(--family-display); font-size: 24px; font-weight: 600; line-height: 1.22; letter-spacing: -0.014em; margin: 0 0 12px; color: var(--ink-primary); }
+  .card .where { font-size: 14px; color: var(--ink-secondary); margin: 0 0 16px; }
+  .tags { font-family: var(--family-body); font-style: italic; font-size: 13px; line-height: 1.40; color: var(--ink-muted); margin: 0 0 22px; letter-spacing: 0.005em; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 6px; }
+  .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid var(--border-subtle); margin-top: 6px; }
+  .card-foot-left { display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--ink-muted); }
+  .pulse { display: inline-flex; gap: 4px; align-items: center; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot.on { background: var(--ink-primary); }
+  .srcbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-secondary); }
+  .srcbadge.verified { color: var(--accent-terracotta); }
+  .card-actions { display: flex; gap: 8px; }
+  .ghostbtn { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .ghostbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); border-color: var(--border-strong); }
+  .ghostbtn.filled { background: var(--accent-terracotta); color: var(--ink-inverse); border-color: var(--accent-terracotta); font-weight: 600; }
+
+  /* =====================================================================
+     component.badge.eventstate (Amendment A-23, generalising A-15)
+     One geometry, four labels. ● glyph stays signal.warn on ALL FOUR,
+     including cancelled — signal.error is reserved for destructive USER actions.
+     ===================================================================== */
+  .statebadge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: var(--surface-subtle); border: 1px solid var(--border-strong); font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+  .statebadge .glyph { color: var(--signal-warn); }
+
+  /* type.decoration.superseded (Amendment A-23) — the ONLY sanctioned strikethrough. */
+  .superseded { text-decoration: line-through; text-decoration-color: var(--ink-faint); text-decoration-thickness: 1px; color: var(--ink-muted); }
+  h2 .superseded { text-decoration-color: var(--ink-faint); }
+
+  /* Detail-Screen replacement line (replaces Save + Reminder actions) */
+  .detail-line { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 18px; border-top: 1px solid var(--border-subtle); margin-top: 6px; }
+  .detail-line p { font-size: 14px; color: var(--ink-secondary); margin: 0; }
+  .detail-line a { font-size: 13px; color: var(--accent-terracotta); font-weight: 500; }
+  .mute-slot { font-size: 12px; color: var(--ink-faint); font-family: var(--family-mono); }
+
+  /* ===== States matrix — demonstration, NOT page chrome ===== */
+  .states { margin-top: 96px; padding-top: 40px; border-top: 1px solid var(--border-strong); }
+  .states h2.sh { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 10px; }
+  .states .lead { font-size: 13px; line-height: 1.6; color: var(--ink-muted); max-width: 780px; margin: 0 0 8px; }
+  .states .lead code { font-family: var(--family-mono); font-size: 11px; background: var(--surface-subtle); padding: 2px 6px; border-radius: 4px; color: var(--ink-secondary); }
+  .state { margin-top: 52px; }
+  .state .tagline { display: inline-block; font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 4px 8px; border-radius: 4px; margin-bottom: 12px; }
+  .state .note { font-size: 13px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 18px; max-width: 780px; }
+  .state .demo { border: 1px solid var(--border-subtle); border-radius: 16px; padding: 28px; background: var(--surface-paper); }
+  .state .demo .card:last-child { margin-bottom: 0; }
+  .demo-label { font-family: var(--family-mono); font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 12px; }
+  .demo-label.spaced { margin-top: 28px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="EventPulse24-latest-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      Saved
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="EventPulse24-latest-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </header>
+
+    <div class="crumb"><span style="color: var(--ink-secondary);">Digest</span> · Brooklyn</div>
+
+    <!-- ================= The real routable `/` view: Flow 8, step 1 ================= -->
+    <header class="day-head">
+      <h1>Thursday, August 27</h1>
+      <p class="sub"><span class="today-dot" aria-hidden="true"></span> Today · Brooklyn · 3 on the pulse</p>
+    </header>
+
+    <!-- One banner. Ink-only. No glyph. Cleared by opening the Detail Screen or by the next digest day. -->
+    <div class="banner" role="status" aria-live="polite">
+      <strong>Sunny Jain Quartet was cancelled.</strong>
+      <p>We've stopped all reminders for this event. It'll drop off your digest tomorrow.</p>
+      <a href="#">View Sunny Jain Quartet →</a>
+    </div>
+
+    <section aria-label="Pulse Digest">
+      <article class="card cat-personal" aria-labelledby="c1">
+        <span class="stripe" aria-hidden="true"></span>
+        <div class="card-row">
+          <div class="card-main">
+            <div class="card-meta">
+              <span class="type-label" style="color: var(--warm-personal);">Personal</span>
+              <span class="sep">·</span><span>Thu · 7:30 PM</span>
+              <span class="sep">·</span><span>Lilia, Williamsburg</span>
+            </div>
+            <h2 id="c1">Anniversary dinner with Rahul</h2>
+            <p class="tags"><span class="tag">family</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">restaurant</span></p>
+            <div class="card-footer">
+              <div class="card-foot-left"><span class="srcbadge">📥 Personal calendar</span></div>
+              <div class="card-actions"><button class="ghostbtn filled">Open</button></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- CANCELLED card, still in place for the rest of the digest day (A-23 decision).
+           Headline struck. Badge in the right-side zone. EVERY CTA removed — not disabled. -->
+      <article class="card cat-public" aria-labelledby="c2">
+        <span class="stripe" aria-hidden="true"></span>
+        <div class="card-row">
+          <div class="card-main">
+            <div class="card-meta">
+              <span class="type-label">Public event</span>
+              <span class="sep">·</span><span>Thu · 8:00 PM</span>
+              <span class="sep">·</span><span>Rooftop, 1 Franklin St, Greenpoint</span>
+            </div>
+            <h2 id="c2"><span class="sr-only">Cancelled: </span><span class="superseded">Sunny Jain Quartet — rooftop set</span></h2>
+            <p class="tags"><span class="tag">live music</span><span class="dotsep">·</span><span class="tag">outdoor</span><span class="dotsep">·</span><span class="tag">rooftop</span></p>
+            <div class="card-footer">
+              <div class="card-foot-left">
+                <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                  <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
+                </span>
+                <span class="srcbadge verified">✓ Official</span>
+              </div>
+              <!-- No .card-actions block at all. The Save Reminder CTA is REMOVED from the
+                   markup per Component.Badge.EventState, never rendered disabled. -->
+            </div>
+          </div>
+          <span class="statebadge" aria-label="Cancelled"><span class="glyph" aria-hidden="true">●</span> Cancelled</span>
+        </div>
+      </article>
+
+      <article class="card cat-public" aria-labelledby="c3">
+        <span class="stripe" aria-hidden="true"></span>
+        <div class="card-row">
+          <div class="card-main">
+            <div class="card-meta">
+              <span class="type-label">Public event</span>
+              <span class="sep">·</span><span>Thu · 6:30 PM</span>
+              <span class="sep">·</span><span>2 blocks from work</span>
+            </div>
+            <h2 id="c3">Free tech meetup — "Designing for Calm"</h2>
+            <p class="tags"><span class="tag">nearby</span><span class="dotsep">·</span><span class="tag">thursday</span><span class="dotsep">·</span><span class="tag">free</span></p>
+            <div class="card-footer">
+              <div class="card-foot-left">
+                <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                  <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
+                </span>
+                <span class="srcbadge verified">✓ Brooklyn Arts Council</span>
+              </div>
+              <div class="card-actions">
+                <button class="ghostbtn">Why this?</button>
+                <button class="ghostbtn filled">Save Reminder</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!--
+      ==========================================================================
+      STATES MATRIX — demonstration only. NOT part of the routable `/` surface,
+      which ends at the digest stack above. Each block pairs the banner with the
+      card treatment and the Detail-Screen replacement line for one state.
+      ==========================================================================
+    -->
+    <section class="states" aria-label="Event state variants — demonstration">
+      <h2 class="sh">The four states</h2>
+      <p class="lead">One vocabulary, four states, precedence <code>cancelled &gt; postponed &gt; moved &gt; sold_out</code>. The banner is ink-only in every state; the badge glyph is <code>signal.warn</code> in every state; <code>line-through</code> carries the distinction. The <code>cancelled</code> state is rendered live in the digest above, so only its Detail-Screen line repeats here.</p>
+
+      <!-- ============ 1. cancelled ============ -->
+      <div class="state">
+        <span class="tagline">state 1 · cancelled · reminders SUPPRESSED</span>
+        <p class="note">Card shown live in the digest above. Removal is deferred, not immediate: the card persists for the rest of the digest day and drops at the next composition — which is how FR-54's badge requirement and FR-55's "removed from the digest" requirement reconcile. On the Detail Screen a single line replaces the Save and Reminder actions, and <strong>Find similar events</strong> appears because the user's evening now has a hole in it.</p>
+        <div class="demo">
+          <p class="demo-label">Detail Screen</p>
+          <div class="detail-line">
+            <p>Cancelled — this event is no longer happening.</p>
+            <a href="#">Find similar events →</a>
+          </div>
+          <p class="mute-slot" style="margin-top:14px;">/* slot reserved: per-event mute of state-change notices — PRD FR-55, deferred to Amendment A-24 */</p>
+        </div>
+      </div>
+
+      <!-- ============ 2. postponed ============ -->
+      <div class="state">
+        <span class="tagline">state 2 · postponed · reminders RESCHEDULED</span>
+        <p class="note">The badge reads <strong>"New date"</strong>, not "Postponed" — the user needs the fact about their evening, not the fact about the organiser. The superseded date is struck immediately before its replacement, so the change is legible without reading the badge. The card keeps every CTA: the user still has the event they wanted.</p>
+        <div class="demo">
+          <p class="demo-label">Banner</p>
+          <div class="banner" role="status" aria-live="polite">
+            <strong>Sunny Jain Quartet moved to Sat, Sep 12.</strong>
+            <p>Your reminders moved with it. Nothing else to do.</p>
+            <a href="#">View Sunny Jain Quartet →</a>
+          </div>
+          <p class="demo-label spaced">Pulse Card</p>
+          <article class="card cat-public" aria-labelledby="p2">
+            <span class="stripe" aria-hidden="true"></span>
+            <div class="card-row">
+              <div class="card-main">
+                <div class="card-meta">
+                  <span class="type-label">Public event</span>
+                  <span class="sep">·</span>
+                  <span><span class="superseded">Thu · 8:00 PM</span> &nbsp;Sat, Sep 12 · 8:00 PM</span>
+                  <span class="sep">·</span><span>Rooftop, Greenpoint</span>
+                </div>
+                <h2 id="p2">Sunny Jain Quartet — rooftop set</h2>
+                <p class="tags"><span class="tag">live music</span><span class="dotsep">·</span><span class="tag">outdoor</span><span class="dotsep">·</span><span class="tag">rooftop</span></p>
+                <div class="card-footer">
+                  <div class="card-foot-left">
+                    <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                      <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
+                    </span>
+                    <span class="srcbadge verified">✓ Official</span>
+                  </div>
+                  <div class="card-actions">
+                    <button class="ghostbtn">Why this?</button>
+                    <button class="ghostbtn filled">Save Reminder</button>
+                  </div>
+                </div>
+              </div>
+              <span class="statebadge" aria-label="New date"><span class="glyph" aria-hidden="true">●</span> New date</span>
+            </div>
+          </article>
+          <p class="demo-label spaced">Detail Screen</p>
+          <div class="detail-line">
+            <p>Moved to Sat, Sep 12 · 8:00 PM. <span style="color: var(--ink-muted);">Was Thu, Aug 27.</span></p>
+            <span class="mute-slot">no “find similar” — the user still has this one</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 3. moved ============ -->
+      <div class="state">
+        <span class="tagline">state 3 · moved · reminders UNCHANGED</span>
+        <p class="note">Badge reads <strong>"New venue"</strong>. The time did not move, so neither do the reminders — and the banner body says exactly that, because the user's real question in every state is <em>do I need to do anything?</em> FR-54 also requires the map pin to update, noted on the Detail line.</p>
+        <div class="demo">
+          <p class="demo-label">Banner</p>
+          <div class="banner" role="status" aria-live="polite">
+            <strong>Sunny Jain Quartet moved to Elsewhere Rooftop.</strong>
+            <p>Same time, new place. Your reminders are unchanged.</p>
+            <a href="#">View Sunny Jain Quartet →</a>
+          </div>
+          <p class="demo-label spaced">Pulse Card</p>
+          <article class="card cat-public" aria-labelledby="m3">
+            <span class="stripe" aria-hidden="true"></span>
+            <div class="card-row">
+              <div class="card-main">
+                <div class="card-meta">
+                  <span class="type-label">Public event</span>
+                  <span class="sep">·</span><span>Thu · 8:00 PM</span>
+                  <span class="sep">·</span>
+                  <span><span class="superseded">1 Franklin St</span> &nbsp;Elsewhere Rooftop, Bushwick</span>
+                </div>
+                <h2 id="m3">Sunny Jain Quartet — rooftop set</h2>
+                <p class="tags"><span class="tag">live music</span><span class="dotsep">·</span><span class="tag">outdoor</span><span class="dotsep">·</span><span class="tag">rooftop</span></p>
+                <div class="card-footer">
+                  <div class="card-foot-left">
+                    <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                      <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
+                    </span>
+                    <span class="srcbadge verified">✓ Official</span>
+                  </div>
+                  <div class="card-actions">
+                    <button class="ghostbtn">Why this?</button>
+                    <button class="ghostbtn filled">Save Reminder</button>
+                  </div>
+                </div>
+              </div>
+              <span class="statebadge" aria-label="New venue"><span class="glyph" aria-hidden="true">●</span> New venue</span>
+            </div>
+          </article>
+          <p class="demo-label spaced">Detail Screen</p>
+          <div class="detail-line">
+            <p>Now at Elsewhere Rooftop, Bushwick. <span style="color: var(--ink-muted);">Was 1 Franklin St, Greenpoint. Map updated.</span></p>
+            <span class="mute-slot">no “find similar” — the user still has this one</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 4. sold_out ============ -->
+      <div class="state">
+        <span class="tagline">state 4 · sold_out · reminders STOPPED</span>
+        <p class="note">This is the state the retired mockup covered, corrected on two counts: the banner is ink-only rather than <code>signal.success</code> green, and the Save Reminder CTA is <strong>absent from the markup</strong> rather than rendered <code>disabled</code> with a tooltip. The headline is <em>not</em> struck — the event is still happening, the user just cannot get in, and strikethrough would say the wrong thing. <strong>Find similar events</strong> returns here, as in <code>cancelled</code>.</p>
+        <div class="demo">
+          <p class="demo-label">Banner</p>
+          <div class="banner" role="status" aria-live="polite">
+            <strong>Sunny Jain Quartet is sold out.</strong>
+            <p>We won't send any more reminders for this event.</p>
+            <a href="#">View Sunny Jain Quartet →</a>
+          </div>
+          <p class="demo-label spaced">Pulse Card</p>
+          <article class="card cat-public" aria-labelledby="s4">
+            <span class="stripe" aria-hidden="true"></span>
+            <div class="card-row">
+              <div class="card-main">
+                <div class="card-meta">
+                  <span class="type-label">Public event</span>
+                  <span class="sep">·</span><span>Thu · 8:00 PM</span>
+                  <span class="sep">·</span><span>Rooftop, Greenpoint</span>
+                </div>
+                <h2 id="s4">Sunny Jain Quartet — rooftop set</h2>
+                <p class="tags"><span class="tag">live music</span><span class="dotsep">·</span><span class="tag">outdoor</span><span class="dotsep">·</span><span class="tag">rooftop</span></p>
+                <div class="card-footer">
+                  <div class="card-foot-left">
+                    <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                      <span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot on"></span><span class="dot"></span>
+                    </span>
+                    <span class="srcbadge verified">✓ Official</span>
+                  </div>
+                  <!-- No .card-actions. Removed, not disabled. -->
+                </div>
+              </div>
+              <span class="statebadge" aria-label="Sold out"><span class="glyph" aria-hidden="true">●</span> Sold out</span>
+            </div>
+          </article>
+          <p class="demo-label spaced">Detail Screen</p>
+          <div class="detail-line">
+            <p>Sold out — tickets no longer available.</p>
+            <a href="#">Find similar events →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ stacking + collapse ============ -->
+      <div class="state">
+        <span class="tagline">state 5 · stacking and collapse</span>
+        <p class="note">Up to 3 banners stack, mirroring the 3-card digest discipline. A 4th collapses all of them into one line rather than pushing the cards below the fold. FR-54's one-notification-per-event-per-day cap makes more than three rare.</p>
+        <div class="demo">
+          <p class="demo-label">Three stacked</p>
+          <div class="banner" role="status" aria-live="polite">
+            <strong>Sunny Jain Quartet was cancelled.</strong>
+            <p>We've stopped all reminders for this event. It'll drop off your digest tomorrow.</p>
+            <a href="#">View Sunny Jain Quartet →</a>
+          </div>
+          <div class="banner" role="status" aria-live="polite">
+            <strong>Bed-Stuy soul revue moved to Sep 4.</strong>
+            <p>Your reminders moved with it. Nothing else to do.</p>
+            <a href="#">View Bed-Stuy soul revue →</a>
+          </div>
+          <div class="banner" role="status" aria-live="polite">
+            <strong>Gowanus open studios is sold out.</strong>
+            <p>We won't send any more reminders for this event.</p>
+            <a href="#">View Gowanus open studios →</a>
+          </div>
+          <p class="demo-label spaced">Four or more — collapsed</p>
+          <p class="banner-collapse">4 saved events changed. <a href="#">See timeline →</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

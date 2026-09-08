@@ -1,0 +1,685 @@
+<!--
+  EventPulse24 — Saved Collections (Desktop, 1280px) — DARK THEME
+  Amendment A-22 — Component.Surface.Saved at /saved. PRD FR-49 (Unlimited Saves +
+  Saved Collections, Pro). Closes the last MVP functional requirement that had no
+  surface: /saved did not exist in the 14-route IA and had no mockup.
+
+  Shape: ONE page, collections as titled sections. No /saved/:id detail route.
+  Sections run in the user's order, then the system-owned `Unsorted` section.
+
+  Shell: A-8 (240px sidenav + brand-only topbar + sidenav-footer), byte-identical to
+  browse-desktop.html / conflicts-desktop.html. Sidenav is the 7-ROUTE variant
+  (Amendment A-22): Digest / Timeline / Add / Browse / Saved (active) / Conflicts / Settings.
+  Saved glyph is a stroke-only bookmark — not a heart or star (see DESIGN.md rationale).
+
+  Grid + card vocabulary inherited verbatim from browse-desktop.html (Amendment A-12):
+  3-col at >=1280px, 2-col at 1024-1279px, gap 20px, 22px card padding, 18px headline.
+
+  Deliberately ABSENT (spine locks):
+    - No hero / eyebrow / lede / city-meta pill — this is a personal archive, not a
+      discovery surface, so the component.hero.citypage vocabulary does not migrate.
+    - No search input — component.input.search.browse does not migrate at MVP.
+    - No filter chip rail (A-11 / A-12 lock).
+    - No drag handles — reorder is explicit up/down buttons (EXPERIENCE.md §6 ban holds).
+    - No per-collection stripe colour, swatch or cover image.
+    - No save-count badge on the nav item; the count lives in the page head only.
+    - No component.card.pro.upsell gradient — the Free gate uses component.emptystate.locked.
+
+  Stripe note: all 8 cards render `public` (slate). The amber must-know stripe is capped
+  at under 10% of cards in any view, which at 8 cards permits zero — so none is drawn
+  here. That is the rule working, not an omission.
+
+  Person: Maya Patel, Brooklyn. Pro subscriber. Today: Thursday, Aug 27, 2026.
+  The states appendix at the foot of the document demonstrates rename, delete-confirm,
+  the card collection menu, and the Free-tier locked zone. It is a demonstration block,
+  not page chrome — the routable surface ends at the `Unsorted` section.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Saved · EventPulse24</title>
+<link rel="icon" type="image/png" href="EventPulse24-latest-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:        #0A0A0B;
+    --surface-elevated:     #131316;
+    --surface-subtle:       #1B1B1F;
+    --surface-inset:        #232328;
+    --ink-primary:          #F2F2F4;
+    --ink-secondary:        #C9C9CF;
+    --ink-muted:            #8A8A92;
+    --ink-faint:            #3A3A40;
+    --ink-inverse:          #0A0A0B;
+    --accent-terracotta:    #FF6A47;
+    --accent-slate:         #6E7E92;
+    --accent-amber:         #E89B4A;
+    --warm-personal:        #C8967A;
+    --cool-public:          #6E7E92;
+    --warn-amber:           #D8A86A;
+    --signal-success:       #7AAA7A;
+    --signal-error:         #C66A5C;
+    --border-subtle:        rgba(242, 242, 244, 0.08);
+    --border-strong:        rgba(242, 242, 244, 0.16);
+
+    --family-display: "Source Serif 4", Fraunces, Georgia, serif;
+    --family-body:    "Inter", -apple-system, system-ui, sans-serif;
+    --family-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+    --container-max: 1180px;
+    --sidenav-w: 240px;
+    --page-pad: 32px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input { font: inherit; color: inherit; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+  /* ===== Layout shell (A-8 — byte-identical to browse-desktop.html) ===== */
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  /* ===== Topbar (brand-only — topbar-quiet rule, ASSUM-11) ===== */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  /* ===== Sidebar (Component.Sidenav.App — 7-route variant, Amendment A-22) ===== */
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  /* ===== Page head (component.surface.saved — NO hero, NO lede, NO city pill) ===== */
+  .crumb { font-size: 12px; color: var(--ink-muted); margin: 24px 0 0; }
+  .crumb a { color: var(--ink-secondary); }
+  .page-head { padding: 48px 0 8px; }
+  .page-head h1 { font-family: var(--family-display); font-size: 36px; font-weight: 700; line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 10px; color: var(--ink-primary); }
+  .page-head .counts { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); letter-spacing: 0.02em; margin: 0; }
+  .page-head .counts strong { color: var(--ink-secondary); font-weight: 600; }
+
+  /* ===== Collection header (component.collection.header) ===== */
+  .collection { padding-top: 48px; } /* spacing.12 */
+  .collection:first-of-type { padding-top: 32px; } /* spacing.8 */
+  .coll-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; padding: 0 0 12px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 20px; }
+  .coll-head h2 { font-family: var(--family-display); font-size: 26px; font-weight: 600; margin: 0; color: var(--ink-primary); letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 12px; }
+  .coll-head h2 .count { font-family: var(--family-mono); font-size: 12px; font-weight: 400; color: var(--ink-muted); letter-spacing: 0.02em; }
+  .coll-head h2 .lockglyph { width: 12px; height: 12px; stroke: var(--ink-muted); fill: none; stroke-width: 1.8; flex-shrink: 0; align-self: center; }
+
+  /* Control cluster — ALWAYS rendered, never hover-revealed (hover-only affordances are banned on sm) */
+  .coll-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; color: var(--ink-muted); transition: background 160ms ease, color 160ms ease; }
+  .icon-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .icon-btn[aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
+  .icon-btn[aria-disabled="true"]:hover { background: transparent; color: var(--ink-muted); }
+  .icon-btn.dots svg { stroke-width: 2; }
+
+  /* ===== Rename state (inline, no modal) ===== */
+  .coll-rename { width: 100%; max-width: 460px; background: var(--surface-paper); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 4px 12px; font-family: var(--family-display); font-size: 26px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink-primary); }
+  .coll-rename::placeholder { color: var(--ink-faint); }
+  .coll-rename:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 1px; border-color: var(--accent-terracotta); }
+  .rename-hint { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; }
+  .rename-hint kbd { font-family: var(--family-mono); font-size: 11px; color: var(--ink-secondary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 1px 5px; }
+
+  /* ===== Delete-confirm state (inline row, NOT a modal — the saves survive in Unsorted) ===== */
+  .coll-confirm { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 16px; background: var(--surface-elevated); border: 1px solid var(--border-strong); border-radius: 12px; margin-bottom: 20px; }
+  .coll-confirm p { font-size: 14px; line-height: 1.5; color: var(--ink-secondary); margin: 0; }
+  .coll-confirm p strong { color: var(--ink-primary); font-weight: 600; }
+  .coll-confirm .acts { display: inline-flex; gap: 8px; flex-shrink: 0; }
+  .ghost { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); transition: background 160ms ease, color 160ms ease; }
+  .ghost:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .ghost:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .ghost.destructive { color: var(--signal-error); }
+  .ghost.destructive:hover { background: rgba(198,106,92,0.10); color: var(--signal-error); }
+
+  /* ===== 3-column card grid (inherited verbatim from browse-desktop.html, Amendment A-12) ===== */
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding-bottom: 12px; }
+  @media (max-width: 1279px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* ===== Card (Card.PulseDigest anatomy + Browse sizing) ===== */
+  .card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 22px; position: relative; transition: background 160ms ease, border-color 160ms ease; display: flex; flex-direction: column; }
+  .card:hover { background: var(--surface-subtle); border-color: var(--border-strong); }
+  .card:focus-within { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .card .stripe { position: absolute; left: 0; top: 22px; bottom: 22px; width: 3px; border-radius: 0 2px 2px 0; }
+  .card.public .stripe { background: var(--accent-slate); }
+  .card.mustknow .stripe { background: var(--accent-amber); }
+  /* Stripe cap: 2 colours only (A-12). Collection identity is NEVER a stripe colour (A-22). */
+
+  .card-row-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-left: 12px; }
+  .meta { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+  .meta .sep { color: var(--ink-faint); margin: 0 5px; text-transform: none; }
+  .card h3 { font-family: var(--family-display); font-size: 18px; font-weight: 600; line-height: 1.28; margin: 0 0 6px; padding-left: 12px; color: var(--ink-primary); }
+  .where { font-size: 13px; color: var(--ink-secondary); padding-left: 12px; margin: 0 0 10px; }
+  .tags { font-family: var(--family-body); font-style: italic; font-size: 12px; line-height: 1.40; color: var(--ink-muted); padding-left: 12px; margin: 0 0 14px; letter-spacing: 0.005em; }
+  .tags .tag { color: var(--ink-secondary); }
+  .tags .dotsep { color: var(--ink-faint); margin: 0 5px; }
+  .card .footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-subtle); padding-left: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--ink-muted); }
+  .card-foot-left { display: flex; gap: 12px; align-items: center; }
+  .pulse { display: inline-flex; gap: 4px; align-items: center; }
+  .pulse .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse .dot.on { background: var(--ink-primary); }
+  .srcbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-secondary); }
+  .srcbadge .glyph { font-size: 13px; }
+  .srcbadge.verified { color: var(--signal-success); }
+  .srcbadge.verified .glyph { color: var(--signal-success); }
+
+  /* ===== Save affordance in its `saved` state — acts as un-save (component.button.save.inline) ===== */
+  .save-inline { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); background: transparent; border: 1px solid transparent; transition: background 160ms ease, color 160ms ease, border-color 160ms ease; white-space: nowrap; }
+  .save-inline:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .save-inline:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .save-inline svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .save-inline.saved { color: var(--signal-success); }
+  .save-inline.saved svg { stroke: currentColor; fill: currentColor; fill-opacity: 0.15; }
+
+  /* ===== Card collection menu (component.menu.card.collection) ===== */
+  .card-menu-wrap { position: relative; }
+  .card-menu { position: absolute; right: 0; top: 34px; z-index: 5; min-width: 232px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 16px 44px rgba(0,0,0,0.5); padding: 6px; }
+  .card-menu .mrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 9px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-primary); text-align: left; }
+  .card-menu .mrow:hover { background: var(--surface-subtle); }
+  .card-menu .mrow .check { color: var(--ink-primary); font-size: 13px; }
+  .card-menu .mdiv { height: 1px; background: var(--border-subtle); margin: 6px 8px; }
+  .card-menu .mrow.new { color: var(--ink-secondary); }
+
+  /* ===== New collection button ===== */
+  .new-coll { margin-top: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink-secondary); border: 1px dashed var(--border-strong); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .new-coll:hover { background: var(--surface-subtle); color: var(--ink-primary); border-color: var(--ink-faint); }
+  .new-coll:focus-visible { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .new-coll svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  /* ===== Empty single collection ===== */
+  .coll-empty { font-size: 13px; color: var(--ink-muted); padding: 4px 0 8px; margin: 0; }
+
+  /* ===== Empty whole surface (no CTA — §5 No-CTA Discipline) ===== */
+  .surface-empty h2 { font-family: var(--family-display); font-size: 28px; font-weight: 600; margin: 0 0 8px; color: var(--ink-primary); letter-spacing: -0.012em; }
+  .surface-empty p { font-size: 13px; color: var(--ink-muted); margin: 0; }
+
+  /* ===== Free-tier locked zone (component.emptystate.locked) ===== */
+  .locked-zone { margin-top: 48px; padding-top: 32px; border-top: 1px solid var(--border-subtle); }
+  .locked-zone .lede { font-size: 14px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 6px; }
+  .locked-zone .upgrade { font-size: 12px; color: var(--accent-terracotta); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+  .locked-zone .upgrade:hover { color: #FF7E5E; }
+  .locked-rows { margin-top: 20px; display: flex; flex-direction: column; gap: 14px; opacity: 0.4; }
+  .locked-rows .coll-head { margin-bottom: 0; pointer-events: none; }
+
+  /* ===== Show-all anchor past the 24-card soft cap ===== */
+  .more-anchor { padding: 4px 0 0; font-size: 12px; color: var(--ink-muted); }
+  .more-anchor a { color: var(--accent-terracotta); font-weight: 500; }
+  .more-anchor a:hover { color: #FF7E5E; }
+
+  /* ===== States appendix — demonstration only, NOT part of the routable surface ===== */
+  .states { margin-top: 96px; padding-top: 40px; border-top: 1px solid var(--border-strong); }
+  .states > .lead { font-size: 13px; line-height: 1.6; color: var(--ink-muted); max-width: 760px; margin: 0 0 8px; }
+  .states h2.states-h { font-family: var(--family-display); font-size: 22px; font-weight: 600; margin: 0 0 10px; color: var(--ink-primary); }
+  .state { margin-top: 48px; }
+  .state .tag { display: inline-block; font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); background: var(--surface-subtle); padding: 4px 8px; border-radius: 4px; margin-bottom: 12px; }
+  .state .note { font-size: 13px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 18px; max-width: 720px; }
+  .state .demo { border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; background: var(--surface-paper); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="EventPulse24-latest-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <!-- Saved — 7th route (Amendment A-22). Bookmark glyph, stroke-only, never filled chromatic. -->
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      Saved
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="EventPulse24-latest-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </header>
+
+    <div class="crumb"><span style="color: var(--ink-secondary);">Saved</span> · Pro</div>
+
+    <!-- Page head: no hero, no lede, no city pill. Counts are the only numbers on this page. -->
+    <header class="page-head">
+      <h1>Saved.</h1>
+      <p class="counts"><strong>8 events</strong> · <strong>3 collections</strong></p>
+    </header>
+
+    <!-- Live region for component.control.reorder announcements. Without it a swap is silent to SR users. -->
+    <p class="sr-only" role="status" aria-live="polite">3 collections, in your order. For the kids is position 1 of 3.</p>
+
+    <!-- ============ Collection 1 — first, so its up-arrow is disabled ============ -->
+    <section class="collection" aria-labelledby="coll-kids">
+      <div class="coll-head">
+        <h2 id="coll-kids">For the kids <span class="count">3 events</span></h2>
+        <div class="coll-actions">
+          <button type="button" class="icon-btn" aria-disabled="true" aria-label="Move For the kids up — already first">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg>
+          </button>
+          <button type="button" class="icon-btn" aria-label="Move For the kids down">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"/></svg>
+          </button>
+          <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="Actions for For the kids">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <article class="card public" aria-labelledby="ev-1">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Sat 11:00 AM <span class="sep">·</span> Free</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Puppet show at the library into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-1">Puppet show at the library</h3>
+          <p class="where">Brooklyn Public Library, Grand Army Plaza</p>
+          <p class="tags"><span class="tag">family</span><span class="dotsep">·</span><span class="tag">indoor</span><span class="dotsep">·</span><span class="tag">free</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 5 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge verified"><span class="glyph" aria-hidden="true">✓</span> Official</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to For the kids — tap to remove Puppet show at the library">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+
+        <article class="card public" aria-labelledby="ev-2">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Sun 10:00 AM <span class="sep">·</span> $8</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Prospect Park nature walk for kids into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-2">Prospect Park nature walk for kids</h3>
+          <p class="where">Prospect Park Audubon Center</p>
+          <p class="tags"><span class="tag">family</span><span class="dotsep">·</span><span class="tag">outdoor</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge"><span class="glyph" aria-hidden="true">◌</span> Community</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to For the kids — tap to remove Prospect Park nature walk for kids">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+
+        <article class="card public" aria-labelledby="ev-3">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Sat 2:00 PM <span class="sep">·</span> Free</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Kids clay workshop into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-3">Kids clay workshop</h3>
+          <p class="where">Gowanus Studio Space</p>
+          <p class="tags"><span class="tag">family</span><span class="dotsep">·</span><span class="tag">arts</span><span class="dotsep">·</span><span class="tag">indoor</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 3 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge"><span class="glyph" aria-hidden="true">◌</span> Community</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to For the kids — tap to remove Kids clay workshop">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ Collection 2 ============ -->
+    <section class="collection" aria-labelledby="coll-music">
+      <div class="coll-head">
+        <h2 id="coll-music">Music this month <span class="count">2 events</span></h2>
+        <div class="coll-actions">
+          <button type="button" class="icon-btn" aria-label="Move Music this month up">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg>
+          </button>
+          <button type="button" class="icon-btn" aria-label="Move Music this month down">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"/></svg>
+          </button>
+          <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="Actions for Music this month">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <article class="card public" aria-labelledby="ev-4">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Thu 8:00 PM <span class="sep">·</span> Free</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Sunny Jain Quartet rooftop set into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-4">Sunny Jain Quartet — rooftop set</h3>
+          <p class="where">Rooftop, 1 Franklin St, Greenpoint</p>
+          <p class="tags"><span class="tag">live music</span><span class="dotsep">·</span><span class="tag">outdoor</span><span class="dotsep">·</span><span class="tag">rooftop</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge verified"><span class="glyph" aria-hidden="true">✓</span> Official</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to Music this month — tap to remove Sunny Jain Quartet rooftop set">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+
+        <article class="card public" aria-labelledby="ev-5">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Sep 4, 9:00 PM <span class="sep">·</span> $22</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Bed-Stuy soul revue into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-5">Bed-Stuy soul revue</h3>
+          <p class="where">C'mon Everybody, Bedford-Stuyvesant</p>
+          <p class="tags"><span class="tag">live music</span><span class="dotsep">·</span><span class="tag">indoor</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge verified"><span class="glyph" aria-hidden="true">✓</span> Official</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to Music this month — tap to remove Bed-Stuy soul revue">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ Collection 3 — empty, and last, so its down-arrow is disabled ============ -->
+    <section class="collection" aria-labelledby="coll-rainy">
+      <div class="coll-head">
+        <h2 id="coll-rainy">Rainy day <span class="count">0 events</span></h2>
+        <div class="coll-actions">
+          <button type="button" class="icon-btn" aria-label="Move Rainy day up">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg>
+          </button>
+          <button type="button" class="icon-btn" aria-disabled="true" aria-label="Move Rainy day down — already last">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"/></svg>
+          </button>
+          <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="Actions for Rainy day">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- Empty single collection: header keeps its full control cluster — this is exactly when a user wants to delete it. -->
+      <p class="coll-empty">Nothing filed here yet.</p>
+    </section>
+
+    <button type="button" class="new-coll">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      New collection
+    </button>
+
+    <!-- ============ Unsorted — system-owned: no reorder buttons, no actions menu, always last ============ -->
+    <section class="collection" aria-labelledby="coll-unsorted">
+      <div class="coll-head">
+        <h2 id="coll-unsorted">Unsorted <span class="count">3 events</span></h2>
+        <!-- No .coll-actions. Unsorted cannot be renamed, deleted, or reordered. Hidden entirely when empty. -->
+      </div>
+
+      <div class="grid">
+        <article class="card public" aria-labelledby="ev-6">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Fri 7:30 PM <span class="sep">·</span> $15</div>
+            <div class="card-menu-wrap">
+              <!-- Open state of component.menu.card.collection — the only way an event leaves Unsorted at MVP. -->
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="true" aria-label="File Poetry reading at Books Are Magic into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+              <div class="card-menu" role="menu" aria-label="File into a collection">
+                <button type="button" class="mrow" role="menuitemradio" aria-checked="false">For the kids</button>
+                <button type="button" class="mrow" role="menuitemradio" aria-checked="false">Music this month</button>
+                <button type="button" class="mrow" role="menuitemradio" aria-checked="false">Rainy day</button>
+                <button type="button" class="mrow" role="menuitemradio" aria-checked="true">Unsorted <span class="check" aria-hidden="true">✓</span></button>
+                <div class="mdiv" role="separator"></div>
+                <button type="button" class="mrow new" role="menuitem">New collection…</button>
+              </div>
+            </div>
+          </div>
+          <h3 id="ev-6">Poetry reading at Books Are Magic</h3>
+          <p class="where">Books Are Magic, Cobble Hill</p>
+          <p class="tags"><span class="tag">arts</span><span class="dotsep">·</span><span class="tag">indoor</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 4 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge verified"><span class="glyph" aria-hidden="true">✓</span> Official</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to Unsorted — tap to remove Poetry reading at Books Are Magic">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+
+        <article class="card public" aria-labelledby="ev-7">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Sat 6:00 PM <span class="sep">·</span> Free</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Gowanus open studios into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-7">Gowanus open studios</h3>
+          <p class="where">Various studios, Gowanus</p>
+          <p class="tags"><span class="tag">arts</span><span class="dotsep">·</span><span class="tag">community</span><span class="dotsep">·</span><span class="tag">free</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 3 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge"><span class="glyph" aria-hidden="true">◌</span> Community</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to Unsorted — tap to remove Gowanus open studios">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+
+        <article class="card public" aria-labelledby="ev-8">
+          <span class="stripe" aria-hidden="true"></span>
+          <div class="card-row-top">
+            <div class="meta">Public <span class="sep">·</span> Sep 6, 11:00 AM <span class="sep">·</span> Free</div>
+            <div class="card-menu-wrap">
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="File Fort Greene farmers market talk into a collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+          </div>
+          <h3 id="ev-8">Fort Greene farmers market talk</h3>
+          <p class="where">Fort Greene Park greenmarket</p>
+          <p class="tags"><span class="tag">food</span><span class="dotsep">·</span><span class="tag">outdoor</span><span class="dotsep">·</span><span class="tag">free</span></p>
+          <div class="footer">
+            <div class="card-foot-left">
+              <span class="pulse" role="img" aria-label="Confidence 3 of 5">
+                <span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot on" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span>
+              </span>
+              <span class="srcbadge"><span class="glyph" aria-hidden="true">◌</span> Community</span>
+            </div>
+            <button class="save-inline saved" type="button" aria-label="Saved to Unsorted — tap to remove Fort Greene farmers market talk">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Saved ✓
+            </button>
+          </div>
+        </article>
+      </div>
+      <p class="more-anchor">Soft cap is 24 cards per section · <a href="#">Show all 3</a></p>
+    </section>
+
+    <!--
+      ============================================================================
+      STATES APPENDIX — demonstration only. NOT part of the routable /saved surface.
+      The routable surface ends at the Unsorted section above. Engineering should read
+      the four blocks below as component states, not as page sections to build.
+      ============================================================================
+    -->
+    <section class="states" aria-label="Component states — demonstration">
+      <h2 class="states-h">Component states</h2>
+      <p class="lead">Below the fold of the real surface: the four states of <code>component.collection.header</code> and <code>component.emptystate.locked</code> that cannot be shown simultaneously on a live page. This block is a spec demonstration and is not page chrome.</p>
+
+      <div class="state">
+        <span class="tag">state 1 · rename (inline, no modal)</span>
+        <p class="note">Clicking the collection name, or choosing Rename from <code>⋯</code>, swaps the heading for an input at the same 26px display size so the line does not reflow. <kbd>Enter</kbd> commits, <kbd>Esc</kbd> reverts, blur commits. Duplicate names are permitted — the product does not correct a user's own filing vocabulary.</p>
+        <div class="demo">
+          <div class="coll-head">
+            <div style="flex:1; min-width:0;">
+              <label class="sr-only" for="rn">Collection name</label>
+              <input id="rn" class="coll-rename" type="text" value="Music this month" aria-label="Collection name" />
+              <p class="rename-hint"><kbd>Enter</kbd> to save · <kbd>Esc</kbd> to cancel</p>
+            </div>
+            <div class="coll-actions">
+              <button type="button" class="icon-btn" aria-label="Move up"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
+              <button type="button" class="icon-btn" aria-label="Move down"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"/></svg></button>
+              <button type="button" class="icon-btn dots" aria-haspopup="menu" aria-expanded="false" aria-label="Actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="state">
+        <span class="tag">state 2 · delete confirm (inline row, no modal)</span>
+        <p class="note">Deleting a collection <strong>never deletes saves</strong> — its events move to <code>Unsorted</code>. Because nothing is destroyed, this is an inline confirm row rather than <code>component.modal.account-delete</code>'s type-to-confirm gate, which would overstate the stakes and risk a second overlay level (banned). Wrapped in <code>role="alertdialog"</code> with focus moved to Delete.</p>
+        <div class="demo">
+          <div class="coll-confirm" role="alertdialog" aria-label="Confirm delete collection">
+            <p>Delete <strong>“Music this month”</strong>? Its 2 events move to Unsorted.</p>
+            <div class="acts">
+              <button type="button" class="ghost destructive">Delete</button>
+              <button type="button" class="ghost">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="state">
+        <span class="tag">state 3 · empty surface (no CTA)</span>
+        <p class="note">Supersedes the prior orphan spine copy, which read “Single primary CTA pulses to the home” — that contradicted §5 No-CTA Discipline, a locked product principle. The sentence describing where saves come from does the navigational work a button would, without pushing.</p>
+        <div class="demo surface-empty">
+          <h2>Nothing saved yet.</h2>
+          <p>Save an event from Pulse Digest or Browse and it lands here.</p>
+        </div>
+      </div>
+
+      <div class="state">
+        <span class="tag">state 4 · free tier (component.emptystate.locked)</span>
+        <p class="note">A Free user sees their saves ungrouped, then this locked Collections zone. Mirrors the locked-rows treatment <code>component.control.day-picker</code> already ships on <code>/settings/quiet-hours</code>, so the product has exactly one way of showing a Free user what tier value looks like. Deliberately <strong>not</strong> <code>component.card.pro.upsell</code> — that tinted gradient stays sanctioned on <code>/digest</code> and <code>/settings</code> → Plan only.</p>
+        <div class="demo">
+          <div class="locked-zone" style="margin-top:0; padding-top:0; border-top:0;">
+            <p class="lede">Collections are a Pro feature.</p>
+            <a href="#" class="upgrade">Upgrade to Pro</a>
+            <div class="locked-rows" aria-hidden="true">
+              <div class="coll-head">
+                <h2><svg class="lockglyph" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Music this month <span class="count">6 events</span></h2>
+              </div>
+              <div class="coll-head">
+                <h2><svg class="lockglyph" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> For the kids <span class="count">5 events</span></h2>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

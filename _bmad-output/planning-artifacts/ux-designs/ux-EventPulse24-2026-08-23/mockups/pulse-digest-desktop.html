@@ -13,7 +13,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>EventPulse24 — Today</title>
 <!-- Brand: EventPulse24 logo (cyan pulse waveform + single coral peak). -->
-<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="icon" type="image/png" href="EventPulse24-latest-logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
@@ -159,10 +159,6 @@
   .ghostbtn { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); border: 1px solid var(--border-subtle); transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
   .ghostbtn:hover { background: var(--surface-subtle); color: var(--ink-primary); border-color: var(--border-strong); }
   /* Tinted ghost buttons — borrow color from the slot stripe so action matches category. */
-  .ghostbtn.tint-amber { color: var(--accent-amber); border-color: rgba(232,155,74,0.45); }
-  .ghostbtn.tint-amber:hover { background: rgba(232,155,74,0.10); color: var(--accent-amber); border-color: var(--accent-amber); }
-  .ghostbtn.tint-violet { color: #B59CE8; border-color: rgba(181,156,232,0.45); }
-  .ghostbtn.tint-violet:hover { background: rgba(181,156,232,0.10); color: #B59CE8; border-color: #B59CE8; }
   /* Filled action — terracotta pill for must-tap "Open" affordance. */
   .ghostbtn.filled { background: var(--accent-terracotta); color: var(--ink-inverse); border-color: var(--accent-terracotta); font-weight: 600; }
   .ghostbtn.filled:hover { background: #FF7E5E; border-color: #FF7E5E; color: var(--ink-inverse); }
@@ -182,9 +178,10 @@
   .saved-row .when { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; padding-top: 2px; min-width: 64px; }
   .saved-row .cat-icon { width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .saved-row .cat-icon svg { width: 18px; height: 18px; }
-  .saved-row .cat-icon.tint-pottery { background: rgba(200,150,122,0.16); color: var(--warm-personal); }
-  .saved-row .cat-icon.tint-book    { background: rgba(110,126,146,0.18); color: var(--accent-slate); }
-  .saved-row .cat-icon.tint-leaf    { background: rgba(122,170,122,0.16); color: var(--signal-success); }
+  /* A-24: category chips are ink-only. signal.success / accent.slate / warm.personal
+     are reserved (state-change moments / category stripes / Personal tone) and were
+     being used decoratively here. The glyph and the title carry the category. */
+  .saved-row .cat-icon { background: var(--surface-inset); color: var(--ink-muted); }
   .saved-row .title { font-size: 14px; font-weight: 500; color: var(--ink-primary); line-height: 1.35; }
   .saved-row .where-sm { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
 
@@ -211,7 +208,7 @@
 <div class="shell">
   <aside class="sidenav" aria-label="Primary">
     <div class="brand-wrap">
-      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      <img src="EventPulse24-latest-logo.png" alt="" width="24" height="24" aria-hidden="true" />
       EventPulse24
     </div>
     <div class="divider"></div>
@@ -230,6 +227,11 @@
     <a href="#" class="nav-item">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
       Browse
+    </a>
+    <!-- Saved — 7th route (Amendment A-22, migrated A-24). Bookmark glyph, stroke-only. -->
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      Saved
     </a>
     <a href="#" class="nav-item">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
@@ -255,12 +257,12 @@
   </aside>
 
   <main class="main">
-    <nav class="topbar" aria-label="Brand">
+    <header class="topbar" aria-label="Brand">
       <span class="brand">
-        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <img class="brand-mark" src="EventPulse24-latest-logo.png" alt="" width="26" height="26" aria-hidden="true" />
         <span class="brand-text">EventPulse24</span>
       </span>
-    </nav>
+    </header>
 
     <header class="pagehead">
       <div class="eyebrow"><span class="today-dot"></span> Thursday · Aug 27, 2026 · Brooklyn, NY</div>
@@ -331,7 +333,7 @@
                   <span role="tooltip" id="tooltip-c2" hidden>4 of 5. Strong match on nearby tech meetups and within 2 km of your work.</span>
                 </div>
                 <div class="card-actions">
-                  <button class="ghostbtn tint-amber">Why this?</button>
+                  <button class="ghostbtn">Why this?</button>
                   <button class="ghostbtn">Save</button>
                 </div>
               </div>
@@ -365,7 +367,7 @@
                   <span role="tooltip" id="tooltip-c3" hidden>3 of 5. New-to-you discovery in your least-engaged category.</span>
                 </div>
                 <div class="card-actions">
-                  <button class="ghostbtn tint-violet">Save</button>
+                  <button class="ghostbtn">Save</button>
                 </div>
               </div>
             </div>
@@ -378,7 +380,7 @@
         <div class="panel">
           <div class="saved-row">
             <div class="when">Thu<br>7:30 PM</div>
-            <span class="cat-icon tint-pottery" aria-hidden="true">
+            <span class="cat-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/></svg>
             </span>
             <div>
@@ -388,7 +390,7 @@
           </div>
           <div class="saved-row">
             <div class="when">Fri<br>6:00 PM</div>
-            <span class="cat-icon tint-book" aria-hidden="true">
+            <span class="cat-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h7a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2Z"/><path d="M22 4h-7a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h8Z"/></svg>
             </span>
             <div>
@@ -398,7 +400,7 @@
           </div>
           <div class="saved-row">
             <div class="when">Sat<br>9:00 AM</div>
-            <span class="cat-icon tint-leaf" aria-hidden="true">
+            <span class="cat-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96c1.4 1 2 5.04 2 7.04 0 5.52-4.48 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>
             </span>
             <div>

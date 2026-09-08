@@ -147,7 +147,7 @@
     text-underline-offset: 3px;
     font-weight: 500;
   }
-  .field-error .text a:hover { color: #E8B97A; }
+  .field-error .text a:hover { color: var(--ink-primary); }
 
   /* ===== component.auth.input.password (Amendment A-20) ===== */
   .password-field { position: relative; }
@@ -225,7 +225,7 @@
 
 <!-- ===== Component.Topbar.PreAuth (byte-identical to pulse-preview-desktop.html) ===== -->
 <div class="frame">
-  <nav class="topbar" aria-label="Brand">
+  <header class="topbar" aria-label="Brand">
     <a class="brand-anchor" href="/preview" aria-label="EventPulse24 home">
       <span class="brand-wrap">
         <img class="brand-logo" src="EventPulse24-latest-logo.png" alt="" width="36" height="36" aria-hidden="true">
@@ -235,7 +235,7 @@
         </span>
       </span>
     </a>
-  </nav>
+  </header>
 
   <!-- ===== Auth form (the rendered default state — State A) ===== -->
   <main class="auth-wrap">

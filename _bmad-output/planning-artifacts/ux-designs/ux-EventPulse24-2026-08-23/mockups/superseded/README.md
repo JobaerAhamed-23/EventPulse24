@@ -1,0 +1,13 @@
+# Superseded mockups
+
+Mockups replaced by a later amendment. Kept for provenance, **not** for reference — every file here is wrong in at least one documented way, and the spines (`DESIGN.md` + `EXPERIENCE.md`) win over all of them.
+
+Distinct from `../light-archive/`, which holds light-mode variants of *current* surfaces.
+
+| File | Superseded by | Why |
+|---|---|---|
+| `sold-out-card-state-desktop.html` | Amendment A-23 → `../event-state-change-desktop.html` | Covered only 1 of the 4 states PRD FR-54 specifies. Rendered the `Save Reminder` CTA `disabled` with an `aria-disabled` attribute and a `title` tooltip, where `Component.Badge.SoldOut` says the CTA is "removed, not greyed". Tinted the state-change banner in `--signal-success` green (`rgba(122,170,122,*)`) on a message telling the user they could not get in. Never migrated to the A-8 shell (`.frame` + `.container`, no sidenav). Carried the tautological `discovery · new-to-you` why-tags that the 2026-09-03 pulse-preview audit flagged and Amendment A-12 dropped the discovery vocabulary over. |
+| `ranking-algorithm-transparency-desktop.html` | Amendment A-24 → `../settings-desktop.html` §Privacy | Already carried a self-declared `DEPRECATED 2026-09-06` banner saying its content was inlined into Settings → Privacy, yet it was still sitting in the active `mockups/` root. Contradicts the §2 IA, which places PRD FR-22 ranking transparency **inside** Settings → Privacy as an in-page section, not as a route. Never migrated to the A-8 shell: it carries its own non-canonical proto-sidenav (`.grid { grid-template-columns: 220px 1fr }` + `<aside class="sidenav">`) with no `nav-item` routes, so it renders a rail that navigates nowhere. Missing the locked `a { text-decoration: none }` reset against 10 anchors. |
+| `ranking-algorithm-transparency-desktop.predeprecation.html` | Amendment A-24 (provenance only) | The pre-deprecation copy of the row above (254 lines vs 262 — it lacks the `DEPRECATED` banner). Was **misfiled in `../light-archive/`** despite being a dark-mode file (`data-theme="dark"`, `#0A0A0B` canvas) — the same category error A-23 avoided when it declined to file the sold-out mockup there. Moved here so `light-archive/` again contains only genuine light-mode variants. Superseded twice over: by the deprecation banner, and by the inlining into Settings → Privacy. |
+
+`light-archive/` was verified during Amendment A-24: its four remaining files (`onboarding-step1-desktop`, `onboarding-step1-mobile`, `pulse-digest-desktop`, `pulse-digest-mobile`) are all genuine light-mode variants — `#FAF8F4` canvas, no `data-theme` attribute — so the directory name now describes its contents.

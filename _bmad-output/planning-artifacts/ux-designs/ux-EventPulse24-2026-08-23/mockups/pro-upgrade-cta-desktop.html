@@ -35,6 +35,9 @@
   }
   *,*::before,*::after { box-sizing: border-box; }
   html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  /* A-24: locked global reset prerequisite (EXPERIENCE.md Component.Sidenav.App).
+     Lowest specificity, so every scoped anchor rule below still wins. */
+  a { color: inherit; text-decoration: none; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
   .page { padding: 0 80px; }
