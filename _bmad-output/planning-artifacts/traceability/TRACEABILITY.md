@@ -1,86 +1,125 @@
 # EventPulse24 — Traceability Matrix
 
-Generated: 2026-09-07
+Generated: 2026-09-08 (produced by the project's own `doc-trace` skill — `.agents/skills/doc-trace/SKILL.md` — not the BMad `bmad-testarch-trace` workflow)
 
 **Sources scanned:**
-- PRD: `_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md`
-- Architecture: `_bmad-output/planning-artifacts/architecture/architecture-EventPulse24-2026-09-04/ARCHITECTURE-SPINE.md`
-- UX: `_bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/DESIGN.md`
-- Epics/Stories: none found yet (expected — not created in this project as of this run). The Epic/Story column below will populate automatically once `_bmad-output/planning-artifacts/epics*` (or similar) exists.
+- PRD: `_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md` — 45 MVP functional requirements (FR-1–FR-30, FR-32, FR-33, FR-48–FR-60); FR-31 and FR-34–FR-47 are Phase 2/3/Year 2+, listed separately below and not scored.
+- Architecture Spine: `_bmad-output/planning-artifacts/architecture/architecture-EventPulse24-2026-09-04/ARCHITECTURE-SPINE.md`
+- UX Design (components/visual system): `_bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/DESIGN.md`
+- UX Experience (flows/journeys): `_bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/EXPERIENCE.md`
+- Mockups: all 32 files under `.../mockups/` (26 desktop + 6 mobile), each checked for a self-tagged `FR-N` in its own header comment — the strongest evidence a design exists, since EXPERIENCE.md's own "Surface Coverage Map" table only lists 20 of the 32 files and cannot be trusted alone.
+- Epics/Stories: none found yet — expected pre-epics. Not scored below.
 
-## Findings (read this first)
+---
 
-1. **Architecture gap — FR-32 and FR-33 are MVP but architecturally homeless.** The PRD's own `Amendment A-8` explicitly "lifted" FR-32 (Unified Personal+Public Timeline) and FR-33 (Conflict-Aware Scheduling) from Phase 2 into MVP scope. UX has fully built for this — dedicated `Surface.Timeline`, the `/conflicts` route, `layout.timeline.grid`, and `ASSUM-7` even cites "the FR-33 three-action pattern" by name. But the Architecture Spine's **Capability → Architecture Map** has no row for FR-32 or FR-33, and the word "Amendment" does not appear anywhere in `ARCHITECTURE-SPINE.md`. Two of three docs treat this as a real, shipped-scope MVP feature; the third has never accounted for it. This is the highest-value finding from this run.
-2. **Two independent "Amendment A-N" counters exist, not one shared ledger.** The PRD numbers its own amendments A-1 → A-8. `DESIGN.md`'s frontmatter separately numbers UX-originated amendments A-8 → A-21 ("PRD-coverage reconciliation" work). These are two disjoint per-doc sequences that happen to collide at `A-8` — and the UX author was clearly aware of the collision risk (see the doc's own "Numbering note" comments about not clashing with "the existing A-12 spine lock"). At `A-8` specifically the collision is benign (both docs are describing the same underlying change — the Timeline/Conflicts MVP lift). But nothing enforces that going forward, and A-9 through A-21 exist **only** in `DESIGN.md` — `prd.md` has no record that 13 more amendments happened downstream of it. There is no single, doc-agnostic amendment log.
-3. **Architecture Spine never uses the Amendment convention at all.** Zero `Amendment A-N` mentions anywhere in `ARCHITECTURE-SPINE.md`, even where architecture rules clearly trace back to a numbered PRD amendment (e.g. AD-4's dedup rule ↔ PRD Amendment A-1; AD-6's UTC rule ↔ PRD Amendment A-6). Worth a decision: either Architecture adopts the tag too, or the convention is explicitly scoped as PRD+UX-only.
-4. **FR-59 (User-Reported Event Quality, added by PRD Amendment A-4) has Architecture coverage but no discoverable UX section.** No "report" affordance found anywhere in `DESIGN.md`. If a report flow exists, it isn't documented in the spine.
-5. Several Pro-tier and secondary FRs (FR-20, FR-28, FR-49, FR-54, FR-55) have plausible but only **inferred** UX coverage — the design system doc doesn't name them by FR number, so coverage is inferred from adjacent component descriptions rather than confirmed.
+## Section A — PRD ↔ Design Alignment
 
-## FR ↔ Architecture ↔ UX ↔ Epic Matrix
+For each MVP FR: does a design element exist, in enough detail to build the UI from, in DESIGN.md, EXPERIENCE.md, or a mockup? `FULL` = a named section or a self-tagged mockup exists. `PARTIAL` = only inferable by adjacency, no direct tag anywhere. `MISSING` = a user-facing requirement with nothing found. `N/A` = the FR has no UI surface by nature (backend/internal/policy).
 
-| FR-ID | Title | PRD Amendment(s) | Architecture (module · AD-N) | UX section / Amendment | Epic/Story | Status |
-|---|---|---|---|---|---|---|
-| FR-1 | 30-Second Onboarding Flow | — | `identity`,`web`,`adapters/calendar` · AD-5,12,15,18 | `/onboarding` flow, `layout.container.form` (2026-09-03 onboarding audit) | — not yet created | FULL |
-| FR-2 | Pulse Preview (No-Auth First Value) | — | same as FR-1–4 group | Explicit: `pulse-preview-desktop.html` | — not yet created | FULL |
-| FR-3 | Calendar Connect (OAuth Google/Apple/Outlook) | A-7 (see Ledger) | same | Explicit: Do's/Don'ts calendar-provider-parity row | — not yet created | FULL (Amendment A-7 not echoed — see Ledger) |
-| FR-4 | Authenticated User State | — | same | Inferred: authed shell / sidenav routing | — not yet created | PARTIAL (inferred only) |
-| FR-5 | Pulse Digest Composition | A-2 | `personalization`,`web` · AD-3,10,11 | `Card.PulseDigest` vocabulary (extensive, but no A-2 tag) | — not yet created | FULL (Amendment A-2 not echoed — see Ledger) |
-| FR-6 | Pulse Card Information Density | — | same | `Card.PulseDigest` stripe/density rules | — not yet created | FULL |
-| FR-7 | Pulse Digest Delivery Time | — | same | none (delivery-time is backend scheduling, no UI expected) | — not yet created | FULL (N/A UX) |
-| FR-8 | Empty-State Pulse Digest | — | same | Explicit: `component.emptystate.quiet` | — not yet created | FULL |
-| FR-9 | Multi-Tier Reminder Picker | — | `delivery`,`worker` · AD-6,7,16,17 | Explicit: `reminder-picker-desktop.html` (Amendment A-21 shell migration) | — not yet created | FULL |
-| FR-10 | Pulse Ping — Single Daily Notification | — | same | none (push/email, no in-app UI expected) | — not yet created | FULL (N/A UX) |
-| FR-11 | Email Multi-Tier Reminders | — | same | covered via FR-9's reminder picker config | — not yet created | FULL |
-| FR-12 | Quiet Hours | — | same | Reminder picker aside panel ("Edit quiet hours"); Pro variant explicit (Amendment A-19 → FR-51) | — not yet created | FULL |
-| FR-13 | Source Registry | — | `ingestion`,`worker`,`adapters/crawl` · AD-4,6,8,9 | Explicit: `/settings/sources` (Amendment A-18) | — not yet created | FULL |
-| FR-14 | Hybrid Event Extraction Pipeline | — | same | none (backend pipeline) | — not yet created | FULL (N/A UX) |
-| FR-15 | Event Deduplication | A-1 | same | none (backend) | — not yet created | FULL (N/A UX) |
-| FR-16 | Source Reliability Score | — | same | Explicit: reliability dots (Amendment A-18) | — not yet created | FULL |
-| FR-17 | Source Acquisition Hierarchy Enforcement | — | same | none (internal policy) | — not yet created | FULL (N/A UX) |
-| FR-56 | RSS/Email-ICS Source Acquisition (MVP) | — | same | none (backend) | — not yet created | FULL (N/A UX) |
-| FR-60 | Timezone Source of Truth | A-6 | same (AD-6 governs this in substance) | none (backend) | — not yet created | FULL (N/A UX; A-6 not echoed in Architecture — see Finding 3) |
-| FR-18 | Manual Personal Event Creation | — | `personalization` · AD-3,6,16 | Inferred: `personal-event-edit-desktop.html` mockup | — not yet created | FULL |
-| FR-19 | Personal Event in Pulse Digest | — | same | `color.warm.personal` + "Personal" label | — not yet created | FULL |
-| FR-20 | Personal Event Reminder Defaults | — | same | Inferred via FR-9 reminder picker | — not yet created | PARTIAL (inferred only) |
-| FR-58 | Personal Event Conflict Detection | A-5 | same | Explicit: conflict indicator, `/conflicts` route (tagged UX-side as A-8/A-33, not A-5) | — not yet created | FULL (Amendment A-5 not echoed — see Ledger) |
-| FR-21 | Why-this Tags | — | `personalization` · AD-9,10 | `type.scale.microtag` italic hint | — not yet created | FULL |
-| FR-22 | Confidence Pulse | A-3 | same | Explicit: changelog mechanism, `Indicator.Confidence` (no A-3 tag) | — not yet created | FULL (Amendment A-3 not echoed — see Ledger) |
-| FR-23 | Source Badge | — | same | `Badge.Source.verified` | — not yet created | FULL |
-| FR-24 | "Why this?" Detail Screen | — | same | `Tooltip.Confidence` / `Tooltip.Source` | — not yet created | FULL |
-| FR-25 | "Less like this" Adjustment | — | same | "less like this" explainer aside panel | — not yet created | FULL |
-| FR-26 | Public Event Pages with Structured Data | — | `catalog`,frontend · AD-12,19 | Inferred: `/events/:id` pre-auth route | — not yet created | PARTIAL (inferred only) |
-| FR-27 | SEO City Pages | — | same | Explicit: "per PRD FR-27" on `city-page-desktop.html` | — not yet created | FULL |
-| FR-28 | Share-Card Public Link | — | same | Inferred: `/p/:slug` pre-auth route, no named component | — not yet created | PARTIAL (inferred only) |
-| FR-29 | AI Cost Dashboard (Internal) | — | `adapters/llm`,`editorial`(Django admin) · AD-8,14 | none (internal admin tool, outside this design system) | — not yet created | FULL (N/A UX) |
-| FR-30 | Caching & Batching Defaults | — | `adapters/llm` · AD-8 | none (backend) | — not yet created | FULL (N/A UX) |
-| FR-32 | Unified Personal+Public Timeline — lifted to MVP | A-8 | **none — no Capability Map row** | Explicit: `Surface.Timeline`, `layout.timeline.grid` (Amendment A-8) | — not yet created | **MISSING (architecture)** |
-| FR-33 | Conflict-Aware Scheduling — lifted to MVP | A-8 | **none — no Capability Map row** | Explicit: `/conflicts` route, "FR-33 three-action pattern" (ASSUM-7, Amendment A-8) | — not yet created | **MISSING (architecture)** |
-| FR-48 | Pro Tier with MVP-Only Features | — | `identity`,`adapters/billing`,`adapters/calendar` · AD-5,15,18 | Explicit: Pro upsell section | — not yet created | FULL |
-| FR-49 | Unlimited Saves + Saved Collections (Pro) | — | same | none found | — not yet created | **MISSING** |
-| FR-50 | Calendar Provider Read-Only Sync (Free+Pro) | — | same | Explicit: parity row (shared with FR-3) | — not yet created | FULL |
-| FR-51 | Per-Day-of-Week Custom Quiet Hours (Pro) | — | same | Explicit: `component.control.day-picker` (Amendment A-19) | — not yet created | FULL |
-| FR-52 | JSON+ICS Data Export (Pro) | — | same | Inferred: `component.modal.export-request` (Amendment A-17) | — not yet created | FULL (inferred match, not FR-numbered in UX) |
-| FR-53 | Event State Polling + Webhooks | — | `ingestion`,`delivery` · AD-4,7,17 | Explicit: `component.badge.soldout` (Amendment A-15) | — not yet created | FULL |
-| FR-54 | User-Facing State-Change Notifications | — | same | Inferred: sold-out Detail Screen messaging | — not yet created | PARTIAL (inferred only) |
-| FR-55 | Conflict Resolution on State Change | — | same | Inferred: overlaps FR-58 conflict UI | — not yet created | PARTIAL (inferred only) |
-| FR-57 | Editorial Review Queue (Internal) | — | `editorial`(Django admin) · AD-4,8,14 | none (internal admin tool) | — not yet created | FULL (N/A UX) |
-| FR-59 | User-Reported Event Quality | A-4 | `personalization`,`editorial` · AD-3,14 | **none found** | — not yet created | **MISSING (UX)** |
+**Counts: 32 FULL · 3 PARTIAL (inferred only) · 1 MISSING · 9 N/A** (45 total)
 
-**Deferred (Phase 2 / Phase 3 / Year 2+, correctly out of MVP — not scored)**: FR-31 (explicitly in Architecture's own Deferred table), FR-34–FR-47 (14 FRs, all Phase 2/3/Year 2+ per PRD headings, none expected in Architecture or UX yet).
+| FR-ID | Title | Design element found | Status |
+|---|---|---|---|
+| FR-1 | 30-Second Onboarding Flow | `onboarding-step1/2/3-desktop.html`, `signup-desktop.html`, `onboarding-skip-all-state-desktop.html` — all self-tagged `FR-1` | FULL |
+| FR-2 | Pulse Preview (No-Auth First Value) | `pulse-preview-desktop.html`, `geo-consent-banner-desktop.html` — self-tagged `FR-2` | FULL |
+| FR-3 | Calendar Connect (OAuth) | `onboarding-step1-desktop.html` (EXPERIENCE.md coverage row: "FR-1 / FR-3 / FR-50"); calendar-provider-parity guidance | FULL |
+| FR-4 | Authenticated User State | `Component.Auth.SignIn` (EXPERIENCE.md); `signin-desktop.html` self-tagged `FR-4` | FULL |
+| FR-5 | Pulse Digest Composition | `Card.PulseDigest` vocabulary (extensive) | FULL |
+| FR-6 | Pulse Card Information Density | `Card.PulseDigest` stripe/density rules | FULL |
+| FR-7 | Pulse Digest Delivery Time | `onboarding-step3-desktop.html` (EXPERIENCE.md row: "FR-1 / FR-7. Time presets + AM/PM segmented control"); also cited on the Settings coverage row | FULL |
+| FR-8 | Empty-State Pulse Digest | `component.emptystate.quiet` (DESIGN.md); `pulse-digest-empty-state-desktop.html` self-tagged `FR-8` | FULL |
+| FR-9 | Multi-Tier Reminder Picker | `reminder-picker-desktop.html`, `event-detail-desktop.html` — self-tagged `FR-9` | FULL |
+| FR-10 | Pulse Ping — Single Daily Notification | No UI is designed — and one exists deliberately: `onboarding-skip-all-state-desktop.html`'s header explains the topbar Notifications button "is removed entirely... per PRD FR-10 there is no in-app notifications inbox." Push/email only by design. | N/A (no design needed) |
+| FR-11 | Email Multi-Tier Reminders | Same UI as FR-9 (reminder tiers configure both channels together) | FULL |
+| FR-12 | Quiet Hours | Reminder-picker aside panel ("Edit quiet hours"); Pro variant explicit (`component.control.day-picker`) | FULL |
+| FR-13 | Source Registry | `settings-sources-desktop.html` (EXPERIENCE.md row: "FR-13"); `Component.Settings.Sources` | FULL |
+| FR-14 | Hybrid Event Extraction Pipeline | — backend pipeline | N/A (no design needed) |
+| FR-15 | Event Deduplication | — backend | N/A (no design needed) |
+| FR-16 | Source Reliability Score | Reliability dots; `settings-sources-desktop.html` | FULL |
+| FR-17 | Source Acquisition Hierarchy Enforcement | — internal policy | N/A (no design needed) |
+| FR-56 | RSS/Email-ICS Source Acquisition (MVP) | — backend | N/A (no design needed) |
+| FR-60 | Timezone Source of Truth | — backend data-truth policy (the *display* of timezone during onboarding is FR-1/FR-7's UI, but FR-60 itself is about stored-timestamp truth, not a UI concern) | N/A (no design needed) |
+| FR-18 | Manual Personal Event Creation | `personal-event-create-desktop.html`, `personal-event-edit-desktop.html` — self-tagged `FR-18` | FULL |
+| FR-19 | Personal Event in Pulse Digest | `color.warm.personal` token + "Personal" label spec | FULL |
+| FR-20 | Personal Event Reminder Defaults | Nothing found in DESIGN.md, EXPERIENCE.md, or any mockup header — only inferable by reusing FR-9's reminder-picker UI | **PARTIAL (inferred only) — open gap** |
+| FR-58 | Personal Event Conflict Detection | `conflict-prompt-desktop.html`, `conflict-indicator-card-state-desktop.html` — self-tagged `FR-58` | FULL |
+| FR-21 | Why-this Tags | `type.scale.microtag` italic hint token spec | FULL |
+| FR-22 | Confidence Pulse | `ranking-algorithm-transparency-desktop.html`, `settings-desktop.html` — self-tagged `FR-22`; `Indicator.Confidence` | FULL |
+| FR-23 | Source Badge | `Badge.Source.verified` | FULL |
+| FR-24 | "Why this?" Detail Screen | `event-detail-desktop.html` self-tagged `FR-24`; `Tooltip.Confidence`/`Tooltip.Source` | FULL |
+| FR-25 | "Less like this" Adjustment | `less-like-this-mute-prompt-desktop.html` self-tagged `FR-25` | FULL |
+| FR-26 | Public Event Pages with Structured Data | `public-event-page-desktop.html` self-tagged `FR-26` — contains real Schema.org `application/ld+json` | FULL |
+| FR-27 | SEO City Pages | `city-page-desktop.html` self-tagged `FR-27` | FULL |
+| FR-28 | Share-Card Public Link | Only a one-line platform-capability footnote in EXPERIENCE.md ("Web Share API... PRD FR-28"); the plausible mockup (`share-link-desktop.html`) is tagged `UJ-5` (recipient landing), not `FR-28` (sender share action) — no design for the actual share affordance | **PARTIAL (inferred only) — open gap** |
+| FR-29 | AI Cost Dashboard (Internal) | — internal Django admin tool, outside this design system | N/A (no design needed) |
+| FR-30 | Caching & Batching Defaults | — backend | N/A (no design needed) |
+| FR-32 | Unified Personal+Public Timeline (MVP) | `timeline-desktop.html` self-tagged `FR-32`; `Surface.Timeline`, `layout.timeline.grid` | FULL |
+| FR-33 | Conflict-Aware Scheduling (MVP) | `conflicts-desktop.html` self-tagged `FR-33`; `/conflicts` route, "FR-33 three-action pattern" | FULL |
+| FR-48 | Pro Tier with MVP-Only Features | `pricing-page-desktop.html`, `pro-upgrade-cta-desktop.html`, `export-request-modal-desktop.html` — self-tagged `FR-48` | FULL |
+| FR-49 | Unlimited Saves + Saved Collections (Pro) | Nothing designed. "Named collections" exists only as a marketing bullet on the `FR-48`-tagged pricing pages — no screen shows creating, viewing, or managing a collection. (EXPERIENCE.md's own coverage table claims `settings-desktop.html` covers FR-49; the mockup contains zero "collection" content.) | **MISSING** |
+| FR-50 | Calendar Provider Read-Only Sync | Parity row (shared with FR-3); `onboarding-step1-desktop.html` | FULL |
+| FR-51 | Per-Day-of-Week Custom Quiet Hours (Pro) | `component.control.day-picker`; `settings-quiet-hours-pro-desktop.html` | FULL |
+| FR-52 | JSON+ICS Data Export (Pro) | `export-request-modal-desktop.html` self-tagged `FR-48 FR-52`; `component.modal.export-request` | FULL |
+| FR-53 | Event State Polling + Webhooks | `sold-out-card-state-desktop.html` self-tagged `FR-53 FR-54`; `component.badge.soldout` | FULL |
+| FR-54 | User-Facing State-Change Notifications | Same mockup, self-tagged `FR-54`; `Component.Badge.SoldOut` ("Closes PRD FR-53 / FR-54 partial gap") | FULL |
+| FR-55 | Conflict Resolution on State Change | Nothing found tagged anywhere — only overlap with FR-58's conflict UI, with no documented acknowledgment it also serves this trigger | **PARTIAL (inferred only) — open gap** |
+| FR-57 | Editorial Review Queue (Internal) | — internal Django admin tool | N/A (no design needed) |
+| FR-59 | User-Reported Event Quality | `report-event-modal-desktop.html` self-tagged `"FR-59 / Amendment A-4"` — 4 categories, rate-limit state, confirmation toast, triggered from "Report this event" on Event Detail | FULL |
+
+**Open Design gaps** (need a real design pass before they can be FULL): **FR-20**, **FR-28**, **FR-55** (all PARTIAL/inferred-only), **FR-49** (MISSING).
+
+---
+
+## Section B — PRD ↔ Architecture Alignment
+
+For each MVP FR: does the Architecture Spine's `Capability → Architecture Map` have an explicit row naming this FR, with a module and at least one `AD-N`?
+
+**Counts: 43 FULL · 2 MISSING** (45 total)
+
+| FR-ID | Title | Architecture (module · AD-N) | Status |
+|---|---|---|---|
+| FR-1 – FR-4 | Onboarding / Preview / Calendar Connect / Auth State | `identity`, `web`, `adapters/calendar` · AD-5,12,15,18 | FULL |
+| FR-5 – FR-8 | Pulse Digest group | `personalization`, `web` · AD-3,10,11 | FULL |
+| FR-9 – FR-12 | Reminder/Quiet-Hours group | `delivery`, `worker` · AD-6,7,16,17 | FULL |
+| FR-13 – FR-17, FR-56, FR-60 | Source Registry / Extraction / Dedup / Reliability / Hierarchy / RSS-ICS / Timezone | `ingestion`, `worker`, `adapters/crawl` · AD-4,6,8,9 (AD-6 governs FR-60) | FULL |
+| FR-18 – FR-20, FR-58 | Personal Event group + Conflict Detection | `personalization` · AD-3,6,16 | FULL |
+| FR-21 – FR-25 | Trust/Transparency group (Why-this, Confidence, Badge, Detail, Less-like-this) | `personalization` · AD-9,10 | FULL |
+| FR-26 – FR-28 | Public Pages / SEO / Share-link | `catalog`, frontend · AD-12,19 | FULL |
+| FR-29 | AI Cost Dashboard (Internal) | `adapters/llm`, `editorial` (Django admin) · AD-8,14 | FULL |
+| FR-30 | Caching & Batching Defaults | `adapters/llm` · AD-8 | FULL |
+| **FR-32** | **Unified Personal+Public Timeline — lifted to MVP** | **none — no Capability Map row** | **MISSING** |
+| **FR-33** | **Conflict-Aware Scheduling — lifted to MVP** | **none — no Capability Map row** | **MISSING** |
+| FR-48, FR-50 | Pro Tier / Calendar Read-Only Sync | `identity`, `adapters/billing`, `adapters/calendar` · AD-5,15,18 | FULL |
+| FR-49, FR-51, FR-52 | Saved Collections / Quiet Hours Pro / Data Export | same group | FULL |
+| FR-53 – FR-55 | Event State Polling / Webhooks / Notifications / Conflict-on-change | `ingestion`, `delivery` · AD-4,7,17 | FULL |
+| FR-57 | Editorial Review Queue (Internal) | `editorial` (Django admin) · AD-4,8,14 | FULL |
+| FR-59 | User-Reported Event Quality | `personalization`, `editorial` · AD-3,14 | FULL |
+
+**Open Architecture gaps:** **FR-32** and **FR-33** — both explicitly "lifted to MVP" by PRD Amendment A-8, both fully designed in UX (Section A: FULL), but the Architecture Spine's Capability Map has no row for either, and the word "Amendment" appears nowhere in `ARCHITECTURE-SPINE.md`. This is the single highest-value finding in this matrix: two of three source docs treat this as real, shipped MVP scope; Architecture has never accounted for it.
+
+---
 
 ## Amendment Ledger
 
+Cross-cutting across PRD, Architecture, Design, and Experience — one row per distinct `Amendment A-N` found anywhere.
+
 | Amendment | Found in | Consistent? |
 |---|---|---|
-| A-1 (FR-15 dedup revision) | PRD | Consistent — backend-only change, no UX impact expected; Architecture's AD-4 implements the substance but doesn't cite the tag (see Finding 3). |
-| A-2 (FR-5 revision) | PRD | **No** — FR-5 is core UX real estate (`Card.PulseDigest`); DESIGN.md has no matching tag anywhere. |
-| A-3 (FR-22 revision) | PRD | **No** — DESIGN.md references FR-22 directly (changelog mechanism) but never cites "Amendment A-3". |
-| A-4 (FR-59 added) | PRD | Partially — Architecture picked it up (Capability Map has an FR-59 row); UX has no coverage at all (see FR-59 MISSING above). |
+| A-1 (FR-15 dedup revision) | PRD | Consistent — backend-only, no UX impact expected; Architecture's AD-4 implements the substance but doesn't cite the tag. |
+| A-2 (FR-5 revision) | PRD | **No** — FR-5 is core UX real estate (`Card.PulseDigest`); neither DESIGN.md nor EXPERIENCE.md has a matching tag. |
+| A-3 (FR-22 revision) | PRD | **No** — UX references FR-22 directly but never cites "Amendment A-3". |
+| A-4 (FR-59 added) | PRD | **Consistent** — Architecture has an FR-59 Capability-Map row, and `report-event-modal-desktop.html` is itself tagged "FR-59 / Amendment A-4". |
 | A-5 (FR-58 revision) | PRD | **No** — UX covers FR-58 extensively but under its own tags (A-8, A-15), never citing "Amendment A-5". |
-| A-6 (FR-60 added) | PRD | Consistent — backend-only (timezone truth), no UX impact expected. |
-| A-7 (FR-3 calendar OAuth→ICS correction) | PRD | **No** — UX's calendar-parity guidance (FR-3/FR-50) carries no A-7 tag. |
-| A-8 (FR-32/FR-33 lifted to MVP) | PRD, UX | Consistent between PRD and UX — both describe the same Timeline/Conflicts MVP lift. **Missing from Architecture** (see Finding 1). |
-| A-9 – A-21 (UX-originated "PRD-coverage reconciliation" + shell migrations) | UX only | Not found in PRD at all. Per DESIGN.md's own frontmatter these exist specifically to close PRD-coverage gaps, so the PRD arguably should reflect that reconciliation happened — see Finding 2 for the broader "two counters" issue. |
+| A-6 (FR-60 added) | PRD | Consistent — backend-only, no UX impact expected. |
+| A-7 (FR-3 calendar OAuth→ICS correction) | PRD | **No** — UX's calendar-parity guidance carries no A-7 tag. |
+| A-8 (FR-32/FR-33 lifted to MVP) | PRD, UX | Consistent between PRD and UX. **Missing from Architecture** — see Section B gap above. |
+| A-9 – A-21 (UX-originated "PRD-coverage reconciliation" + shell migrations) | UX only | Not found in PRD at all — per EXPERIENCE.md's own frontmatter these exist specifically to close PRD-coverage gaps, so the PRD arguably should reflect that this reconciliation happened. |
+
+---
+
+## Deferred (Phase 2 / Phase 3 / Year 2+, correctly out of MVP — not scored)
+
+FR-31 (explicitly in Architecture's own Deferred table), FR-34–FR-47 (14 FRs, all Phase 2/3/Year 2+ per PRD headings, none expected in Architecture or UX yet).
 
 ## Epic/Story Coverage
 
