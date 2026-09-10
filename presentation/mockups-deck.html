@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EventPulse24 — Mockup Deck (Desktop)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Reset & Tokens ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:        #0b0f1e;
+      --navy-mid:    #0f1428;
+      --navy-card:   #131a2e;
+      --navy-deep:   #060914;
+      --blue:        #3b82f6;
+      --blue-light:  #60a5fa;
+      --cyan:        #22d3ee;
+      --purple:      #a78bfa;
+      --green:       #34d399;
+      --amber:       #fbbf24;
+      --rose:        #fb7185;
+      --white:       #f8fafc;
+      --muted:       #94a3b8;
+      --muted-soft:  #64748b;
+      --border:      rgba(255,255,255,0.08);
+      --border-soft: rgba(255,255,255,0.05);
+      --glow:        rgba(59,130,246,0.18);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at top, rgba(59,130,246,0.08) 0%, transparent 55%),
+        radial-gradient(ellipse at bottom right, rgba(167,139,250,0.05) 0%, transparent 55%),
+        var(--navy-deep);
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--white);
+    }
+
+    /* ─── Deck Container ─────────────────────────────────────────────── */
+    #deck {
+      width: 100%; height: 100vh;
+      display: flex;
+      transition: transform 0.55s cubic-bezier(0.77,0,0.18,1);
+    }
+
+    /* ─── Individual Slides ──────────────────────────────────────────── */
+    .slide {
+      min-width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      padding: 28px 56px 92px;
+    }
+
+    /* shared noise texture overlay */
+    .slide::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      opacity: 0.35;
+    }
+
+    /* ─── Slide Header (filename-only, no chrome) ────────────────────── */
+    .slide-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 16px;
+      z-index: 2;
+    }
+    .slide-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--blue-light);
+      letter-spacing: 0.08em;
+      padding-top: 2px;
+    }
+    .slide-filename {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--white);
+      letter-spacing: -0.01em;
+    }
+    .slide-counter {
+      margin-left: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: 0.06em;
+    }
+    .slide-counter .now {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+
+    /* ─── Frame Card (metadata + mockup, no browser chrome) ──────────── */
+    .frame-card {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow:
+        0 30px 60px rgba(0,0,0,0.55),
+        0 0 0 1px rgba(255,255,255,0.02),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+      background: var(--navy-card);
+      z-index: 2;
+    }
+
+    /* Card meta strip — sits above the iframe */
+    .card-meta {
+      flex-shrink: 0;
+      padding: 18px 22px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      border-bottom: 1px solid var(--border-soft);
+      background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 100%);
+    }
+    .meta-left { min-width: 0; }
+    .meta-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: -0.015em;
+      margin-bottom: 4px;
+    }
+    .meta-sub {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .meta-right {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    /* Pills — route / stage / state */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+    .pill.route   { color: var(--blue-light);  background: rgba(96,165,250,0.08);  border-color: rgba(96,165,250,0.25); }
+    .pill.stage   { color: var(--purple);       background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.25); }
+    .pill.state   { color: var(--cyan);        background: rgba(34,211,238,0.08);  border-color: rgba(34,211,238,0.25); }
+    .pill.fr      { color: var(--green);       background: rgba(52,211,153,0.08);  border-color: rgba(52,211,153,0.25); }
+    .pill.theme   { color: var(--amber);       background: rgba(251,191,36,0.08);  border-color: rgba(251,191,36,0.25); }
+
+    .pill .dot-led {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    /* FR cluster — small text-only list */
+    .fr-list {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .fr-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--green);
+      background: rgba(52,211,153,0.08);
+      border: 1px solid rgba(52,211,153,0.22);
+      padding: 3px 8px;
+      border-radius: 5px;
+      letter-spacing: 0.02em;
+    }
+
+    /* ─── Iframe Stage (fit-to-viewport zoom, no chrome) ───────────────
+       Stage color matches the deck palette so the white mockup canvas
+       floats against the navy card instead of looking like a clipped sheet. */
+    .stage {
+      flex: 1;
+      min-height: 0;
+      background:
+        radial-gradient(ellipse at center, rgba(59,130,246,0.06) 0%, transparent 60%),
+        var(--navy-mid);
+      overflow: hidden;
+      position: relative;
+    }
+    .stage-frame {
+      position: absolute;
+      top: 0; left: 0;
+      width: 1280px;
+      height: 800px;
+      border: 0;
+      transform-origin: top left;
+      background: #fff;
+    }
+
+    /* ─── Navigation Bar ─────────────────────────────────────────────── */
+    #nav {
+      position: fixed;
+      bottom: 22px; left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 100;
+      background: rgba(15,20,40,0.85);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      padding: 7px 14px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.4);
+    }
+    .nav-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.18);
+      color: var(--white);
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.18s;
+      font-family: inherit;
+    }
+    .nav-btn:hover:not(:disabled) {
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+    .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .dots {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 360px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .dots::-webkit-scrollbar { display: none; }
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.22);
+      cursor: pointer;
+      transition: all 0.25s;
+      flex-shrink: 0;
+    }
+    .dot.active {
+      background: var(--blue);
+      width: 22px;
+      border-radius: 3px;
+    }
+
+    #slide-counter-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 56px;
+      text-align: center;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─── Keyboard hint ──────────────────────────────────────────────── */
+    .hint {
+      position: fixed;
+      top: 18px; right: 22px;
+      font-size: 11px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.04em;
+      z-index: 100;
+      opacity: 0.7;
+    }
+    .hint kbd {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: inherit;
+      font-size: 10px;
+      color: var(--white);
+      margin: 0 2px;
+    }
+
+    /* ─── Title slide variant ────────────────────────────────────────── */
+    .slide.title-slide {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 0;
+    }
+    .title-slide::after {
+      content: '';
+      position: absolute;
+      width: 720px; height: 720px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59,130,246,0.18), transparent 65%);
+      pointer-events: none;
+    }
+    .title-slide .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--blue-light);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+      z-index: 2;
+    }
+    .title-slide h1 {
+      font-size: 56px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      z-index: 2;
+      margin-bottom: 16px;
+    }
+    .title-slide h1 .grad {
+      background: linear-gradient(135deg, var(--blue-light) 0%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .title-slide .sub {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 520px;
+      line-height: 1.55;
+      z-index: 2;
+    }
+    .title-slide .count {
+      margin-top: 32px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--cyan);
+      letter-spacing: 0.06em;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+
+<div id="deck"></div>
+
+<div class="hint">
+  <kbd>←</kbd> <kbd>→</kbd> navigate &nbsp;·&nbsp; <kbd>Home</kbd> first &nbsp;·&nbsp; <kbd>End</kbd> last
+</div>
+
+<nav id="nav" aria-label="Slide navigation">
+  <button class="nav-btn" id="prev" aria-label="Previous slide">‹</button>
+  <div class="dots" id="dots"></div>
+  <button class="nav-btn" id="next" aria-label="Next slide">›</button>
+  <div id="slide-counter-text">1 / 38</div>
+</nav>
+
+<script>
+/* ─── Mockup manifest (numbered order, 01 → 38) ──────────────────────
+   Each entry now carries: file, title, route, stage, state, frs, theme */
+const MOCKUPS = [
+  { file: "01-pre-login-pulse-preview.html",        title: "Pulse Preview (anonymous home)",       route: "/preview",                stage: "Pre-auth",     state: "Default",     frs: ["FR-2"],          theme: "Dark"  },
+  { file: "02-pre-login-geo-consent.html",           title: "Geo-IP Consent Banner",                route: "/preview",                stage: "Pre-auth",     state: "Consent",      frs: ["FR-2"],          theme: "Dark"  },
+  { file: "03-pre-login-city-page.html",             title: "SEO City Page",                         route: "/events/near-me",          stage: "Pre-auth",     state: "Default",     frs: ["FR-27"],         theme: "Dark"  },
+  { file: "04-pre-login-public-event-page.html",     title: "Public Event Page",                     route: "/events/:id",             stage: "Pre-auth",     state: "Read-only",   frs: ["FR-26"],         theme: "Dark"  },
+  { file: "05-pre-login-pricing-page.html",          title: "Pricing Page",                          route: "/pricing",                stage: "Pre-auth",     state: "Default",     frs: ["FR-48"],         theme: "Dark"  },
+  { file: "06-auth-signup.html",                     title: "Sign Up",                               route: "/signup",                 stage: "Auth",         state: "Default",     frs: ["FR-1","FR-4"],   theme: "Dark"  },
+  { file: "07-auth-signin.html",                     title: "Sign In",                               route: "/signin",                 stage: "Auth",         state: "Default",     frs: ["FR-4"],          theme: "Dark"  },
+  { file: "08-onboarding-step1.html",                title: "Onboarding — Step 1",                   route: "/onboarding",             stage: "Onboarding",   state: "Step 1",      frs: ["FR-1","FR-3"],   theme: "Dark"  },
+  { file: "09-onboarding-step2.html",                title: "Onboarding — Step 2",                   route: "/onboarding",             stage: "Onboarding",   state: "Step 2",      frs: ["FR-1"],          theme: "Dark"  },
+  { file: "10-onboarding-step3.html",                title: "Onboarding — Step 3",                   route: "/onboarding",             stage: "Onboarding",   state: "Step 3",      frs: ["FR-1","FR-7"],   theme: "Dark"  },
+  { file: "11-onboarding-skip-all.html",             title: "Onboarding — Skip All",                 route: "/onboarding",             stage: "Onboarding",   state: "Skipped",     frs: ["FR-1"],          theme: "Dark"  },
+  { file: "12-app-pulse-digest.html",                title: "Pulse Digest (home)",                   route: "/",                       stage: "App",          state: "Default",     frs: ["FR-5","FR-6"],   theme: "Dark"  },
+  { file: "13-app-pulse-digest-empty.html",          title: "Pulse Digest — Empty State",            route: "/",                       stage: "App",          state: "Empty",       frs: ["FR-8"],          theme: "Dark"  },
+  { file: "14-app-personal-event-create.html",       title: "Personal Event — Create",               route: "/events/new",             stage: "App",          state: "Create",      frs: ["FR-18","FR-20"], theme: "Dark"  },
+  { file: "15-app-personal-event-edit.html",         title: "Personal Event — Edit",                 route: "/events/:id/edit",        stage: "App",          state: "Edit",        frs: ["FR-18"],         theme: "Dark"  },
+  { file: "16-app-event-detail.html",                title: "Event Detail",                          route: "/events/:id",             stage: "App",          state: "Default",     frs: ["FR-24","FR-28"], theme: "Dark"  },
+  { file: "17-browse-tab.html",                      title: "Browse — Default",                      route: "/browse",                 stage: "App",          state: "Default",     frs: ["FR-5"],          theme: "Dark"  },
+  { file: "18-browse-filtered.html",                 title: "Browse — Filtered",                     route: "/browse",                 stage: "App",          state: "Filtered",    frs: ["FR-5"],          theme: "Dark"  },
+  { file: "19-browse-empty-filter.html",             title: "Browse — Empty Filter",                 route: "/browse",                 stage: "App",          state: "No match",    frs: ["FR-5"],          theme: "Dark"  },
+  { file: "20-app-conflict-prompt.html",             title: "Conflict Prompt (Personal-vs-Personal)", route: "/events/new",            stage: "App",          state: "Conflict",    frs: ["FR-58"],         theme: "Dark"  },
+  { file: "21-app-conflict-indicator-card.html",     title: "Conflict Indicator Card",               route: "/events/:id",             stage: "App",          state: "Conflict",    frs: ["FR-58"],         theme: "Dark"  },
+  { file: "22-app-conflicts.html",                   title: "Conflicts — Review List",               route: "/conflicts",              stage: "App",          state: "Default",     frs: ["FR-33"],         theme: "Dark"  },
+  { file: "22-app-reminder-picker.html",             title: "Reminder Picker (sheet)",               route: "/events/:id",             stage: "App",          state: "Editor",      frs: ["FR-9","FR-20"],  theme: "Dark"  },
+  { file: "23-app-timeline.html",                    title: "Unified Timeline",                      route: "/timeline",               stage: "App",          state: "Week view",   frs: ["FR-32","FR-33"], theme: "Dark"  },
+  { file: "26-app-saved-collections.html",           title: "Saved Collections",                     route: "/saved",                  stage: "App",          state: "Default",     frs: ["FR-49"],         theme: "Dark"  },
+  { file: "27-app-share-link.html",                  title: "Share Link",                            route: "/events/:id/share",       stage: "App",          state: "Default",     frs: ["FR-28"],         theme: "Dark"  },
+  { file: "28-app-export-request-modal.html",        title: "Export Request Modal",                  route: "/settings/privacy",       stage: "App",          state: "Modal",       frs: ["FR-52"],         theme: "Dark"  },
+  { file: "29-app-less-like-this-mute.html",         title: "Less Like This — Mute",                 route: "/",                       stage: "App",          state: "Prompt",      frs: ["FR-25"],         theme: "Dark"  },
+  { file: "30-app-report-event-modal.html",          title: "Report Event Modal",                    route: "/events/:id",             stage: "App",          state: "Modal",       frs: ["FR-59"],         theme: "Dark"  },
+  { file: "31-app-settings.html",                    title: "Settings",                              route: "/settings",               stage: "App",          state: "Default",     frs: ["FR-12","FR-51"], theme: "Dark"  },
+  { file: "32-app-settings-sources.html",            title: "Settings — Sources",                    route: "/settings/sources",       stage: "App",          state: "Default",     frs: ["FR-16"],         theme: "Dark"  },
+  { file: "33-app-settings-quiet-hours-pro.html",    title: "Settings — Quiet Hours (Pro)",          route: "/settings/quiet-hours",   stage: "App",          state: "Pro",         frs: ["FR-51"],         theme: "Dark"  },
+  { file: "34-app-pro-upgrade-cta.html",             title: "Pro Upgrade CTA",                       route: "/pro/upgrade",            stage: "App",          state: "Upsell",      frs: ["FR-48"],         theme: "Dark"  },
+  { file: "35-app-account-delete-confirmation.html", title: "Account Delete Confirmation",           route: "/settings/privacy",       stage: "App",          state: "Modal",       frs: ["§10.2"],         theme: "Dark"  },
+  { file: "38-app-event-state-change.html",          title: "Event State Change (FR-54)",            route: "/events/:id",             stage: "App",          state: "State change",frs: ["FR-53","FR-54","FR-55"], theme: "Dark"  },
+];
+
+/* ─── Build the deck ────────────────────────────────────────────────── */
+const MOCKUPS_DIR = "../_bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/mockups/";
+const NATIVE_W = 1280;
+const NATIVE_H = 800;
+const TOTAL_SLIDES = MOCKUPS.length + 1; // +1 for the title slide
+
+const deck = document.getElementById("deck");
+const dotsHost = document.getElementById("dots");
+const counter = document.getElementById("slide-counter-text");
+const prevBtn = document.getElementById("prev");
+const nextBtn = document.getElementById("next");
+
+let current = 0;
+
+function buildDeck() {
+  /* Slide 0: title */
+  const title = document.createElement("section");
+  title.className = "slide title-slide";
+  title.innerHTML = `
+    <div class="eyebrow">MVP MOCKUP DECK · DESKTOP</div>
+    <h1>EventPulse24<br><span class="grad">36 production-ready surfaces</span></h1>
+    <p class="sub">A walkthrough of every desktop mockup in the MVP, in numbered filename order. Each card carries the route, stage, state and FR coverage for the surface below.</p>
+    <div class="count">${MOCKUPS.length} mockups · 5 pre-auth · 2 auth · 4 onboarding · ${MOCKUPS.length - 11} app</div>
+  `;
+  deck.appendChild(title);
+
+  /* Slides 1..N: mockups */
+  MOCKUPS.forEach((m, i) => {
+    const num = String(i + 1).padStart(2, "0");
+    const slide = document.createElement("section");
+    slide.className = "slide";
+    slide.dataset.idx = i + 1;
+    slide.innerHTML = `
+      <div class="slide-head">
+        <span class="slide-num">${num}</span>
+        <span class="slide-filename">${m.file}</span>
+        <span class="slide-counter"><span class="now">${String(i + 1).padStart(2, "0")}</span> / ${String(MOCKUPS.length).padStart(2, "0")}</span>
+      </div>
+      <div class="frame-card">
+        <div class="card-meta">
+          <div class="meta-left">
+            <div class="meta-title">${m.title}</div>
+            <div class="meta-sub">${m.route} · ${m.theme} theme</div>
+          </div>
+          <div class="meta-right">
+            <span class="pill route"><span class="dot-led"></span>${m.route}</span>
+            <span class="pill stage">${m.stage}</span>
+            <span class="pill state">${m.state}</span>
+            <span class="pill theme">${m.theme}</span>
+            <span class="fr-list">${m.frs.map(f => `<span class="fr-tag">${f}</span>`).join("")}</span>
+          </div>
+        </div>
+        <div class="stage">
+          <iframe class="stage-frame" src="${MOCKUPS_DIR}${m.file}" loading="lazy" title="${m.title}"></iframe>
+        </div>
+      </div>
+    `;
+    deck.appendChild(slide);
+  });
+
+  /* Dot indicators */
+  for (let i = 0; i < TOTAL_SLIDES; i++) {
+    const d = document.createElement("div");
+    d.className = "dot" + (i === 0 ? " active" : "");
+    d.dataset.idx = i;
+    d.addEventListener("click", () => go(i));
+    dotsHost.appendChild(d);
+  }
+}
+
+/* ─── Fit-to-viewport scaling for each iframe ───────────────────────── */
+function fitAll() {
+  const stages = document.querySelectorAll(".stage");
+  stages.forEach(s => {
+    const f = s.querySelector(".stage-frame");
+    if (!f) return;
+    f.style.transform = "scale(1)";
+    const sw = s.clientWidth;
+    const sh = s.clientHeight;
+    const scale = Math.min(sw / NATIVE_W, sh / NATIVE_H);
+    f.style.transform = `scale(${scale})`;
+    const scaledW = NATIVE_W * scale;
+    const scaledH = NATIVE_H * scale;
+    f.style.left = `${Math.max(0, (sw - scaledW) / 2)}px`;
+    f.style.top  = `${Math.max(0, (sh - scaledH) / 2)}px`;
+  });
+}
+
+/* ─── Navigation ────────────────────────────────────────────────────── */
+function go(i) {
+  current = Math.max(0, Math.min(TOTAL_SLIDES - 1, i));
+  deck.style.transform = `translateX(-${current * 100}vw)`;
+  document.querySelectorAll(".dot").forEach((d, idx) => {
+    d.classList.toggle("active", idx === current);
+  });
+  counter.textContent = `${current + 1} / ${TOTAL_SLIDES}`;
+  prevBtn.disabled = current === 0;
+  nextBtn.disabled = current === TOTAL_SLIDES - 1;
+  const activeDot = document.querySelector(".dot.active");
+  if (activeDot) activeDot.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+prevBtn.addEventListener("click", () => go(current - 1));
+nextBtn.addEventListener("click", () => go(current + 1));
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+    e.preventDefault(); go(current + 1);
+  } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+    e.preventDefault(); go(current - 1);
+  } else if (e.key === "Home") {
+    e.preventDefault(); go(0);
+  } else if (e.key === "End") {
+    e.preventDefault(); go(TOTAL_SLIDES - 1);
+  }
+});
+
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(fitAll, 80);
+});
+
+/* ─── Boot ──────────────────────────────────────────────────────────── */
+buildDeck();
+requestAnimationFrame(() => {
+  fitAll();
+  go(0);
+});
+window.addEventListener("load", () => requestAnimationFrame(fitAll));
+</script>
+
+</body>
+</html>
