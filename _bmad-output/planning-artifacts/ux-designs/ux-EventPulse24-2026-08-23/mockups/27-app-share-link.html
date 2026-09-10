@@ -1,6 +1,15 @@
 <!--
   EventPulse24 — Public Share-Link Landing (Desktop) — DARK THEME
+  FR-28 / Amendment A-25 — the recipient half of the share pair. The sender half is
+  component.action.share in 16-app-event-detail.html.
   UJ-5 friend shares event via public URL. Shows detail + "Save to Pulse" CTA.
+
+  Amendment A-25 (2026-09-10) added the Open Graph set below. This surface previously
+  served NONE of og:title / og:description / og:type / og:url, while
+  04-pre-login-public-event-page.html already served all four plus JSON-LD — so a
+  shared link unfurled blank in the exact place FR-28 has to work: inside someone
+  else's message thread, where the product gets no second chance to explain itself.
+  Open Graph is part of component.action.share's contract, not an engineering detail.
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -8,6 +17,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sunny Jain Quartet — rooftop set · EventPulse24</title>
+
+<!-- Open Graph (Amendment A-25 — PRD FR-28). Required on every shareable event URL. -->
+<meta property="og:title" content="Sunny Jain Quartet — outdoor rooftop set">
+<meta property="og:description" content="Rooftop, 1 Franklin St, Greenpoint · Sat Aug 30, 8:00 PM · $15 at the door">
+<meta property="og:type" content="event">
+<meta property="og:url" content="https://eventpulse24.com/e/sunny-jain-quartet-outdoor-rooftop-set-2026-08-30">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">

@@ -1,5 +1,19 @@
 <!--
   EventPulse24 — Event Detail (Mobile, 375px) — DARK THEME
+  FR-9 / FR-24 / FR-28. Mobile sibling of 16-app-event-detail.html.
+
+  Amendment A-25 (2026-09-10) — component.action.share. On mobile the tap hands off to
+  the OS share sheet via navigator.share and the same idle -> copied -> idle morph runs
+  underneath, so the button reflects what happened even though the sheet is not ours to
+  design. The canonical three-state matrix lives on the desktop file; this file renders
+  `idle` plus the `copied` morph.
+
+  FLAGGED FOR THE MOBILE AMENDMENT, deliberately not fixed here: this file carries TWO
+  share affordances — an icon button in the topbar and the ghost in the action row. The
+  action row is the one component.action.share specifies. The topbar copy also sits
+  against the locked "topbar carries identity, never action" rule (DESIGN.md
+  Do's-and-Dont's / ASSUM-11). Mobile is an explicitly deferred batch (see A-24), so
+  this is recorded for that amendment rather than resolved mid-A-25.
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -15,6 +29,10 @@
     --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
     --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
     --accent-terracotta:#FF6A47; --cool-public:#6E7E92;
+    /* --signal-success added by Amendment A-25 for component.action.share's `copied` state.
+       Existing DESIGN.md palette token (#7AAA7A), same value as the desktop file — palette
+       alignment, not a new colour. */
+    --signal-success:#7AAA7A;
     --border-subtle:rgba(242,242,244,0.08);
     --family-display:"Source Serif 4",Fraunces,Georgia,serif;
     --family-body:"Inter",-apple-system,system-ui,sans-serif;
@@ -116,10 +134,21 @@
   </div>
 
   <button class="btn-primary">Save to my Pulse →</button>
+
+  <!-- component.action.share (Amendment A-25, FR-28) — `idle`.
+       Tap hands off to the OS share sheet via navigator.share; the morph runs underneath. -->
   <div class="actions">
-    <button class="ghost">Share</button>
+    <button class="ghost" aria-label="Share Designing for Calm">Share</button>
     <button class="ghost">Less like this</button>
   </div>
+
+  <!-- `copied` — held 1500ms, then reverts unaided. Helper line states the link's audience.
+       No toast, no overlay. Canonical three-state matrix: 16-app-event-detail.html. -->
+  <div class="actions" style="margin-top: 12px;">
+    <button class="ghost" style="color: var(--signal-success);" aria-live="polite">Link copied ✓</button>
+    <button class="ghost">Less like this</button>
+  </div>
+  <p style="font-size: 12px; color: var(--ink-secondary); margin: 8px 0 0;">Anyone with the link can see this event.</p>
 
   <div class="map">🗺 Map — Brooklyn Arts Council</div>
 </div>

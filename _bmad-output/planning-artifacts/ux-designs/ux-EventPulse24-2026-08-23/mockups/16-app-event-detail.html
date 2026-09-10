@@ -1,6 +1,11 @@
 <!--
   EventPulse24 — Event Detail (Desktop, 1280px) — DARK THEME
-  FR-9 / FR-24 — /events/:id. Tapped-card detail with Why-this, multi-tier reminders, save/share/dismiss.
+  FR-9 / FR-24 / FR-28 — /events/:id. Tapped-card detail with Why-this, multi-tier reminders, save/share/dismiss.
+  Amendment A-25 (2026-09-10) specified the Share affordance that this file had rendered
+  since before the spines described it: component.action.share, idle -> copied -> idle,
+  morph-as-confirmation borrowed from component.button.save.inline. The live action row
+  below renders `idle`; the states matrix near the foot of <main> carries `copied` and the
+  copy-failed fallback. Recipient half of the pair: 27-app-share-link.html.
   Sidebar nav (component.sidenav.app). Topbar stays brand-only. Sidenav footer (Search + Account) pinned to bottom of rail.
   Source: pulse-digest-desktop.html / conflicts-desktop.html (Amendment A-8 shell).
 -->
@@ -138,6 +143,23 @@
   .actions { display: flex; gap: 8px; margin-top: 12px; }
   .actions .ghost { flex: 1; justify-content: center; }
 
+  /* component.action.share states (Amendment A-25 — PRD FR-28).
+     All values from :root above. No new hex, no new CSS variables. */
+  .share-states { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border-strong); }
+  .share-states h2 { font-family: var(--family-display); font-size: 20px; font-weight: 600; color: var(--ink-primary); margin: 0 0 4px; }
+  .share-states .ss-cap { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); margin: 0 0 20px; }
+  .ss-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .ss-block { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; }
+  .ss-label { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); margin-bottom: 10px; }
+  .ss-row { display: flex; }
+  .ss-row .ghost { flex: 1; justify-content: center; }
+  .ghost.is-copied { color: var(--signal-success); }
+  .ss-helper { font-size: 12px; color: var(--ink-secondary); margin: 8px 0 0; }
+  .ss-url { font-family: var(--family-mono); font-size: 11px; color: var(--ink-primary); margin: 4px 0 0; word-break: break-all; }
+  .ss-note { font-size: 12px; color: var(--ink-muted); margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+  .ss-foot { font-size: 12px; color: var(--ink-muted); margin: 16px 0 0; }
+  @media (max-width: 1024px) { .ss-grid { grid-template-columns: 1fr; } }
+
   .neighbor { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-secondary); padding: 8px 0; }
   .neighbor .av { width: 24px; height: 24px; border-radius: 50%; background: var(--accent-slate); }
   .neighbor .count { font-family: var(--family-mono); font-size: 13px; color: var(--ink-primary); font-weight: 600; }
@@ -212,7 +234,11 @@
 
     <div class="container">
     <div class="grid">
-      <main>
+      <!-- Was a nested <main> — a duplicate landmark inside the A-8 page <main class="main">.
+           Pre-existing at git HEAD, not introduced by Amendment A-25; found and fixed in passing,
+           applying the same correction A-21 made to the reminder-picker. The CSS targets only
+           .main (by class) and .grid, never a bare `main` element, so this carries zero visual diff. -->
+      <section aria-label="Event detail">
         <div class="stripe"></div>
         <div class="type-label">Public event · nearby</div>
         <h1>Free tech meetup — "Designing for Calm"</h1>
@@ -279,7 +305,7 @@
         <div style="height: 240px; border-radius: 12px; background: linear-gradient(135deg, var(--surface-subtle), var(--surface-inset)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; color: var(--ink-muted); font-size: 13px;">
           🗺 Map — Brooklyn Arts Council (4 blocks from work)
         </div>
-      </main>
+      </section>
 
       <aside class="aside" aria-label="Actions">
         <div class="panel">
@@ -318,8 +344,9 @@
 
           <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
             <button class="btn-primary">Save to my Pulse →</button>
+            <!-- component.action.share (Amendment A-25, FR-28) — `idle`. Ink-only ghost, no terracotta. -->
             <div class="actions">
-              <button class="ghost">Share</button>
+              <button class="ghost" aria-label="Share Free tech meetup — Designing for Calm">Share</button>
               <button class="ghost">Less like this</button>
             </div>
           </div>
@@ -347,6 +374,45 @@
         </div>
       </aside>
     </div>
+
+    <!-- Amendment A-25 — component.action.share states matrix (PRD FR-28).
+         The live action row above renders `idle`; these are the remaining states.
+         Spec: DESIGN.md §Components → Share action; EXPERIENCE.md §4 Component.Action.Share. -->
+    <section class="share-states" aria-label="Share action states (Amendment A-25)">
+      <h2>Share action — states</h2>
+      <p class="ss-cap">component.action.share · PRD FR-28 · Amendment A-25 · idle → copied → idle</p>
+
+      <div class="ss-grid">
+        <div class="ss-block">
+          <div class="ss-label">idle</div>
+          <div class="ss-row">
+            <button class="ghost" aria-label="Share Free tech meetup — Designing for Calm">Share</button>
+          </div>
+          <p class="ss-note">Ink-only ghost. No terracotta — that stays rationed to the today indicator, the primary CTA, the verified source badge and the focus ring.</p>
+        </div>
+
+        <div class="ss-block">
+          <div class="ss-label">copied — held 1500ms, then reverts unaided</div>
+          <div class="ss-row">
+            <button class="ghost is-copied" aria-live="polite">Link copied ✓</button>
+          </div>
+          <p class="ss-helper">Anyone with the link can see this event.</p>
+          <p class="ss-note">Morph-as-confirmation, borrowed from component.button.save.inline so the product carries one confirmation grammar rather than two. The helper line is the only place the link's audience is stated. No toast, no overlay.</p>
+        </div>
+
+        <div class="ss-block">
+          <div class="ss-label">copy failed — clipboard denied or insecure context</div>
+          <div class="ss-row">
+            <button class="ghost" aria-label="Share Free tech meetup — Designing for Calm">Share</button>
+          </div>
+          <p class="ss-helper">Couldn't copy — here's the link:</p>
+          <p class="ss-url">eventpulse24.com/e/free-tech-meetup-designing-for-calm-2026-08-28</p>
+          <p class="ss-note">The URL itself is the fallback — no modal, no retry button. Deliberately not signal.error: that token is reserved for destructive actions the user takes, and a failed clipboard write destroys nothing.</p>
+        </div>
+      </div>
+
+      <p class="ss-foot">Mobile hands off to the OS share sheet via <code>navigator.share</code> and runs the same morph underneath — see <code>mobile/event-detail-mobile.html</code>. The shared URL is the event's existing public canonical path (the same one FR-26 already serves), so sharing mints no new route. Forbidden on this component: toast, overlay or share-preview panel, third-party share-target icon row, share counts, QR code, terracotta on any state.</p>
+    </section>
   </div>
   </main>
 </div>
