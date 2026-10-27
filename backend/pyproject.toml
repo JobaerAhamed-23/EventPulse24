@@ -1,0 +1,203 @@
+[project]
+name = "eventpulse24-backend"
+version = "0.1.0"
+description = "EventPulse24 backend: Django modular monolith (API + worker runtimes)"
+requires-python = "==3.13.*"
+dependencies = [
+    "django==6.1.2",
+    "django-ninja==1.7.1",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.16.1",
+    "psycopg[binary]==3.3.6",
+    "dj-database-url==3.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter==2.15",
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "ruff==0.17.3",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "DTZ", "G", "LOG", "TID"]
+
+# Configuration is read once, in config/ (pydantic-settings); nowhere else touches the environment.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.environ".msg = "Read configuration through config.env (pydantic-settings), not os.environ."
+"os.environb".msg = "Read configuration through config.env (pydantic-settings), not os.environb."
+"os.getenv".msg = "Read configuration through config.env (pydantic-settings), not os.getenv."
+"os.getenvb".msg = "Read configuration through config.env (pydantic-settings), not os.getenvb."
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "domain", "apps", "ports", "adapters", "worker", "shared"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use fake secrets in fixtures, run subprocesses with fixed, trusted arguments,
+# and build probe SQL from module constants (never input).
+# Tests also build subprocess environments from os.environ.
+"tests/**" = ["S101", "S105", "S106", "S603", "S608", "TID251"]
+# config/ is the only reader of the environment; manage.py bootstraps DJANGO_SETTINGS_MODULE.
+"config/**" = ["TID251"]
+"manage.py" = ["TID251"]
+# Generated migrations carry Django's long built-in help_text strings.
+"**/migrations/*" = ["E501"]
+
+# AD-1 / AD-2 / AD-8 import contracts, checked by `make lint-imports` (part of `make lint-backend`).
+# tests/architecture/ plants a violation for each contract and asserts exactly that one breaks.
+[tool.importlinter]
+root_packages = [
+    "domain",
+    "apps",
+    "ports",
+    "adapters",
+    "config",
+    "worker",
+    "shared",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "AD-2 layers point inward; AD-1 API and worker runtimes don't import each other"
+type = "layers"
+layers = [
+    "config | worker",
+    "apps | adapters",
+    "ports",
+    "domain",
+    "shared",
+]
+
+[[tool.importlinter.contracts]]
+id = "worker-not-api"
+name = "AD-1 the worker never imports the API surface"
+type = "forbidden"
+source_modules = ["worker"]
+forbidden_modules = ["apps.*.api"]
+
+[[tool.importlinter.contracts]]
+id = "domain-pure"
+name = "AD-2 domain is pure (stdlib, plus shared.constants and shared.ids)"
+type = "forbidden"
+source_modules = ["domain"]
+forbidden_modules = [
+    "django",
+    "ninja",
+    "pydantic",
+    "pydantic_settings",
+    "psycopg",
+    "dj_database_url",
+    "celery",
+    "shared",
+]
+# Both are stdlib-only themselves (tests/architecture/test_stdlib_only.py).
+ignore_imports = ["domain.** -> shared.constants", "domain.** -> shared.ids"]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+id = "models-catalog"
+name = "AD-2 only apps.catalog imports apps.catalog.models (others call its services)"
+type = "protected"
+protected_modules = ["apps.catalog.models"]
+allowed_importers = ["apps.catalog"]
+
+[[tool.importlinter.contracts]]
+id = "models-delivery"
+name = "AD-2 only apps.delivery imports apps.delivery.models (others call its services)"
+type = "protected"
+protected_modules = ["apps.delivery.models"]
+allowed_importers = ["apps.delivery"]
+
+[[tool.importlinter.contracts]]
+id = "models-editorial"
+name = "AD-2 only apps.editorial imports apps.editorial.models (others call its services)"
+type = "protected"
+protected_modules = ["apps.editorial.models"]
+allowed_importers = ["apps.editorial"]
+
+[[tool.importlinter.contracts]]
+id = "models-identity"
+name = "AD-2 only apps.identity imports apps.identity.models (others call its services)"
+type = "protected"
+protected_modules = ["apps.identity.models"]
+allowed_importers = ["apps.identity"]
+
+[[tool.importlinter.contracts]]
+id = "models-ingestion"
+name = "AD-2 only apps.ingestion imports apps.ingestion.models (others call its services)"
+type = "protected"
+protected_modules = ["apps.ingestion.models"]
+allowed_importers = ["apps.ingestion"]
+
+[[tool.importlinter.contracts]]
+id = "models-personalization"
+name = "AD-2 only apps.personalization imports apps.personalization.models (others call its services)"
+type = "protected"
+protected_modules = ["apps.personalization.models"]
+allowed_importers = ["apps.personalization"]
+
+[[tool.importlinter.contracts]]
+id = "adapters-independent"
+name = "AD-2 adapters never import each other"
+type = "independence"
+modules = ["adapters.*"]
+
+[[tool.importlinter.contracts]]
+id = "llm-sdk"
+name = "AD-8 only adapters.llm imports an LLM provider SDK"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters.billing",
+    "adapters.calendar",
+    "adapters.crawl",
+    "adapters.email",
+    "adapters.logging",
+]
+forbidden_modules = [
+    "anthropic",
+    "voyageai",
+    "openai",
+    "instructor",
+]
+# Wiring the adapter in (config -> adapters.llm -> anthropic) is the intended path.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "stripe-sdk"
+name = "Only adapters.billing imports the Stripe SDK"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters.calendar",
+    "adapters.crawl",
+    "adapters.email",
+    "adapters.llm",
+    "adapters.logging",
+]
+forbidden_modules = ["stripe"]
+allow_indirect_imports = true
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings_test"
+testpaths = ["tests"]
+python_files = ["test_*.py"]

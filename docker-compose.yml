@@ -1,0 +1,62 @@
+# Local infrastructure for EventPulse24 (hybrid dev: infra here, app processes on the host).
+# Same file on Ubuntu and macOS (all images are multi-arch: amd64 + arm64).
+# Every host port comes from .env; defaults avoid ports commonly taken on dev machines.
+name: eventpulse24
+
+services:
+  postgres:
+    # pgvector 0.8.6 on PostgreSQL 18 — matches Neon (Architecture Spine §Stack); >=0.8.4 fixes HNSW vacuum corruption.
+    image: pgvector/pgvector:0.8.6-pg18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${EP_PG_SUPERUSER_PASSWORD:-postgres_local}
+      POSTGRES_DB: ${EP_DB_NAME:-eventpulse24}
+      EP_OWNER_PASSWORD: ${EP_OWNER_PASSWORD:-ep_owner_local}
+      EP_CATALOG_PASSWORD: ${EP_CATALOG_PASSWORD:-ep_catalog_local}
+      EP_PERSONAL_PASSWORD: ${EP_PERSONAL_PASSWORD:-ep_personal_local}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${EP_PG_PORT:-5440}:5432"
+    volumes:
+      # PG18 images keep PGDATA under /var/lib/postgresql/18/docker; mount the parent, not .../data.
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP check: during init scripts the server listens on the unix socket only,
+      # so this turns healthy only after initialization has finished.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    # Celery broker only: carries the beat tick and pipeline jobs, never the reminder schedule (AD-7),
+    # so it runs without persistence.
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${EP_REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    # Catches all outgoing mail locally; nothing is really sent. Web inbox on EP_MAILPIT_UI_PORT.
+    image: axllent/mailpit:v1.32
+    environment:
+      MP_MAX_MESSAGES: 2000
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${EP_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${EP_MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
