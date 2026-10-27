@@ -3,6 +3,7 @@
 import json
 import logging
 import traceback
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from adapters.logging.context import current_trace_id
@@ -16,9 +17,39 @@ _RECORD_ATTRIBUTES = frozenset(
 )
 _CORE_KEYS = frozenset({"ts", "level", "logger", "message", "args", "trace_id"})
 
+WITHHELD = "[withheld]"
+
+# Framework loggers whose arguments carry task payloads: only these keys are interpolated.
+# celery.app.trace logs "succeeded …: %(return_value)s" and "raised …: %(exc)s".
+FRAMEWORK_ARG_ALLOWLIST = {
+    "celery.app.trace": frozenset({"name", "id", "runtime", "description"}),
+}
+
 
 def is_project_logger(name: str) -> bool:
     return any(name == root or name.startswith(f"{root}.") for root in PROJECT_LOGGER_ROOTS)
+
+
+def _withhold(value: object) -> object:
+    # An exception passed as an argument is reduced to its type: messages echo user input.
+    return f"<{_type_name(value)}>" if isinstance(value, BaseException) else value
+
+
+def _framework_message(record: logging.LogRecord) -> str:
+    allowed = FRAMEWORK_ARG_ALLOWLIST.get(record.name)
+    args = record.args
+    if allowed is not None and isinstance(args, Mapping):
+        args = {key: value if key in allowed else WITHHELD for key, value in args.items()}
+    elif isinstance(args, Mapping):
+        args = {key: _withhold(value) for key, value in args.items()}
+    elif isinstance(args, tuple):
+        args = tuple(_withhold(value) for value in args)
+    if not args:
+        return str(record.msg)
+    try:
+        return str(record.msg) % args
+    except (TypeError, ValueError, KeyError):
+        return str(record.msg)
 
 
 def _type_name(exc: BaseException) -> str:
@@ -41,7 +72,8 @@ class JsonFormatter(logging.Formatter):
     """One JSON object per line.
 
     - message: project loggers emit the template only, with `args` redacted; framework
-      loggers (which need `%s`) are interpolated. Both are pattern-scrubbed.
+      loggers (which need `%s`) are interpolated, but exception arguments become their type
+      and FRAMEWORK_ARG_ALLOWLIST loggers keep only safe keys. Both are pattern-scrubbed.
     - extras: allowlisted fields are scrubbed; any other field is `[redacted]`.
     - exceptions: type chain and stack frames only. `str(exc)` is never logged, because
       exception messages echo user input (pydantic `input_value`, IntegrityError keys).
@@ -58,7 +90,7 @@ class JsonFormatter(logging.Formatter):
             if record.args:
                 line["args"] = REDACTED
         else:
-            line["message"] = scrub(record.getMessage())
+            line["message"] = scrub(_framework_message(record))
         line["trace_id"] = current_trace_id() or getattr(
             getattr(record, "request", None), "trace_id", None
         )

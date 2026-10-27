@@ -4,9 +4,12 @@ title: Ports, Fake Adapters & Worker Skeleton
 intent: project-scaffold
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [shared-foundations]
+status: completed
+depends_on:
+  - shared-foundations
 created: 2026-10-27
+run_id: run-eventpulse24-006
+completed_at: 2026-10-27T15:11:25.178Z
 ---
 
 # Work Item: Ports, Fake Adapters & Worker Skeleton

@@ -150,9 +150,20 @@ make reset-db   # DELETE all local data and re-create it (asks first; FORCE=1 sk
 make migrate    # apply migrations to both schemas as the owner role
 make db-init    # re-apply the database init script (keeps data)
 make api        # run the Django API on http://127.0.0.1:8000 (docs at /api/docs)
+make worker     # run the Celery worker (background jobs), one job at a time
+make beat       # run Celery beat, the 60-second tick scheduler (exactly ONE at a time)
+make send-test-email   # send a test email to Mailpit (TO=… STREAM=bulk to vary it)
 make test-backend
 make lint-backend   # ruff + format check + import contracts (make lint-imports runs only the contracts)
 ```
+
+### Background worker and beat
+
+Run `make worker` and `make beat` in two terminals (alongside `make api`). Every 60 seconds beat sends a `tick`; the worker logs a JSON line with `"message": "Tick"`. The tick does nothing else yet: later work hangs the reminder sweep on it (AD-7).
+
+- **Run exactly one beat.** Two beats would send every tick twice. `make beat` writes a pidfile (`backend/.celery/beat.pid`), so a second `make beat` refuses to start while the first runs ("Pidfile … already exists"). If beat was killed hard and the pidfile is left behind with no beat running, delete it.
+- **The worker runs one job at a time** (`--pool solo`), the same on macOS and Ubuntu. Celery 5.6.3's default multi-process pool breaks on macOS, where every task fails with `not enough values to unpack`.
+- **Email:** with `ADAPTER_MODE=fake` (the default), email really goes out over SMTP to Mailpit, and nothing else needs an API key. `make send-test-email` sends one; open <http://127.0.0.1:8025>. Each message carries an `X-Eventpulse-Stream` header (`transactional` or `bulk`).
 
 ## 7. Using a native PostgreSQL 18 instead of Docker (optional)
 

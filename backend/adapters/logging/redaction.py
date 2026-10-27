@@ -39,7 +39,8 @@ ALLOWED_FIELDS = frozenset(
 
 # Order matters: URL credentials before the email pattern, which would match "pass@host".
 _TOKEN_PATTERNS = [
-    (re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"), TOKEN),
+    # The user part may be empty: managed Redis URLs are often redis://:password@host.
+    (re.compile(r"(?<=://)[^/\s:@]*:[^/\s@]+(?=@)"), TOKEN),
     (re.compile(r"\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}"), TOKEN),
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"), TOKEN),
     # Word boundary + minimum body, so `network_check`, `work_item`, `task-…` are untouched.

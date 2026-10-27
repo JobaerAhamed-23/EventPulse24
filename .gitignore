@@ -12,6 +12,8 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+# Celery beat's schedule file and pidfile (make beat)
+backend/.celery/
 
 # Node / Next.js
 node_modules/

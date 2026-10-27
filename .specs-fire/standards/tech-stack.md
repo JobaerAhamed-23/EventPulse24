@@ -125,8 +125,8 @@ Not configured. To be decided at first scaffold.
 - `pydantic-settings` (2.16.1): typed startup config
 - `psycopg[binary]` (3.3.6): PostgreSQL driver
 - `dj-database-url` (3.1.2): parses `DATABASE_URL_*` into Django `DATABASES`
-- `celery` (5.6.3): worker + beat (static `beat_schedule`, **no** `django-celery-beat`)
-- `redis` (current): broker client
+- `celery[redis]` (5.6.3): worker + beat (static `beat_schedule`, **no** `django-celery-beat`). Locally the worker runs `--pool solo`: the prefork pool breaks on macOS under Celery 5.6.3 (run-eventpulse24-006)
+- `redis` (6.4.0): broker client. kombu 5.6.2 caps it below 6.5, so "current" (8.x) isn't installable.
 - `pgvector` (0.5.0): vector fields
 - `anthropic` (1.3.0): Claude SDK, used via the gateway only
 - `instructor` (1.16.0): structured extraction

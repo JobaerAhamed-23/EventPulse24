@@ -29,7 +29,9 @@ All of these are enforced by `make lint-backend` (Ruff + `lint-imports`) or by t
 - **Layers** (import-linter `layers`, AD-1/AD-2): `config | worker` → `apps | adapters` → `ports` → `domain` → `shared`. Higher may import lower, never the reverse.
   - `config` (the API surface and composition root) and `worker` never import each other (AD-1). Celery finds tasks and beat entries by dotted string; the Celery app lives in `config/celery.py`.
   - `apps` and `adapters` never import each other: apps reach adapters through `ports` and settings.
-  - **Deliberate loosening:** `ports` may import all of `shared`, including modules that use Django (the spine says `ports` → `domain` only). That's acceptable while ports are Protocols over plain types.
+  - **Deliberate loosening:** `ports` may import all of `shared`, including modules that use Django (the spine says `ports` → `domain` only). That's acceptable while ports are abstract classes over plain types.
+  - **How an app gets an adapter:** `ports.registry.get_<x>_port()` (`get_email_port()`, `get_llm_port()`, …). It resolves the dotted path in `settings.ADAPTERS`, which `config/adapters.py` builds from `ADAPTER_MODE`, and checks the class implements the port. **`ports/registry.py` is the only `ports` module that imports Django** (`django.conf`, `import_string`); port modules stay plain Python. Never import an adapter from an app; tests may construct one directly (e.g. `InMemoryEmailAdapter`).
+  - **Ports are ABCs over frozen dataclasses** (`ports/<x>.py`). A new port gets a key in `ports.registry.PORT_KEYS` and an entry in every `config/adapters.py` table. `ADAPTER_MODE=real` fails at startup until every port has a real adapter.
 - **`worker-not-api`** (import-linter): `worker` never imports `apps.*.api` (AD-1).
 - **`domain-pure`** (import-linter + `tests/architecture/test_stdlib_only.py`): `backend/domain/` imports the **stdlib, plus `shared.constants` and `shared.ids`**, which are themselves stdlib-only (as is `shared/__init__.py`). It must be importable without Django. **This is a deliberate departure from AD-2's "stdlib only"**, recorded in run-eventpulse24-005: it lets thresholds live once (AD-8/AD-16/AD-21).
 - **`models-<app>`** (import-linter `protected`, one per app): only `apps.<X>` imports `apps.<X>.models`; other apps call `apps.<X>.services` (the chain through services is allowed; the contract checks direct imports). For the user type, use `get_user_model()` or `settings.AUTH_USER_MODEL`, never `apps.identity.models` from another app.
@@ -185,6 +187,8 @@ logger.info("Reminder sent", extra={"send_id": send.id, "idempotency_key": key, 
 - Only fields in `adapters/logging/redaction.ALLOWED_FIELDS` are kept (scrubbed for email/token shapes); any other `extra` field is logged as `[redacted]`. Adding a field to the allowlist is a reviewed change: ids, counts, durations and slugs only, **never free text**. Patterns can't recognise a title inside an allowed field.
 - Project loggers (`apps`, `domain`, `adapters`, `config`, `worker`, `shared`) **never interpolate args**: `logger.info("Saved %s", title)` logs `"Saved %s"` with `args: [redacted]`. Ruff `G` forbids f-strings, `.format`, `%` and `+` in log calls. Never pass a variable as the message.
 - Exception **messages are never logged**, only the type chain and the stack frames (they echo user input). Locally, `DEBUG` re-raises API errors so the debug page shows the full text.
+- Framework loggers are interpolated, but an exception passed as an argument is reduced to `<TypeName>`, and `celery.app.trace` keeps only the task `name`, `id`, `runtime` and `description` (its return value and exception text are `[withheld]`). **Celery tasks return `None`**: report results through the database or a log line with allowlisted fields.
+- **Jobs carry the trace id** (`config/celery.py`): it travels in the task's `trace_id` header from the code that enqueues it; a job without one (every beat tick) gets a fresh id. `settings.LOGGING` stays the worker's only sink (`setup_logging` is handled, `worker_hijack_root_logger = False`).
 - Use `logger.error(..., exc_info=exc)` outside an `except` block (Ruff `LOG004`).
 
 **Always log**:
@@ -252,7 +256,7 @@ def save_event(*, actor: User, event_id: UUID) -> SavedEvent:
 - **Cross-schema join or FK**: the router and `eventpulse.E002` forbid it, so don't work around it. An inner queryset from the other schema raises `ValueError` with `.using()`, and "relation does not exist" without it (AD-3)
 - **Event Fit substituted for Relevance Pulse** (or vice versa) (AD-10)
 - **Session-dependent public pages** (AD-12)
-- **Email send without an explicit stream** (AD-20)
+- **Email send without an explicit stream** (AD-20). `EmailPort.send` enforces it for every adapter: `stream` is keyword-only with no default and must be a `Stream`; bulk needs `unsubscribe_url` (RFC 8058); every send needs an `idempotency_key` (AD-7). Adapters implement `_deliver`, never `send`.
 - **Hand-editing `frontend/lib/api/`** (AD-19)
 - **Component kits or animation libraries in the frontend**: UI system "None" is binding
 - **Floats for money**: integer minor units + ISO-4217

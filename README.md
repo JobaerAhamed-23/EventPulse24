@@ -16,11 +16,13 @@ make up         # start Postgres 18 + pgvector, Redis, Mailpit
 make db-check   # verify the database is ready
 make migrate    # create the tables in both schemas (catalog, personal)
 make api        # Django API on http://127.0.0.1:8000 (docs: /api/docs)
+make worker     # Celery worker (another terminal)
+make beat       # Celery beat, the 60s tick: run exactly ONE (another terminal)
 ```
 
 Already set up before? Run `make db-init && make migrate` to bring an existing database up to date (keeps data).
 
-Run `make` to list all commands. The Mailpit inbox is at <http://127.0.0.1:8025>.
+Run `make` to list all commands. The Mailpit inbox is at <http://127.0.0.1:8025>; `make send-test-email` puts a message there. With `ADAPTER_MODE=fake` (the default) the AI, embeddings, billing and calendar run on local stand-ins, so no API keys are needed.
 
 Before pushing, run `make test-backend && make lint-backend`. `lint-backend` covers Ruff, the format check and the architecture's import contracts (`make lint-imports` runs only the contracts).
 

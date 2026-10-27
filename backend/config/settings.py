@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from config.adapters import adapter_paths
 from config.databases import build_databases
 from config.env import env
 from shared.db import CATALOG, PERSONAL
@@ -103,6 +104,27 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+
+# Which adapter implements each port (resolved by ports.registry); ADAPTER_MODE=fake by default.
+ADAPTERS = adapter_paths(env.adapter_mode)
+
+# Used by the SMTP email adapter; locally this is Mailpit. Django 6.1 MAILERS (EMAIL_HOST and
+# EMAIL_PORT are deprecated). Tests swap every mailer for the locmem backend automatically.
+MAILERS = {
+    "default": {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+        "OPTIONS": {"host": env.smtp_host, "port": env.smtp_port},
+    },
+}
+
+# Celery (config/celery.py). AD-7: Redis carries the tick and pipeline jobs only.
+CELERY_BROKER_URL = env.redis_url
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_IGNORE_RESULT = True  # no result backend: tasks report through the database
+CELERY_TIMEZONE = "UTC"
+CELERY_ENABLE_UTC = True
+# AD-13: keep settings.LOGGING's redacting handler; Celery must not replace the root logger.
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 
 # AD-13: one JSON handler on the root; redaction happens in the formatter. Django's default
 # handlers are removed, not bypassed: `mail_admins` would email unredacted tracebacks and

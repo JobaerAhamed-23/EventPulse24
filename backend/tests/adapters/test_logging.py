@@ -102,6 +102,29 @@ def test_url_credentials_query_secrets_and_secret_ics_redacted():
 
 
 @pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (
+            "redis://default:s3cretpass@cache.example.com:6379/0",
+            "redis://[token]@cache.example.com:6379/0",
+        ),
+        (
+            "redis://:s3cretpass@cache.example.com:6379/0",
+            "redis://[token]@cache.example.com:6379/0",
+        ),
+        ("redis://:s3cretpass@10.0.0.5:6379/0", "redis://[token]@10.0.0.5:6379/0"),
+        ("redis://127.0.0.1:6380/0", "redis://127.0.0.1:6380/0"),
+        ("http://[::1]:8000/health", "http://[::1]:8000/health"),
+    ],
+)
+def test_url_password_redacted_with_or_without_a_user(url, expected):
+    line = emit(error_code=url)
+
+    assert line["error_code"] == expected
+    assert "s3cretpass" not in json.dumps(line)
+
+
+@pytest.mark.parametrize(
     "value",
     [
         "network_check",
@@ -179,3 +202,50 @@ def test_nested_values_scrubbed():
     line = emit(error_code={"to": [EMAIL], "count": 2})
 
     assert line["error_code"] == {"to": ["[email]"], "count": 2}
+
+
+CELERY_SUCCESS = "Task %(name)s[%(id)s] succeeded in %(runtime)ss: %(return_value)s"
+CELERY_FAILURE = "Task %(name)s[%(id)s] %(description)s: %(exc)s"
+
+
+def test_celery_success_line_withholds_the_return_value():
+    context = {"name": "worker.tasks.tick", "id": "t-1", "runtime": 0.5, "return_value": TITLE}
+
+    line = emit("celery.app.trace", CELERY_SUCCESS, (context,), data=context)
+
+    assert line["message"] == "Task worker.tasks.tick[t-1] succeeded in 0.5s: [withheld]"
+    assert line["data"] == "[redacted]"
+    assert TITLE not in json.dumps(line)
+
+
+def test_celery_failure_line_withholds_exception_text_but_keeps_the_type():
+    exc_info = raised(ValueError(f"bad title {TITLE} for {EMAIL}"))
+    context = {
+        "name": "worker.tasks.tick",
+        "id": "t-2",
+        "description": "raised unexpected",
+        "exc": repr(exc_info[1]),
+        "args": f"('{EMAIL}',)",
+        "kwargs": "{}",
+        "traceback": "...",
+    }
+
+    line = emit("celery.app.trace", CELERY_FAILURE, (context,), exc_info=exc_info, data=context)
+
+    assert line["message"] == "Task worker.tasks.tick[t-2] raised unexpected: [withheld]"
+    assert line["exc_type"] == ["ValueError"]
+    serialised = json.dumps(line)
+    assert TITLE not in serialised
+    assert "alice" not in serialised
+
+
+def test_framework_exception_argument_becomes_its_type():
+    line = emit("celery.worker.request", "Task handler raised error: %r", (ValueError(TITLE),))
+
+    assert line["message"] == "Task handler raised error: '<ValueError>'"
+
+
+def test_framework_message_that_does_not_format_falls_back_to_template():
+    line = emit("django.request", "Broken %(missing)s", ({"other": TITLE},))
+
+    assert line["message"] == "Broken %(missing)s"

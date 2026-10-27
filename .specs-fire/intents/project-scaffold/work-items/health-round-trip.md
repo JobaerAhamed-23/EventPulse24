@@ -29,6 +29,11 @@ Wire the stack end to end: a health endpoint that touches both schemas and Redis
 
 - AD-19: the OpenAPI schema is the single source of truth for the boundary.
 
+## Hand-offs from earlier runs
+
+- **Worker and beat** (ports-fakes-and-worker): `make dev` runs `make worker` (`--pool solo`, the same on both OSes) and **exactly one** `make beat`. Beat's pidfile (`backend/.celery/beat.pid`) makes a second beat refuse to start, so `make dev` must not start beat if one is already running. On Ctrl-C, stop beat cleanly (SIGTERM) so it removes the pidfile.
+- **Redis in the health check:** the broker URL is `settings.CELERY_BROKER_URL` (from `REDIS_URL`).
+
 ## Dependencies
 
 - schema-router-spike

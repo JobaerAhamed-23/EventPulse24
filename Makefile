@@ -7,8 +7,8 @@ export
 EP_DB_NAME ?= eventpulse24
 
 .DEFAULT_GOAL := help
-.PHONY: help env doctor up down reset-db ps logs psql db-check db-init api manage migrate makemigrations \
-        test-backend lint-backend lint-imports fmt-backend
+.PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
+        manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend
 
 UV_BACKEND := uv run --directory backend
 
@@ -53,6 +53,24 @@ db-init: ## Re-apply the database init script to the running container (idempote
 
 api: ## Run the Django API on 127.0.0.1:$API_PORT (default 8000)
 	$(UV_BACKEND) python manage.py runserver 127.0.0.1:$(or $(API_PORT),8000)
+
+# --pool solo: one job at a time, in one process, the same on macOS and Ubuntu. Celery 5.6.3's
+# prefork pool breaks on macOS (billiard spawns children; every task fails with "not enough
+# values to unpack"). The node name has no ".host" part, so the log scrubber can't read it as
+# an email address.
+worker: ## Run the Celery worker (background jobs and the tick), one job at a time
+	$(UV_BACKEND) celery -A config worker --pool solo --hostname eventpulse24-worker --loglevel INFO
+
+# Exactly ONE beat may run (two would fire every tick twice). The pidfile makes a second
+# `make beat` refuse to start while the first is running.
+beat: ## Run Celery beat, the 60s tick scheduler — exactly one at a time
+	@mkdir -p backend/.celery
+	$(UV_BACKEND) celery -A config beat --loglevel INFO \
+		--schedule .celery/beat-schedule --pidfile .celery/beat.pid
+
+send-test-email: ## Send a test email to Mailpit: make send-test-email [TO=you@example.test] [STREAM=bulk]
+	$(UV_BACKEND) python manage.py send_test_email --to $(or $(TO),dev@example.test) \
+		--stream $(or $(STREAM),transactional)
 
 manage: ## Run a manage.py command: make manage ARGS="check"
 	$(UV_BACKEND) python manage.py $(ARGS)
