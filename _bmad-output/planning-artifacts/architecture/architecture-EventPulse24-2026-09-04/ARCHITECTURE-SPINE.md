@@ -4,12 +4,14 @@ type: architecture-spine
 purpose: build-substrate
 altitude: initiative
 paradigm: 'Django modular monolith, ports-and-adapters, two Python runtimes from one repo + a Next.js client'
-scope: 'EventPulse24 MVP — the 43 MVP FRs: onboarding, Pulse Digest, reminders, event ingestion, personal events, explainability, event state sync, sharing/SEO, AI cost discipline, Pro tier'
+scope: 'EventPulse24 MVP — the 45 MVP FRs: onboarding, Pulse Digest, reminders, event ingestion, personal events, Timeline and conflict-aware scheduling, explainability, event state sync, sharing/SEO, AI cost discipline, Pro tier'
 status: draft
 created: '2026-09-04'
-updated: '2026-09-04'
+updated: '2026-10-27'
+sources_as_of: 'PRD amendments A-1..A-9 (A-8 lifts FR-32/FR-33 to MVP; A-9 aligns FR-3/FR-50 to ICS)'
 binds:
   - FR-1..FR-30
+  - FR-32..FR-33
   - FR-48..FR-60
 sources:
   - _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md
@@ -82,7 +84,7 @@ graph TD
 - **Binds:** FR-13–17, FR-53–55, FR-60
 - **Prevents:** two owners of one entity, and the specific divergence of a builder reaching for cosine similarity as an identity test — which silently merges distinct events and is explicitly forbidden by PRD §3.
 - **Rule:** The `ingestion` module is the **sole writer** of `catalog`. Identity is decided **only** by the Glossary's Event Identity tuple `(source_id, source_event_id, venue_fingerprint, start_time_with_tz, title_fingerprint)` and its three match rules. **Embedding cosine similarity is never an identity signal.** Cosine ≥0.95 routes a pair to the editorial review queue as "possible duplicate" and never auto-merges. Recurring events are distinct `event_id`s sharing a `series_id`.
-- **Rule (state):** State changes — postpone, cancel, move, sold-out — update the same `event_id` and **append** to `state_history`; history is never rewritten. Propagation into `personal` is AD-17's, not this module's. A postponement within ±30 days of the original start keeps the `event_id`; beyond ±30 days it creates a new Event.
+- **Rule (state):** State changes — postpone, cancel, move, sold-out — update the same `event_id` and **append** to `state_history`; history is never rewritten. Propagation into `personal` is AD-17's, not this module's. A postponement within ±30 days of the original start keeps the `event_id`; beyond ±30 days it creates a new Event. The old Event then receives a terminal `superseded_by` state change pointing at the new one, which AD-17 propagates like a cancellation — users are notified and re-save; plans are never silently migrated.
 
 ### AD-5 — State changes only through named commands `[ADOPTED]`
 
@@ -100,11 +102,22 @@ graph TD
 
 - **Binds:** FR-9–12, FR-5–8, FR-51; PRD §10.4
 - **Prevents:** the per-user-timer pattern — millions of individually scheduled future timers, where reschedule and cancel-on-event-change become O(timers) and a source postponement means hunting down every affected timer. With a broker in the stack this is a live temptation, not a theoretical one.
-- **Rule:** Reminders and Pulse Pings dispatch from a worker sweeping a `(due_at, status)` index at **≤60s intervals**, triggered by Celery Beat. Every send carries a deterministic idempotency key (`user_id + event_id + slot + scheduled_for`); delivery is at-least-once with dedupe at the send boundary. **The sweep must not be a platform cron** — Railway's cron floor is 5 minutes, which consumes the entire ±5 min budget before any queue latency, and skips a tick if the prior run is still active.
+- **Rule:** Reminders and Pulse Pings dispatch from a worker sweeping a `(due_at, status)` index at **≤60s intervals**, triggered by Celery Beat. Every send carries a stable idempotency key (Rule (send key) below); delivery is at-least-once with dedupe at the send boundary. **The sweep must not be a platform cron** — Railway's cron floor is 5 minutes, which consumes the entire ±5 min budget before any queue latency, and skips a tick if the prior run is still active.
 - **Rule (quiet hours):** Quiet Hours are applied when `due_at` is **computed or recomputed**, deferring to the window end — never as a skip at send time. A deferred send is silently moved, never dropped and never re-delivered next day.
+- **Rule (send key):** The key is minted **once**, when the `SCHEDULED_SEND` row is created, stored under a unique constraint, and never derived from `due_at`:
+
+| Send kind | Key |
+| --- | --- |
+| Reminder for a saved public Event | `user_id · event_reminder · event_id · slot · event_version` |
+| Reminder for a Personal Event | `user_id · personal_reminder · personal_event_id · slot · personal_event_revision` |
+| State-change notice (FR-54) | `user_id · state_notice · state_change_id` |
+| Pulse Ping | `user_id · pulse_ping · local_date` |
+| Pulse Digest email | `user_id · digest · local_date` |
+
+  `event_version` and `personal_event_revision` are the values **at minting**; propagation may re-stamp a row's working `event_version` column (AD-17) but never its key. `slot` is the Reminder Plan slot (`5d`, `2d`, `1d`, `1hr`, or the custom slot's id). Quiet Hours, timezone, digest-time and tier changes **rewrite `due_at` on `pending` rows only and never touch the key**, so a recompute can never produce a second send. A lifecycle change that moves the event (AD-17) bumps `event_version`, cancels the old `pending` rows and mints new ones — the old key stays spent, so a `1d` reminder already sent for the old date does not block the `1d` reminder for the new one. The key is passed to the email provider as its idempotency key; a `sent` row is never rekeyed.
 - **Rule (single writer):** A send row transitions state under a row-level lock (`SELECT … FOR UPDATE SKIP LOCKED`), so adding worker replicas can never double-send.
 - **Rule (broker):** **Celery + Redis** runs background work. The broker carries the periodic tick and the pipeline jobs — crawl, extract, embed, propagate — and **nothing else**.
-- **Rule (the schedule is never in the broker):** A reminder is **never** enqueued as a per-reminder Celery task at its due time. `SCHEDULED_SEND` rows in Postgres are the sole source of truth for what is due. This is the invariant AD-7 exists for: per-reminder tasks make reschedule and cancel-on-postponement O(timers) again, and would put delivery at the mercy of Redis durability, which is not guaranteed by default. Because the schedule lives in Postgres, **a total Redis loss costs in-flight pipeline jobs, never a user's reminder** — the next tick re-finds the row.
+- **Rule (the schedule is never in the broker):** A reminder is **never** enqueued as a per-reminder Celery task at its due time. `SCHEDULED_SEND` rows in Postgres are the sole source of truth for what is due. This is the invariant AD-7 exists for: per-reminder tasks make reschedule and cancel-on-postponement O(timers) again, and would put delivery at the mercy of Redis durability, which is not guaranteed by default. Because the schedule lives in Postgres, **a total Redis loss costs in-flight pipeline jobs, never a user's reminder** — the next tick re-finds the row, and AD-17's outbox re-enqueues any lost propagation.
 - **Rule (scheduler):** Celery's own beat scheduler with a **static `beat_schedule` in code**. `django-celery-beat` is not adopted: its purpose is admin-editable schedules, this schedule is one fixed tick, and its 2.9.0 release declares Django support only through 6.0 — not the 6.1 this project runs.
 
 ### AD-8 — Every model call goes through one gateway, which owns fallback `[ADOPTED]`
@@ -112,7 +125,8 @@ graph TD
 - **Binds:** FR-13–16, FR-29, FR-30; PRD §10.3
 - **Prevents:** the per-MAU cost ceiling becoming unenforceable because cost is measured in six places — and a second module quietly adopting a different provider or a non-batched path.
 - **Rule:** No module imports a provider SDK. All extraction, embedding, and enrichment calls pass through `backend/adapters/llm/`, which owns provider selection, batching, prompt caching, schema enforcement, and a **per-call cost row written in the same transaction as the result**. Cost accounting is not optional and not sampled. Extraction schemas are Pydantic models; structured output is enforced by the provider's constrained decoding, so no validate-and-retry loop is written by hand.
-- **Rule (fallback):** Fallback is **multi-model within one provider, not multi-vendor.** Primary `claude-sonnet-5`, fallback `claude-haiku-4-5` — same SDK, same prompt, same gateway. On primary unavailability or schema-validation failure the gateway retries on the fallback model; after 2 consecutive failures it pauses the source and pages editorial. Callers never implement their own retry or fallback.
+- **Rule (fallback):** Fallback is **multi-model within one provider, not multi-vendor.** Primary `claude-haiku-4-5`, fallback `claude-sonnet-5` — same SDK, same prompt, same gateway. *(Order flipped and ratified 2026-09-06: the cheaper model owns the happy path, which roughly doubles event-volume headroom inside PRD §10.3's ceiling.)* On primary unavailability or schema-validation failure the gateway retries on the fallback model; after 2 consecutive failures it pauses the source and pages editorial. Callers never implement their own retry or fallback.
+- **Accepted risks of the Haiku-primary order, named:** (1) Haiku's confidence calibration may shift the `extraction_confidence` distribution downward, so the 0.5 / 0.7 gates are **tuning anchors until re-baselined against a labeled sample on the primary model** — a pre-launch task, not a budget; (2) date arithmetic for the AD-4 identity tuple and the ±30-day postponement rule is a known Haiku weakness, so those failures route to editorial review rather than auto-merge; (3) FR-29 dashboard curves are Haiku-shaped, and the runbook says so.
 - **Accepted risk, named:** a **provider-wide** outage delays ingestion; it degrades no user-facing surface. PRD §10.4's 4-hour ingestion SLA already absorbs this, which is why a second text-model vendor is not bought. *(Requires the FR-14 amendment — it is written as multi-provider.)*
 - **Rule (embeddings are a second vendor, unavoidably):** Anthropic publishes no embedding model and directs to **Voyage AI**. Embeddings therefore come from `voyage-4-lite`, behind the same gateway, with the same per-call cost row. Vectors are stored **quantized** — Voyage's `output_dtype` supports `int8` and `binary` (4× and 32× smaller), and Matryoshka dimensions allow truncating to 512 or 256. The embedding vendor is a **cost and storage** dependency, never an availability one: under AD-4 embeddings only route review candidates, so an embedding outage cannot stop ingestion or publishing.
 - **Rule (confidence gate):** `extraction_confidence` <0.5 auto-rejects; <0.7 routes to editorial and is never published to a Pulse Digest. The threshold lives in one shared module.
@@ -181,21 +195,28 @@ graph TD
 | --- | --- |
 | `ingestion` | `SOURCE`, `EXTRACTED_RECORD`, `EVENT`, `EVENT_STATE_CHANGE`, `VENUE`, `REVIEW_ITEM`, `EVENT_FIT` |
 | `identity` | `USER`, `SUBSCRIPTION` |
-| `personalization` | `INTEREST`, `PREFERENCE_GRAPH`, `PERSONAL_EVENT`, `PULSE_DIGEST`, `DIGEST_COMPOSITION`, `EVENT_REPORT` |
+| `personalization` | `INTEREST`, `PREFERENCE_GRAPH`, `PERSONAL_EVENT`, `SAVED_EVENT`, `CONFLICT_PAIR`, `CALENDAR_CONNECTION`, `PULSE_DIGEST`, `DIGEST_COMPOSITION`, `EVENT_REPORT` |
 | `delivery` | `REMINDER_PLAN`, `SCHEDULED_SEND` |
 | `editorial` | nothing — acts only through `ingestion` commands (AD-14) |
 
 ### AD-17 — Catalog state changes reach `personal` only by propagation `[ADOPTED]`
 
-- **Binds:** FR-53–55, FR-9–12
+- **Binds:** FR-53–55, FR-9–12, FR-33
 - **Prevents:** the race the AD-3 wall makes invisible — a postponement rewriting an event's start time while the sweep is mid-dispatch on a reminder for the old time, sending a user a reminder for an event that moved. Also prevents `ingestion` reaching across the wall to fix it directly.
-- **Rule:** `ingestion` never writes to `personal`. A state change appends to `EVENT_STATE_CHANGE` and enqueues a propagation job; **`delivery` owns the resulting `SCHEDULED_SEND` rewrite.** The sweep re-validates the event's current state **inside** the same transaction that claims the send (`FOR UPDATE SKIP LOCKED`), so a send whose event moved is re-queued rather than delivered.
+- **Rule:** `ingestion` never writes to `personal`. A lifecycle change (postpone, cancel, move, sold-out, editorial time edit, supersede) appends an `EVENT_STATE_CHANGE` row carrying the Event's new, monotonically increasing `event_version`.
+- **Rule (outbox, so propagation cannot be lost):** The `EVENT_STATE_CHANGE` row is written with `propagated_at = NULL` in the **same `catalog` transaction** as the change. The propagation job is enqueued from `transaction.on_commit`, and a periodic reconciler on the beat tick re-enqueues any row still unpropagated after 5 minutes. A Redis loss or a crash between commit and enqueue therefore **delays** propagation; it never loses it.
+- **Rule (propagation is per-user, versioned, idempotent):** The job calls each owner's published service — **`delivery`** rewrites or cancels `SCHEDULED_SEND` rows, **`personalization`** updates the `SAVED_EVENT` snapshot and re-evaluates `CONFLICT_PAIR`s (AD-21). Each user is applied in one `personal` transaction, keyed `(state_change_id, user_id)`, and **only if** the change's `event_version` is greater than the version already stored on that user's `SAVED_EVENT` — so a retried, partial or out-of-order run can neither double-apply nor let an older postponement overwrite a newer cancellation. `propagated_at` is set through an `ingestion` command once every affected user is done.
+- **Rule (what each change does):** time moved → bump the snapshot, cancel `pending` sends, mint new ones (AD-7 send key), queue an FR-54 notice. Cancelled, rejected, or superseded (AD-4 >±30 days) → cancel `pending` sends, close conflicts, queue a notice. Sold-out or venue detail → re-stamp the version, keep sends, queue a notice.
+- **Rule (the sweep never crosses the wall in a transaction):** AD-3 forbids a transaction spanning `catalog` and `personal`, so the claim transaction is **`personal`-only**. Every event-bound `SCHEDULED_SEND` carries the `event_version` it was scheduled against. After claiming a row, the sweep reads the Event's current `event_version` through `ingestion`'s read interface — a separate, non-transactional read. If the catalog version is newer, the row goes to `held_for_propagation` and is not sent; propagation then releases, rewrites or cancels it.
+- **Accepted cost:** a change that commits between that version read and the provider call can still send one reminder for the old time. The window is seconds wide, and the FR-54 notice from propagation corrects it. Closing it fully would need the cross-schema transaction AD-3 rules out.
 
 ### AD-18 — Calendar access is a port, and every credential is a credential `[ADOPTED]`
 
 - **Binds:** FR-3, FR-50; PRD §11.2
 - **Prevents:** the MVP's ICS import bleeding into `personalization` and `delivery`, so that adding OAuth later becomes a cross-module change — and prevents a secret ICS URL being treated as a config string when Google classifies it as a credential and offers a reset for it.
 - **Rule:** All calendar ingestion sits behind one port. MVP ships a single **ICS/webcal adapter** used uniformly for Google, Apple and Outlook; OAuth and CalDAV adapters may be added behind the same port without touching any caller. Every provider credential — secret ICS URL or OAuth refresh token alike — is encrypted at rest with the application-level key, never logged, and revocable by the user.
+- **Rule (identity is not calendar):** "Continue with Google / Apple / Microsoft" on `/signup` and `/signin` is **sign-in only**: OpenID Connect with `openid email profile` scopes, owned by `identity`. It never requests a calendar scope and never creates a calendar connection — calendar connect is the separate ICS step. Email + password, with single-use, short-lived reset tokens and enumeration-safe responses at the API edge, is the other MVP sign-in method. *(PRD FR-3/FR-50 aligned to this AD by PRD Amendment A-9.)*
+- **Rule (connections are entities):** Each connected calendar is one `CALENDAR_CONNECTION` row (`personal`, owned by `personalization`) holding the encrypted credential. Every imported `PERSONAL_EVENT` references its connection, so a disconnect purges exactly that connection's events (FR-50: within 24 hours).
 - **Rule (freshness):** The poll interval is ours to choose, since we are the HTTP client; imported events carry a `fetched_at` and conflict detection (FR-58) never asserts freshness it cannot evidence.
 
 ### AD-19 — The API contract is generated, never hand-written `[ADOPTED]`
@@ -256,12 +277,21 @@ graph LR
     ID --> DB
 ```
 
+### AD-21 — Timeline and conflicts read personal-side snapshots, never `catalog` joins `[ADOPTED]`
+
+- **Binds:** FR-32, FR-33, FR-58, FR-53–55; PRD Amendment A-8
+- **Prevents:** the Pulse Card, the Timeline and `/conflicts` each computing "does this overlap?" their own way across the AD-3 wall — so the PRD's symmetric conflict indicator disagrees between surfaces, and a cancelled event keeps its conflict marker.
+- **Rule (saves are personal records):** A user's save of a public Event is a `SAVED_EVENT` row in `personal`, owned by `personalization`. It holds `event_id` by value (no FK) plus a snapshot — `start_utc`, `end_utc`, `event_version` — taken from `catalog` at save time and **thereafter updated only by AD-17 propagation**. A save re-reads the Event's version after commit and requests re-propagation for that user if it moved meanwhile, so a save racing a postponement cannot keep a stale snapshot. The Timeline and conflict detection read the snapshot; they never join `catalog`.
+- **Rule (one overlap function):** Conflict detection is one pure function in `domain/conflict.py`: two UTC intervals conflict when they overlap by **strictly more than 15 minutes** (FR-33). It runs on save, on Personal Event create, edit or import, and on AD-17 propagation — **never at render**. Public-vs-public pairs are out of scope at MVP.
+- **Rule (conflicts are persisted pairs):** Each detected conflict is one `CONFLICT_PAIR` row (`personal`, owned by `personalization`) linking two sides (each a `SAVED_EVENT` or a `PERSONAL_EVENT`), with status `active` or `resolved`. A user's choice is recorded on the pair as the Glossary's `ConflictResolution`. A resolved pair is immutable and never re-prompted. When propagation removes the overlap (a cancel, or a postpone past the partner), the pair closes as `cleared_by_state_change`, which is not a user resolution. The Pulse Card indicator, the Timeline event-block indicator and `/conflicts` all read the same rows, so the indicator is symmetric by construction.
+- **Rule (Timeline is a query):** `/timeline` is a read-only `personalization` query over `SAVED_EVENT` and `PERSONAL_EVENT` for one week in the user's timezone. It performs no writes. Display fields for public Events (title, venue) are fetched from `catalog` through `ingestion`'s read interface and combined in the application layer (AD-3).
+
 ## Consistency Conventions
 
 | Concern | Convention |
 | --- | --- |
 | Naming — entities | **PRD §3 Glossary terms verbatim**: `Event`, `Source`, `PulseDigest`, `ReminderPlan`, `PersonalEvent`, `PreferenceGraph`, `EventReport`, `ConflictResolution`, `SourceReliabilityScore`. A Pulse Card is a projection, never a table. |
-| Naming — new nouns | `ExtractedRecord` **[NEW NOUN]** (a pre-canonical extraction awaiting Event Identity resolution) and `ScheduledSend` **[NEW NOUN]** (one due reminder or Pulse Ping) must be added to PRD §3 before build. |
+| Naming — new nouns | `ExtractedRecord` **[NEW NOUN]** (a pre-canonical extraction awaiting Event Identity resolution), `ScheduledSend` **[NEW NOUN]** (one due reminder, Pulse Ping, digest or notice), `SavedEvent` **[NEW NOUN]** (a user's save of a public Event, with its propagated time snapshot), `ConflictPair` **[NEW NOUN]** (one persisted conflict between two of a user's events) and `CalendarConnection` **[NEW NOUN]** (one connected calendar and its encrypted credential) must be added to PRD §3 before build. |
 | Naming — files | Backend `snake_case.py`, one concept per module; services as verbs (`compose_digest.py`), queries as `get_`/`list_`. Frontend `kebab-case.ts`. |
 | Naming — UI components | Exactly the UX spine's names: `Card.PulseDigest`, `Input.ReminderSlot`, `Indicator.Confidence`, `Badge.Source`, `Sheet.ConflictResolution`, `Surface.{RouteName}`. |
 | UI system | **None — binding** (EXPERIENCE.md §1, DESIGN.md Token Implementation Contract). No Material, no shadcn, no component kit. Vanilla components over the CSS-custom-property token layer; `<dialog>` for modals and sheets; hand-rolled tooltip per the DESIGN.md pattern. |
@@ -301,7 +331,7 @@ Verified current 2026-09-04. The code owns these once it exists.
 | Redis (broker) | managed instance, current at provision time |
 | `anthropic` | 1.3.0 |
 | `instructor` | 1.16.0 |
-| Claude (extraction) | `claude-sonnet-5` primary, `claude-haiku-4-5` fallback |
+| Claude (extraction) | `claude-haiku-4-5` primary, `claude-sonnet-5` fallback (AD-8) |
 | Voyage (embeddings) | `voyage-4-lite` — quantized, Matryoshka-truncated |
 | `voyageai` | current at build time — verify before pinning |
 | Stripe (Python SDK) | current at build time — verify before pinning |
@@ -335,7 +365,7 @@ Verified current 2026-09-04. The code owns these once it exists.
 | Email | Resend or Postmark — **both verified to support RFC 8058**, so this is a preference, not a constraint. Two streams either way (AD-20) |
 | Billing | Stripe Checkout + Customer Portal |
 | Environments | `local` → `preview` (per-PR, Neon branch) → `production`. Preview never sends real email and never writes to the real Source Registry. |
-| Secrets | Platform secret store only. OAuth tokens and CalDAV passwords encrypted at rest with a separate application-level key. |
+| Secrets | Platform secret store only. Every calendar credential — the secret ICS/webcal address at MVP, OAuth refresh tokens and CalDAV passwords after the fast-follow — encrypted at rest with a separate application-level key (AD-18). |
 | Observability | Structured JSON logs + distributed tracing across extraction → dedup → personalization → delivery. AI cost metrics on the same dashboard as latency (PRD §11.4). Anomaly detection on dedup merge rate. |
 | Operations | Status page updated within 30 min of a SEV-1; `runbook.md` lives in the repo and is the on-call first stop (PRD §10.5). |
 | Backups | Neon PITR; RPO <1h, RTO <4h (PRD §11.3). |
@@ -370,19 +400,27 @@ erDiagram
     EVENT ||--o| EVENT : series
     USER ||--o{ INTEREST : declares
     USER ||--o| PREFERENCE_GRAPH : accumulates
-    USER ||--o{ REMINDER_PLAN : sets
+    EVENT ||--o{ EVENT_FIT : per_city
+    USER ||--o{ SAVED_EVENT : saves
     USER ||--o{ PERSONAL_EVENT : owns
+    USER ||--o{ CALENDAR_CONNECTION : connects
+    CALENDAR_CONNECTION ||--o{ PERSONAL_EVENT : imports
+    SAVED_EVENT ||--o| REMINDER_PLAN : has
+    PERSONAL_EVENT ||--o| REMINDER_PLAN : has
+    USER ||--o{ CONFLICT_PAIR : has
     USER ||--o{ PULSE_DIGEST : receives
     USER ||--o{ EVENT_REPORT : submits
     USER ||--o| SUBSCRIPTION : holds
     PULSE_DIGEST ||--o{ DIGEST_COMPOSITION : records
     REMINDER_PLAN ||--o{ SCHEDULED_SEND : produces
-    PERSONAL_EVENT ||--o{ SCHEDULED_SEND : produces
+    USER ||--o{ SCHEDULED_SEND : pulse_ping_digest_notice
     EVENT_REPORT ||--o{ REVIEW_ITEM : raises
 ```
 
-Schema `catalog`: `SOURCE`, `EXTRACTED_RECORD`, `EVENT`, `EVENT_STATE_CHANGE`, `VENUE`, `REVIEW_ITEM`.
-Schema `personal`: `USER`, `INTEREST`, `PREFERENCE_GRAPH`, `REMINDER_PLAN`, `PERSONAL_EVENT`, `PULSE_DIGEST`, `DIGEST_COMPOSITION`, `SCHEDULED_SEND`, `EVENT_REPORT`, `SUBSCRIPTION`.
+Schema `catalog`: `SOURCE`, `EXTRACTED_RECORD`, `EVENT`, `EVENT_STATE_CHANGE`, `VENUE`, `REVIEW_ITEM`, `EVENT_FIT`.
+Schema `personal`: `USER`, `INTEREST`, `PREFERENCE_GRAPH`, `REMINDER_PLAN`, `PERSONAL_EVENT`, `SAVED_EVENT`, `CONFLICT_PAIR`, `CALENDAR_CONNECTION`, `PULSE_DIGEST`, `DIGEST_COMPOSITION`, `SCHEDULED_SEND`, `EVENT_REPORT`, `SUBSCRIPTION`.
+
+Every `SAVED_EVENT → EVENT` and `SCHEDULED_SEND → EVENT` reference crosses the wall **by id only, with no FK** (AD-3); the time fields it needs are the snapshot that AD-17 propagation maintains.
 
 `DIGEST_COMPOSITION` holds the persisted Why-this Tags, Confidence Pulse, and Source Badge for one Event in one user's digest at one composition time (AD-10). A **Pulse Card is a projection of it**, never a stored entity. `EVENT_REPORT` lives in `personal` because it is attributable to a user; the `REVIEW_ITEM` it raises lives in `catalog` and carries no user identity across the wall (AD-3).
 
@@ -411,17 +449,19 @@ frontend/
 
 | Capability | Lives in | Governed by |
 | --- | --- | --- |
-| FR-1–4 Onboarding & account | `identity`, `web`, `adapters/calendar` | AD-5, AD-12, AD-15, AD-18 |
-| FR-5–8 Pulse Digest | `personalization`, `web` | AD-3, AD-10, AD-11 |
+| FR-1–4 Onboarding & account | `identity`, `personalization`, frontend, `adapters/calendar` | AD-5, AD-12, AD-15, AD-18 |
+| FR-5–8 Pulse Digest | `personalization`, frontend | AD-3, AD-10, AD-11 |
 | FR-9–12 Reminders & Pulse Ping | `delivery`, `worker` | AD-6, AD-7, AD-16, AD-17 |
 | FR-13–17, FR-56, FR-60 Ingestion & sources | `ingestion`, `worker`, `adapters/crawl` | AD-4, AD-6, AD-8, AD-9 |
-| FR-18–20, FR-58 Personal events & conflict | `personalization` | AD-3, AD-6, AD-16 |
+| FR-18–20, FR-58 Personal events & conflict | `personalization` | AD-3, AD-6, AD-16, AD-21 |
+| FR-32 Unified Timeline (Week view, read-only) | `personalization`, frontend | AD-3, AD-6, AD-21 |
+| FR-33 Conflict-aware scheduling, `/conflicts` | `personalization`, `delivery`, frontend | AD-6, AD-17, AD-21 |
 | FR-21–25 Explainability & trust | `personalization` | AD-9, AD-10 |
 | FR-26–28 Sharing & SEO | `catalog`, frontend | AD-12, AD-19 |
 | FR-29 AI Cost Dashboard | `adapters/llm`, `editorial` (Django admin) | AD-8, AD-14 |
 | FR-30 Caching & batching | `adapters/llm` | AD-8 |
 | FR-48–52 Pro tier | `identity`, `adapters/billing`, `adapters/calendar` | AD-5, AD-15, AD-18 |
-| FR-53–55 Event state sync | `ingestion`, `delivery` | AD-4, AD-7, AD-17 |
+| FR-53–55 Event state sync | `ingestion`, `delivery`, `personalization` | AD-4, AD-7, AD-17, AD-21 |
 | FR-57 Editorial review queue | `editorial` (Django admin) | AD-4, AD-8, AD-14 |
 | FR-59 User event reports | `personalization`, `editorial` | AD-3, AD-14 |
 
@@ -448,4 +488,4 @@ frontend/
 | ~~OQ-3~~ | **Resolved.** Not a contradiction — the Glossary was conflating two real things under one name. Both exist (AD-10): **Event Fit** is per-event and session-free; **Relevance Pulse** is per-user. The Glossary entry must be **split into two terms** so downstream work cannot conflate them again. | — | Closed → PRD amendment |
 | ~~OQ-4~~ | **Resolved.** Both support RFC 8058 — Postmark attaches the headers automatically on its Broadcast stream, Resend accepts them as custom headers. Not a disqualifier for either; the requirement moved into AD-20 as a property of the port. | — | Closed |
 | OQ-5 | Which 20 MVP sources, and what does each ToS review conclude? | AD-9 holds regardless, but the partnership/API/RSS/crawl mix determines how much of `adapters/crawl` is needed at all. | Product + Legal |
-| OQ-6 | `ExtractedRecord`, `ScheduledSend`, **`EventFit`** and **`RelevancePulse`** are new nouns this spine needs. PRD §3 requires new nouns to land in the Glossary in the same pass. | Downstream epics and stories must not invent competing names. | Product |
+| OQ-6 | `ExtractedRecord`, `ScheduledSend`, `SavedEvent`, `ConflictPair`, `CalendarConnection`, **`EventFit`** and **`RelevancePulse`** are new nouns this spine needs. PRD §3 requires new nouns to land in the Glossary in the same pass. | Downstream epics and stories must not invent competing names. | Product |
