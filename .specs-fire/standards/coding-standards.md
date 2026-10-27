@@ -44,6 +44,7 @@ All of these are enforced by `make lint-backend` (Ruff + `lint-imports`) or by t
 - `S*` (bandit): error. Treat source content as untrusted (AD-9)
 - **`os.environ` / `os.environb` / `os.getenv` / `os.getenvb`** (Ruff `TID251` banned-api): only under `backend/config/` (pydantic-settings), plus `manage.py` (bootstrap) and `tests/`.
 - Frontend imports from `frontend/lib/api/` only for backend access. No hand-written fetch to backend routes (AD-19)
+- **Frontend theme and fonts:** `<html data-theme="dark">` by default; light is `data-theme="light"`; never `prefers-color-scheme`. Fonts load via `next/font/google` (self-hosted at build). **Their `variable` classes stay on `<html>`**, because the `--type-family-*` tokens on `:root` read them (`app/layout.test.tsx` enforces it).
 
 ## Naming Conventions
 
@@ -258,7 +259,9 @@ def save_event(*, actor: User, event_id: UUID) -> SavedEvent:
 - **Session-dependent public pages** (AD-12)
 - **Email send without an explicit stream** (AD-20). `EmailPort.send` enforces it for every adapter: `stream` is keyword-only with no default and must be a `Stream`; bulk needs `unsubscribe_url` (RFC 8058); every send needs an `idempotency_key` (AD-7). Adapters implement `_deliver`, never `send`.
 - **Hand-editing `frontend/lib/api/`** (AD-19)
-- **Component kits or animation libraries in the frontend**: UI system "None" is binding
+- **Component kits or animation libraries in the frontend**: UI system "None" is binding (`frontend/tests/architecture.test.ts` keeps a denylist)
+- **Tailwind classes outside the tokens.** `frontend/styles/tokens.css` resets Tailwind's colors, radii, shadows, animations, easings, fonts, spacing multiplier and breakpoints. Only DESIGN.md tokens exist as classes: `bg-surface-paper`, `text-ink-muted`, `rounded-card`, `shadow-floating`, `p-4` (= `spacing.4`), `font-display`, `md:` / `lg:`. Type-scale tokens are `font` shorthands (`[font:var(--type-scale-body-md)]`). Never use arbitrary hex or px values to get around the tokens.
+- **Motion other than `.fade-in`.** `transition-*`, `duration-*`, `delay-*`, `ease-*` and `animate-*` classes still exist in Tailwind, so a test scans `.tsx` markup for them. The skeleton pulse is the one future exception and gets added to the tests deliberately.
 - **Floats for money**: integer minor units + ISO-4217
 
 ---

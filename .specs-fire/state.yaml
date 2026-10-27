@@ -58,16 +58,20 @@ intents:
         run_id: run-eventpulse24-005
         completed_at: 2026-10-27T13:19:01.689Z
       - id: ports-fakes-and-worker
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - shared-foundations
+        run_id: run-eventpulse24-006
+        completed_at: 2026-10-27T15:11:25.178Z
       - id: frontend-skeleton
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-007
+        completed_at: 2026-10-27T15:49:42.702Z
       - id: health-round-trip
         status: pending
         complexity: medium
@@ -127,3 +131,19 @@ runs:
           mode: confirm
       started: 2026-10-27T12:55:45.292Z
       completed: 2026-10-27T13:19:01.689Z
+    - id: run-eventpulse24-006
+      scope: single
+      work_items:
+        - id: ports-fakes-and-worker
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T14:25:28.646Z
+      completed: 2026-10-27T15:11:25.178Z
+    - id: run-eventpulse24-007
+      scope: single
+      work_items:
+        - id: frontend-skeleton
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T15:14:11.935Z
+      completed: 2026-10-27T15:49:42.702Z

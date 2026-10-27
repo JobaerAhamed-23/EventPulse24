@@ -32,6 +32,12 @@ Run every quality gate on each push and pull request in GitHub Actions.
   - `makemigrations --check` needs a live database (it runs the migration-history consistency check), so it needs the service and env values too.
 - **From backend-skeleton:** importing `config.env` requires `DJANGO_SECRET_KEY`, `DATABASE_URL_CATALOG`, `DATABASE_URL_PERSONAL`, `DATABASE_URL_OWNER` (tests run as owner) and `REDIS_URL`; set test values in the workflow `env:`.
 - **From architecture-contracts:** `make lint-backend` runs `ruff check`, `ruff format --check` and `lint-imports` CI can call that one target. `tests/architecture/` runs inside `pytest`: it shells out to `lint-imports` and `ruff`, both in the uv dev group.
+- **From frontend-skeleton:**
+  - Node from `.nvmrc` (`actions/setup-node` with `node-version-file: .nvmrc`; must be ≥24.15 or `pnpm install` stops on `engineStrict`)
+  - pnpm via corepack, at `frontend/package.json` `packageManager` (`pnpm@12.15.0`); cache the pnpm store
+  - `make web-install`, `make lint-web` (ESLint + typecheck incl. `next typegen` + Prettier check), `make test-web`, and `pnpm --dir frontend build`
+  - the build downloads Google fonts (`next/font`), so it needs network
+  - `frontend/styles/tokens.test.ts` reads `_bmad-output/.../DESIGN.md`, so a full checkout is needed
 
 ## Dependencies
 

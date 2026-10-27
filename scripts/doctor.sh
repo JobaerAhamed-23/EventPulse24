@@ -56,10 +56,10 @@ fi
 
 if have node; then
   NODE_V=$(node -v 2>/dev/null | sed 's/^v//')
-  if version_ge "$NODE_V" "20.9"; then ok "Node.js $NODE_V"
-  else fail "Node.js $NODE_V is too old — need >= 20.9 (22 LTS recommended)"; fi
+  if version_ge "$NODE_V" "24.15"; then ok "Node.js $NODE_V"
+  else fail "Node.js $NODE_V is too old — need Node 24 LTS (>= 24.15): nvm install 24 (see $GUIDE)"; fi
 else
-  fail "node not found — need Node.js >= 20.9, see $GUIDE"
+  fail "node not found — need Node.js 24 LTS (>= 24.15), see $GUIDE"
 fi
 
 if have pnpm; then ok "pnpm $(pnpm --version 2>/dev/null)"

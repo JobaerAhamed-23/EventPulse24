@@ -16,7 +16,7 @@ Ubuntu? See [ubuntu.md](ubuntu.md). The steps are the same apart from installing
 | Docker Desktop **or** OrbStack | Compose v2 (`docker compose`) | Postgres, Redis, Mailpit |
 | `make` | any (Xcode Command Line Tools) | Project commands |
 | `uv` | recent | Python 3.13 + backend dependencies |
-| Node.js | ≥ 20.9 (22 LTS recommended) | Next.js frontend |
+| Node.js | **24 LTS** (≥ 24.15; the repo's `.nvmrc` says `24`) | Next.js frontend |
 | `pnpm` | ≥ 10 | Frontend package manager |
 
 Check what you already have at any time:
@@ -57,13 +57,15 @@ uv manages its own Python 3.13, independent of the macOS system Python and any H
 
 ### Node.js and pnpm
 
+Using **nvm** (recommended; keeps other Node versions side by side):
+
 ```bash
-brew install node@22
-brew link --overwrite node@22   # if another Node version is already linked
-brew install pnpm
+nvm install 24          # Node 24 LTS
+nvm alias default 24
+corepack enable pnpm    # pnpm, at the version frontend/package.json names
 ```
 
-Or, if you use **nvm**: `nvm install 22 && corepack enable pnpm`.
+Or with Homebrew: `brew install node@24 && brew link --overwrite node@24 && corepack enable pnpm`.
 
 ## 2. First run
 
@@ -151,9 +153,21 @@ make api        # run the Django API on http://127.0.0.1:8000 (docs at /api/docs
 make worker     # run the Celery worker (background jobs), one job at a time
 make beat       # run Celery beat, the 60-second tick scheduler (exactly ONE at a time)
 make send-test-email   # send a test email to Mailpit (TO=… STREAM=bulk to vary it)
+make web-install       # install the frontend dependencies (first time, and after pulls)
+make web               # run the Next.js frontend on http://127.0.0.1:3000
+make test-web          # frontend tests (Vitest)
+make lint-web          # ESLint + typecheck + Prettier check
 make test-backend
 make lint-backend   # ruff + format check + import contracts (make lint-imports runs only the contracts)
 ```
+
+### Frontend
+
+`make web-install` once, then `make web` and open <http://127.0.0.1:3000>. The first run downloads the three fonts (Source Serif 4, Inter, JetBrains Mono) and serves them from the app itself, so it needs internet once.
+
+- **Node 24 is enforced:** with an older Node, `pnpm install` stops with `ERR_PNPM_UNSUPPORTED_ENGINE`. Run `nvm install 24` (or `nvm use` in the repo, which reads `.nvmrc`).
+- **Dark is the default theme.** To see light mode, set `data-theme="light"` on `<html>` in the browser's devtools. The theme never follows the OS setting.
+- Styling uses only the design tokens in `frontend/styles/tokens.css`. Tailwind's own colors, shadows and animations are switched off (see `frontend/README.md`).
 
 ### Background worker and beat
 

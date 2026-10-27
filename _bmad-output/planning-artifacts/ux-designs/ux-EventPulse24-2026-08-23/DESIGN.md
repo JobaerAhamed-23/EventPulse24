@@ -421,7 +421,7 @@ All three providers (Google, Apple, Outlook) ship at MVP per PRD FR-3 / FR-50. T
 All open `[ASSUMPTION:…]` markers in this document, consolidated. Each entry has a stable ID (`ASSUM-N`) for cross-reference from the body and from `EXPERIENCE.md`. Status: OPEN = needs a decision before engineering ships; RESOLVED = owner has answered; DEFERRED = explicitly parked to a later phase.
 
 - **ASSUM-1.** Hex values for the dark palette are calibrated for true-black OLED with a single terracotta glow. Light-mode hex values are derived from a cool-neutral paper-and-ink direction. Brand provided terracotta (`#C4502B` light, lifted to `#FF6A47` for dark contrast); all other hex values are derived.
-  - Status: OPEN
+  - Status: RESOLVED (2026-10-27): current values accepted as shipped by the project owner at token implementation (run-eventpulse24-007); revisit with sampled values (Linear / Vercel / Arc dark) when design has them. `frontend/styles/tokens.test.ts` reads this file, so a changed hex fails until the CSS follows.
   - Owner: TBD (brand / design owner)
   - Affects: §Colors, §Token Implementation Contract
   - Decision deadline: before engineering token implementation begins

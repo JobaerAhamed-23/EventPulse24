@@ -8,7 +8,8 @@ EP_DB_NAME ?= eventpulse24
 
 .DEFAULT_GOAL := help
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
-        manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend
+        manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
+        web web-install lint-web test-web
 
 UV_BACKEND := uv run --directory backend
 
@@ -71,6 +72,21 @@ beat: ## Run Celery beat, the 60s tick scheduler — exactly one at a time
 send-test-email: ## Send a test email to Mailpit: make send-test-email [TO=you@example.test] [STREAM=bulk]
 	$(UV_BACKEND) python manage.py send_test_email --to $(or $(TO),dev@example.test) \
 		--stream $(or $(STREAM),transactional)
+
+# Frontend (Node 24 LTS, see .nvmrc; pnpm version from frontend/package.json "packageManager").
+web-install: ## Install the frontend dependencies exactly as locked
+	pnpm --dir frontend install --frozen-lockfile
+
+web: ## Run the Next.js dev server on http://127.0.0.1:$WEB_PORT (default 3000)
+	pnpm --dir frontend dev --hostname 127.0.0.1 --port $(or $(WEB_PORT),3000)
+
+lint-web: ## Lint, typecheck and format-check the frontend
+	pnpm --dir frontend lint
+	pnpm --dir frontend typecheck
+	pnpm --dir frontend format:check
+
+test-web: ## Run the frontend tests (Vitest)
+	pnpm --dir frontend test
 
 manage: ## Run a manage.py command: make manage ARGS="check"
 	$(UV_BACKEND) python manage.py $(ARGS)

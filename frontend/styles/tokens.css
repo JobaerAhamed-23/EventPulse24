@@ -1,0 +1,158 @@
+/*
+ * Design tokens: DESIGN.md (ux-EventPulse24-2026-08-23) §Token Implementation Contract.
+ *
+ * - Names are the kebab-case form of each token path (color.accent.terracotta ->
+ *   --color-accent-terracotta). Path aliases are not declared: color.ink.meta reads
+ *   --color-ink-muted, color.cool.public reads --color-accent-slate.
+ * - Light values are the :root default (emitted by @theme static); dark overrides live under
+ *   [data-theme="dark"], which <html> carries by default. The theme never follows the OS setting.
+ * - Tailwind's own palette, radii, shadows, animations, easings, fonts, spacing multiplier and
+ *   breakpoints are reset, so only these tokens exist as utilities (bg-surface-paper,
+ *   rounded-card, p-4, shadow-floating, font-display, md:, lg:).
+ * - styles/tokens.test.ts checks every color against DESIGN.md itself.
+ */
+
+@theme static {
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --animate-*: initial;
+  --ease-*: initial;
+  --font-*: initial;
+  --spacing: initial;
+  --breakpoint-*: initial;
+
+  /* Breakpoints: tablet and desktop only. */
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+
+  /* Colors: light (alternative). Dark overrides below. */
+  --color-surface-paper: #faf8f4;
+  --color-surface-elevated: #ffffff;
+  --color-surface-subtle: #f1ece3;
+  --color-surface-inset: #ede7da;
+  --color-ink-primary: #1a1814;
+  --color-ink-secondary: #3a352d;
+  --color-ink-muted: #7a7066;
+  --color-ink-faint: #c9c2b5;
+  --color-ink-inverse: #faf8f4;
+  --color-surface-paper-darker: #f4f0e8;
+  --color-warm-personal: #a8765c;
+  --color-warn-amber: #b8893d;
+  --color-accent-terracotta: #c4502b;
+  --color-accent-slate: #5b6b7e;
+  --color-accent-amber: #c77a2c;
+  --color-signal-success: #4a7a4a;
+  --color-signal-warn: #b8893a;
+  --color-signal-error: #8e2a1f;
+  --color-border-subtle: rgba(26, 24, 20, 0.08);
+  --color-border-strong: rgba(26, 24, 20, 0.16);
+
+  /* Elevation: the one floating shadow; light mode has no glow. */
+  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --glow-today: none;
+  --glow-brandmark: none;
+
+  /* Type families: next/font variables first (set on <html>), then DESIGN.md's fallbacks. */
+  --type-family-display: var(--font-source-serif), Fraunces, Georgia, serif;
+  --type-family-body: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --type-family-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* Type scale as `font` shorthands: font: var(--type-scale-headline-md). */
+  --type-scale-display-lg: 700 48px/1.1 var(--type-family-display);
+  --type-scale-display-md: 700 36px/1.15 var(--type-family-display);
+  --type-scale-headline-lg: 600 28px/1.2 var(--type-family-display);
+  --type-scale-headline-md: 600 22px/1.25 var(--type-family-display);
+  --type-scale-headline-sm: 600 18px/1.3 var(--type-family-display);
+  --type-scale-body-lg: 400 18px/1.55 var(--type-family-body);
+  --type-scale-body-md: 400 16px/1.55 var(--type-family-body);
+  --type-scale-body-sm: 400 14px/1.5 var(--type-family-body);
+  --type-scale-meta-md: 500 14px/1.45 var(--type-family-body);
+  --type-scale-meta-sm: 500 12px/1.45 var(--type-family-body);
+  --type-scale-microtag: italic 400 13px/1.4 var(--type-family-body);
+  --type-scale-numeric: 600 14px/1.4 var(--type-family-mono);
+  --type-scale-display-lg-mobile: 700 36px/1.1 var(--type-family-display);
+  --type-scale-display-md-mobile: 700 28px/1.15 var(--type-family-display);
+  --type-scale-headline-lg-mobile: 600 22px/1.2 var(--type-family-display);
+  --type-scale-headline-md-mobile: 600 18px/1.25 var(--type-family-display);
+
+  /* Spacing: 4px base. Only these steps exist (no Tailwind multiplier). */
+  --spacing-0: 0;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-30: 120px;
+
+  /* Layout */
+  --layout-page-padding-mobile: var(--spacing-6);
+  --layout-page-padding-tablet: var(--spacing-12);
+  --layout-page-padding-desktop: var(--spacing-20);
+  --layout-card-spacing-mobile: var(--spacing-4);
+  --layout-card-spacing-desktop: var(--spacing-8);
+  --layout-container-max: 1180px;
+  --layout-container-reading: 720px;
+  --layout-container-form: 720px;
+  --layout-section-gap: var(--spacing-16);
+  --layout-section-gap-large: var(--spacing-20);
+  --layout-grid-columns: 12;
+  --layout-bottom-tab-height: calc(56px + env(safe-area-inset-bottom));
+  --layout-sidenav-app-width-tablet: 220px;
+  --layout-sidenav-app-width-desktop: 240px;
+
+  /* Shapes */
+  --radius-none: 0;
+  --radius-subtle: 6px;
+  --radius-card: 12px;
+  --radius-control: 12px;
+  --radius-modal: 16px;
+  --radius-full: 9999px;
+  --radius-timeline-cell: 10px;
+
+  /* Strokes */
+  --stroke-hairline: 1px solid var(--color-border-subtle);
+  --stroke-strong: 1px solid var(--color-border-strong);
+  --stroke-focus: 2px solid var(--color-accent-terracotta);
+
+  /* Motion: the single fade (DESIGN.md motion.fadeIn). See .fade-in in globals.css. */
+  --motion-fade-in: opacity 240ms ease-out;
+}
+
+@theme inline {
+  --font-display: var(--type-family-display);
+  --font-body: var(--type-family-body);
+  --font-mono: var(--type-family-mono);
+}
+
+/* Dark (default: <html data-theme="dark">). */
+[data-theme="dark"] {
+  --color-surface-paper: #0a0a0b;
+  --color-surface-elevated: #131316;
+  --color-surface-subtle: #1b1b1f;
+  --color-surface-inset: #232328;
+  --color-ink-primary: #f2f2f4;
+  --color-ink-secondary: #c9c9cf;
+  --color-ink-muted: #8a8a92;
+  --color-ink-faint: #3a3a40;
+  --color-ink-inverse: #0a0a0b;
+  --color-surface-paper-darker: #050506;
+  --color-warm-personal: #c8967a;
+  --color-warn-amber: #d8a86a;
+  --color-accent-terracotta: #ff6a47;
+  --color-accent-slate: #6e7e92;
+  --color-accent-amber: #e89b4a;
+  --color-signal-success: #7aaa7a;
+  --color-signal-warn: #d8a86a;
+  --color-signal-error: #c66a5c;
+  --color-border-subtle: rgba(242, 242, 244, 0.08);
+  --color-border-strong: rgba(242, 242, 244, 0.16);
+
+  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --glow-today: 0 0 12px rgba(255, 106, 71, 0.55);
+  --glow-brandmark: 0 0 14px rgba(255, 106, 71, 0.55);
+}

@@ -16,13 +16,13 @@ Versions were verified as current on 2026-09-04 (Architecture Spine §Stack). On
 ### Framework
 
 **Framework**: Django + Django Ninja (backend), Next.js App Router (frontend)
-**Version**: Django 6.1.2, Django Ninja 1.7.1, Next.js 16.3.4 (Active LTS). Django and Ninja are patch bumps over the spine's 6.1.1 / 1.7.0, taken at scaffold time (run-eventpulse24-002)
+**Version**: Django 6.1.2, Django Ninja 1.7.1, Next.js 16.3.8 (Active LTS). Django and Ninja are patch bumps over the spine's 6.1.1 / 1.7.0, taken at scaffold time (run-eventpulse24-002)
 **Rationale**: Django models are the entities and Django admin is the MVP editorial and AI-cost surface (AD-2, AD-14). Ninja generates the OpenAPI contract from Pydantic schemas (AD-19). Next 16 `cacheComponents` and `partialPrefetching` make ISR'd public event pages viable at scale (AD-12).
 
 ### Runtime
 
 **Runtime**: CPython (API + worker), Node.js (frontend build/SSR)
-**Version**: Python 3.13, Node.js ≥20.9
+**Version**: Python 3.13, **Node.js 24 LTS (≥24.15)**. Node 20 is end of life (April 2026), and Vitest 5 / jsdom 30 need it (user decision, run-eventpulse24-007). Enforced by `engineStrict` in `frontend/pnpm-workspace.yaml`, `make doctor`, and `.nvmrc`.
 
 ## Data Layer
 
@@ -58,7 +58,7 @@ Two schemas: `catalog` (public events) and `personal` (user data). They are expo
 ### UI Framework
 
 **Framework**: Next.js (App Router) + React
-**Version**: Next.js 16.3.4, React 19.2.8
+**Version**: Next.js 16.3.8, React 19.2.9 (16.4 / 19.3 exist; staying on the spine's 16.3 / 19.2 lines)
 
 ### Styling
 
@@ -132,7 +132,7 @@ Not configured. To be decided at first scaffold.
 - `instructor` (1.16.0): structured extraction
 - `voyageai` (verify before pinning): embeddings
 - `stripe` (verify before pinning): billing
-- `next` (16.3.4), `react` (19.2.8), `tailwindcss` (4.x): frontend
+- `next` (16.3.8), `react` / `react-dom` (19.2.9), `tailwindcss` + `@tailwindcss/postcss` (4.3.3): frontend
 
 ### Development Dependencies
 
@@ -140,7 +140,8 @@ Not configured. To be decided at first scaffold.
 - `import-linter` 2.15: AD-1/AD-2/AD-8 import contracts (`[tool.importlinter]` in `backend/pyproject.toml`, `make lint-imports`)
 - `ruff`: lint + format
 - `mypy` (proposed): type checking
-- `vitest`, `@testing-library/react`: frontend unit tests (proposed)
+- `vitest` (5.0.5) + `jsdom` (30.1) + `@vitejs/plugin-react` (6.1.2), `@testing-library/react` (16.3.3) / `dom` / `jest-dom`: frontend unit tests
+- `typescript` (5.9.3; TS 7 exists, not adopted), `eslint` (9.39) + `eslint-config-next` (16.3.8) + `typescript-eslint` (8.72, one copy only) + `eslint-config-prettier`, `prettier` (3.9): frontend tooling. **ESLint 9 is marked "no longer supported" by npm**, but `eslint-plugin-react` / `jsx-a11y` / `import` (via `eslint-config-next`) declare ESLint ≤9. Move to 10 when `eslint-config-next` does.
 - `@playwright/test` + `@axe-core/playwright`: E2E + accessibility gate
 - OpenAPI TS generator (e.g. `openapi-typescript`): generated client
 
@@ -149,7 +150,7 @@ Not configured. To be decided at first scaffold.
 | Tool | Minimum Version | Recommended |
 |------|-----------------|-------------|
 | Python | 3.13 | 3.13 (pinned) |
-| Node.js | 20.9 | 22 LTS |
+| Node.js | 24.15 | 24 LTS |
 | PostgreSQL | 18 | 18 (Neon) |
 | pgvector | 0.8.4 | 0.8.6 |
 | Django | 6.1 | 6.1.2 |
