@@ -2,7 +2,7 @@
 title: "PRD: EventPulse24"
 status: amended-2026-08-29
 created: 2026-08-19
-updated: 2026-09-03
+updated: 2026-10-27
 project: EventPulse24
 author: Jobaer
 sources:
@@ -14,6 +14,7 @@ sources:
   - docs/scope.txt
 amendments:
   - 8 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source, A-7 Calendar Connect at MVP, A-8 Timeline + Conflict-Aware at MVP) merged on 2026-09-06
+  - A-9 Calendar Connect via read-only ICS/webcal at MVP (OAuth/CalDAV become fast-follow) and Glossary Reminder Plan default aligned to FR-9/FR-20 — merged 2026-10-27, reconciling the PRD with the architecture decision ratified 2026-09-04
   - 45 MVP FRs (was 41; +2 from Amendment A-4 / FR-59 and FR-60, +2 from Amendment A-8 / FR-32 and FR-33); 15 named FRs for Phase 2/3+ (FR-31, FR-34 through FR-47)
 ---
 
@@ -102,7 +103,7 @@ EventPulse24 is **not** for v1:
 **Entry state:** Husband adds event in Apple Calendar. (He does not have EventPulse24 installed — he's a non-user, see §2.2.)
 
 **Path:**
-1. EventPulse24 (MVP — FR-3 / FR-50) syncs Maya's **Apple Calendar (CalDAV)** in the background via the iCloud shared-calendar surface that Maya's EventPulse24 connect is already linked to (shared iCloud calendars are surfaced by the Apple CalDAV connect). Note: deep-linking to a non-user's primary iCloud calendar remains a Phase 2 enhancement — at MVP, Maya sees events that her husband adds to a calendar shared with her Apple ID.
+1. EventPulse24 (MVP — FR-3 / FR-50) syncs Maya's **Apple Calendar** in the background by polling the ICS/webcal subscription URL of the shared iCloud calendar that Maya connected (Amendment A-9). Note: deep-linking to a non-user's primary iCloud calendar remains a Phase 2 enhancement — at MVP, Maya sees events that her husband adds to a calendar shared with her Apple ID.
 2. Friday's Pulse Digest or Timeline includes the anniversary dinner alongside any public events that night.
 3. Maya sees it as a "personal event" card (warm-tone color) labeled "Anniversary dinner" with `family, friday, restaurant` micro-tags.
 4. Default reminder: Pulse Ping includes the event without per-event override.
@@ -122,7 +123,7 @@ EventPulse24 is **not** for v1:
 **Path:**
 1. Pulse Preview (home page) shows 3 events in her inferred city (geo-IP default), each with `Why this?` micro-tags, an inline `Source Badge` (FR-23), and a 1–5 dot `Confidence Pulse` (FR-22). Trust signals are inline and first-class — not behind a tap.
 2. She clicks "Sign up" → onboarding flow: 30 seconds, max 3 steps.
-3. Step 1: optionally connect any of three supported calendar providers (Google Calendar via OAuth 2.0, Apple Calendar via CalDAV, Outlook Calendar via Microsoft Graph), or skip.
+3. Step 1: optionally connect any of three supported calendar providers (Google Calendar, Apple Calendar, Outlook Calendar) by pasting the calendar's private ICS/webcal address (Amendment A-9), or skip.
 4. Step 2: optionally pick 3 interest chips (or skip).
 5. Step 3: daily digest delivery time + timezone. Done.
 6. Lands on Pulse Digest with a fresh 3-card brief keyed to her preferences.
@@ -209,7 +210,7 @@ EventPulse24 is **not** for v1:
 - **Conflict Indicator**: A small (8–10 px) filled, neutral-tone circle icon positioned at the top-right corner of the Pulse Card, indicating that the event overlaps with another event the user has saved or set a Reminder Plan for. Color is desaturated amber (#B8893D or equivalent), never red. Accompanied by `aria-label="Schedule conflict"`. Distinct in shape from the Source Badge (✅/👥/🔗/📥/⚠️) and the Confidence Pulse (● dots). The indicator is symmetric across the conflict pair (both events show it). The indicator persists after the user has explicitly chosen "Keep both" (FR-58) as a calm permanent reminder.
 - **Conflict Resolution**: A user decision on a conflict prompt, recorded as one of: `keep_both`, `edit_new`, `delete_new` (Personal-vs-Personal time conflict); or `keep_both`, `update_existing`, `delete_new` (Personal-vs-Personal duplicate). The resolution is recorded as a `ConflictResolution` value object. There is no `dismiss` resolution — the user must make an explicit choice.
 - **Public Event**: A Source-sourced event not created by the user.
-- **Reminder Plan**: A per-Event set of up to N reminder slots (default: 5d, 2d, 1d, 1hr before). **Pulse Ping is NOT part of any Reminder Plan** — it is a separate, global per-day notification (FR-10). User-editable per event. All slots subject to Quiet Hours deferral.
+- **Reminder Plan**: A per-Event set of up to 4 reminder slots chosen from 5d, 2d, 1d, 1hr before (plus one custom slot); **default: 1d + 1hr** (FR-9, FR-20; aligned by Amendment A-9). **Pulse Ping is NOT part of any Reminder Plan** — it is a separate, global per-day notification (FR-10). User-editable per event. All slots subject to Quiet Hours deferral.
 - **Preference Graph**: Per-user behavior-derived data structure (dwell, swipes, dismissals, saves) that drives Pulse Digest composition. Built incrementally; cold-start is SEO/geo-derived.
 - **Pulse the Group**: Phase 2 feature: AI-assisted small-group coordination (UJ-6). NOT a social feed.
 - **Travel Mode**: Phase 3 feature: hyperlocal event discovery in visited cities without per-city setup.
@@ -264,20 +265,22 @@ The system surfaces a Pulse Preview (3 events in the user's inferred city) on th
 
 **Out of Scope:** Personal event surfacing in Pulse Preview. Personalization before signup.
 
-#### FR-3: Calendar Connect (Optional OAuth — Google / Apple / Outlook)
+#### FR-3: Calendar Connect (Optional, read-only ICS/webcal — Google / Apple / Outlook)
 
-The system supports optional auth-based connection of three calendar providers at MVP: **Google Calendar** (OAuth 2.0), **Apple Calendar** (CalDAV, app-specific password), and **Outlook Calendar** (Microsoft Graph OAuth 2.0). All three are presented as equal-weight options in the onboarding Step 1 picker (UX: `mockups/onboarding-step1-desktop.html` §1). Skippable per provider and per step. Realizes UJ-2.
+The system supports optional read-only connection of three calendar providers at MVP — **Google Calendar**, **Apple Calendar**, and **Outlook Calendar** — by importing each calendar's private ICS/webcal address (Amendment A-9). OAuth (Google, Microsoft Graph) and CalDAV connections are a fast-follow behind the same calendar port; the Google CASA assessment runs in parallel and does not gate launch. All three are presented as equal-weight options in the onboarding Step 1 picker (UX: `mockups/onboarding-step1-desktop.html` §1). Skippable per provider and per step. Realizes UJ-2.
 
 **Consequences (testable):**
 - A user sees all three providers in the onboarding Step 1 picker, with the active provider at MVP (Google) styled as a primary CTA and the two onboarding-paired providers (Apple, Outlook) styled as primary-equivalent buttons (per `DESIGN.md` Form Control Patterns).
-- A user can complete auth for any of the three providers and see their personal events in the Calendar Connect step without leaving the onboarding flow.
+- A user can paste the private ICS/webcal address for any of the three providers (with inline, provider-specific guidance on where to find it) and see their personal events in the Calendar Connect step without leaving the onboarding flow.
 - A user can skip Calendar Connect entirely and still receive a Pulse Digest from public events + on-platform Personal Events.
-- Revoked auth credentials are detected on next sync and the user is prompted to reconnect, not silently denied.
+- A reset or revoked ICS address (HTTP 401/403/404/410) is detected on next poll and the user is prompted to reconnect, not silently denied.
 - A user can connect multiple providers (e.g., Google for work + Apple iCloud for family); events from all connected sources flow into the Pulse Digest as warm-tone Pulse Cards.
 
-**Provider parity contract at v1:** All three providers ship the same read-only sync behavior at MVP — same polling interval, same event-shape normalization, same Source Badge attribution (`user_imported` with provider tag), same conflict detection, same personal-event surfacing in Pulse Digest. The only provider-specific differences are: (a) auth handshake (OAuth 2.0 vs. CalDAV), and (b) provider name in UI/tooltips. Engineering does not ship a "Pro-only" gate on Apple/Outlook sync — the Free tier gets the same one-calendar connect at MVP (the Free-tier calendar cap is removed; see Amendment A-7 below).
+**Provider parity contract at v1:** All three providers ship the same read-only sync behavior at MVP — same polling interval, same event-shape normalization, same Source Badge attribution (`user_imported` with provider tag), same conflict detection, same personal-event surfacing in Pulse Digest. The only provider-specific differences are: (a) the inline guidance for finding the provider's ICS/webcal address, and (b) provider name in UI/tooltips. Engineering does not ship a "Pro-only" gate on Apple/Outlook sync — the Free tier gets the same one-calendar connect at MVP (the Free-tier calendar cap is removed; see Amendment A-7 below).
 
 **Amendment A-7 (v1-spec):** The deferred "Apple/Outlook sync is Phase 2 / Pro-only" stance from prior versions is **superseded**. Calendar Connect is now a **Free-tier, three-provider, MVP-ship** feature. Apple (CalDAV) and Outlook (Microsoft Graph) ship alongside Google at MVP launch. The earlier FR-50 carve-out and the Phase 2 deferral language in §6.2 / §4.11 are updated below.
+
+**Amendment A-9 (2026-10-27):** Supersedes A-7's *connection mechanism*, not its scope. All three providers still ship at MVP for all tiers with the Free-tier 1-provider cap, but via read-only ICS/webcal import rather than OAuth/CalDAV (architecture decision ratified 2026-09-04, Architecture Spine AD-18). Rationale: Google Calendar OAuth uses restricted scopes that require an annual CASA security assessment, and Apple has no OAuth at all; ICS gives genuine parity across all three providers today. The secret ICS address is a credential: encrypted at rest, never logged, revocable. Sign-in-with-provider buttons on `/signup` and `/signin` are **identity-only** (OpenID Connect `openid email profile` scopes) and never request calendar scopes at MVP.
 
 **Out of Scope at MVP:** Calendar write-back (push events from EventPulse24 → calendar). Two-way sync with field-level conflict resolution. Recurring-event RRULE expansion handling beyond simple instance listing (Phase 2 — FR-31). Shared/family iCloud calendar deep-linking (Phase 2 — see addendum C, Maya's husband use case).
 
@@ -937,9 +940,9 @@ The system batches non-realtime inference (extraction, embedding, classification
 
 The system performs **two-way** sync with Google Calendar, Apple Calendar (via CalDAV), and Outlook Calendar, extending the MVP read-only connect (FR-3 / FR-50). Personal events from these calendars appear in the Pulse Digest and Timeline. Recurring events are expanded via RRULE and surfaced as individual instances with edit-this-instance / edit-the-series controls.
 
-**Behavioral notes:** OAuth flow for Google/Outlook; CalDAV for Apple (already shipped at MVP for read). Sync interval: 15 min pull + push on write. Conflict resolution: server-side wins on field-level merge with user-visible conflict log.
+**Behavioral notes:** OAuth flow for Google/Outlook; CalDAV for Apple (MVP read ships via ICS/webcal per Amendment A-9; OAuth/CalDAV arrive as a fast-follow). Sync interval: 15 min pull + push on write. Conflict resolution: server-side wins on field-level merge with user-visible conflict log.
 
-**Amendment A-7 (v1-spec):** The MVP read-only sync is FR-3 + FR-50 (all three providers, all tiers with Free-tier 1-provider cap). FR-31 is the Phase 2 *augmentation* — two-way write, RRULE expansion, field-level conflict UI.
+**Amendment A-7 (v1-spec):** The MVP read-only sync is FR-3 + FR-50 (all three providers, all tiers with Free-tier 1-provider cap; via ICS/webcal per Amendment A-9). FR-31 is the Phase 2 *augmentation* — two-way write, RRULE expansion, field-level conflict UI.
 
 #### FR-32: Unified Personal+Public Timeline — MVP (lifted by Amendment A-8)
 
@@ -1070,24 +1073,28 @@ A Pro user can save unlimited Pulse Cards per day, organized into named collecti
 
 #### FR-50: Calendar Provider Read-Only Sync (Free + Pro)
 
-A user (any tier) can connect any of three supported calendar providers — **Google Calendar**, **Apple Calendar (CalDAV)**, or **Outlook Calendar (Microsoft Graph)** — via the appropriate auth handshake; personal events from any connected provider flow into the Pulse Digest as warm-tone Pulse Cards. Read-only in MVP (no write-back). Realizes UJ-2 at MVP for all three providers.
+A user (any tier) can connect any of three supported calendar providers — **Google Calendar**, **Apple Calendar**, or **Outlook Calendar** — by importing the calendar's private ICS/webcal address (Amendment A-9); personal events from any connected provider flow into the Pulse Digest as warm-tone Pulse Cards. Read-only in MVP (no write-back). Realizes UJ-2 at MVP for all three providers.
 
 **Consequences (testable):**
-- A user can complete auth for Google, Apple, or Outlook in the onboarding flow without leaving the page.
+- A user can connect Google, Apple, or Outlook by pasting its ICS/webcal address in the onboarding flow without leaving the page.
 - A user's personal events from any connected provider appear in the Pulse Digest within 24 hours of the first successful sync.
 - A user can disconnect a connected provider; previously-imported personal events are removed within 24 hours.
 - A user can connect multiple providers simultaneously (e.g., Google for work + Apple iCloud for family); events merge into the user's Personal Calendar view.
-- Calendar credentials are encrypted at rest (per §11.2); revocation is detected on next sync.
+- Calendar credentials (the secret ICS/webcal address) are encrypted at rest (per §11.2); a reset or revoked address is detected on next poll.
 - Free tier: 1 connected provider. Pro tier: up to 3 connected providers (one of each). The Free-tier cap is enforced at the connect step (calm in-app upgrade prompt on 2nd provider attempt; no modal interruption).
 
-**Per-provider auth handshake:**
-- **Google Calendar** — OAuth 2.0 (1-click flow via Google Identity Services).
-- **Apple Calendar** — CalDAV with app-specific password (user generates in Apple ID settings; copy-paste into EventPulse24). UX: clear inline guidance, no secret-leakage risk (password input is masked, never logged).
-- **Outlook Calendar** — Microsoft Graph OAuth 2.0 (1-click flow via Microsoft Identity Platform, supports personal Microsoft accounts and Microsoft 365 work/school accounts).
+**Per-provider connection at MVP (Amendment A-9 — read-only ICS/webcal):**
+- **Google Calendar** — the calendar's "Secret address in iCal format" (Settings → Integrate calendar).
+- **Apple Calendar** — the iCloud calendar's public/shared webcal link (Calendar → Share Calendar → Public Calendar).
+- **Outlook Calendar** — the published calendar's ICS link (Settings → Calendar → Shared calendars → Publish a calendar).
+- In every case: clear inline guidance, the address input is masked, never logged, and stored encrypted at rest.
+- **Fast-follow (post-MVP, same calendar port):** Google OAuth 2.0 (after CASA), Microsoft Graph OAuth 2.0, Apple CalDAV with app-specific password.
 
 **Out of Scope:** Calendar write-back. Two-way sync with field-level conflict resolution (Phase 2 — FR-31). Recurring-event RRULE expansion beyond simple instance listing (Phase 2). Shared/family iCloud calendar deep-link subscriptions (Phase 2). Cross-user delegation (giving someone else write access to your calendar via EventPulse24 — out of scope indefinitely).
 
 **Amendment A-7 (v1-spec):** Supersedes the prior "Google-only / Pro-only / Phase 2 Apple+Outlook" stance. All three providers ship at MVP for all tiers (with the Free-tier 1-provider cap).
+
+**Amendment A-9 (2026-10-27):** The MVP connection mechanism is read-only ICS/webcal for all three providers; OAuth/CalDAV are fast-follow. See FR-3.
 
 #### FR-51: Per-Day-of-Week Custom Quiet Hours (Pro)
 
@@ -1254,7 +1261,7 @@ Ship-ready functional requirements for the launch MVP:
 | # | Question | Owner | Phase |
 |---|---|---|---|
 | 1 | Which 20 event sources to crawl / acquire for MVP? (Mix of official sites, aggregators, niche blogs?) | Eng + Product | Pre-launch |
-| 2 | Calendar sync vendor — build in-house OAuth/CalDAV handshake vs. partner with Nylas/SyncGene for the MVP three-provider read-only sync (FR-3 / FR-50)? Build-vs-buy decision is blocking for token-implementation start; defer to Phase 2 only for the two-way + RRULE augmentation (FR-31). | Eng | MVP build-vs-buy gate |
+| 2 | Calendar sync vendor — build in-house OAuth/CalDAV handshake vs. partner with Nylas/SyncGene? **No longer an MVP gate (Amendment A-9):** MVP read-only sync is in-house ICS/webcal import. Build-vs-buy applies to the OAuth/CalDAV fast-follow and the Phase 2 two-way + RRULE augmentation (FR-31). | Eng | OAuth fast-follow gate |
 | 3 | LLM provider strategy — single vendor (OpenAI/Anthropic) vs. multi-model routing? | Eng + CTO | Pre-launch |
 | 4 | Pricing for Pro tier — $4.99/mo vs. $7.99/mo vs. annual-only? | Product | Pre-launch |
 | 5 | Should Pulse Digest be (1 must-know + 1 nearby + 1 surprise) or rank dynamically? | Product + Data | Post-MVP |
@@ -1330,7 +1337,7 @@ Ship-ready functional requirements for the launch MVP:
 - **Data retention windows per category:**
   - **Personal events + saved events:** retained while account is active; purged within 30 days of account deletion.
   - **Preference graph signals (dwell, swipes, dismissals):** retained 12 months rolling; auto-purged thereafter.
-  - **Personal email addresses and OAuth tokens:** retained while account is active; encrypted at rest; purged on disconnect or account deletion.
+  - **Personal email addresses and calendar credentials (secret ICS/webcal addresses at MVP; OAuth tokens after the fast-follow):** retained while account is active; encrypted at rest; purged on disconnect or account deletion.
   - **Email delivery events (sent, opened, clicked):** retained 90 days for spam-complaint monitoring; aggregated counts beyond.
   - **Audit logs (auth events, settings changes, deletions):** retained 24 months.
   - **Source Registry contents (third-party event data):** retained while event is in date-range + 12 months; auto-archived.
@@ -1391,7 +1398,7 @@ The AI Cost Dashboard (FR-29) is **operational from day 1.** The default per-MAU
 
 ### 11.2 Security
 
-- OAuth tokens for Google Calendar + Microsoft Graph, and CalDAV app-specific passwords for Apple Calendar (FR-3 / FR-50), stored encrypted at rest. Token rotation: Google/Outlook per provider refresh-token flow; Apple CalDAV — user-initiated re-auth on password change (no automatic refresh).
+- Secret ICS/webcal calendar addresses (FR-3 / FR-50 at MVP, Amendment A-9) are credentials: stored encrypted at rest, never logged, and replaced when the user resets the address with their provider. When the OAuth/CalDAV fast-follow ships, OAuth tokens for Google Calendar + Microsoft Graph and CalDAV app-specific passwords for Apple Calendar get the same treatment. Token rotation: Google/Outlook per provider refresh-token flow; Apple CalDAV — user-initiated re-auth on password change (no automatic refresh).
 - No PII in event logs; structured logs only.
 - HTTPS-only; HSTS preload.
 - CSP and SRI on all public assets.
