@@ -110,7 +110,15 @@ frontend/
   - The calling command opens `atomic(using=CATALOG)`, and the gateway writes the row inside it.
   - The FR-29 dashboard (`editorial`) reads costs through a **port query**, never by importing `adapters.llm.models`.
   - An adapter writing rows is AD-5's one named exception, by AD-8's explicit rule.
-- **Audit log** (AD-5, spine OQ-8), built with the first named command: an abstract `AuditEntry` base (UUIDv7 id, `at`, `actor_id` stored by value with no FK, `action`, `target_type`, `target_id`, `details`), and **one concrete table per owning app**, so it sits in that app's schema, its owner is the only writer (AD-16), and E002 can't trip. Category `AUDIT_LOG`.
+- **Audit log** (AD-5, spine OQ-8): the abstract `shared.models.AuditEntry` (UUIDv7 id, `at`, `actor_kind`, `actor_id` stored by value with no FK, `actor_label`, `action`, `target_type`, `target_id`, `details`), and **one concrete table per owning app**, so it sits in that app's schema, its owner is the only writer (AD-16), and E002 can't trip. Category `AUDIT_LOG`. The first is `apps.ingestion.models.IngestionAuditEntry`, written only through `apps.ingestion.services.audit.write_audit(*, actor, action, target_type, target_id, details=None)`, which raises `AuditOutsideCatalogTransaction` unless a `transaction.atomic(using=CATALOG)` block is open.
+- **Actors** (`shared/actor.py`, stdlib only): every command takes an explicit `Actor`. `Actor.user(user_id)` carries an id and no label; `Actor.system("ingest_pipeline")` carries a job-name label matching `^[a-z][a-z0-9_]+$` and no id. Never put a username or email in a label: actor columns cross into `catalog`. Tables storing an actor add `shared.models.actor_check()`.
+- **Append-only tables** (state history, audit logs) use three layers, all required:
+  1. **Python:** subclass `shared.models.AppendOnlyModel` and set `Meta.base_manager_name = "objects"`; list the one settable column, if any, in `append_only_mutable`. Its QuerySet blocks `delete()`, `update()`, `bulk_update()` and upserts; violations raise `AppendOnlyViolation`.
+  2. **Trigger:** in the migration, `BEFORE UPDATE OR DELETE … EXECUTE FUNCTION catalog.forbid_history_mutation(['<settable column>'])`. DELETE works only after `SET LOCAL eventpulse.retention_purge = 'on'` (the retention sweep).
+  3. **Grants:** `REVOKE UPDATE, DELETE` from the runtime role (column-level `GRANT UPDATE (<col>)` for a settable column), followed by a `DO $$` block that raises if the privileges didn't apply.
+- **Outbox rows** (AD-17): set `propagated_at` only with `EventStateChange.objects.using(CATALOG).filter(pk=…, propagated_at__isnull=True).update(propagated_at=now)`. A result of 0 means already propagated, not an error.
+- **Event versioning** (AD-4, AD-17): the `catalog.guard_event_write` trigger inserts every Event at `event_version = 1` and never as `superseded`; makes `superseded` terminal; allows the version to stay or rise by exactly 1; and requires `+1` with any change to `Event.LIFECYCLE_FIELDS`. Extending that tuple means extending the trigger in the same migration (a test compares them). Supersede follows design D7's order: retire the old row first, then insert the new one.
+- **Series ids**: always `shared.ids.series_id(source_id, series_key)` (UUIDv5 under the pinned `SERIES_ID_NAMESPACE`); never mint one inline.
 
 ## Import Order
 

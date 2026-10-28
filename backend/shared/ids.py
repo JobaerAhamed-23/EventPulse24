@@ -1,4 +1,6 @@
-"""UUIDv7 ids: time-sortable primary keys (spine Ids convention). Stdlib only.
+"""Ids (spine Ids convention). Stdlib only, plus shared.constants.
+
+UUIDv7 for time-sortable primary keys; UUIDv5 for deterministic series ids (AD-4).
 
 Python 3.13's `uuid` has no `uuid7` (added in 3.14). Replace this with `uuid.uuid7` when the
 project moves to 3.14.
@@ -9,6 +11,8 @@ import secrets
 import threading
 import time
 import uuid
+
+from shared.constants import SERIES_ID_NAMESPACE
 
 _COUNTER_MAX = 0xFFF  # 12-bit rand_a field used as a counter
 
@@ -54,3 +58,13 @@ def uuid7() -> uuid.UUID:
     value |= 0b10 << 62  # RFC 9562 variant
     value |= secrets.randbits(62)
     return uuid.UUID(int=value)
+
+
+def series_id(source_id: uuid.UUID, series_key: str) -> uuid.UUID:
+    """The `series_id` shared by a source's recurring instances (AD-4): a deterministic UUIDv5.
+
+    The same source and series key always give the same id, so re-ingesting needs no lookup.
+    """
+    if not series_key:
+        raise ValueError("series_key must be non-empty")
+    return uuid.uuid5(SERIES_ID_NAMESPACE, f"{source_id}:{series_key}")

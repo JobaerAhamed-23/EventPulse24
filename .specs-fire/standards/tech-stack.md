@@ -137,6 +137,7 @@ Not configured. To be decided at first scaffold.
 ### Development Dependencies
 
 - `pytest`, `pytest-django`: backend tests
+- `factory-boy` 3.3.3 (pulls in `faker`): per-app test factories; catalog factories subclass `tests/ingestion/factories.py::CatalogFactory` (run-eventpulse24-010)
 - `import-linter` 2.15: AD-1/AD-2/AD-8 import contracts (`[tool.importlinter]` in `backend/pyproject.toml`, `make lint-imports`)
 - `ruff`: lint + format
 - `mypy` (proposed): type checking

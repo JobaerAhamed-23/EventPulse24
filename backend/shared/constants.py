@@ -6,6 +6,7 @@ Stdlib only, so `domain` can be allowed to import it (decision for architecture-
 from datetime import timedelta
 from decimal import Decimal
 from enum import StrEnum
+from uuid import UUID
 
 # AD-8: extraction_confidence gates, numeric(3,2) in [0, 1].
 EXTRACTION_CONFIDENCE_REJECT = Decimal("0.50")  # below: auto-reject
@@ -13,6 +14,13 @@ EXTRACTION_CONFIDENCE_PUBLISH = Decimal("0.70")  # below: editorial review, neve
 
 # AD-6: below this, an Event is not digest-eligible until editorial review completes.
 TZ_INFERENCE_CONFIDENCE_DIGEST = Decimal("0.70")
+# FR-60: at or above this, a published Event needs no tz review; below it (down to the digest
+# gate) it publishes with `tz_review_pending` set.
+TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH = Decimal("0.90")
+
+# AD-4: namespace for deterministic series ids (`shared.ids.series_id`). Never change it: every
+# existing series would silently split.
+SERIES_ID_NAMESPACE = UUID("cbd88e48-d511-4f1b-a595-2f31c0067ad4")
 
 
 class ReminderSlot(StrEnum):

@@ -14,6 +14,8 @@ from shared.constants import (
     EXTRACTION_CONFIDENCE_REJECT,
     REMINDER_SLOT_OFFSET,
     SEND_KEY_SEPARATOR,
+    SERIES_ID_NAMESPACE,
+    TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH,
     TZ_INFERENCE_CONFIDENCE_DIGEST,
     ReminderSlot,
 )
@@ -25,6 +27,11 @@ def test_confidence_gates_match_spine():
     assert EXTRACTION_CONFIDENCE_REJECT == Decimal("0.5")
     assert EXTRACTION_CONFIDENCE_PUBLISH == Decimal("0.7")
     assert TZ_INFERENCE_CONFIDENCE_DIGEST == Decimal("0.7")
+    assert TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH == Decimal("0.9")
+
+
+def test_series_id_namespace_is_pinned():
+    assert str(SERIES_ID_NAMESPACE) == "cbd88e48-d511-4f1b-a595-2f31c0067ad4"
 
 
 def test_default_reminder_plan_is_one_day_plus_one_hour():

@@ -15,6 +15,8 @@ ROOT_PACKAGES = ("domain", "apps", "ports", "adapters", "config", "worker", "sha
 DOMAIN_ALLOWED_PROJECT_MODULES = ("domain", "shared.constants", "shared.ids")
 # Files that must be stdlib-only because domain imports them (shared/__init__ runs on import).
 STDLIB_ONLY_FILES = ("shared/__init__.py", "shared/constants.py", "shared/ids.py")
+# Stdlib-only by design, not because domain imports them; they may import no project module.
+SHARED_STDLIB_ONLY_FILES = ("shared/actor.py",)
 
 
 def _module_name(path: Path, root: Path) -> str:
@@ -24,21 +26,27 @@ def _module_name(path: Path, root: Path) -> str:
     return ".".join(parts)
 
 
-def _is_allowed(module: str) -> bool:
+def _is_allowed(module: str, allowed: tuple[str, ...]) -> bool:
     if module.split(".")[0] in sys.stdlib_module_names:
         return True
-    return any(module == m or module.startswith(f"{m}.") for m in DOMAIN_ALLOWED_PROJECT_MODULES)
+    return any(module == m or module.startswith(f"{m}.") for m in allowed)
 
 
-def non_stdlib_imports(path: Path, root: Path = BACKEND_DIR) -> list[str]:
-    """Imports in `path` outside the stdlib + DOMAIN_ALLOWED_PROJECT_MODULES."""
+def non_stdlib_imports(
+    path: Path,
+    root: Path = BACKEND_DIR,
+    allowed: tuple[str, ...] = DOMAIN_ALLOWED_PROJECT_MODULES,
+) -> list[str]:
+    """Imports in `path` outside the stdlib + `allowed` project modules."""
     module = _module_name(path, root)
     package = module if path.name == "__init__.py" else module.rpartition(".")[0]
     violations = []
     for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
         if isinstance(node, ast.Import):
             violations += [
-                f"{node.lineno}: import {a.name}" for a in node.names if not _is_allowed(a.name)
+                f"{node.lineno}: import {a.name}"
+                for a in node.names
+                if not _is_allowed(a.name, allowed)
             ]
         elif isinstance(node, ast.ImportFrom):
             target = node.module or ""
@@ -47,7 +55,9 @@ def non_stdlib_imports(path: Path, root: Path = BACKEND_DIR) -> list[str]:
                 base = parts[: max(len(parts) - (node.level - 1), 0)]
                 target = ".".join([*base, node.module] if node.module else base)
             names = [f"{target}.{a.name}" if target else a.name for a in node.names]
-            if not (target and _is_allowed(target)) and not all(_is_allowed(n) for n in names):
+            if not (target and _is_allowed(target, allowed)) and not all(
+                _is_allowed(n, allowed) for n in names
+            ):
                 source = "." * node.level + (node.module or "")
                 violations.append(f"{node.lineno}: from {source} import ...")
     return violations

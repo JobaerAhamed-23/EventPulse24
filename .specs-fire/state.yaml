@@ -99,13 +99,15 @@ intents:
     created: 2026-10-28
     work_items:
       - id: catalog-data-model
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
         design_doc: catalog-data-model-design.md
         checkpoint_1: approved
         checkpoint_1_at: 2026-10-28T06:53:33Z
+        run_id: run-eventpulse24-010
+        completed_at: 2026-10-28T08:06:49.432Z
       - id: event-identity-and-tz-domain
         status: pending
         complexity: medium
@@ -233,3 +235,11 @@ runs:
           mode: confirm
       started: 2026-10-28T03:50:44.007Z
       completed: 2026-10-28T04:32:34.607Z
+    - id: run-eventpulse24-010
+      scope: single
+      work_items:
+        - id: catalog-data-model
+          intent: event-catalog-ingestion
+          mode: validate
+      started: 2026-10-28T07:03:24.721Z
+      completed: 2026-10-28T08:06:49.432Z

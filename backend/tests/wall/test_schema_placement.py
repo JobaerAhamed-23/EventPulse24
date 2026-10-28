@@ -31,8 +31,23 @@ def test_personal_schema_holds_user_framework_and_personal_probe_tables():
     assert expected <= tables_in("personal")
 
 
+INGESTION_TABLES = {
+    "ingestion_source",
+    "ingestion_tosreview",
+    "ingestion_venue",
+    "ingestion_event",
+    "ingestion_extractedrecord",
+    "ingestion_eventstatechange",
+    "ingestion_ingestionauditentry",
+}
+
+
 def test_catalog_schema_holds_only_catalog_tables():
-    assert tables_in("catalog") == {"catalog_probe_thing", "django_migrations"}
+    assert tables_in("catalog") == {"catalog_probe_thing", "django_migrations"} | INGESTION_TABLES
+
+
+def test_personal_schema_holds_no_ingestion_table():
+    assert not tables_in("personal") & INGESTION_TABLES
 
 
 def test_public_schema_has_no_tables():

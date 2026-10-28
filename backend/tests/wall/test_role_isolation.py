@@ -2,27 +2,15 @@
 
 import psycopg
 import pytest
-from django.db import connections
 
 from config.env import env
 from shared.db import CATALOG, PERSONAL
+from tests.roles import run_as
 
 pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 CATALOG_TABLE = "catalog.catalog_probe_thing"
 PERSONAL_TABLE = "personal.personal_probe_note"
-
-
-def run_as(role_url: str, sql: str):
-    """Run one statement as a runtime role against the test DB; always roll back."""
-    test_db = connections[PERSONAL].settings_dict["NAME"]
-    with psycopg.connect(role_url, dbname=test_db) as conn:
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(sql)
-                return cursor.fetchall() if cursor.description else None
-        finally:
-            conn.rollback()
 
 
 def test_catalog_role_reads_and_writes_catalog():
