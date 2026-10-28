@@ -4,9 +4,12 @@ title: Public Catalog Read API
 intent: event-catalog-ingestion
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [catalog-data-model]
+status: completed
+depends_on:
+  - catalog-data-model
 created: 2026-10-28
+run_id: run-eventpulse24-017
+completed_at: 2026-10-28T15:12:38.004Z
 ---
 
 # Work Item: Public Catalog Read API
