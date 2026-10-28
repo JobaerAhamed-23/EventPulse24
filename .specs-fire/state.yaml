@@ -170,13 +170,15 @@ intents:
         run_id: run-eventpulse24-017
         completed_at: 2026-10-28T15:12:38.004Z
       - id: real-feeds-and-e2e-proof
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - source-registry-commands-admin
           - ingestion-scheduling
           - public-catalog-read-api
+        run_id: run-eventpulse24-018
+        completed_at: 2026-10-28T16:59:11.153Z
 runs:
   active: []
   completed:
@@ -316,3 +318,11 @@ runs:
           mode: confirm
       started: 2026-10-28T12:49:03.166Z
       completed: 2026-10-28T15:12:38.004Z
+    - id: run-eventpulse24-018
+      scope: single
+      work_items:
+        - id: real-feeds-and-e2e-proof
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T15:37:15.026Z
+      completed: 2026-10-28T16:59:11.153Z

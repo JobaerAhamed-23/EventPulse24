@@ -1,0 +1,47 @@
+{
+  "operator": {
+    "username": "operator",
+    "password": "operator-local-password",
+    "email": "operator@example.test"
+  },
+  "venues": [
+    {
+      "name": "Montgomery Museum of Fine Arts",
+      "city": "Montgomery",
+      "country_code": "US",
+      "tz": "America/Chicago"
+    }
+  ],
+  "feeds": [
+    {
+      "key": "mmfa-jsonld",
+      "name": "Montgomery Museum of Fine Arts events (JSON-LD)",
+      "url": "https://mmfa.org/events/",
+      "acquisition_method": "jsonld",
+      "source_type": "venue",
+      "city": "Montgomery",
+      "tz_coverage": "full",
+      "ingestion_cadence": "PT4H",
+      "tos": {
+        "decision": "approved",
+        "evidence_url": "https://mmfa.org/privacy-policy/",
+        "notes": "robots.txt (User-agent: *) disallows only /wp-admin/; the events page is allowed. The publisher lists the events openly. Crawl-delay: 10 is honoured: our cadence is four hours and the manual step fetches the URL once."
+      }
+    },
+    {
+      "key": "mmfa-ics",
+      "name": "Montgomery Museum of Fine Arts iCal feed",
+      "url": "https://mmfa.org/events/?post_type=tribe_events&ical=1&eventDisplay=list",
+      "acquisition_method": "ics",
+      "source_type": "venue",
+      "city": "Montgomery",
+      "tz_coverage": "full",
+      "ingestion_cadence": "PT4H",
+      "tos": {
+        "decision": "approved",
+        "evidence_url": "https://mmfa.org/privacy-policy/",
+        "notes": "robots.txt (User-agent: *) disallows only /wp-admin/; the iCal feed is allowed. The events page advertises this calendar subscription for public use. Crawl-delay: 10 is honoured: our cadence is four hours and the manual step fetches the URL once."
+      }
+    }
+  ]
+}

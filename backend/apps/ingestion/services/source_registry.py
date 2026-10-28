@@ -198,6 +198,19 @@ def _check_not_registered(url: str, exclude_id: UUID | None) -> None:
             raise SourceAlreadyRegisteredError(details={"source_id": str(other_id)})
 
 
+def find_source_by_url(url: str) -> Source | None:
+    """The registered source with this URL, or None. The URL is canonicalized first, so a
+    caller that must not create a duplicate can look the source up before registering it.
+    """
+    target = canonical_url(url)
+    if not target:
+        return None
+    for source_id, source_url in Source.objects.using(CATALOG).values_list("id", "url"):
+        if canonical_url(source_url) == target:
+            return Source.objects.using(CATALOG).get(pk=source_id)
+    return None
+
+
 def check_source_change(
     *,
     values: Mapping[str, object],

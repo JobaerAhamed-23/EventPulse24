@@ -20,6 +20,10 @@
     "content_type": "text/html; charset=utf-8",
     "etag": "\"venue-v1\""
   },
+  "https://fixtures.example.test/events.jsonld.html": {
+    "file": "events.jsonld.html",
+    "content_type": "text/html; charset=utf-8"
+  },
   "https://fixtures.example.test/events.rss": {
     "file": "events.rss",
     "content_type": "application/rss+xml"

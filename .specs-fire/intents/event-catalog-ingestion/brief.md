@@ -1,8 +1,9 @@
 ---
 id: event-catalog-ingestion
 title: Event Catalog & Structured Ingestion
-status: in_progress
+status: completed
 created: 2026-10-28
+completed_at: 2026-10-28T16:59:11.161Z
 ---
 
 # Intent: Event Catalog & Structured Ingestion

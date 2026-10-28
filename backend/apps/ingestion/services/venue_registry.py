@@ -83,6 +83,16 @@ def check_new_venue(*, name: object, city: object, country_code: object, tz: obj
     }
 
 
+def find_venue(*, name: str, city: str, country_code: str) -> Venue | None:
+    """The registered venue with this identity, or None. The identity is the fingerprint, so
+    a caller that must not create a duplicate can look the venue up before registering it.
+    """
+    fingerprint = venue_fingerprint(name, city, country_code)
+    if not fingerprint:
+        return None
+    return Venue.objects.using(CATALOG).filter(venue_fingerprint=fingerprint).first()
+
+
 def clean_venue_tz(tz: object) -> str:
     """A required, canonical IANA zone, or InvalidTimezoneError."""
     errors: list[dict] = []

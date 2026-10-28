@@ -4,9 +4,14 @@ title: Real Feeds & End-to-End Proof
 intent: event-catalog-ingestion
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [source-registry-commands-admin, ingestion-scheduling, public-catalog-read-api]
+status: completed
+depends_on:
+  - source-registry-commands-admin
+  - ingestion-scheduling
+  - public-catalog-read-api
 created: 2026-10-28
+run_id: run-eventpulse24-018
+completed_at: 2026-10-28T16:59:11.153Z
 ---
 
 # Work Item: Real Feeds & End-to-End Proof
