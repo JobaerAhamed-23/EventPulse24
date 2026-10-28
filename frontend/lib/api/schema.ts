@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/api/catalog/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List upcoming public events
+         * @description Published, non-superseded events that have not started yet, soonest first. Optional city and date-range filters. No session is used and none is set.
+         */
+        get: operations["apps_catalog_api_list_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one public event
+         * @description One published event by id. An event that is not public reads as not found. No session is used and none is set.
+         */
+        get: operations["apps_catalog_api_get_event"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -41,6 +81,105 @@ export interface components {
             personal: components["schemas"]["ComponentOut"];
             redis: components["schemas"]["ComponentOut"];
         };
+        /**
+         * ErrorOut
+         * @description `{code, message, details?}`. Validation errors use `details = {"errors": [ErrorItem]}`.
+         */
+        ErrorOut: {
+            /** Code */
+            code: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /** Message */
+            message: string;
+        };
+        /**
+         * EventListOut
+         * @description One page of the public catalog, and what the frontend needs to page through it.
+         */
+        EventListOut: {
+            /** Has Next */
+            has_next: boolean;
+            /** Items */
+            items: components["schemas"]["EventOut"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * EventOut
+         * @description One public event.
+         *
+         *     `id` is the stable identifier the API is keyed by; `slug` is the public page route's
+         *     key (the spine's Ids convention: a page URL uses the slug, never the PK).
+         */
+        EventOut: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Source Name */
+            source_name: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /**
+             * Tz Review Pending
+             * @default false
+             */
+            tz_review_pending: boolean;
+            /** Venue City */
+            venue_city?: string | null;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * EventPage
+         * @description The list endpoint's query parameters.
+         *
+         *     `city` matches the venue's city exactly, case-insensitively. The date bounds are
+         *     inclusive and apply to the start time.
+         */
+        EventPage: {
+            /** City */
+            city?: string | null;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 20
+             */
+            page_size: number;
+            /** Starts After */
+            starts_after?: string | null;
+            /** Starts Before */
+            starts_before?: string | null;
+        };
         /** HealthDetails */
         HealthDetails: {
             components: components["schemas"]["ComponentsOut"];
@@ -74,6 +213,63 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    apps_catalog_api_list_events: {
+        parameters: {
+            query?: {
+                city?: string | null;
+                starts_after?: string | null;
+                starts_before?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_api_get_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     config_health_health: {
         parameters: {
             query?: never;

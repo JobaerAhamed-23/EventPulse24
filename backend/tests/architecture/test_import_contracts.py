@@ -73,7 +73,12 @@ VIOLATIONS = {
     "apps imports adapters": ({"apps/catalog/_planted.py": "import adapters.email\n"}, {"layers"}),
     "adapters import apps": ({"adapters/email/_planted.py": "import apps.identity\n"}, {"layers"}),
     "config imports worker": ({"config/_planted.py": "import worker\n"}, {"layers"}),
-    "worker imports config.api": ({"worker/_planted.py": "import config.api\n"}, {"layers"}),
+    # config.api assembles the app routers, so reaching it reaches the API surface too:
+    # both the layers contract (worker is below config) and worker-not-api break.
+    "worker imports config.api": (
+        {"worker/_planted.py": "import config.api\n"},
+        {"layers", "worker-not-api"},
+    ),
     "worker imports an app's API router": (
         {"worker/_planted.py": "import apps.catalog.api\n"},
         {"worker-not-api"},

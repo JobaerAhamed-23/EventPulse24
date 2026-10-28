@@ -89,7 +89,9 @@ id = "worker-not-api"
 name = "AD-1 the worker never imports the API surface"
 type = "forbidden"
 source_modules = ["worker"]
-forbidden_modules = ["apps.*.api"]
+# config.api is the API surface too: it assembles the app routers, so importing it reaches
+# apps.*.api transitively. Both are listed so the contract matches its name.
+forbidden_modules = ["apps.*.api", "config.api"]
 
 [[tool.importlinter.contracts]]
 id = "domain-pure"
