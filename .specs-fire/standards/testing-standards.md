@@ -130,7 +130,7 @@ cd frontend && pnpm vitest --watch
 - `python manage.py check` (AD-15 retention registry)
 - `python manage.py makemigrations --check` (no missing migrations)
 - `pytest` with coverage `fail_under`
-- OpenAPI schema export → regenerate TS client → frontend typecheck (AD-19)
+- OpenAPI schema export → regenerate TS client → frontend typecheck (AD-19). Locally, `backend/tests/api/test_contract.py` already fails when `frontend/lib/api/openapi.json` doesn't match the live API (`make client` fixes it)
 - Vitest + Playwright E2E + axe-core zero serious/critical (PRD §11.5)
 
 ---

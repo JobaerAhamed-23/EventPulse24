@@ -1,8 +1,15 @@
-# `lib/api/`: generated API client
+# `lib/api/`: generated API contract
 
-Everything in this folder except this README is **generated** from the backend's OpenAPI schema
-(AD-19) and **never edited by hand**. Regenerate it instead; CI fails if the committed client
-differs from what the schema produces.
+Everything in this folder except this README is **generated** and **never edited by hand** (AD-19):
 
-The generator (`make client`) arrives with the `health-round-trip` work item. Frontend code
-reaches the backend only through this client: no hand-written `fetch` to backend routes.
+| File           | Made by                                                 | From           |
+| -------------- | ------------------------------------------------------- | -------------- |
+| `openapi.json` | `make openapi` (Django Ninja's `export_openapi_schema`) | the live API   |
+| `schema.ts`    | `make client` (`openapi-typescript`)                    | `openapi.json` |
+
+After changing an API endpoint, run `make client` and commit both files. The backend suite fails
+(`tests/api/test_contract.py`) until `openapi.json` matches the API, and CI regenerates both and
+fails on any diff.
+
+Frontend code reaches the backend only through `api` from `@/lib/backend-client`, which is typed
+from `schema.ts`. ESLint rejects hand-written `fetch` calls in `app/` and `components/`.

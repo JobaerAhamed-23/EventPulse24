@@ -143,7 +143,9 @@ Not configured. To be decided at first scaffold.
 - `vitest` (5.0.5) + `jsdom` (30.1) + `@vitejs/plugin-react` (6.1.2), `@testing-library/react` (16.3.3) / `dom` / `jest-dom`: frontend unit tests
 - `typescript` (5.9.3; TS 7 exists, not adopted), `eslint` (9.39) + `eslint-config-next` (16.3.8) + `typescript-eslint` (8.72, one copy only) + `eslint-config-prettier`, `prettier` (3.9): frontend tooling. **ESLint 9 is marked "no longer supported" by npm**, but `eslint-plugin-react` / `jsx-a11y` / `import` (via `eslint-config-next`) declare ESLint ≤9. Move to 10 when `eslint-config-next` does.
 - `@playwright/test` + `@axe-core/playwright`: E2E + accessibility gate
-- OpenAPI TS generator (e.g. `openapi-typescript`): generated client
+- `openapi-typescript` (7.13.0): generates `frontend/lib/api/schema.ts` from the committed `openapi.json` (`make client`)
+- `openapi-fetch` (0.17.0, runtime): typed `fetch` over the generated `paths`, used only in `lib/backend-client.ts`
+- `concurrently` (10.0.6): runs the four app processes for `make dev`
 
 ## Version Requirements
 

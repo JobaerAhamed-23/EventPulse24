@@ -21,13 +21,15 @@ Or inside `frontend/`: `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm typecheck`, `
 
 ## Layout
 
-| Path                 | What                                                                          |
-| -------------------- | ----------------------------------------------------------------------------- |
-| `app/`               | App Router routes. `layout.tsx` sets `<html data-theme="dark">` and the fonts |
-| `styles/tokens.css`  | Design tokens (DESIGN.md §Token Implementation Contract)                      |
-| `styles/globals.css` | Tailwind, base styles, focus ring, `.fade-in`                                 |
-| `lib/api/`           | **Generated** API client: never edited by hand (AD-19)                        |
-| `tests/`             | Structural tests (no UI kit, no motion classes, kebab-case files)             |
+| Path                    | What                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `app/`                  | App Router routes. `layout.tsx` sets `<html data-theme="dark">` and the fonts |
+| `styles/tokens.css`     | Design tokens (DESIGN.md §Token Implementation Contract)                      |
+| `styles/globals.css`    | Tailwind, base styles, focus ring, `.fade-in`                                 |
+| `lib/api/`              | **Generated** API contract and types: never edited by hand (AD-19)            |
+| `lib/backend-client.ts` | The typed client (`api`) every backend call goes through                      |
+| `proxy.ts`              | Forwards `/api/*` to Django (`API_BASE_URL`, read per request)                |
+| `tests/`                | Structural tests (no UI kit, no motion classes, kebab-case files)             |
 
 ## Design tokens
 
@@ -44,6 +46,19 @@ Or inside `frontend/`: `pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm typecheck`, `
   `transition-*` / `duration-*` / `animate-*` classes are rejected by a test.
 - `styles/tokens.test.ts` reads DESIGN.md itself: change a color there and the test fails until
   `tokens.css` matches.
+
+## Talking to the backend
+
+- **The browser only calls this site.** `proxy.ts` forwards `/api/*` to `API_BASE_URL` (an
+  origin such as `http://127.0.0.1:8000`), read on every request: change it and restart, no
+  rebuild. Outside production it defaults to `http://127.0.0.1:8000`; in production a missing
+  value answers 503 (`api_not_configured`). There's no CORS, by design.
+- **Use the generated client:** `import { api } from "@/lib/backend-client"`, then
+  `await api.GET("/api/health")`. Paths, parameters and response bodies (including typed error
+  bodies) come from `lib/api/schema.ts`. ESLint rejects `fetch` / `window.fetch` /
+  `globalThis.fetch` / `self.fetch` in `app/` and `components/`.
+- **After an API change:** `make client` (from the repo root), then commit `lib/api/`.
+- `/dev/health` is a developer page showing each backend component; it's a 404 in production.
 
 ## Fonts
 

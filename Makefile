@@ -1,17 +1,26 @@
 # EventPulse24 — single entry point for local development. Run `make` to list targets.
-# Infrastructure runs in Docker Compose; app processes (API now; worker and web later) run on the host.
+# Infrastructure runs in Docker Compose; app processes (API, worker, beat, web) run on the host.
 
 -include .env
 export
 
 EP_DB_NAME ?= eventpulse24
+# Where the Next.js proxy (frontend/proxy.ts) forwards /api/*; read per request, no rebuild needed.
+API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 
 .DEFAULT_GOAL := help
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
-        web web-install lint-web test-web
+        web web-install lint-web test-web openapi client dev
 
 UV_BACKEND := uv run --directory backend
+
+# The four app processes, defined once: their own targets run them, and `make dev` runs them
+# side by side (scripts/dev.sh reads these from the environment; `export` above passes them).
+API_CMD = $(UV_BACKEND) python manage.py runserver 127.0.0.1:$(or $(API_PORT),8000)
+WORKER_CMD = $(UV_BACKEND) celery -A config worker --pool solo --hostname eventpulse24-worker --loglevel INFO
+BEAT_CMD = mkdir -p backend/.celery && $(UV_BACKEND) celery -A config beat --loglevel INFO --schedule .celery/beat-schedule --pidfile .celery/beat.pid
+WEB_CMD = pnpm --dir frontend dev --hostname 127.0.0.1 --port $(or $(WEB_PORT),3000)
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -53,32 +62,41 @@ db-init: ## Re-apply the database init script to the running container (idempote
 	docker compose exec -T postgres sh /docker-entrypoint-initdb.d/01-schemas-and-roles.sh
 
 api: ## Run the Django API on 127.0.0.1:$API_PORT (default 8000)
-	$(UV_BACKEND) python manage.py runserver 127.0.0.1:$(or $(API_PORT),8000)
+	$(API_CMD)
 
 # --pool solo: one job at a time, in one process, the same on macOS and Ubuntu. Celery 5.6.3's
 # prefork pool breaks on macOS (billiard spawns children; every task fails with "not enough
 # values to unpack"). The node name has no ".host" part, so the log scrubber can't read it as
 # an email address.
 worker: ## Run the Celery worker (background jobs and the tick), one job at a time
-	$(UV_BACKEND) celery -A config worker --pool solo --hostname eventpulse24-worker --loglevel INFO
+	$(WORKER_CMD)
 
 # Exactly ONE beat may run (two would fire every tick twice). The pidfile makes a second
 # `make beat` refuse to start while the first is running.
 beat: ## Run Celery beat, the 60s tick scheduler — exactly one at a time
-	@mkdir -p backend/.celery
-	$(UV_BACKEND) celery -A config beat --loglevel INFO \
-		--schedule .celery/beat-schedule --pidfile .celery/beat.pid
+	$(BEAT_CMD)
 
 send-test-email: ## Send a test email to Mailpit: make send-test-email [TO=you@example.test] [STREAM=bulk]
 	$(UV_BACKEND) python manage.py send_test_email --to $(or $(TO),dev@example.test) \
 		--stream $(or $(STREAM),transactional)
+
+dev: ## Run API, worker, beat and web together (Ctrl-C stops all); needs `make up` first
+	@sh scripts/dev.sh
+
+# AD-19: the OpenAPI schema is the contract; the frontend client is generated from it.
+openapi: ## Export the API's OpenAPI schema to frontend/lib/api/openapi.json
+	$(UV_BACKEND) python manage.py export_openapi_schema --api config.api.api --indent 2 --sorted \
+		--output ../frontend/lib/api/openapi.json
+
+client: openapi ## Regenerate the TypeScript client types (frontend/lib/api/schema.ts) from the schema
+	pnpm --dir frontend exec openapi-typescript lib/api/openapi.json --output lib/api/schema.ts
 
 # Frontend (Node 24 LTS, see .nvmrc; pnpm version from frontend/package.json "packageManager").
 web-install: ## Install the frontend dependencies exactly as locked
 	pnpm --dir frontend install --frozen-lockfile
 
 web: ## Run the Next.js dev server on http://127.0.0.1:$WEB_PORT (default 3000)
-	pnpm --dir frontend dev --hostname 127.0.0.1 --port $(or $(WEB_PORT),3000)
+	$(WEB_CMD)
 
 lint-web: ## Lint, typecheck and format-check the frontend
 	pnpm --dir frontend lint

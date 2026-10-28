@@ -73,7 +73,7 @@ intents:
         run_id: run-eventpulse24-007
         completed_at: 2026-10-27T15:49:42.702Z
       - id: health-round-trip
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
@@ -81,6 +81,8 @@ intents:
           - shared-foundations
           - ports-fakes-and-worker
           - frontend-skeleton
+        run_id: run-eventpulse24-008
+        completed_at: 2026-10-27T16:19:54.732Z
       - id: ci-pipeline
         status: pending
         complexity: medium
@@ -147,3 +149,11 @@ runs:
           mode: confirm
       started: 2026-10-27T15:14:11.935Z
       completed: 2026-10-27T15:49:42.702Z
+    - id: run-eventpulse24-008
+      scope: single
+      work_items:
+        - id: health-round-trip
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T15:52:52.213Z
+      completed: 2026-10-27T16:19:54.732Z

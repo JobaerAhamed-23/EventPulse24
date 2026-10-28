@@ -96,6 +96,13 @@ identity  personalization  catalog  delivery  ingestion ◄── editorial
                  domain (pure, stdlib only)
 ```
 
+### Browser → API path
+
+```
+browser ──/api/*──► Next.js proxy.ts (same origin) ──API_BASE_URL──► Django Ninja
+```
+The browser never calls Django directly: no CORS; cookies stay first-party on any hosting. The address is read per request. **Open for the auth intent:** the CSRF origin check (see coding-standards, "CSRF hand-off").
+
 ## Data Flow
 
 **Ingestion**: source → `ExtractedRecord` (LLM via gateway, schema-constrained) → Event Identity resolution → `Event` in `catalog` (or review queue if confidence <0.7 or possible duplicate) → Event Fit rollup.

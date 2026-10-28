@@ -34,6 +34,7 @@ ALLOWED_FIELDS = frozenset(
         "error_code",
         "error_type",
         "job",
+        "component",  # health check component slug: personal | catalog | redis
     }
 )
 

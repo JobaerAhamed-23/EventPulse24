@@ -4,9 +4,15 @@ title: Health Round-Trip & make dev
 intent: project-scaffold
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [schema-router-spike, shared-foundations, ports-fakes-and-worker, frontend-skeleton]
+status: completed
+depends_on:
+  - schema-router-spike
+  - shared-foundations
+  - ports-fakes-and-worker
+  - frontend-skeleton
 created: 2026-10-27
+run_id: run-eventpulse24-008
+completed_at: 2026-10-27T16:19:54.732Z
 ---
 
 # Work Item: Health Round-Trip & make dev

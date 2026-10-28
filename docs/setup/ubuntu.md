@@ -162,6 +162,15 @@ make test-backend
 make lint-backend   # ruff + format check + import contracts (make lint-imports runs only the contracts)
 ```
 
+### Everything at once: `make dev`
+
+After `make up` (and `make migrate` once), `make dev` runs the API, the worker, beat and Next.js together, each line prefixed with `[api]`, `[worker]`, `[beat]` or `[web]`. Ctrl-C stops all four; beat removes its pidfile on the way out. If a beat is already running, `make dev` says so and starts the other three.
+
+Open <http://127.0.0.1:3000/dev/health> (a developer page; it doesn't exist in production builds). Each component shows **OK** or **Down** with the reason. `docker compose stop redis` turns Redis to Down (the API answers 503); `docker compose start redis` brings it back.
+
+- **The browser only talks to Next.js.** `frontend/proxy.ts` forwards `/api/*` to `API_BASE_URL` (default `http://127.0.0.1:8000`), read per request: change it in `.env` and restart, no rebuild.
+- **After changing an API endpoint, run `make client`.** It exports the schema to `frontend/lib/api/openapi.json` and regenerates `schema.ts`. The backend suite fails until the committed schema matches the API.
+
 ### Frontend
 
 `make web-install` once, then `make web` and open <http://127.0.0.1:3000>. The first run downloads the three fonts (Source Serif 4, Inter, JetBrains Mono) and serves them from the app itself, so it needs internet once.

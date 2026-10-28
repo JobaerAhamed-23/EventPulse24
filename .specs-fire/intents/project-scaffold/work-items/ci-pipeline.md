@@ -38,6 +38,10 @@ Run every quality gate on each push and pull request in GitHub Actions.
   - `make web-install`, `make lint-web` (ESLint + typecheck incl. `next typegen` + Prettier check), `make test-web`, and `pnpm --dir frontend build`
   - the build downloads Google fonts (`next/font`), so it needs network
   - `frontend/styles/tokens.test.ts` reads `_bmad-output/.../DESIGN.md`, so a full checkout is needed
+- **From health-round-trip:**
+  - Contract job: `make client` (needs the backend env, but no database: the schema export only imports Django), then `git diff --exit-code frontend/lib/api/`. `backend/tests/api/test_contract.py` covers the schema half inside `pytest` too.
+  - `tests/api/test_health.py` needs the Redis service (the all-up case pings it) and both database aliases.
+  - `frontend/tests/lint-rules.test.ts` runs ESLint through its Node API inside Vitest (about 1 s).
 
 ## Dependencies
 

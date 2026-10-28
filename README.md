@@ -15,11 +15,13 @@ make doctor     # check prerequisites and ports
 make up         # start Postgres 18 + pgvector, Redis, Mailpit
 make db-check   # verify the database is ready
 make migrate    # create the tables in both schemas (catalog, personal)
-make api        # Django API on http://127.0.0.1:8000 (docs: /api/docs)
-make worker     # Celery worker (another terminal)
-make beat       # Celery beat, the 60s tick: run exactly ONE (another terminal)
-make web-install && make web   # Next.js frontend on http://127.0.0.1:3000 (another terminal)
+make web-install   # install the frontend dependencies
+make dev        # API, worker, beat and Next.js together; Ctrl-C stops all
 ```
+
+Then open <http://127.0.0.1:3000/dev/health>: personal database, catalog database and Redis should all be green. The browser only talks to Next.js; it forwards `/api/*` to Django (`API_BASE_URL`), so there's no CORS. Each process also runs on its own: `make api`, `make worker`, `make beat` (exactly one), `make web`.
+
+Changed an API endpoint? Run `make client`: it exports the OpenAPI schema and regenerates the frontend's typed client in `frontend/lib/api/` (never edit those files by hand; a test fails until they match).
 
 Already set up before? Run `make db-init && make migrate` to bring an existing database up to date (keeps data).
 
