@@ -3,6 +3,7 @@
 import logging
 from logging.handlers import SMTPHandler
 
+import pytest
 from django.conf import settings
 from django.utils.log import AdminEmailHandler
 
@@ -40,3 +41,9 @@ def test_sql_logging_capped_at_warning():
 
 def test_trace_id_middleware_runs_first():
     assert settings.MIDDLEWARE[0] == "config.middleware.TraceIdMiddleware"
+
+
+@pytest.mark.parametrize("name", ["httpx", "httpcore"])
+def test_http_client_loggers_capped_at_warning(name):
+    # AD-13: they log full URLs and hosts below WARNING.
+    assert logging.getLogger(name).level == logging.WARNING

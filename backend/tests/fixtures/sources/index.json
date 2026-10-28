@@ -1,0 +1,10 @@
+{
+  "https://fixtures.example.test/sample.rss": {
+    "file": "sample.rss",
+    "content_type": "application/rss+xml",
+    "etag": "\"sample-v1\"",
+    "last_modified": "Wed, 04 Nov 2026 10:00:00 GMT"
+  },
+  "https://fixtures.example.test/down": {"content_type": "text/plain", "simulate": {"status": 503}},
+  "https://fixtures.example.test/slow": {"content_type": "text/plain", "simulate": "timeout"}
+}

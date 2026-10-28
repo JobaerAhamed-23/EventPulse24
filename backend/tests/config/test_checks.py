@@ -13,6 +13,7 @@ from config.checks import (
     check_retention_declared,
     check_uuid7_primary_keys,
     find_cross_alias_relations,
+    find_fake_fetch_fixture_errors,
     find_models_without_retention,
     find_models_without_uuid7_pk,
     find_unmapped_apps,
@@ -236,3 +237,23 @@ def test_uuid7_check_skips_through_tables_and_models_that_are_not_ours():
 
 def test_project_models_all_use_uuid7():
     assert check_uuid7_primary_keys() == []
+
+
+FAKE = {"fetch": "adapters.crawl.fake.FakeFetchAdapter"}
+HTTP = {"fetch": "adapters.crawl.http.HttpFetchAdapter"}
+
+
+def test_fake_fetch_fixtures_valid_in_this_repo():
+    assert find_fake_fetch_fixture_errors(FAKE, settings.SOURCE_FETCH["fixtures_dir"]) == []
+
+
+def test_broken_fake_fetch_fixtures_reported_as_e006(tmp_path):
+    (tmp_path / "index.json").write_text("{not json")
+
+    [error] = find_fake_fetch_fixture_errors(FAKE, tmp_path)
+
+    assert error.id == "eventpulse.E006"
+
+
+def test_fixtures_not_checked_when_fetching_over_http(tmp_path):
+    assert find_fake_fetch_fixture_errors(HTTP, tmp_path) == []

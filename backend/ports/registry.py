@@ -14,6 +14,7 @@ from ports.billing import BillingPort
 from ports.calendar import CalendarPort
 from ports.email import EmailPort
 from ports.embedding import EmbeddingPort
+from ports.fetch import SourceFetchPort
 from ports.llm import LLMPort
 
 # settings.ADAPTERS key for each port.
@@ -23,6 +24,7 @@ PORT_KEYS: dict[type, str] = {
     EmailPort: "email",
     BillingPort: "billing",
     CalendarPort: "calendar",
+    SourceFetchPort: "fetch",
 }
 
 
@@ -60,3 +62,7 @@ def get_billing_port() -> BillingPort:
 
 def get_calendar_port() -> CalendarPort:
     return get_adapter(CalendarPort)
+
+
+def get_fetch_port() -> SourceFetchPort:
+    return get_adapter(SourceFetchPort)

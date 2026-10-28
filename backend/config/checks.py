@@ -1,4 +1,5 @@
-"""Project system checks: the AD-3 wall (E001/E002), AD-15 retention (E003/E004), ids (E005).
+"""Project system checks: the AD-3 wall (E001/E002), AD-15 retention (E003/E004), ids (E005),
+and the fake source-fetch fixtures (E006).
 
 The logic lives in pure functions over explicit inputs so tests can pass isolated models;
 the registered checks are thin wrappers over the app registry. They are tagged `models`, not
@@ -10,6 +11,7 @@ from collections.abc import Iterable
 from django.apps import AppConfig, apps
 from django.conf import settings
 from django.core.checks import Error, Tags, register
+from django.core.exceptions import ImproperlyConfigured
 
 from shared.models import UUIDv7Model
 from shared.retention import FRAMEWORK_RETENTION, RetentionCategory, retention_category_of
@@ -146,3 +148,28 @@ def check_retention_declared(app_configs=None, **kwargs):
 def check_uuid7_primary_keys(app_configs=None, **kwargs):
     models = [model for config in _selected(app_configs) for model in config.get_models()]
     return find_models_without_uuid7_pk(models)
+
+
+def find_fake_fetch_fixture_errors(adapters: dict[str, str], fixtures_dir) -> list[Error]:
+    """E006: the fake fetch adapter's index must load before the first fetch, not during it."""
+    from adapters.crawl.fake import load_index
+    from config.adapters import FAKE_ADAPTERS
+
+    if adapters.get("fetch") != FAKE_ADAPTERS["fetch"]:
+        return []
+    try:
+        load_index(fixtures_dir)
+    except ImproperlyConfigured as exc:
+        return [
+            Error(
+                f"The fake source-fetch fixtures are invalid: {exc}",
+                hint="Fix SOURCE_FIXTURES_DIR/index.json, or set SOURCE_FETCH=http.",
+                id="eventpulse.E006",
+            )
+        ]
+    return []
+
+
+@register()
+def check_fake_fetch_fixtures(app_configs=None, **kwargs):
+    return find_fake_fetch_fixture_errors(settings.ADAPTERS, settings.SOURCE_FETCH["fixtures_dir"])

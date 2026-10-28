@@ -21,6 +21,7 @@ ALLOWED_FIELDS = frozenset(
         "send_id",
         "idempotency_key",
         "count",
+        "byte_count",
         "duration_ms",
         "attempt",
         "model",

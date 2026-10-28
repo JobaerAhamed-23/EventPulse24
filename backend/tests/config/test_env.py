@@ -17,6 +17,10 @@ ENV_KEYS = [
     "SMTP_HOST",
     "SMTP_PORT",
     "ADAPTER_MODE",
+    "SOURCE_FETCH",
+    "SOURCE_FETCH_ALLOWED_PORTS",
+    "SOURCE_FETCH_MAX_REDIRECTS",
+    "SOURCE_FETCH_MAX_BYTES",
 ]
 
 REQUIRED = {
@@ -104,3 +108,35 @@ def test_settings_owner_role_with_owner_url_accepted(clean_env):
     clean_env.setenv("DJANGO_DB_ROLE", "owner")
 
     assert Settings(_env_file=None).database_url_owner == REQUIRED["DATABASE_URL_OWNER"]
+
+
+def test_source_fetch_defaults(clean_env):
+    settings = Settings()
+
+    assert settings.source_fetch is None  # follow ADAPTER_MODE
+    assert settings.source_fetch_allowed_ports == [80, 443]
+    assert settings.source_fetch_max_bytes == 10 * 1024 * 1024
+    assert settings.source_fetch_total_timeout == 30.0
+
+
+def test_source_fetch_allowed_ports_comma_separated(clean_env):
+    clean_env.setenv("SOURCE_FETCH_ALLOWED_PORTS", "80, 443,8080")
+
+    assert Settings().source_fetch_allowed_ports == [80, 443, 8080]
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("SOURCE_FETCH_ALLOWED_PORTS", "0"),
+        ("SOURCE_FETCH_ALLOWED_PORTS", "70000"),
+        ("SOURCE_FETCH_MAX_REDIRECTS", "-1"),
+        ("SOURCE_FETCH_MAX_BYTES", "0"),
+        ("SOURCE_FETCH", "ftp"),
+    ],
+)
+def test_source_fetch_invalid_values_rejected(clean_env, key, value):
+    clean_env.setenv(key, value)
+
+    with pytest.raises(ValidationError):
+        Settings()

@@ -12,6 +12,7 @@ dependencies = [
     "dj-database-url==3.1.2",
     "celery[redis]==5.6.3",
     "tzdata==2026.5",
+    "httpx==0.28.1",
 ]
 
 [dependency-groups]
@@ -199,6 +200,27 @@ source_modules = [
     "adapters.logging",
 ]
 forbidden_modules = ["stripe"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "http-client"
+name = "AD-9 only adapters.crawl imports an HTTP client (source fetches go through SourceFetchPort)"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters.billing",
+    "adapters.calendar",
+    "adapters.email",
+    "adapters.llm",
+    "adapters.logging",
+]
+forbidden_modules = ["httpx", "httpcore", "requests", "urllib3"]
+# Wiring the adapter in (config -> adapters.crawl -> httpx) is the intended path.
 allow_indirect_imports = true
 
 [tool.pytest.ini_options]

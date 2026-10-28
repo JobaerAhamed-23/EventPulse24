@@ -60,6 +60,12 @@ The core `ingest_source` command. It fetches a source, parses it, resolves timez
 - [ ] **One state change per kind:** append one `EventStateChange` for each kind in `Change.kinds`, in order, each bumping `event_version` by 1. Decide how to store `ChangeKind.REINSTATED` (a new model choice or a refusal). `tests/ingestion/test_domain_parity.py` fails until `NOT_YET_STORED` is updated to match.
 - [ ] **Publication** comes from `domain.confidence.combine_gates(tz_gate(...), extraction_gate(...))`, where the strictest wins. `PUBLISH_FLAGGED` sets `tz_review_pending`.
 
+- [ ] **Fetch outcomes** (handed on from run-eventpulse24-012):
+  - Store `FetchResult.final_url`.
+  - Map each `FetchError.code` onto the source's `last_error_code` and `consecutive_failures`, and record a success as `last_ingested_at`. A 304 counts as a success with no change.
+  - Treat `fetch_blocked` with reason `cross_host_redirect` as "the source moved": flag it for re-registration, which re-triggers the FR-17 ToS review. Never follow it automatically.
+  - Test every error path with the fake adapter's `simulate` entries.
+
 ## Technical Notes
 
 - **Spine references:**

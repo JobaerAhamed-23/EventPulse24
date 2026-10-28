@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Sample Venue Events</title>
+    <link>https://fixtures.example.test/</link>
+    <description>A minimal fixture for the fake fetch adapter.</description>
+    <item>
+      <title>Sample Show</title>
+      <link>https://fixtures.example.test/events/1</link>
+      <guid>sample-1</guid>
+    </item>
+  </channel>
+</rss>

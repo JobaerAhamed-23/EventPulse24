@@ -116,10 +116,12 @@ intents:
         run_id: run-eventpulse24-011
         completed_at: 2026-10-28T09:14:37.195Z
       - id: source-fetch-port
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-012
+        completed_at: 2026-10-28T10:07:28.726Z
       - id: structured-parsers
         status: pending
         complexity: medium
@@ -253,3 +255,11 @@ runs:
           mode: confirm
       started: 2026-10-28T08:13:45.603Z
       completed: 2026-10-28T09:14:37.195Z
+    - id: run-eventpulse24-012
+      scope: single
+      work_items:
+        - id: source-fetch-port
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T09:17:01.732Z
+      completed: 2026-10-28T10:07:28.726Z

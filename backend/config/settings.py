@@ -106,7 +106,21 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 # Which adapter implements each port (resolved by ports.registry); ADAPTER_MODE=fake by default.
-ADAPTERS = adapter_paths(env.adapter_mode)
+ADAPTERS = adapter_paths(env.adapter_mode, env.source_fetch)
+
+# Source fetch limits (adapters.crawl.http.FetchLimits) and the fake adapter's fixtures.
+SOURCE_FETCH = {
+    "user_agent": env.source_fetch_user_agent,
+    "max_bytes": env.source_fetch_max_bytes,
+    "dns_timeout": env.source_fetch_dns_timeout,
+    "connect_timeout": env.source_fetch_connect_timeout,
+    "read_timeout": env.source_fetch_read_timeout,
+    "write_timeout": env.source_fetch_write_timeout,
+    "total_timeout": env.source_fetch_total_timeout,
+    "max_redirects": env.source_fetch_max_redirects,
+    "allowed_ports": tuple(env.source_fetch_allowed_ports),
+    "fixtures_dir": env.source_fixtures_dir,
+}
 
 # Used by the SMTP email adapter; locally this is Mailpit. Django 6.1 MAILERS (EMAIL_HOST and
 # EMAIL_PORT are deprecated). Tests swap every mailer for the locmem backend automatically.
@@ -145,5 +159,8 @@ LOGGING = {
         "django": {"handlers": [], "level": "INFO", "propagate": True},
         "django.server": {"handlers": [], "level": "INFO", "propagate": True},
         "django.db.backends": {"level": "WARNING"},
+        # AD-13: both log full URLs and hosts at INFO/DEBUG; source fetches log their own record.
+        "httpx": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
     },
 }

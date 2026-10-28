@@ -123,6 +123,7 @@ frontend/
 - **Fingerprints are versioned** (`v1:`). Golden tests in `tests/domain/test_dedup.py` pin v1; a change to tokenization, folding or hashing is a new version plus a backfill, never an edit to v1.
 - **Confidence values** are two-decimal `Decimal`s, never floats (a float 0.7 is below the 0.70 gate). Gate them only with `domain.confidence` (`tz_gate`, `extraction_gate`, `combine_gates`: the strictest wins). Scores and caps live in `shared/constants.py`.
 - **Timezones**: store only names that pass `domain.timezones.canonical_zone()` (an IANA area zone, `Etc/GMT±N`, or `UTC`).
+- **Outbound source fetches** go only through `ports.fetch.SourceFetchPort` (`ports.registry.get_fetch_port()`). Only `adapters.crawl` may import an HTTP client (import contract `http-client`). The HTTP adapter's address policy (`adapters/crawl/address_policy.py`) is our own deny table: never replace it with `ipaddress.is_global`. Catch `FetchError` subclasses by type and store their `code`; their `details` never contain a host, IP or URL.
 
 ## Import Order
 
