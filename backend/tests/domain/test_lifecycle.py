@@ -217,4 +217,4 @@ def test_precedence_order():
 
 def test_lifecycle_facts_are_event_facts_fields():
     assert LIFECYCLE_FACTS <= set(EventFacts.__dataclass_fields__)
-    assert NOT_YET_STORED == {ChangeKind.REINSTATED}
+    assert NOT_YET_STORED == frozenset()  # reinstated is stored since run-eventpulse24-015

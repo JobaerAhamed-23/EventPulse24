@@ -21,6 +21,8 @@ Run sources on their declared cadence from the existing single 60s beat tick, as
 - [ ] `beat_schedule` stays exactly one 60s tick, and `tests/worker/test_tick.py` is unchanged and green.
 - [ ] No double runs: a source already queued or running is not enqueued again by later ticks. Use a claim timestamp or lock on `Source`, or the pipeline's own concurrency guard. Two concurrent workers never ingest the same source at once.
 - [ ] Freshness: the tick flags any active source with no successful ingestion within 2× its expected cadence. The flag is visible in admin, and it clears on the next success.
+- [ ] **Outbox reconciler on the tick** (handed on from `ingest-pipeline-and-lifecycle-design.md` D15): every 5 minutes the tick enqueues `worker.tasks.reconcile_outbox`, which calls `apps.ingestion.services.outbox.reconcile_outbox()`. `test_tick.py` stays unchanged: the tick itself must not query the database or emit a second `worker.tasks` log record.
+- [ ] **Freshness split** (D16): the tick sets `stale_since`; the pipeline already clears it on every successful run (200 or 304).
 - [ ] Management command `manage.py ingest_source <source_id> [--sync]` runs one source immediately, inline or enqueued.
 - [ ] The worker job wraps the `ingestion` command only. The worker never imports an API module (contract `worker-not-api`).
 - [ ] Tests cover:

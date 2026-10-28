@@ -100,6 +100,7 @@ class EventFactory(CatalogFactory):
         lambda o: o.venue.venue_fingerprint if o.venue else ""
     )
     start_time_utc = factory.Sequence(lambda n: FIRST_START + timedelta(days=n))
+    original_start_utc = factory.SelfAttribute("start_time_utc")  # the insert guard requires it
     start_time_tz = VENUE_TZ
     start_time_local = factory.LazyAttribute(
         lambda o: local_wall_clock(o.start_time_utc, o.start_time_tz)

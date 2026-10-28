@@ -13,6 +13,9 @@ from uuid import UUID
 EXTRACTION_CONFIDENCE_REJECT = Decimal("0.50")  # below: auto-reject
 EXTRACTION_CONFIDENCE_PUBLISH = Decimal("0.70")  # below: editorial review, never in a digest
 
+# AD-8: structured sources (JSON-LD, RSS, ICS) carry their fields explicitly; nothing is inferred.
+EXTRACTION_CONFIDENCE_STRUCTURED = Decimal("1.00")
+
 # AD-6: below this, an Event is not digest-eligible until editorial review completes.
 TZ_INFERENCE_CONFIDENCE_DIGEST = Decimal("0.70")
 # FR-60: at or above this, a published Event needs no tz review; below it (down to the digest
@@ -48,6 +51,11 @@ DEFAULT_INGESTION_CADENCE = {
 }
 # No source is polled more often than this (respect the feeds).
 INGESTION_CADENCE_MIN = timedelta(minutes=15)
+
+# AD-17: the reconciler re-enqueues state changes unpropagated for longer than this, oldest
+# first, at most this many per run.
+OUTBOX_RECONCILE_AFTER = timedelta(minutes=5)
+OUTBOX_RECONCILE_BATCH = 500
 
 # AD-4: namespace for deterministic series ids (`shared.ids.series_id`). Never change it: every
 # existing series would silently split.

@@ -31,8 +31,7 @@ class EventStatus(StrEnum):
 class ChangeKind(StrEnum):
     CANCELLED = "cancelled"
     SUPERSEDED = "superseded"
-    # Cancelled -> live again, or postponed -> scheduled at the same start. Not a stored
-    # EventStateChange kind yet: ingest-pipeline-and-lifecycle decides (NOT_YET_STORED).
+    # Cancelled -> live again, or postponed -> scheduled at the same start.
     REINSTATED = "reinstated"
     POSTPONED = "postponed"
     TIME_MOVED = "time_moved"
@@ -41,7 +40,7 @@ class ChangeKind(StrEnum):
 
 
 PRECEDENCE = tuple(ChangeKind)  # declaration order above is most to least important
-NOT_YET_STORED = frozenset({ChangeKind.REINSTATED})
+NOT_YET_STORED: frozenset[ChangeKind] = frozenset()  # every kind is a stored kind
 
 
 @dataclass(frozen=True)

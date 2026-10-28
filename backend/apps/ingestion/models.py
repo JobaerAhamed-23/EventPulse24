@@ -91,6 +91,8 @@ class Source(UUIDv7Model):
     tz_coverage = models.CharField(max_length=8, choices=TzCoverage.choices)
     etag = models.CharField(max_length=512, blank=True)
     last_modified = models.CharField(max_length=64, blank=True)
+    # The last fetch's final URL, after same-host redirects; the parse base for relative links.
+    fetched_url = models.URLField(max_length=2048, blank=True)
     last_ingested_at = models.DateTimeField(null=True, blank=True)
     last_attempted_at = models.DateTimeField(null=True, blank=True)
     consecutive_failures = models.PositiveIntegerField(default=0)
@@ -198,6 +200,9 @@ class Event(UUIDv7Model):
     venue_fingerprint = models.CharField(max_length=128, blank=True)
     title_fingerprint = models.CharField(max_length=512)
     start_time_utc = models.DateTimeField()
+    # The start this Event was created with; the ±30-day supersede rule measures from it (AD-4).
+    # The guard trigger sets it equal to start_time_utc on insert and freezes it.
+    original_start_utc = models.DateTimeField()
     end_time_utc = models.DateTimeField(null=True, blank=True)
     # Normalized wall-clock time as the source wrote it, no offset; evidence only, never
     # computed on (D8). The raw text is in ExtractedRecord.payload.
@@ -297,6 +302,9 @@ class ExtractedRecord(UUIDv7Model):
     event = models.ForeignKey(
         Event, on_delete=models.PROTECT, null=True, blank=True, related_name="extracted_records"
     )
+    # How identity was decided: {"rule": "a|b|c", "review_signals": [...], "ambiguous": [...]},
+    # kept for the future review queue (ingest-pipeline-and-lifecycle-design.md D8).
+    match_notes = models.JSONField(default=dict, encoder=DjangoJSONEncoder, blank=True)
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_seen_at = models.DateTimeField(default=timezone.now)
     last_changed_at = models.DateTimeField(default=timezone.now)
@@ -332,6 +340,7 @@ class EventStateChange(AppendOnlyModel, ActorColumns, UUIDv7Model):
         TIME_MOVED = "time_moved"
         POSTPONED = "postponed"
         CANCELLED = "cancelled"
+        REINSTATED = "reinstated"  # cancelled -> live again, or postponed -> scheduled (D12)
         SOLD_OUT = "sold_out"
         DETAIL_CHANGED = "detail_changed"
         SUPERSEDED = "superseded"

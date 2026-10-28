@@ -139,15 +139,20 @@ intents:
         run_id: run-eventpulse24-014
         completed_at: 2026-10-28T11:47:26.363Z
       - id: ingest-pipeline-and-lifecycle
-        status: pending
+        status: completed
         complexity: high
         mode: validate
+        design_doc: ingest-pipeline-and-lifecycle-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-10-28T12:00:04Z
         depends_on:
           - catalog-data-model
           - event-identity-and-tz-domain
           - source-fetch-port
           - structured-parsers
           - source-registry-commands-admin
+        run_id: run-eventpulse24-015
+        completed_at: 2026-10-28T12:28:01.669Z
       - id: ingestion-scheduling
         status: pending
         complexity: medium
@@ -283,3 +288,11 @@ runs:
           mode: confirm
       started: 2026-10-28T10:52:10.609Z
       completed: 2026-10-28T11:47:26.363Z
+    - id: run-eventpulse24-015
+      scope: single
+      work_items:
+        - id: ingest-pipeline-and-lifecycle
+          intent: event-catalog-ingestion
+          mode: validate
+      started: 2026-10-28T12:00:14.861Z
+      completed: 2026-10-28T12:28:01.669Z

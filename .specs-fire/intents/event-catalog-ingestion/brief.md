@@ -74,6 +74,7 @@ The scaffold is in place, but `catalog` is empty, so no user-facing feature can 
 - The 40-source / 15-per-city launch floor (FR-13).
 - OQ-5: the real source list and ToS reviews.
 - The beachhead city.
+- **Automatic re-gating vs editorial decisions** (run-eventpulse24-015, plan P1): every ingest from an Event's origin source recomputes `publication_status`, `tz_review_pending` and the confidences from the new data. When the editorial review queue (FR-57) lands, an editorial publish or hold must override that, for example with an editorial-lock flag the pipeline respects.
 - **Venue renames** (run-eventpulse24-014, plan R7): a venue's name, city and country are fixed once it is registered, because they make its identity fingerprint. Only `tz` can be set later (`set_venue_timezone`). The editorial intent decides how a rename works: whether the fingerprint changes and what happens to Events already copied from it (D14).
 
 **Work happens on branch `event-catalog-ingestion`.**

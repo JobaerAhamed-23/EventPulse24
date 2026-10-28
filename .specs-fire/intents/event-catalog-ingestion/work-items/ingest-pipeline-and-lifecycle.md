@@ -4,9 +4,16 @@ title: Ingest Pipeline & Event Lifecycle
 intent: event-catalog-ingestion
 complexity: high
 mode: validate
-status: pending
-depends_on: [catalog-data-model, event-identity-and-tz-domain, source-fetch-port, structured-parsers, source-registry-commands-admin]
+status: completed
+depends_on:
+  - catalog-data-model
+  - event-identity-and-tz-domain
+  - source-fetch-port
+  - structured-parsers
+  - source-registry-commands-admin
 created: 2026-10-28
+run_id: run-eventpulse24-015
+completed_at: 2026-10-28T12:28:01.669Z
 ---
 
 # Work Item: Ingest Pipeline & Event Lifecycle

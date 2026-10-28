@@ -1,4 +1,5 @@
-"""Database triggers from migration 0001 (design D7, D10, D12), tested below the ORM.
+"""Database triggers from migrations 0001 and 0002 (design D7, D10, D12; pipeline design D11),
+tested below the ORM.
 
 Every statement is raw SQL on the catalog connection (the owner role in tests), so the Python
 append-only guards are never in the path: a pass here proves the trigger itself. Rejections are
@@ -6,7 +7,7 @@ asserted as psycopg's RestrictViolation, the trigger's ERRCODE.
 """
 
 from contextlib import contextmanager
-from importlib import import_module
+from datetime import timedelta
 
 import psycopg
 import pytest
@@ -15,6 +16,7 @@ from django.db import IntegrityError, connections, transaction
 from apps.ingestion.models import Event
 from shared.db import CATALOG, PERSONAL
 from tests.ingestion.factories import (
+    FIRST_START,
     EventFactory,
     EventStateChangeFactory,
     IngestionAuditEntryFactory,
@@ -205,10 +207,36 @@ def test_event_non_lifecycle_change_at_same_version_allowed():
 
 def test_event_trigger_lifecycle_columns_match_model():
     # The trigger's column list is hand-written SQL; keep it in step with the model's tuple.
-    sql = import_module("apps.ingestion.migrations.0001_initial").TRIGGERS
+    # Read the live function: migration 0002 replaced 0001's text (run-015 plan P6).
+    with connections[CATALOG].cursor() as cursor:
+        cursor.execute("SELECT pg_get_functiondef('catalog.guard_event_write'::regproc)")
+        sql = cursor.fetchone()[0]
     columns = [Event._meta.get_field(name).column for name in Event.LIFECYCLE_FIELDS]
 
     assert all(f"NEW.{column} IS DISTINCT FROM OLD.{column}" in sql for column in columns)
+
+
+def test_event_original_start_change_rejected():
+    event = EventFactory()
+
+    with restricted("original_start_utc of Event"):
+        execute(
+            f"UPDATE {EVENT} SET original_start_utc = original_start_utc + interval '1 day', "
+            "event_version = event_version + 1 WHERE id = %s",
+            [event.id],
+        )
+
+
+def test_event_original_start_unchanged_by_a_start_move():
+    event = EventFactory()
+
+    execute(
+        f"UPDATE {EVENT} SET start_time_utc = start_time_utc + interval '2 days', "
+        "event_version = event_version + 1 WHERE id = %s",
+        [event.id],
+    )
+
+    assert column(EVENT, "original_start_utc", event.id) == event.start_time_utc
 
 
 # --- Event guard: inserts -------------------------------------------------------------------
@@ -217,6 +245,11 @@ def test_event_trigger_lifecycle_columns_match_model():
 def test_event_insert_at_version_other_than_one_rejected():
     with restricted("starts at event_version 1"):
         EventFactory(event_version=2)  # no Python guard on Event: this reaches the trigger
+
+
+def test_event_insert_with_other_original_start_rejected():
+    with restricted("original_start_utc is its start_time_utc"):
+        EventFactory(original_start_utc=FIRST_START - timedelta(days=1))
 
 
 def test_event_insert_already_superseded_rejected():
