@@ -15,7 +15,7 @@ ALLOWED_HOSTS = env.django_allowed_hosts
 
 INSTALLED_APPS = [
     # Django admin is the MVP surface for FR-29 / FR-57 (AD-14). Its tables live in the personal
-    # schema (AD-3); /admin/ gets routed when admin is first needed.
+    # schema (AD-3). Routed at /admin/ (config/urls.py).
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",

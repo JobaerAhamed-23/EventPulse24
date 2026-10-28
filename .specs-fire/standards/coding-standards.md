@@ -39,6 +39,7 @@ All of these are enforced by `make lint-backend` (Ruff + `lint-imports`) or by t
 - **`llm-sdk` / `stripe-sdk`** (import-linter): only `adapters.llm` imports `anthropic`, `voyageai`, `openai` or `instructor` **directly**, and only `adapters.billing` imports `stripe` (AD-8). Wiring the adapter in (`config → adapters.llm → anthropic`) is allowed.
 - **New top-level packages and adapters** must be added to `[tool.importlinter]` (`root_packages`, the SDK contracts' sources, a `models-<app>` contract); a coverage test fails otherwise.
 - **`eventpulse.E005`**: every concrete model in our packages subclasses `shared.models.UUIDv7Model` (auto-created M2M through tables excepted).
+- **No direct writes from surfaces** (`tests/architecture/test_no_direct_writes.py`, AD-5/AD-14): `apps/*/admin.py`, `apps/*/api.py` and `config/api.py` make no `.save()`, `.create()`, `.update()`, `.delete()`, `bulk_*`, `get_or_create()` or `update_or_create()` call. The scan is syntactic, so it flags any receiver (a `dict.update()` too); surface modules avoid those names.
 - **Database alias** (`tests/architecture/test_database_alias.py`, AD-3): `transaction.atomic()` / `on_commit()` always pass `using=`; no bare `@atomic`; no string literal or `None` as an alias (`using=`, `.using()`, `connections[...]`); no `from django.db import connection`. **Known limitation:** the scan is syntactic. It misses `django.db.connection` reached through `import django.db`, re-bound names (`t = transaction; t.atomic()`), and dynamically built calls. Review covers those.
 - `DTZ*`: error. No naive datetimes. Everything is `timestamptz` UTC (AD-6)
 - `S*` (bandit): error. Treat source content as untrusted (AD-9)
@@ -124,6 +125,21 @@ frontend/
 - **Confidence values** are two-decimal `Decimal`s, never floats (a float 0.7 is below the 0.70 gate). Gate them only with `domain.confidence` (`tz_gate`, `extraction_gate`, `combine_gates`: the strictest wins). Scores and caps live in `shared/constants.py`.
 - **Timezones**: store only names that pass `domain.timezones.canonical_zone()` (an IANA area zone, `Etc/GMT±N`, or `UTC`).
 - **Structured parsers** (`apps/ingestion/parsers/`) are pure: bytes plus a `SourceContext` in, a `ParseResult` out, never an exception. They hand times over **as written** (naive wall clock + the zone name, or aware with the source's offset) and never compute UTC, timezone tiers, fingerprints or identity; the pipeline calls `domain.timezones` and `domain.dedup` for that. Text fields go through `plain_text` and URLs through `http_url`. An RSS/Atom event time comes only from `ev:` or xCal fields, never `pubDate`.
+- **Source Registry** (FR-13, FR-17): Sources, ToS reviews and Venues change only through `apps.ingestion.services.source_registry` (`register_source`, `update_source`, `pause_source`, `resume_source`, `record_tos_review`) and `venue_registry` (`register_venue`, `set_venue_timezone`).
+  - `Source.tos_status` caches the latest review of the **current** method since that method was set. A method change, or a URL host change, resets it to `not_reviewed` in the same transaction.
+  - Crawl needs an approved review passed **in the same command** that registers the source, switches it to crawl, or moves a crawl source to a new host. Otherwise `CrawlNeedsTosReviewError` is raised and nothing is written.
+  - The pipeline calls `ensure_can_ingest(source)` before fetching: a paused source, or crawl without approval, is refused.
+  - Sources are paused, never deleted.
+  - Default cadences live in `shared.constants.DEFAULT_INGESTION_CADENCE`, with a floor of `INGESTION_CADENCE_MIN`.
+  - Venue name, city and country are fixed after registration (they make the fingerprint).
+- **Django admin is a command client** (AD-14), built on `apps.ingestion.admin.CommandAdmin`:
+  - `save_model` calls a command with `Actor.user(request.user.pk)`, never `obj.save()`.
+  - Delete is disabled, and `delete_model`/`delete_queryset` raise.
+  - Forms run the command's own checks (`check_source_change`, `check_new_venue`, …) in `clean()`, so a refusal shows on the form.
+  - History models (Event, EventStateChange, audit) use `ReadOnlyAdmin`.
+  - A form that records something governed by another model's permission checks that permission itself. Example: the Source form's ToS approval needs `ingestion.add_tosreview`, not only `change_source`; without it the fields are hidden and a forged POST is refused.
+  - Django's `LogEntry` is off for these admins: the app's audit table is the only history. `LogEntry` would commit in `personal` even if the catalog write rolled back.
+  - An app's admin lives in that app (`admin.site.register` needs the model, which `models-<app>` keeps private). `editorial` holds the review queue, not ModelAdmins for other apps' models.
 - **Outbound source fetches** go only through `ports.fetch.SourceFetchPort` (`ports.registry.get_fetch_port()`). Only `adapters.crawl` may import an HTTP client (import contract `http-client`). The HTTP adapter's address policy (`adapters/crawl/address_policy.py`) is our own deny table: never replace it with `ipaddress.is_global`. Catch `FetchError` subclasses by type and store their `code`; their `details` never contain a host, IP or URL.
 
 ## Import Order

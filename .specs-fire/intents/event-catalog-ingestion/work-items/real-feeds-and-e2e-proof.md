@@ -24,6 +24,11 @@ Prove the whole intent end to end. An automated test runs from fixture source to
   4. re-runs the tick and asserts nothing changes
 - [ ] The user picks 2–3 real public feeds at the plan checkpoint. Each has a recorded ToS/robots note, and the set covers at least two of JSON-LD, RSS and ICS.
 - [ ] The feeds are registered by an idempotent management command or seed, not a data migration, so CI never touches the network.
+- [ ] **Editorial group (AD-14, handed on from run-eventpulse24-014):** the same idempotent command, or a sibling one, creates an `editorial` group with per-model permissions:
+  - `add`/`change`/`view` on `ingestion.Source`, `ingestion.Venue` and `ingestion.TosReview`
+  - `view` on `Event`, `EventStateChange` and `IngestionAuditEntry`
+
+  The local operator account uses that group, not superuser. A test asserts the group's exact permission set.
 - [ ] On the local stack (`docker compose up -d` + `make dev`), the real sources ingest via the worker, and events appear in admin and in the API.
 - [ ] The run's walkthrough records the observed counts (new, rejected by reason, ambiguous, tz-review-pending).
 - [ ] Live network calls are never part of CI. The real-feed check is a documented manual step.

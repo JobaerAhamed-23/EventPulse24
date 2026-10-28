@@ -18,7 +18,7 @@ The core `ingest_source` command. It fetches a source, parses it, resolves timez
 ## Acceptance Criteria
 
 - [ ] `ingest_source(source_id)` is a named command:
-  1. It refuses paused sources and crawl sources without approved ToS.
+  1. It refuses paused sources and crawl sources without approved ToS, by calling `apps.ingestion.services.source_registry.ensure_can_ingest(source)` (run-eventpulse24-014) on the row it has **locked** for the run, never on a stale copy. Otherwise a pause or ToS rejection committed between the read and the lock would be missed.
   2. It fetches through `SourceFetchPort`, passing the etag and last-modified values. A 304 is a cheap no-op that still updates `last_ingested_at`.
   3. It parses with the method's parser.
   4. For each candidate, it resolves the timezone tier, then resolves identity, then creates or updates the `Event` and records an `ExtractedRecord`.
@@ -64,6 +64,7 @@ The core `ingest_source` command. It fetches a source, parses it, resolves timez
   - Store `FetchResult.final_url`.
   - Map each `FetchError.code` onto the source's `last_error_code` and `consecutive_failures`, and record a success as `last_ingested_at`. A 304 counts as a success with no change.
   - Treat `fetch_blocked` with reason `cross_host_redirect` as "the source moved": flag it for re-registration, which re-triggers the FR-17 ToS review. Never follow it automatically.
+    `update_source` with a new host already resets `tos_status`, and for a crawl source it requires a new approved review (run-eventpulse24-014, plan R4).
   - Test every error path with the fake adapter's `simulate` entries.
 - [ ] **Parsing** (handed on from run-eventpulse24-013):
   - Call `apps.ingestion.parsers.parse(source.acquisition_method, result.body, SourceContext(source.id, fetch_result.final_url))`. The final URL is the base for relative links.

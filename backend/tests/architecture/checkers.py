@@ -105,3 +105,38 @@ def alias_violations(source: str) -> list[str]:
 
 def project_files() -> list[Path]:
     return sorted(p for root in ROOT_PACKAGES for p in (BACKEND_DIR / root).rglob("*.py"))
+
+
+# ORM write calls a surface module (admin, API) must leave to the owning app's commands (AD-5).
+WRITE_CALLS = frozenset(
+    {
+        "save",
+        "create",
+        "update",
+        "delete",
+        "bulk_create",
+        "bulk_update",
+        "get_or_create",
+        "update_or_create",
+    }
+)
+
+
+def direct_write_calls(source: str) -> list[str]:
+    """`.save()`, `.create()` and the other ORM write calls in `source`, by line.
+
+    Syntactic, so any receiver counts (a `dict.update()` too): surface modules avoid those names.
+    """
+    return [
+        f"{node.lineno}: .{node.func.attr}()"
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in WRITE_CALLS
+    ]
+
+
+def surface_files() -> list[Path]:
+    """The modules that take requests: every app's admin and API."""
+    apps = BACKEND_DIR / "apps"
+    return sorted([*apps.glob("*/admin.py"), *apps.glob("*/api.py"), BACKEND_DIR / "config/api.py"])

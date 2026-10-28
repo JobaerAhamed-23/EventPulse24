@@ -34,6 +34,21 @@ TITLE_JACCARD_MIN = Fraction(4, 5)
 # AD-4: a move within this distance of the original start keeps the event_id (inclusive).
 POSTPONEMENT_WINDOW = timedelta(days=30)
 
+# FR-13 / design D16: the cadence `register_source` applies when none is given, keyed by
+# `AcquisitionMethod` value. Crawl is the last resort and is polled politely; email_ics is pushed
+# by a mailbox, so its cadence is only a fallback poll.
+DEFAULT_INGESTION_CADENCE = {
+    "api": timedelta(hours=4),
+    "partnership": timedelta(hours=4),
+    "jsonld": timedelta(hours=4),
+    "rss": timedelta(hours=4),
+    "ics": timedelta(hours=4),
+    "email_ics": timedelta(hours=24),
+    "crawl": timedelta(hours=24),
+}
+# No source is polled more often than this (respect the feeds).
+INGESTION_CADENCE_MIN = timedelta(minutes=15)
+
 # AD-4: namespace for deterministic series ids (`shared.ids.series_id`). Never change it: every
 # existing series would silently split.
 SERIES_ID_NAMESPACE = UUID("cbd88e48-d511-4f1b-a595-2f31c0067ad4")

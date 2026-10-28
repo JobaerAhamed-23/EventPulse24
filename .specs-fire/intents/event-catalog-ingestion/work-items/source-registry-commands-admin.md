@@ -4,9 +4,12 @@ title: Source Registry Commands & Admin
 intent: event-catalog-ingestion
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [catalog-data-model]
+status: completed
+depends_on:
+  - catalog-data-model
 created: 2026-10-28
+run_id: run-eventpulse24-014
+completed_at: 2026-10-28T11:47:26.363Z
 ---
 
 # Work Item: Source Registry Commands & Admin

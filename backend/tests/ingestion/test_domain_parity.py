@@ -1,7 +1,10 @@
-"""Domain lifecycle logic stays in step with the catalog model it feeds (AD-4, AD-17)."""
+"""Domain logic and shared constants stay in step with the catalog model they feed (AD-4, AD-17,
+FR-13).
+"""
 
-from apps.ingestion.models import Event, EventStateChange
+from apps.ingestion.models import AcquisitionMethod, Event, EventStateChange
 from domain.lifecycle import LIFECYCLE_FACTS, NOT_YET_STORED, ChangeKind
+from shared.constants import DEFAULT_INGESTION_CADENCE, INGESTION_CADENCE_MIN
 
 # Domain fact name -> Event field name.
 FACT_TO_FIELD = {
@@ -25,3 +28,9 @@ def test_every_change_kind_is_stored_or_explicitly_not_yet():
     stored = {kind.value for kind in EventStateChange.Kind}
 
     assert {kind for kind in ChangeKind if kind.value not in stored} == NOT_YET_STORED
+
+
+def test_every_acquisition_method_has_a_default_cadence_above_the_floor():
+    # shared.constants is stdlib-only, so it keys by the method's string value.
+    assert set(DEFAULT_INGESTION_CADENCE) == set(AcquisitionMethod.values)
+    assert all(c >= INGESTION_CADENCE_MIN for c in DEFAULT_INGESTION_CADENCE.values())

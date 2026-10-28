@@ -131,11 +131,13 @@ intents:
         run_id: run-eventpulse24-013
         completed_at: 2026-10-28T10:41:48.650Z
       - id: source-registry-commands-admin
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - catalog-data-model
+        run_id: run-eventpulse24-014
+        completed_at: 2026-10-28T11:47:26.363Z
       - id: ingest-pipeline-and-lifecycle
         status: pending
         complexity: high
@@ -273,3 +275,11 @@ runs:
           mode: confirm
       started: 2026-10-28T10:14:25.622Z
       completed: 2026-10-28T10:41:48.650Z
+    - id: run-eventpulse24-014
+      scope: single
+      work_items:
+        - id: source-registry-commands-admin
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T10:52:10.609Z
+      completed: 2026-10-28T11:47:26.363Z

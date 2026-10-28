@@ -7,7 +7,7 @@ import tzdata
 from django.apps import apps
 from django.conf import settings
 from django.core.management import call_command
-from django.urls import Resolver404, resolve
+from django.urls import resolve
 
 MVP_MODULES = ["ingestion", "catalog", "personalization", "delivery", "identity", "editorial"]
 
@@ -40,6 +40,6 @@ def test_system_check_passes():
     call_command("check", fail_level="WARNING")
 
 
-def test_admin_not_routed_yet():
-    with pytest.raises(Resolver404):
-        resolve("/admin/")
+def test_admin_routed_to_the_admin_site():
+    # Routed by source-registry-commands-admin (run-eventpulse24-014), the first admin user.
+    assert resolve("/admin/").app_name == "admin"
