@@ -41,6 +41,10 @@ Turn fetched structured content into normalized candidate event records without 
 - [ ] Tests cover each fixture, including malformed input, oversized fields and script/HTML injection in text fields.
 - [ ] `import-linter` contracts still pass.
 
+- [ ] ICS `source_event_id` comes from `domain.dedup.ics_item_id(uid, recurrence_start_utc)`, so recurring instances that reuse one UID stay distinct under rule (a). This was handed on from run-eventpulse24-011.
+- [ ] Windows zone names from Outlook ICS (`TZID:Eastern Standard Time`) map to IANA names through an explicit, tested table before reaching `domain.timezones.resolve_tz`. Unmapped names pass through and are ignored by `canonical_zone`, so the time falls back to the venue tz.
+- [ ] Parsers hand times over exactly as written: naive for a wall-clock time, or aware with the source's fixed offset (`Z` counts as UTC). They never convert to UTC themselves.
+
 ## Technical Notes
 
 - PRD FR-14 (a JSON-LD source is parsed without an LLM call), FR-56 and FR-60 (keep tz "as written" so the domain resolver decides the tier). Spine AD-9.

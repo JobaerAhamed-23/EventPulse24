@@ -30,6 +30,13 @@ class ValidationError(DomainError):
     default_message = "Some details need another look."
 
 
+class InvalidTimezoneError(ValidationError):
+    """A timezone that must be valid isn't (for example a venue registry entry)."""
+
+    code = "invalid_timezone"
+    default_message = "That timezone isn't one we recognise."
+
+
 class PermissionDeniedError(DomainError):
     """For personal data the caller doesn't own, raise NotFoundError instead (no existence leak)."""
 

@@ -6,6 +6,7 @@ Stdlib only, so `domain` can be allowed to import it (decision for architecture-
 from datetime import timedelta
 from decimal import Decimal
 from enum import StrEnum
+from fractions import Fraction
 from uuid import UUID
 
 # AD-8: extraction_confidence gates, numeric(3,2) in [0, 1].
@@ -17,6 +18,21 @@ TZ_INFERENCE_CONFIDENCE_DIGEST = Decimal("0.70")
 # FR-60: at or above this, a published Event needs no tz review; below it (down to the digest
 # gate) it publishes with `tz_review_pending` set.
 TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH = Decimal("0.90")
+
+# FR-60 tz-inference scores and DST caps (domain/timezones.py). Tuning anchors, not truths (AD-8):
+# re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
+TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim
+TZ_SCORE_VENUE_REGISTRY = Decimal("0.95")  # naive time read in the curated venue tz
+TZ_SCORE_FIXED_ZONE = Decimal("0.85")  # exact instant, but only UTC or Etc/GMT±N to show it in
+TZ_SCORE_CONFLICT = Decimal("0.60")  # two explicit claims disagree: a human decides
+TZ_CAP_DST_FOLD = Decimal("0.80")  # naive time occurs twice; the first is taken
+TZ_CAP_DST_GAP = Decimal("0.65")  # naive time doesn't exist in that zone
+
+# AD-4 / FR-15: rule (b) title-fingerprint Jaccard threshold, exact (no float boundary).
+TITLE_JACCARD_MIN = Fraction(4, 5)
+
+# AD-4: a move within this distance of the original start keeps the event_id (inclusive).
+POSTPONEMENT_WINDOW = timedelta(days=30)
 
 # AD-4: namespace for deterministic series ids (`shared.ids.series_id`). Never change it: every
 # existing series would silently split.

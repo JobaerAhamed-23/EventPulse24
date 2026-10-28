@@ -54,6 +54,12 @@ The core `ingest_source` command. It fetches a source, parses it, resolves timez
   - rule-2 dedup across two sources, and rule-3 dedup by canonical URL
   - the outbox row is in the same transaction: an error forced after the Event write rolls back both
 
+- [ ] **Original start for the ±30-day rule:** `domain.lifecycle.classify_change` takes `original_start_utc`. Supply it from a new `Event.original_start_utc` column (decided in the design doc), or derive it from `state_history`. Never use the current start. This was handed on from run-eventpulse24-011.
+- [ ] **Advisory locks:** call `domain.dedup.identity_lock_keys(candidate)` and `pg_advisory_xact_lock` each key in order, with **one transaction per item**. If items are ever batched in one transaction, lock the union of their keys in global sorted order first.
+- [ ] **Rule (a) comes from the `ExtractedRecord` binding:** pass the bound `event_id` to `domain.dedup.resolve()`. Pass in live Events with their `bound_source_ids`, superseded ones excluded. Record `Matched.review_signals` and `Ambiguous` for the later review queue; never merge them.
+- [ ] **One state change per kind:** append one `EventStateChange` for each kind in `Change.kinds`, in order, each bumping `event_version` by 1. Decide how to store `ChangeKind.REINSTATED` (a new model choice or a refusal). `tests/ingestion/test_domain_parity.py` fails until `NOT_YET_STORED` is updated to match.
+- [ ] **Publication** comes from `domain.confidence.combine_gates(tz_gate(...), extraction_gate(...))`, where the strictest wins. `PUBLISH_FLAGGED` sets `tz_review_pending`.
+
 ## Technical Notes
 
 - **Spine references:**

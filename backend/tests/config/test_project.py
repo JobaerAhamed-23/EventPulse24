@@ -1,6 +1,9 @@
 """Django project wiring: installed apps, timezone, system checks, URL surface."""
 
+import zoneinfo
+
 import pytest
+import tzdata
 from django.apps import apps
 from django.conf import settings
 from django.core.management import call_command
@@ -26,6 +29,11 @@ def test_custom_user_model_set():
 def test_time_zone_utc_and_aware_datetimes():
     assert settings.TIME_ZONE == "UTC"
     assert settings.USE_TZ is True
+
+
+def test_zoneinfo_uses_only_the_pinned_tzdata_package():
+    assert zoneinfo.TZPATH == ()
+    assert tzdata.IANA_VERSION == "2026e"
 
 
 def test_system_check_passes():

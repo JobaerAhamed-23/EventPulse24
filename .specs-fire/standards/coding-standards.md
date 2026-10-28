@@ -119,6 +119,10 @@ frontend/
 - **Outbox rows** (AD-17): set `propagated_at` only with `EventStateChange.objects.using(CATALOG).filter(pk=…, propagated_at__isnull=True).update(propagated_at=now)`. A result of 0 means already propagated, not an error.
 - **Event versioning** (AD-4, AD-17): the `catalog.guard_event_write` trigger inserts every Event at `event_version = 1` and never as `superseded`; makes `superseded` terminal; allows the version to stay or rise by exactly 1; and requires `+1` with any change to `Event.LIFECYCLE_FIELDS`. Extending that tuple means extending the trigger in the same migration (a test compares them). Supersede follows design D7's order: retire the old row first, then insert the new one.
 - **Series ids**: always `shared.ids.series_id(source_id, series_key)` (UUIDv5 under the pinned `SERIES_ID_NAMESPACE`); never mint one inline.
+- **Identity and timezone decisions** live only in `domain/dedup.py` (fingerprints, URL normalization, rules (a)/(b)/(c), `resolve()`, lock keys, `ics_item_id`), `domain/lifecycle.py` (±30 days from the **original** start, change kinds) and `domain/timezones.py` (zone validity, FR-60 tiers, DST policy). Never re-implement one inline in an app.
+- **Fingerprints are versioned** (`v1:`). Golden tests in `tests/domain/test_dedup.py` pin v1; a change to tokenization, folding or hashing is a new version plus a backfill, never an edit to v1.
+- **Confidence values** are two-decimal `Decimal`s, never floats (a float 0.7 is below the 0.70 gate). Gate them only with `domain.confidence` (`tz_gate`, `extraction_gate`, `combine_gates`: the strictest wins). Scores and caps live in `shared/constants.py`.
+- **Timezones**: store only names that pass `domain.timezones.canonical_zone()` (an IANA area zone, `Etc/GMT±N`, or `UTC`).
 
 ## Import Order
 
