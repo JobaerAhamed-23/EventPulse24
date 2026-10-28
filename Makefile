@@ -11,7 +11,7 @@ API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 .DEFAULT_GOAL := help
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
-        web web-install lint-web test-web openapi client dev
+        web web-install lint-web test-web openapi client dev coverage-backend
 
 UV_BACKEND := uv run --directory backend
 
@@ -120,6 +120,10 @@ makemigrations: ## Create migrations, then sort imports and format: make makemig
 
 test-backend: ## Run the backend test suite
 	$(UV_BACKEND) pytest
+
+coverage-backend: ## Run the backend tests with coverage gates: >=80% overall, 100% for domain/
+	$(UV_BACKEND) pytest --cov --cov-report=term
+	$(UV_BACKEND) coverage report --include='domain/*' --fail-under=100
 
 lint-backend: ## Lint, format-check and import-contract-check the backend (ruff + import-linter)
 	$(UV_BACKEND) ruff check .

@@ -24,7 +24,10 @@ Tests prove the architecture's invariants, not just behaviour. The algorithmic c
 ## Coverage Requirements
 
 **Target**: 80% overall; **100% of `backend/domain/`**
-**Enforcement**: CI gate via `pytest --cov` with `fail_under`
+**Enforcement**: `make coverage-backend`, run by CI's backend job (run-eventpulse24-009).
+- **Measured over the application packages only** (`[tool.coverage.run] source` in `backend/pyproject.toml`: `domain`, `apps`, `ports`, `adapters`, `config`, `worker`, `shared`). Test files don't count.
+- **Two gates:** `fail_under = 80` overall, then `coverage report --include='domain/*' --fail-under=100`. Coverage has no per-folder threshold, hence the second step.
+- **Line coverage** (not branch). At introduction: 96.95% overall, `domain/` 100%.
 
 **Critical paths that MUST have coverage:**
 - Event Identity dedup and the three match rules. Embeddings never merge (AD-4).
@@ -122,7 +125,13 @@ cd frontend && pnpm vitest --watch
 ## CI/CD Integration
 
 **Pipeline**: GitHub Actions
-**Trigger**: every push and pull request
+**Trigger**: every push to a branch (not tags) and every pull request to `main`. Outdated runs on the same branch are cancelled, except on `main`, where every merge's run finishes.
+**Workflow**: `.github/workflows/ci.yml`, three parallel jobs using the same `make` targets as local work:
+- **backend:** services `pgvector/pgvector:0.8.6-pg18` + `redis:8-alpine`; the DB init script runs inside the Postgres container; `make lint-backend`, `manage.py check`, `makemigrations --check --dry-run`, `make coverage-backend`
+- **contract:** `make client`, then `git diff --exit-code frontend/lib/api/`
+- **frontend:** Node from `.nvmrc`; `make web-install`, `make lint-web`, `make test-web`, `pnpm build`
+
+Actions are pinned by commit SHA (Dependabot updates them weekly); `permissions: contents: read`.
 
 **Required gates**:
 - `ruff check` + `ruff format --check`; ESLint + Prettier check

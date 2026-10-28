@@ -1,0 +1,147 @@
+# Every quality gate, on every push and pull request. Each job runs the same `make` targets as
+# local development, so CI and the developer machines can't drift apart.
+name: CI
+
+on:
+  push:
+    branches: ["**"] # every branch, but not tag pushes
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Newer pushes cancel outdated runs of the same branch, except on main: every merge to main
+# must finish, or that commit never shows whether it passed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Test-only configuration for config.env. No real secret appears anywhere in CI.
+env:
+  DJANGO_SECRET_KEY: ci-only-not-a-secret-0123456789abcdef0123456789abcdef
+  DJANGO_ALLOWED_HOSTS: 127.0.0.1,localhost
+  DJANGO_DB_ROLE: runtime
+  EP_DB_NAME: eventpulse24
+  DATABASE_URL_OWNER: postgresql://ep_owner:ep_owner_ci@127.0.0.1:5432/eventpulse24
+  DATABASE_URL_CATALOG: postgresql://ep_catalog:ep_catalog_ci@127.0.0.1:5432/eventpulse24
+  DATABASE_URL_PERSONAL: postgresql://ep_personal:ep_personal_ci@127.0.0.1:5432/eventpulse24
+  REDIS_URL: redis://127.0.0.1:6379/0
+  ADAPTER_MODE: fake
+  NEXT_TELEMETRY_DISABLED: "1"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+jobs:
+  backend:
+    name: Backend (lint, checks, tests + coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # Same images as docker-compose.yml.
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci
+          POSTGRES_DB: eventpulse24
+          EP_OWNER_PASSWORD: ep_owner_ci
+          EP_CATALOG_PASSWORD: ep_catalog_ci
+          EP_PERSONAL_PASSWORD: ep_personal_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d eventpulse24"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        run: uv sync --directory backend --locked
+      # Service containers can't mount docker/postgres/init/, so run the same init script
+      # inside the Postgres container (its env carries POSTGRES_* and EP_*_PASSWORD).
+      - name: Create schemas, roles and the test template
+        run: docker exec -i "${{ job.services.postgres.id }}" sh -s < docker/postgres/init/01-schemas-and-roles.sh
+      - name: Lint and import contracts
+        run: make lint-backend
+      - name: Django system checks
+        run: make manage ARGS=check
+      - name: No missing migrations
+        run: make manage ARGS="makemigrations --check --dry-run"
+        env:
+          DJANGO_DB_ROLE: owner
+      - name: Tests with coverage (>=80% overall, 100% domain/)
+        run: make coverage-backend
+
+  contract:
+    name: API contract (AD-19)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pnpm (corepack, version from package.json)
+        run: corepack enable pnpm
+      - name: Find the pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm --dir frontend store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - name: Install dependencies
+        run: |
+          uv sync --directory backend --locked
+          make web-install
+      - name: Regenerate the schema and client
+        run: make client
+      - name: Committed contract matches the API
+        run: |
+          if ! git diff --exit-code -- frontend/lib/api/; then
+            echo "::error::frontend/lib/api/ is out of date with the API. Run 'make client' and commit it."
+            exit 1
+          fi
+
+  frontend:
+    name: Frontend (lint, typecheck, tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pnpm (corepack, version from package.json)
+        run: corepack enable pnpm
+      - name: Find the pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm --dir frontend store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - name: Install dependencies
+        run: make web-install
+      - name: Lint, typecheck and format check
+        run: make lint-web
+      - name: Tests
+        run: make test-web
+      - name: Production build
+        run: pnpm --dir frontend build

@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "import-linter==2.15",
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
     "pytest-django==4.14.0",
     "ruff==0.17.3",
 ]
@@ -202,3 +203,13 @@ allow_indirect_imports = true
 DJANGO_SETTINGS_MODULE = "config.settings_test"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+# Coverage of the application code only (not the tests). `make coverage-backend` and CI apply
+# two gates: this overall floor, then 100% for domain/ (testing-standards).
+[tool.coverage.run]
+source = ["domain", "apps", "ports", "adapters", "config", "worker", "shared"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true

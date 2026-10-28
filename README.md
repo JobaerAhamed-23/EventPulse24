@@ -27,7 +27,7 @@ Already set up before? Run `make db-init && make migrate` to bring an existing d
 
 Run `make` to list all commands. The Mailpit inbox is at <http://127.0.0.1:8025>; `make send-test-email` puts a message there. With `ADAPTER_MODE=fake` (the default) the AI, embeddings, billing and calendar run on local stand-ins, so no API keys are needed.
 
-Before pushing, run `make test-backend && make lint-backend && make test-web && make lint-web`. `lint-backend` covers Ruff, the format check and the architecture's import contracts (`make lint-imports` runs only the contracts).
+Before pushing, run `make coverage-backend && make lint-backend && make test-web && make lint-web`. **CI (`.github/workflows/ci.yml`) runs these same targets** on every push and pull request, plus the contract check (`make client` must leave `frontend/lib/api/` unchanged) and a frontend production build. `lint-backend` covers Ruff, the format check and the architecture's import contracts (`make lint-imports` runs only the contracts).
 
 ## Repository layout
 

@@ -159,6 +159,7 @@ make web               # run the Next.js frontend on http://127.0.0.1:3000
 make test-web          # frontend tests (Vitest)
 make lint-web          # ESLint + typecheck + Prettier check
 make test-backend
+make coverage-backend # tests + coverage gates (>=80% overall, 100% domain/), as CI runs them
 make lint-backend   # ruff + format check + import contracts (make lint-imports runs only the contracts)
 ```
 
