@@ -154,11 +154,13 @@ intents:
         run_id: run-eventpulse24-015
         completed_at: 2026-10-28T12:28:01.669Z
       - id: ingestion-scheduling
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - ingest-pipeline-and-lifecycle
+        run_id: run-eventpulse24-016
+        completed_at: 2026-10-28T12:43:25.919Z
       - id: public-catalog-read-api
         status: pending
         complexity: medium
@@ -296,3 +298,11 @@ runs:
           mode: validate
       started: 2026-10-28T12:00:14.861Z
       completed: 2026-10-28T12:28:01.669Z
+    - id: run-eventpulse24-016
+      scope: single
+      work_items:
+        - id: ingestion-scheduling
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T12:32:06.978Z
+      completed: 2026-10-28T12:43:25.919Z

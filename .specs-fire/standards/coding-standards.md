@@ -133,6 +133,11 @@ frontend/
   - The pipeline never creates a `Venue`. Registry matches only, and without a country, only a single match counts.
   - **Enqueue jobs from an app by task name** through `outbox._send` (`celery.current_app.send_task`), inside `transaction.on_commit(using=CATALOG)`. Apps never import `worker`. Tests replace `_send` (autouse `sent_jobs` fixture).
   - The placeholder propagation consumer leaves `propagated_at` NULL; only a real consumer calls `mark_propagated`.
+- **Scheduling** (AD-7; `apps/ingestion/services/scheduling.py`, `worker/tasks.py`):
+  - `beat_schedule` is one 60 s tick. **`tick()` never touches the database** and only enqueues: `schedule_sources` every tick, and `reconcile_outbox` when the UTC minute is a multiple of 5. `tests/worker/test_tick.py` runs it with no database access.
+  - Due-ness is keyed on the **last attempt** (`last_attempted_at + cadence <= now`, or never attempted), so a failing source retries at its cadence, not every tick. Staleness is keyed on the **last success** (2x cadence, inclusive).
+  - A source is claimed (`ingest_claimed_at`, `FOR UPDATE SKIP LOCKED`) before its job is enqueued. The job releases the claim in `finally`, a failed enqueue releases it at once, and a claim older than `INGEST_CLAIM_TTL` counts as lost.
+  - Worker tasks enqueue through `worker.tasks._enqueue`. `tests/worker/conftest.py` replaces it with a recorder (`enqueued`), so no test publishes to Redis. Commands take an explicit `now`; tasks read it from `worker.tasks._now`.
 - **Source Registry** (FR-13, FR-17): Sources, ToS reviews and Venues change only through `apps.ingestion.services.source_registry` (`register_source`, `update_source`, `pause_source`, `resume_source`, `record_tos_review`) and `venue_registry` (`register_venue`, `set_venue_timezone`).
   - `Source.tos_status` caches the latest review of the **current** method since that method was set. A method change, or a URL host change, resets it to `not_reviewed` in the same transaction.
   - Crawl needs an approved review passed **in the same command** that registers the source, switches it to crawl, or moves a crawl source to a new host. Otherwise `CrawlNeedsTosReviewError` is raised and nothing is written.

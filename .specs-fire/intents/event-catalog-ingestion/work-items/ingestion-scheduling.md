@@ -4,9 +4,12 @@ title: Ingestion Scheduling & Freshness
 intent: event-catalog-ingestion
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [ingest-pipeline-and-lifecycle]
+status: completed
+depends_on:
+  - ingest-pipeline-and-lifecycle
 created: 2026-10-28
+run_id: run-eventpulse24-016
+completed_at: 2026-10-28T12:43:25.919Z
 ---
 
 # Work Item: Ingestion Scheduling & Freshness

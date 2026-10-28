@@ -98,6 +98,9 @@ class Source(UUIDv7Model):
     consecutive_failures = models.PositiveIntegerField(default=0)
     last_error_code = models.CharField(max_length=64, blank=True)
     stale_since = models.DateTimeField(null=True, blank=True)
+    # Set when the scheduler enqueues a run, cleared when the run's job ends: a claimed source is
+    # never enqueued twice. A claim older than INGEST_CLAIM_TTL is a lost job.
+    ingest_claimed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -105,6 +108,14 @@ class Source(UUIDv7Model):
         constraints = [
             models.CheckConstraint(
                 condition=Q(ingestion_cadence__gt=timedelta(0)), name="source_cadence_positive_ck"
+            ),
+        ]
+        indexes = [
+            # Due selection scans active sources by last attempt (scheduling.claim_due_sources).
+            models.Index(
+                fields=["last_attempted_at"],
+                condition=Q(status="active"),
+                name="source_due_idx",
             ),
         ]
 

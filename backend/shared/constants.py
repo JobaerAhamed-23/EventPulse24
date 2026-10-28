@@ -51,11 +51,18 @@ DEFAULT_INGESTION_CADENCE = {
 }
 # No source is polled more often than this (respect the feeds).
 INGESTION_CADENCE_MIN = timedelta(minutes=15)
+# AD-7 scheduling: at most this many sources claimed per tick; a claim older than the TTL is a
+# lost job (a worker died) and the source becomes claimable again.
+SCHEDULE_BATCH = 100
+INGEST_CLAIM_TTL = timedelta(hours=1)
+# FR-13: a source with no successful ingestion within this many cadences is flagged stale.
+STALE_AFTER_CADENCES = 2
 
 # AD-17: the reconciler re-enqueues state changes unpropagated for longer than this, oldest
 # first, at most this many per run.
 OUTBOX_RECONCILE_AFTER = timedelta(minutes=5)
 OUTBOX_RECONCILE_BATCH = 500
+OUTBOX_RECONCILE_EVERY_MINUTES = 5  # the tick enqueues the reconciler when minute % 5 == 0
 
 # AD-4: namespace for deterministic series ids (`shared.ids.series_id`). Never change it: every
 # existing series would silently split.
