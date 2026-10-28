@@ -1,0 +1,159 @@
+project:
+  name: EventPulse24
+  fire_version: 0.1.8
+  initialized: 2026-10-27
+workspace:
+  type: greenfield
+  structure: monolith
+  autonomy_bias: balanced
+  run_scope_preference: null
+  planning_sources:
+    prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/
+    ux: _bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/
+    architecture: _bmad-output/planning-artifacts/architecture/architecture-EventPulse24-2026-09-04/ARCHITECTURE-SPINE.md
+    traceability: _bmad-output/planning-artifacts/traceability/TRACEABILITY.md
+intents:
+  - id: project-scaffold
+    title: Project Scaffold & Architecture Enforcement
+    status: in_progress
+    created: 2026-10-27
+    work_items:
+      - id: local-infra-and-setup-docs
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-001
+        completed_at: 2026-10-27T09:05:49.710Z
+      - id: backend-skeleton
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - local-infra-and-setup-docs
+        run_id: run-eventpulse24-002
+        completed_at: 2026-10-27T09:25:25.272Z
+      - id: schema-router-spike
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - backend-skeleton
+        run_id: run-eventpulse24-003
+        completed_at: 2026-10-27T11:20:13.522Z
+      - id: shared-foundations
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - backend-skeleton
+        run_id: run-eventpulse24-004
+        completed_at: 2026-10-27T12:51:07.174Z
+      - id: architecture-contracts
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - backend-skeleton
+        run_id: run-eventpulse24-005
+        completed_at: 2026-10-27T13:19:01.689Z
+      - id: ports-fakes-and-worker
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - shared-foundations
+        run_id: run-eventpulse24-006
+        completed_at: 2026-10-27T15:11:25.178Z
+      - id: frontend-skeleton
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-007
+        completed_at: 2026-10-27T15:49:42.702Z
+      - id: health-round-trip
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - schema-router-spike
+          - shared-foundations
+          - ports-fakes-and-worker
+          - frontend-skeleton
+        run_id: run-eventpulse24-008
+        completed_at: 2026-10-27T16:19:54.732Z
+      - id: ci-pipeline
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - architecture-contracts
+          - health-round-trip
+runs:
+  active: []
+  completed:
+    - id: run-eventpulse24-001
+      scope: single
+      work_items:
+        - id: local-infra-and-setup-docs
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T08:10:35.562Z
+      completed: 2026-10-27T09:05:49.710Z
+    - id: run-eventpulse24-002
+      scope: single
+      work_items:
+        - id: backend-skeleton
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T09:10:04.371Z
+      completed: 2026-10-27T09:25:25.272Z
+    - id: run-eventpulse24-003
+      scope: single
+      work_items:
+        - id: schema-router-spike
+          intent: project-scaffold
+          mode: validate
+      started: 2026-10-27T09:53:49.997Z
+      completed: 2026-10-27T11:20:13.522Z
+    - id: run-eventpulse24-004
+      scope: single
+      work_items:
+        - id: shared-foundations
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T11:33:35.928Z
+      completed: 2026-10-27T12:51:07.174Z
+    - id: run-eventpulse24-005
+      scope: single
+      work_items:
+        - id: architecture-contracts
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T12:55:45.292Z
+      completed: 2026-10-27T13:19:01.689Z
+    - id: run-eventpulse24-006
+      scope: single
+      work_items:
+        - id: ports-fakes-and-worker
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T14:25:28.646Z
+      completed: 2026-10-27T15:11:25.178Z
+    - id: run-eventpulse24-007
+      scope: single
+      work_items:
+        - id: frontend-skeleton
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T15:14:11.935Z
+      completed: 2026-10-27T15:49:42.702Z
+    - id: run-eventpulse24-008
+      scope: single
+      work_items:
+        - id: health-round-trip
+          intent: project-scaffold
+          mode: confirm
+      started: 2026-10-27T15:52:52.213Z
+      completed: 2026-10-27T16:19:54.732Z

@@ -1,0 +1,30 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+# Celery beat's schedule file and pidfile (make beat)
+backend/.celery/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.pnpm-store/
+
+# OS / editors
+.DS_Store
+*.swp
+
+# FIRE tooling dependencies
+.specsmd/fire/node_modules/

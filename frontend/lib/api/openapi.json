@@ -1,0 +1,152 @@
+{
+  "components": {
+    "schemas": {
+      "ComponentOut": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "unreachable",
+                  "wrong_schema"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "down"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ComponentOut",
+        "type": "object"
+      },
+      "ComponentsOut": {
+        "properties": {
+          "catalog": {
+            "$ref": "#/components/schemas/ComponentOut"
+          },
+          "personal": {
+            "$ref": "#/components/schemas/ComponentOut"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/ComponentOut"
+          }
+        },
+        "required": [
+          "personal",
+          "catalog",
+          "redis"
+        ],
+        "title": "ComponentsOut",
+        "type": "object"
+      },
+      "HealthDetails": {
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/ComponentsOut"
+          }
+        },
+        "required": [
+          "components"
+        ],
+        "title": "HealthDetails",
+        "type": "object"
+      },
+      "HealthOut": {
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/ComponentsOut"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "components"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "HealthUnavailableOut": {
+        "description": "The shared error shape, with the per-component details typed for the client.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/HealthDetails"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "title": "HealthUnavailableOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "title": "EventPulse24 API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "config_health_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthUnavailableOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "servers": []
+}

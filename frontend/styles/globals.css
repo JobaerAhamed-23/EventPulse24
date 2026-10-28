@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+html,
+body {
+  margin: 0;
+  background: var(--color-surface-paper);
+  color: var(--color-ink-primary);
+}
+
+body {
+  font: var(--type-scale-body-md);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* DESIGN.md: the sidenav shell (and any link list) needs the link reset, or browser
+   underlines bleed through on every label. */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Focus ring: the fourth sanctioned terracotta use. Solid stroke, never a glow. */
+:focus-visible {
+  outline: var(--stroke-focus);
+  outline-offset: 2px;
+}
+
+/* motion.fadeIn: the only transition in the product. @starting-style fades an element in
+   when it first renders, without JavaScript. */
+.fade-in {
+  transition: var(--motion-fade-in);
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in {
+    transition: none;
+  }
+}
