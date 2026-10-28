@@ -93,6 +93,71 @@ intents:
           - health-round-trip
         run_id: run-eventpulse24-009
         completed_at: 2026-10-28T04:32:34.607Z
+  - id: event-catalog-ingestion
+    title: Event Catalog & Structured Ingestion
+    status: in_progress
+    created: 2026-10-28
+    work_items:
+      - id: catalog-data-model
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+        design_doc: catalog-data-model-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-10-28T06:53:33Z
+      - id: event-identity-and-tz-domain
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: source-fetch-port
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: structured-parsers
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - event-identity-and-tz-domain
+      - id: source-registry-commands-admin
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - catalog-data-model
+      - id: ingest-pipeline-and-lifecycle
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - catalog-data-model
+          - event-identity-and-tz-domain
+          - source-fetch-port
+          - structured-parsers
+          - source-registry-commands-admin
+      - id: ingestion-scheduling
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - ingest-pipeline-and-lifecycle
+      - id: public-catalog-read-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - catalog-data-model
+      - id: real-feeds-and-e2e-proof
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - source-registry-commands-admin
+          - ingestion-scheduling
+          - public-catalog-read-api
 runs:
   active: []
   completed:
