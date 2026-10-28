@@ -65,6 +65,11 @@ The core `ingest_source` command. It fetches a source, parses it, resolves timez
   - Map each `FetchError.code` onto the source's `last_error_code` and `consecutive_failures`, and record a success as `last_ingested_at`. A 304 counts as a success with no change.
   - Treat `fetch_blocked` with reason `cross_host_redirect` as "the source moved": flag it for re-registration, which re-triggers the FR-17 ToS review. Never follow it automatically.
   - Test every error path with the fake adapter's `simulate` entries.
+- [ ] **Parsing** (handed on from run-eventpulse24-013):
+  - Call `apps.ingestion.parsers.parse(source.acquisition_method, result.body, SourceContext(source.id, fetch_result.final_url))`. The final URL is the base for relative links.
+  - Record `ParseResult.error` as a parse failure on the source, and the `skipped` counts in the run's audit entry.
+  - Pass each candidate's `start`, `start_zone` and `end` to `domain.timezones.resolve_tz` with the venue tz. The parsers never compute UTC.
+  - Store `raw` and `start_raw` in `ExtractedRecord.payload`.
 
 ## Technical Notes
 

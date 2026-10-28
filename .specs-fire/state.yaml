@@ -123,11 +123,13 @@ intents:
         run_id: run-eventpulse24-012
         completed_at: 2026-10-28T10:07:28.726Z
       - id: structured-parsers
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - event-identity-and-tz-domain
+        run_id: run-eventpulse24-013
+        completed_at: 2026-10-28T10:41:48.650Z
       - id: source-registry-commands-admin
         status: pending
         complexity: medium
@@ -263,3 +265,11 @@ runs:
           mode: confirm
       started: 2026-10-28T09:17:01.732Z
       completed: 2026-10-28T10:07:28.726Z
+    - id: run-eventpulse24-013
+      scope: single
+      work_items:
+        - id: structured-parsers
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T10:14:25.622Z
+      completed: 2026-10-28T10:41:48.650Z

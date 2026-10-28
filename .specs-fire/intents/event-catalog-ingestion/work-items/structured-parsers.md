@@ -4,9 +4,12 @@ title: Structured Source Parsers (JSON-LD, RSS, ICS)
 intent: event-catalog-ingestion
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [event-identity-and-tz-domain]
+status: completed
+depends_on:
+  - event-identity-and-tz-domain
 created: 2026-10-28
+run_id: run-eventpulse24-013
+completed_at: 2026-10-28T10:41:48.650Z
 ---
 
 # Work Item: Structured Source Parsers (JSON-LD, RSS, ICS)

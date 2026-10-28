@@ -123,6 +123,7 @@ frontend/
 - **Fingerprints are versioned** (`v1:`). Golden tests in `tests/domain/test_dedup.py` pin v1; a change to tokenization, folding or hashing is a new version plus a backfill, never an edit to v1.
 - **Confidence values** are two-decimal `Decimal`s, never floats (a float 0.7 is below the 0.70 gate). Gate them only with `domain.confidence` (`tz_gate`, `extraction_gate`, `combine_gates`: the strictest wins). Scores and caps live in `shared/constants.py`.
 - **Timezones**: store only names that pass `domain.timezones.canonical_zone()` (an IANA area zone, `Etc/GMT±N`, or `UTC`).
+- **Structured parsers** (`apps/ingestion/parsers/`) are pure: bytes plus a `SourceContext` in, a `ParseResult` out, never an exception. They hand times over **as written** (naive wall clock + the zone name, or aware with the source's offset) and never compute UTC, timezone tiers, fingerprints or identity; the pipeline calls `domain.timezones` and `domain.dedup` for that. Text fields go through `plain_text` and URLs through `http_url`. An RSS/Atom event time comes only from `ev:` or xCal fields, never `pubDate`.
 - **Outbound source fetches** go only through `ports.fetch.SourceFetchPort` (`ports.registry.get_fetch_port()`). Only `adapters.crawl` may import an HTTP client (import contract `http-client`). The HTTP adapter's address policy (`adapters/crawl/address_policy.py`) is our own deny table: never replace it with `ipaddress.is_global`. Catch `FetchError` subclasses by type and store their `code`; their `details` never contain a host, IP or URL.
 
 ## Import Order

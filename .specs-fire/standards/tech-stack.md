@@ -126,6 +126,8 @@ Not configured. To be decided at first scaffold.
 - `psycopg[binary]` (3.3.6): PostgreSQL driver
 - `dj-database-url` (3.1.2): parses `DATABASE_URL_*` into Django `DATABASES`
 - `httpx` 0.28.1 (+ `httpcore` 1.0.9): HTTP framing and redirects for `adapters.crawl.http` only (import contract `http-client`). Its connection pool is rebuilt around `GuardedBackend` through the private `HTTPTransport._pool`; a tripwire test fails on an httpx upgrade that breaks it. Its loggers are pinned to WARNING because they log URLs (run-eventpulse24-012)
+- `icalendar` 7.3.0 (+ `python-dateutil`): ICS parsing in `apps/ingestion/parsers/ics.py`. Its resolved timezones are used only to align a `DTEND` and key recurrence instances; the TZID as written goes to the candidate (run-eventpulse24-013)
+- `defusedxml` 0.7.1: every untrusted XML parse (RSS/Atom feeds); entity declarations and external entities are refused. Never parse source XML with the stdlib parser directly (run-eventpulse24-013)
 - `tzdata` 2026.5 (IANA 2026e): the only timezone database. `config.apps.ConfigConfig.ready()` calls `zoneinfo.reset_tzpath(to=())`, so dev, CI and production never read the OS database and always compute the same instants. Upgrading it is a reviewed change (run-eventpulse24-011)
 - `celery[redis]` (5.6.3): worker + beat (static `beat_schedule`, **no** `django-celery-beat`). Locally the worker runs `--pool solo`: the prefork pool breaks on macOS under Celery 5.6.3 (run-eventpulse24-006)
 - `redis` (6.4.0): broker client. kombu 5.6.2 caps it below 6.5, so "current" (8.x) isn't installable.
