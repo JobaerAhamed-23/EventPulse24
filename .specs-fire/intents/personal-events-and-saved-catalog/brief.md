@@ -1,8 +1,9 @@
 ---
 id: personal-events-and-saved-catalog
 title: Personal Events, Saved Catalog & Conflict Detection
-status: in_progress
+status: completed
 created: 2026-10-29
+completed_at: 2026-10-29T05:31:24.902Z
 ---
 
 # Intent: Personal Events, Saved Catalog & Conflict Detection
