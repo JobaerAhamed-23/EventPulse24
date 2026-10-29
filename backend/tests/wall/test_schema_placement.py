@@ -48,6 +48,11 @@ PERSONALIZATION_TABLES = {
     "personalization_personalizationauditentry",
 }
 
+DELIVERY_TABLES = {
+    "delivery_reminderplan",
+    "delivery_deliveryauditentry",
+}
+
 
 def test_catalog_schema_holds_only_catalog_tables():
     assert tables_in("catalog") == {"catalog_probe_thing", "django_migrations"} | INGESTION_TABLES
@@ -65,6 +70,16 @@ def test_personal_schema_holds_the_personalization_tables():
 
 def test_catalog_schema_holds_no_personalization_table():
     assert not tables_in("catalog") & PERSONALIZATION_TABLES
+
+
+def test_personal_schema_holds_the_delivery_tables():
+    # AD-16: `delivery` owns `REMINDER_PLAN`, and it lives in the personal schema with the
+    # rest of the user's data.
+    assert DELIVERY_TABLES <= tables_in("personal")
+
+
+def test_catalog_schema_holds_no_delivery_table():
+    assert not tables_in("catalog") & DELIVERY_TABLES
 
 
 def test_public_schema_has_no_tables():

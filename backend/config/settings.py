@@ -86,6 +86,15 @@ DATABASE_ROUTING = {
 
 AUTH_USER_MODEL = "identity.User"
 
+# Django's W045 warns that a CheckConstraint built on RawSQL() is not validated by
+# `Model.full_clean()`. The ReminderPlan's "at most 4 slots" bound needs `jsonb_array_length`,
+# because Django's JSONField has no length lookup at all: the generic `__len` lookup would
+# render `(slots -> 'len') <= '4'`, which reads a *key* named "len" and yields NULL for every
+# array — and a CHECK that evaluates to NULL passes, so the bound would never reject anything.
+# The database still enforces the constraint, which is where this project wants it; the
+# service validates the slot list too, so nothing relies on full_clean() for this rule.
+SILENCED_SYSTEM_CHECKS = ["models.W045"]
+
 # Project models use shared.models.UUIDv7Model; this only applies to Django's own models
 # (Group, Permission, LogEntry).
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -463,3 +463,189 @@ the build instead of quietly making a cross-schema join possible.
 
 The four auto-fixes were re-verified by the full suite (1795 passing) and the coverage gates
 (`domain/` 100%, `apps/personalization/models.py` 100%, overall 99.11%).
+
+---
+
+## Work Item: delivery-reminder-plan-owner
+
+### Summary
+
+| Category | Auto-Fixed | Applied | Skipped |
+|----------|------------|---------|---------|
+| Code Quality | 1 | 0 | 0 |
+| Security | 0 | 0 | 0 |
+| Architecture | 1 | 0 | 0 |
+| Testing | 1 | 0 | 0 |
+| **Total** | **3** | **0** | **0** |
+
+**Tests Status**: Passing — 1853/1853 backend, 0 failed, 0 skipped. `domain/` coverage 100%,
+`apps/delivery/services/` coverage 100%.
+
+### Files Reviewed
+
+- `backend/apps/delivery/models.py` (created) — `ReminderPlan` and `DeliveryAuditEntry`
+- `backend/apps/delivery/migrations/0001_initial.py` (created) — the schema, the append-only trigger, the grants
+- `backend/apps/delivery/services/reminder_plans.py` (created) — the published service
+- `backend/apps/delivery/services/audit.py` (created) — `write_audit`
+- `backend/shared/constants.py` (modified) — `CUSTOM_SLOT_PREFIX`, `REMINDER_PLAN_MAX_SLOTS`
+- `backend/config/settings.py` (modified) — `SILENCED_SYSTEM_CHECKS`
+- `backend/tests/delivery/factories.py` (created) — the two factories
+- `backend/tests/delivery/test_models.py` (created) — 8 tests
+- `backend/tests/delivery/test_reminder_plans.py` (created) — 24 tests
+- `backend/tests/delivery/test_ownership.py` (created) — 9 tests
+- `backend/tests/delivery/test_triggers_and_grants.py` (created) — 8 tests
+- `backend/tests/delivery/test_audit.py` (created) — 4 tests
+- `backend/tests/wall/test_schema_placement.py` (modified) — the delivery tables' placement
+
+### Auto-Fixed Issues
+
+#### 1. [Blocking, found in testing] The slot-count check constraint never rejected anything
+
+The first implementation used `models.Q(slots__len__lte=4)`. Django's `JSONField` has **no**
+`__len` lookup, so it resolved through the generic string-length lookup and rendered:
+
+```sql
+CHECK (((slots -> 'len'::text) <= '4'::jsonb))
+```
+
+That reads a **key** named `"len"` out of the JSON value. For an array like `["1d","1hr"]` it
+yields `NULL`, and a CHECK that evaluates to `NULL` **passes** — the bound would have accepted
+any number of slots, silently, forever. The constraint was green and the rule was absent.
+
+Fixed with `jsonb_array_length`, the function that actually means "the number of elements in
+this array". The `output_field=BooleanField()` is load-bearing: without it Django's
+`CheckConstraint` rejects the `Q` outright, and with the `RawSQL` nested in a `Q` the schema
+editor raises "Cannot filter against a non-conditional expression". The applied constraint is
+now `CHECK ((jsonb_array_length(slots) <= 4))`, verified against the live database, and
+`test_reminder_plan_rejects_a_fifth_slot` proves it rejects.
+
+#### 2. [Architecture] `target_kind` was an unvalidated string
+
+The service took `target_kind: str`. Django's `choices` are not enforced on save, so a caller
+could pass `"calendar_event"` and the row would be written with a kind nothing else
+understands — the plan would exist but could never be found again by a reader that filters on
+a valid kind.
+
+Fixed by making the kind a closed set at the command boundary: the commands now accept
+`ReminderPlan.TargetKind | str` and normalise through `_target_kind_value`, which raises
+`UnknownTargetKindError` for anything outside the two kinds. The enum member is the
+preferred form, exactly as `Event.Status` is used in
+`apps/ingestion/services/event_writes.py`. Three tests cover it.
+
+#### 3. [Code Quality] The offset lookup constructed an enum member from a possibly-custom slot
+
+`slot_offsets` called `ReminderSlot(slot)`. A custom slot is not a member of the enum, so
+the constructor raised `ValueError: 'custom:mine' is not a valid ReminderSlot` instead of
+returning "no offset". Fixed by looking the mapping up by the slot's own value: `ReminderSlot`
+is a `StrEnum`, so its members hash as their string values and
+`REMINDER_SLOT_OFFSET.get(slot)` finds the named tiers and finds nothing for a custom slot —
+which is the intended behaviour, since a custom slot's offset is the caller's to supply.
+
+### Findings Considered and Rejected
+
+- **A nullable FK per target type** (`personal_event_id`, `saved_event_id`). Rejected: it would
+  need two FKs to tables owned by another module — which `models-delivery` forbids `delivery`
+  from importing — plus `ON DELETE` semantics across both, and it could not express "exactly
+  one target". The `(target_kind, target_id)` pair needs no relation at all.
+- **A separate `REMINDER_PLAN_SLOT` table.** Rejected: four nullable columns or a child table
+  both add a second table and a join for a bounded list of at most four values. The list is
+  the value; a JSON array is the honest shape, and AD-7's send key wants the slot *value*.
+- **Fixed columns for the four named tiers plus one custom column.** Rejected: the custom
+  slot's id does not fit a column of a known length, and the plan's slot order would be lost.
+- **`SILENCED_SYSTEM_CHECKS` for `models.W045` being too broad.** Considered and accepted.
+  `W045` is one warning *class* about one technique, the technique is deliberate, and its only
+  use site carries a comment saying why. The alternative — leaving a warning in
+  `manage.py check` — is worse, and the project treats a clean check as a gate.
+- **The service writing an audit row on an idempotent re-attach.** Considered and kept: the
+  audit row records the `created` flag, so a reader can tell a first attach from a repeat,
+  and an audit log that skipped no-op calls would under-record what the user asked for.
+
+### Security
+
+- **The audit table is append-only in the database.** `personal.forbid_delivery_history_mutation`
+  raises `restrict_violation` on any `UPDATE` or `DELETE`, and the migration additionally
+  revokes `UPDATE`/`DELETE` from `ep_personal`. The runtime role's privileges were verified
+  against the live database: `UPDATE` false, `DELETE` false, `INSERT` true.
+- **The migration asserts its own grants applied.** The `GRANTS` block ends with a
+  `has_table_privilege` check that raises if `ep_personal` still holds `UPDATE` or `DELETE`.
+  `test_migration_privilege_assertion_fails_when_revoke_missing` imports the migration module
+  and proves the assertion raises when the revoke is absent — a migration that silently
+  failed to revoke would fail loudly at apply time rather than at first use.
+- **The trigger lives in `personal`, not `catalog`.** `ep_personal` has no `USAGE` on
+  `catalog`, so a trigger function living there would fail to resolve at the moment it fires
+  — for *every* write, not just a forbidden one. The copy in `personal` is simpler too: the
+  audit table has no settable column, so it needs no `TG_ARGV[0]` branch.
+- **No user input reaches an interpreter.** The slot list is a bounded set of known strings;
+  an unknown slot is rejected with a `ValidationError` before it reaches the database.
+- **A custom slot's id is validated by prefix.** A slot that is neither a named tier nor
+  prefixed with `custom:` is rejected, so a slot can never be confused with a named tier in
+  AD-7's send key.
+
+### Architecture
+
+- **AD-16 (write ownership) is enforced, not merely intended.** The `models-delivery` import
+  contract holds (13 kept, 0 broken), and `test_ownership.py` reads the import graph directly:
+  no module outside `apps/delivery` imports `apps.delivery.models`. The test walks the AST of
+  every Python file under `apps/`, so a future "helpful" direct import breaks the build rather
+  than quietly making a cross-module write possible.
+- **The service hands over plain data.** `PlanSlots` is a frozen dataclass, not a model
+  instance, so a caller never holds a reference to `apps.delivery.models`.
+  `test_the_service_does_not_leak_the_model_to_its_callers` pins it.
+- **AD-3 (the wall) holds.** The plan references the personal-side record by value; both
+  target kinds live in `personal`, and `catalog` holds none of the delivery tables.
+  `test_no_foreign_key_crosses_from_personal_to_catalog` still passes.
+- **AD-15 (retention).** The plan declares `ACCOUNT_CONTENT`; `manage.py check` passes with
+  `eventpulse.E003`/`E004` armed.
+- **AD-7 (relative offsets).** The plan holds relative offsets only, never absolute times, so
+  a postponement re-propagated by AD-17 moves the computed due times without touching the
+  plan.
+- **AD-5 (audit).** Every command writes an audit row in the same transaction as its
+  mutation, and `write_audit` refuses to run outside a personal transaction.
+
+### Project Tooling Used
+
+- **ruff**: `backend/pyproject.toml` (`ruff check`, `ruff format --check`)
+- **import-linter**: `backend/pyproject.toml` (`make lint-imports`)
+- **pytest / pytest-django**: `backend/pyproject.toml` (full suite + coverage gates)
+- **Django system checks**: `python manage.py check`, `makemigrations --check --dry-run`
+- **Vitest**: `frontend/package.json` (regression check — no frontend source touched)
+
+### Standards Referenced
+
+- `.specs-fire/standards/coding-standards.md`
+- `.specs-fire/standards/testing-standards.md`
+- `.specs-fire/standards/constitution.md`
+- `.specs-fire/standards/tech-stack.md`
+- `.specs-fire/standards/system-architecture.md`
+
+### Verification Performed
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Backend suite | `cd backend && uv run pytest -q -p no:randomly` | 1853 passed, 0 failed, 0 skipped |
+| Backend coverage | `cd backend && uv run pytest -q --cov --cov-report=term` | 99.14% total; `domain/` 100%; `apps/delivery/services/` 100%; 80% gate met |
+| Frontend suite | `cd frontend && pnpm vitest run` | 51 passed / 9 files |
+| Python lint | `cd backend && uv run ruff check` | All checks passed |
+| Format | `cd backend && uv run ruff format --check` | 265 files already formatted |
+| Import contracts | `make lint-imports` | 13 kept, 0 broken |
+| Django checks | `uv run python manage.py check` | no issues (1 silenced: `models.W045`) |
+| Migrations in sync | `uv run python manage.py makemigrations --check --dry-run` | No changes detected |
+| Migration reverse | `DJANGO_DB_ROLE=owner ... migrate delivery --database=default zero` | applied cleanly, then re-applied with `make migrate` |
+| Applied constraints | `pg_get_constraintdef` on `personal.delivery_reminderplan` | `CHECK ((jsonb_array_length(slots) <= 4))` |
+| Runtime role grants | `has_table_privilege('ep_personal', ...)` | UPDATE false, DELETE false, INSERT true |
+
+### Verdict
+
+**Approved.** The plan holds the invariants the database can hold, the ownership boundary is
+enforced by a contract and proven by a test that reads the import graph, and the offset
+arithmetic has exactly one source.
+
+One thing the review changed the shape of: the slot-count bound. The first implementation
+produced a check constraint that looked right in the model and was green in every test run,
+and would nevertheless have accepted a plan with any number of slots. It is worth naming
+plainly: a constraint that never fires is worse than no constraint, because it reads as
+protection. The live-database check (`pg_get_constraintdef`) is now part of this item's
+verification, so the rule is proved where it is enforced rather than where it is declared.
+
+The three auto-fixes were re-verified by the full suite (1853 passing) and the coverage gates
+(`domain/` 100%, `apps/delivery/services/` 100%, overall 99.14%).

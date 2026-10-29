@@ -4,8 +4,11 @@ title: Personalization Write Services
 intent: personal-events-and-saved-catalog
 complexity: high
 mode: validate
-status: pending
-depends_on: [conflict-domain-and-constants, personalization-models, delivery-reminder-plan-owner]
+status: in_progress
+depends_on:
+  - conflict-domain-and-constants
+  - personalization-models
+  - delivery-reminder-plan-owner
 created: 2026-10-29
 ---
 

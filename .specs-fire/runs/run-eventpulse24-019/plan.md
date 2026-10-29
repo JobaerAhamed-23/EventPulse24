@@ -363,3 +363,136 @@ item ⑤, which is the only writer of these tables.
 ### Based on Design Doc
 
 Reference: `.specs-fire/intents/personal-events-and-saved-catalog/work-items/personalization-models-design.md`
+
+---
+
+## Work Item: delivery-reminder-plan-owner
+
+**Mode**: confirm | **Complexity**: medium
+**Design doc**: not required (medium complexity — a plan section in this file is the design).
+
+### Approach
+
+AD-16 gives `REMINDER_PLAN` exactly one owner: `delivery`. `personalization` never writes the
+table; it calls `delivery`'s published service. This item builds that minimum:
+
+1. The `REMINDER_PLAN` model in `apps/delivery/models.py`.
+2. A published service in `apps/delivery/services/reminder_plans.py` that `personalization`
+   calls to attach the default plan and to edit or empty it.
+3. The migration, the tests, and the retention declaration.
+
+It builds **nothing else**: no `SCHEDULED_SEND`, no Celery task, no beat entry, no email
+adapter, no quiet hours. Those are a later intent. The `import-linter` contract
+`models-delivery` is already declared and already enforced by the build, so the boundary is
+real rather than aspirational — this item just has to honour it.
+
+### The attachment mechanism (the one design decision that needs care)
+
+FR-9's picker applies to public events the user saved, and FR-20's default applies to a
+personal event. So one plan must attach to **both** a `PERSONAL_EVENT` and a `SAVED_EVENT`.
+A `SAVED_EVENT`'s catalog event lives in the `catalog` schema, and AD-3 forbids a FK across
+that wall.
+
+**Decision: the plan references the personal-side record it belongs to, by value.**
+
+- `target_kind` — `personal_event` | `saved_event`
+- `target_id` — the UUID of that personal-side row
+
+Both live in the `personal` schema and both are owned by `personalization`, so the plan
+holds a reference to a row in its own schema and crosses no wall. The catalog event's
+absolute time is not needed by the plan at all: slot offsets are **relative** offsets
+before the event start (`5d`, `2d`, `1d`, `1hr`), so the plan stays valid when the event is
+postponed and AD-17 re-propagates the snapshot.
+
+This mirrors `ConflictPair`, which already stores its two sides as a `(kind, id)` pair by
+value for exactly the same reason (OQ-8 forbids `GenericForeignKey`).
+
+**Alternative rejected**: a nullable FK column per target type (`personal_event_id`,
+`saved_event_id`). It would need two FKs to two tables owned by another module — which the
+`models-personalization` contract forbids `delivery` from importing — plus `ON DELETE`
+semantics across both, and it could not express "exactly one target". The `(kind, id)` pair
+needs no relation at all.
+
+### Key design decisions
+
+| # | Decision | Why |
+|---|----------|-----|
+| 1 | `REMINDER_PLAN` lives in `apps/delivery/models.py` | AD-16: `delivery` owns it, and `models-delivery` already protects it. |
+| 2 | The target is a `(target_kind, target_id)` pair held by value | Attaches to both a personal event and a saved event with no cross-schema FK and no relation to a module `delivery` does not own. |
+| 3 | `target_kind` is a `TextChoices` of `personal_event` / `saved_event` | A UUID alone cannot say what it points at — the same reasoning as `ConflictPair.SideKind`. |
+| 4 | `user_id` is a UUID column, not a FK | OQ-8: no model relates to `User`. The user is stored by value. |
+| 5 | The slots are a JSON list of slot values, ≤4 entries | The PRD allows "up to 4 slots chosen from 5d/2d/1d/1hr plus one custom slot". A fixed column per slot would not allow a custom slot id, and AD-7's send key says the slot is "the custom slot's **id**" — so a slot is a value, not an offset. |
+| 6 | The slot values come from `shared.constants.ReminderSlot` | The enum already exists. AD-16: "never two literals that can drift apart." A custom slot is a value outside the enum, stored as a string id. |
+| 7 | `REMINDER_SLOT_OFFSET` is the only source of slot → offset arithmetic | It already exists; the service uses it and never computes an offset itself. |
+| 8 | `DEFAULT_REMINDER_PLAN` is the only source of the default | AD-16's contested rule: one named constant, used by both FR-9 and FR-20. |
+| 9 | An empty slot list is legal | FR-9: "0 slots = no reminders (still in feed)"; FR-20: "The user can remove all reminders." |
+| 10 | The model has no slot for Pulse Ping | The PRD Glossary: "Pulse Ping is NOT part of any Reminder Plan." Nothing in the model can express it. |
+| 11 | Unique on `(user_id, target_kind, target_id)` | One plan per event. Re-attaching is an update, not a second row. |
+| 12 | `retention_category = ACCOUNT_CONTENT` | It is user-derived content tied to the account. |
+| 13 | The service takes the actor and writes an audit row in the same transaction | AD-5: every mutation is a named command with an audit-log write in the same transaction. |
+| 14 | `delivery` gets its own audit table | AD-16: each owning app has its own concrete audit table, so the app is its only writer. |
+
+### Files to create
+
+| File | Purpose |
+|------|---------|
+| `backend/apps/delivery/models.py` | `ReminderPlan` (and `DeliveryAuditEntry`). |
+| `backend/apps/delivery/migrations/0001_initial.py` | The schema. |
+| `backend/apps/delivery/services/reminder_plans.py` | The published service: attach the default, set slots, remove all. |
+| `backend/apps/delivery/services/audit.py` | `write_audit`, mirroring `apps/ingestion/services/audit.py`. |
+| `backend/tests/delivery/factories.py` | `ReminderPlanFactory`. |
+| `backend/tests/delivery/test_models.py` | The model's constraints and structure. |
+| `backend/tests/delivery/test_reminder_plans.py` | The service's behaviour. |
+| `backend/tests/delivery/test_ownership.py` | The AD-16 boundary: `personalization` cannot write the table. |
+
+### Files to modify
+
+| File | Change |
+|------|--------|
+| `backend/tests/wall/test_schema_placement.py` | Assert the `delivery` tables live in `personal` and that no FK crosses to `catalog`. |
+| `.specs-fire/runs/run-eventpulse24-019/test-report.md` | The item's results. |
+
+### Tests
+
+| Test | What it pins |
+|------|--------------|
+| `test_default_plan_is_exactly_one_day_and_one_hour` | `DEFAULT_REMINDER_PLAN` is `(1d, 1hr)` and the attached plan says so. |
+| `test_attaching_the_default_plan_creates_the_plan` | The service writes the plan with the default slots. |
+| `test_attaching_the_default_plan_to_a_saved_event` | The same service attaches to a `SAVED_EVENT`, by value — no catalog FK. |
+| `test_removing_all_reminders_leaves_an_empty_plan` | FR-9/FR-20: an empty plan is valid, not an error. |
+| `test_setting_slots_replaces_the_previous_slots` | FR-9: the user can edit a saved plan. |
+| `test_the_plan_rejects_a_fifth_slot` | The PRD's "up to 4" bound. |
+| `test_the_plan_rejects_an_unknown_target_kind` | The kind is a closed set. |
+| `test_the_plan_rejects_a_second_plan_for_the_same_event` | One plan per event. |
+| `test_the_service_writes_an_audit_row` | AD-5. |
+| `test_personalization_cannot_import_the_delivery_models` | The AD-16 boundary, asserted structurally. |
+| `test_the_service_is_importable_by_personalization_without_the_models` | The published interface is reachable. |
+| `test_no_delivery_table_has_a_foreign_key_to_catalog` | AD-3. |
+
+### Technical details
+
+- **Schema**: `delivery` is already in `DATABASE_ROUTING[PERSONAL]`, so the tables land in
+  `personal` with no routing change.
+- **Audit**: `DeliveryAuditEntry` extends the shared `AuditEntry`, so it inherits the
+  append-only trigger machinery from item ③'s migration pattern: the `forbid_history_mutation`
+  trigger plus the `REVOKE UPDATE, DELETE` grant from `ep_personal`.
+- **Service shape**: plain data in and out, `now` passed explicitly rather than read from the
+  clock, no `request` object — the `apps/ingestion/services/` convention.
+- **Offset arithmetic**: the service exposes `slot_offsets(plan)` built from
+  `REMINDER_SLOT_OFFSET`, so the only place that maps a slot to an offset is `shared/`.
+
+### Gates to run before the item closes.
+
+```bash
+cd backend && uv run python manage.py makemigrations delivery --check
+cd backend && uv run python manage.py check
+cd backend && uv run pytest -q --no-header -p no:randomly
+cd backend && uv run ruff check && uv run ruff format --check
+make lint-imports
+cd frontend && pnpm vitest run
+```
+
+**What this item must not do.** It writes no `SCHEDULED_SEND`, no Celery task, no beat entry,
+no email adapter, no quiet-hours logic, and no API surface. It does not implement the
+per-event picker UI. It does not wire the plan into AD-7's send key — that belongs with
+`SCHEDULED_SEND`, which this item deliberately does not create.

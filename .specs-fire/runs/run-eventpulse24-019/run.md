@@ -26,17 +26,17 @@ work_items:
   - id: delivery-reminder-plan-owner
     intent: personal-events-and-saved-catalog
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: personalization-write-services
     intent: personal-events-and-saved-catalog
     mode: validate
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: personal-events-api
     intent: personal-events-and-saved-catalog
     mode: confirm
@@ -65,7 +65,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: delivery-reminder-plan-owner
+current_item: personalization-write-services
 status: in_progress
 started: 2026-10-29T02:04:32.027Z
 completed: null
@@ -80,8 +80,8 @@ wide (9 work items)
 1. **repo-hygiene-cleanup** (autopilot) — completed
 2. **conflict-domain-and-constants** (confirm) — completed
 3. **personalization-models** (validate) — completed
-4. **delivery-reminder-plan-owner** (confirm) — in_progress
-5. **personalization-write-services** (validate) — pending
+4. **delivery-reminder-plan-owner** (confirm) — completed
+5. **personalization-write-services** (validate) — in_progress
 6. **personal-events-api** (confirm) — pending
 7. **saved-events-api** (confirm) — pending
 8. **frontend-personal-and-conflict-surfaces** (confirm) — pending
@@ -89,7 +89,7 @@ wide (9 work items)
 
 
 ## Current Item
-delivery-reminder-plan-owner (confirm)
+personalization-write-services (validate)
 
 ## Files Created
 (none yet)

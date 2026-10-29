@@ -91,6 +91,15 @@ REMINDER_SLOT_OFFSET = {
 # AD-16: FR-9 and FR-20 share this one default; never a second literal.
 DEFAULT_REMINDER_PLAN = (ReminderSlot.ONE_DAY, ReminderSlot.ONE_HOUR)
 
+# FR-9 allows "one custom slot" alongside the four named tiers, and AD-7's send key names it
+# by its own id. A custom slot is therefore stored as a string id, and the prefix marks it as
+# one so it can never be mistaken for a named tier (`5d`, `2d`, `1d`, `1hr`).
+CUSTOM_SLOT_PREFIX = "custom:"
+
+# FR-9: at most this many slots in one plan (the four named tiers, or the named tiers plus
+# one custom slot).
+REMINDER_PLAN_MAX_SLOTS = 4
+
 # AD-21 / FR-33: two UTC intervals conflict when they overlap by strictly more than this.
 CONFLICT_MIN_OVERLAP = timedelta(minutes=15)
 
