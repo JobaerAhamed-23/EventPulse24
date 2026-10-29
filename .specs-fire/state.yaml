@@ -238,13 +238,15 @@ intents:
         run_id: run-eventpulse24-019
         completed_at: 2026-10-29T04:26:19.877Z
       - id: saved-events-api
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - personalization-write-services
+        run_id: run-eventpulse24-019
+        completed_at: 2026-10-29T04:52:05.374Z
       - id: frontend-personal-and-conflict-surfaces
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -313,17 +315,18 @@ runs:
         - id: saved-events-api
           intent: personal-events-and-saved-catalog
           mode: confirm
-          status: in_progress
+          status: completed
           current_phase: review
           checkpoint_state: approved
           current_checkpoint: plan
+          completed_at: 2026-10-29T04:52:05.374Z
         - id: frontend-personal-and-conflict-surfaces
           intent: personal-events-and-saved-catalog
           mode: confirm
-          status: pending
-          current_phase: null
+          status: in_progress
+          current_phase: plan
           checkpoint_state: none
-          current_checkpoint: null
+          current_checkpoint: plan
         - id: e2e-proof-and-contract-tests
           intent: personal-events-and-saved-catalog
           mode: confirm
@@ -331,7 +334,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: saved-events-api
+      current_item: frontend-personal-and-conflict-surfaces
       started: 2026-10-29T02:04:32.027Z
   completed:
     - id: run-eventpulse24-001
