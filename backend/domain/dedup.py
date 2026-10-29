@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import UUID
 
 from domain.timezones import to_instant
-from shared.constants import TITLE_JACCARD_MIN
+from shared.constants import TITLE_TOKEN_OVERLAP_MIN
 
 FINGERPRINT_VERSION = "v1"
 TITLE_FINGERPRINT_MAX = 512  # Event.title_fingerprint is varchar(512)
@@ -281,7 +281,7 @@ def match(candidate: Candidate, event: LiveEvent) -> Rule | None:
     if (
         candidate.venue_fingerprint
         and candidate.venue_fingerprint == event.venue_fingerprint
-        and jaccard(candidate.title_fingerprint, event.title_fingerprint) >= TITLE_JACCARD_MIN
+        and jaccard(candidate.title_fingerprint, event.title_fingerprint) >= TITLE_TOKEN_OVERLAP_MIN
     ):
         return Rule.VENUE_TIME_TITLE
     if candidate.canonical_url and candidate.canonical_url == event.canonical_url:

@@ -12,17 +12,17 @@ work_items:
   - id: conflict-domain-and-constants
     intent: personal-events-and-saved-catalog
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: personalization-models
     intent: personal-events-and-saved-catalog
     mode: validate
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: delivery-reminder-plan-owner
     intent: personal-events-and-saved-catalog
     mode: confirm
@@ -65,7 +65,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: conflict-domain-and-constants
+current_item: personalization-models
 status: in_progress
 started: 2026-10-29T02:04:32.027Z
 completed: null
@@ -78,8 +78,8 @@ wide (9 work items)
 
 ## Work Items
 1. **repo-hygiene-cleanup** (autopilot) — completed
-2. **conflict-domain-and-constants** (confirm) — in_progress
-3. **personalization-models** (validate) — pending
+2. **conflict-domain-and-constants** (confirm) — completed
+3. **personalization-models** (validate) — in_progress
 4. **delivery-reminder-plan-owner** (confirm) — pending
 5. **personalization-write-services** (validate) — pending
 6. **personal-events-api** (confirm) — pending
@@ -89,7 +89,7 @@ wide (9 work items)
 
 
 ## Current Item
-conflict-domain-and-constants (confirm)
+personalization-models (validate)
 
 ## Files Created
 (none yet)

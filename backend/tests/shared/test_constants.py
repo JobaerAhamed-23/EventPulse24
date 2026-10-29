@@ -14,13 +14,14 @@ from domain.confidence import Gate, tz_gate
 from shared.constants import (
     CONFLICT_MIN_OVERLAP,
     DEFAULT_REMINDER_PLAN,
+    DUPLICATE_START_WINDOW,
     EXTRACTION_CONFIDENCE_PUBLISH,
     EXTRACTION_CONFIDENCE_REJECT,
     POSTPONEMENT_WINDOW,
     REMINDER_SLOT_OFFSET,
     SEND_KEY_SEPARATOR,
     SERIES_ID_NAMESPACE,
-    TITLE_JACCARD_MIN,
+    TITLE_TOKEN_OVERLAP_MIN,
     TZ_CAP_DST_FOLD,
     TZ_CAP_DST_GAP,
     TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH,
@@ -65,6 +66,10 @@ def test_conflict_overlap_and_send_key_separator():
     assert SEND_KEY_SEPARATOR == ":"
 
 
+def test_duplicate_start_window_is_twenty_four_hours():
+    assert DUPLICATE_START_WINDOW == timedelta(hours=24)
+
+
 def test_constants_and_ids_import_without_django():
     code = (
         "import sys, shared.constants, shared.ids\n"
@@ -86,7 +91,7 @@ def test_constants_and_ids_import_without_django():
 
 
 def test_identity_thresholds_match_the_prd():
-    assert TITLE_JACCARD_MIN == Fraction(4, 5)
+    assert TITLE_TOKEN_OVERLAP_MIN == Fraction(4, 5)
     assert POSTPONEMENT_WINDOW == timedelta(days=30)
 
 

@@ -37,6 +37,13 @@ class InvalidTimezoneError(ValidationError):
     default_message = "That timezone isn't one we recognise."
 
 
+class InvalidIntervalError(ValidationError):
+    """An interval whose end precedes its start."""
+
+    code = "invalid_interval"
+    default_message = "That time range doesn't make sense."
+
+
 class PermissionDeniedError(DomainError):
     """For personal data the caller doesn't own, raise NotFoundError instead (no existence leak)."""
 

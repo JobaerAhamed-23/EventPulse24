@@ -4,8 +4,9 @@ title: Personalization Models (PersonalEvent, SavedEvent, ConflictPair)
 intent: personal-events-and-saved-catalog
 complexity: high
 mode: validate
-status: pending
-depends_on: [repo-hygiene-cleanup]
+status: in_progress
+depends_on:
+  - repo-hygiene-cleanup
 created: 2026-10-29
 ---
 
