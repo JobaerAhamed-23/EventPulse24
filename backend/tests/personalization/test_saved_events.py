@@ -13,6 +13,7 @@ from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, PersonalizationAuditEntry, SavedEvent
 from apps.personalization.services.saved_events import (
     SavedEventNotFoundError,
+    list_saved_events,
     save_event,
     unsave_event,
     update_saved_event_snapshot,
@@ -117,9 +118,9 @@ def test_a_save_that_races_a_postponement_reports_a_stale_snapshot(monkeypatch):
     reads = {"count": 0}
     real_read = saved_events.get_public_event
 
-    def read_then_postpone(*, event_id):
+    def read_then_postpone(*, event_id, now=None):
         reads["count"] += 1
-        found = real_read(event_id=event_id)
+        found = real_read(event_id=event_id, now=now)
         if reads["count"] == 1:
             # The first read (inside the transaction) stamps the snapshot at version 1.
             # The postponement lands right after it.
@@ -143,9 +144,9 @@ def test_a_stale_save_records_the_fact_in_the_audit_log(monkeypatch):
     reads = {"count": 0}
     real_read = saved_events.get_public_event
 
-    def read_then_postpone(*, event_id):
+    def read_then_postpone(*, event_id, now=None):
         reads["count"] += 1
-        found = real_read(event_id=event_id)
+        found = real_read(event_id=event_id, now=now)
         if reads["count"] == 1:
             Event.objects.using(CATALOG).filter(pk=event.id).update(event_version=2)
         return found
@@ -338,3 +339,61 @@ def test_the_snapshot_update_re_evaluates_the_conflicts():
 
     pair = ConflictPair.objects.get(pk=result.conflicts[0].pair_id)
     assert pair.status == ConflictPair.Status.CLEARED_BY_STATE_CHANGE
+
+
+# --- Listing ---------------------------------------------------------------------------------
+
+
+def _saved_row(*, user_id=USER, start_utc):
+    """A saved row written directly, so the list is tested without the save command."""
+    return SavedEvent.objects.using(PERSONAL).create(
+        user_id=user_id,
+        event_id=uuid7(),
+        start_utc=start_utc,
+        end_utc=start_utc + timedelta(hours=2),
+        event_version=1,
+    )
+
+
+def test_listing_returns_the_users_saves_soonest_first():
+    later = _saved_row(start_utc=START + timedelta(days=2))
+    sooner = _saved_row(start_utc=START)
+
+    listed = list_saved_events(user_id=USER)
+
+    assert [saved.id for saved in listed] == [sooner.id, later.id]
+
+
+def test_listing_is_scoped_to_the_user():
+    mine = _saved_row(user_id=USER, start_utc=START)
+    _saved_row(user_id=OTHER, start_utc=START)
+
+    listed = list_saved_events(user_id=USER)
+
+    assert [saved.id for saved in listed] == [mine.id]
+
+
+def test_listing_bounds_are_inclusive_and_apply_to_the_snapshot():
+    """The bound is applied to the value the list returns, so the two never disagree."""
+    before = _saved_row(start_utc=START)
+    inside = _saved_row(start_utc=START + timedelta(hours=1))
+    after = _saved_row(start_utc=START + timedelta(hours=2))
+
+    listed = list_saved_events(
+        user_id=USER,
+        starts_after=START + timedelta(hours=1),
+        starts_before=START + timedelta(hours=1),
+    )
+
+    assert [saved.id for saved in listed] == [inside.id]
+    assert before.id not in {saved.id for saved in listed}
+    assert after.id not in {saved.id for saved in listed}
+
+
+def test_listing_without_bounds_returns_every_save():
+    _saved_row(start_utc=START)
+    _saved_row(start_utc=START + timedelta(days=2))
+
+    listed = list_saved_events(user_id=USER)
+
+    assert len(listed) == 2

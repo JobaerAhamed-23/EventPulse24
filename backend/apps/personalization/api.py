@@ -26,6 +26,7 @@ from uuid import UUID
 from django.utils import timezone
 from ninja import Query, Router, Status
 
+from apps.ingestion.services.catalog_read import EventNotFoundError, get_public_event
 from apps.personalization.auth import current_user
 from apps.personalization.schemas import (
     ConflictOut,
@@ -36,6 +37,9 @@ from apps.personalization.schemas import (
     PersonalEventListQuery,
     PersonalEventOut,
     PersonalEventPatchIn,
+    SavedEventListOut,
+    SavedEventListQuery,
+    SavedEventOut,
     SchedulingConflictOut,
 )
 from apps.personalization.services.conflict_resolutions import resolve_conflict
@@ -47,6 +51,11 @@ from apps.personalization.services.personal_events import (
     get_personal_event,
     list_personal_events,
     update_personal_event,
+)
+from apps.personalization.services.saved_events import (
+    list_saved_events,
+    save_event,
+    unsave_event,
 )
 from domain.errors import SchedulingConflictError
 from shared.actor import Actor
@@ -225,6 +234,105 @@ def resolve_event_conflict(request, pair_id: UUID, body: ConflictResolutionIn):
         new_side_id=resolution.new_side_id,
         existing_side_id=resolution.existing_side_id,
     )
+
+
+@router.post(
+    "/saved-events/{catalog_event_id}",
+    response={200: SavedEventOut, 201: SavedEventOut, 409: SchedulingConflictOut},
+    summary="Save a public event",
+    description=(
+        "Saves a public catalog event onto the signed-in user's own calendar. The save is "
+        "idempotent: saving an event that is already saved returns the existing record. The "
+        "times in the response are the snapshot taken at save time; `stale` says whether the "
+        "catalog has moved past it, in which case re-propagation has been requested. If the "
+        "save clashes with a personal event, the response is 409 carrying the conflict and "
+        "the three actions."
+    ),
+)
+def save_public_event(request, catalog_event_id: UUID):
+    """Save a public catalog event for the signed-in user."""
+    result = save_event(
+        user_id=request.user.pk,
+        event_id=catalog_event_id,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    if result.conflicts:
+        # A conflicting save is a `ConflictFound` in the same shape as a conflicting create:
+        # the save row exists, the pair is active, and the flow is waiting for a choice.
+        raise SchedulingConflictError(
+            details={
+                "event_id": str(result.saved.id),
+                "conflicts": [
+                    ConflictOut.from_detected(conflict).model_dump(mode="json")
+                    for conflict in result.conflicts
+                ],
+            }
+        )
+    # The display fields come from the catalog; the times come from the snapshot. The read
+    # is not bounded by "not started yet": the save already succeeded, and the user's own
+    # calendar does not un-save an event because it began.
+    public = get_public_event(event_id=catalog_event_id)
+    body = SavedEventOut.from_snapshot(
+        result.saved,
+        public,
+        stale=result.stale,
+        current_version=result.current_version if result.stale else None,
+    )
+    # A first save is a creation (201); a repeat is the same record returned again (200).
+    return Status(201 if result.created else 200, body)
+
+
+@router.delete(
+    "/saved-events/{catalog_event_id}",
+    response={204: None, 404: ErrorOut},
+    summary="Unsave a public event",
+    description=(
+        "Removes one of the signed-in user's saves. The conflict pairs it took part in close "
+        "as `cleared_by_state_change` — the pair ended because a side went away, which is "
+        "not a user resolution."
+    ),
+)
+def unsave_public_event(request, catalog_event_id: UUID):
+    """Remove one of the user's own saves."""
+    unsave_event(
+        user_id=request.user.pk,
+        event_id=catalog_event_id,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return Status(204, None)
+
+
+@router.get(
+    "/saved-events",
+    response={200: SavedEventListOut},
+    summary="List the signed-in user's saved events",
+    description=(
+        "The user's own saved events, soonest first. The times are the snapshots — what the "
+        "user saw when they saved — and the titles and venues are the catalog's current "
+        "values. `omitted` counts the saves whose catalog event has since disappeared; they "
+        "are not listed, but they are not hidden either."
+    ),
+)
+def list_saved(request, filters: SavedEventListQuery = EVENT_LIST_QUERY):
+    """The signed-in user's saved events."""
+    items = []
+    omitted = 0
+    for saved in list_saved_events(
+        user_id=request.user.pk,
+        starts_after=filters.starts_after,
+        starts_before=filters.starts_before,
+    ):
+        try:
+            public = get_public_event(event_id=saved.event_id)
+        except EventNotFoundError:
+            # The catalog event is gone — superseded or unpublished. There is no title to
+            # show, so the save is left out; the count tells the client how many.
+            omitted += 1
+            continue
+        items.append(SavedEventOut.from_snapshot(saved, public))
+    return SavedEventListOut(items=items, omitted=omitted)
 
 
 __all__ = ["router"]

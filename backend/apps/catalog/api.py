@@ -62,10 +62,11 @@ def list_events(request, filters: EventPage = EVENT_PAGE_QUERY):
     response={200: EventOut, 404: ErrorOut},
     summary="Get one public event",
     description=(
-        "One published event by id. An event that is not public reads as not found. "
+        "One published event by id. An event that is not public — or that has already "
+        "started — reads as not found, the same set the list shows. "
         "No session is used and none is set."
     ),
 )
 def get_event(request, event_id: UUID):
     """One public event. Raises `EventNotFoundError` (a 404) when there isn't one."""
-    return EventOut.from_public_event(get_public_event(event_id=event_id))
+    return EventOut.from_public_event(get_public_event(event_id=event_id, now=timezone.now()))

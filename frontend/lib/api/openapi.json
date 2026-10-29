@@ -728,6 +728,156 @@
         "title": "PersonalEventPatchIn",
         "type": "object"
       },
+      "SavedEventListOut": {
+        "description": "The user's saved events, and how many were left out.\n\n`omitted` counts the saves whose catalog event has since disappeared — superseded or\nunpublished. They are not listed, because they have no title to show, but they are not\nhidden either: the count lets the client tell the user that something they saved is no\nlonger available, rather than silently dropping it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "omitted": {
+            "default": 0,
+            "title": "Omitted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SavedEventListOut",
+        "type": "object"
+      },
+      "SavedEventListQuery": {
+        "description": "The query parameters of the saved-events list endpoint.\n\nThe bounds are inclusive and apply to the **snapshot's** start time — the same value the\nlist returns — so a filtered item and its own timestamp never disagree (AD-21).",
+        "properties": {
+          "starts_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts After"
+          },
+          "starts_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts Before"
+          }
+        },
+        "title": "SavedEventListQuery",
+        "type": "object"
+      },
+      "SavedEventOut": {
+        "description": "One saved public event.\n\n**The times come from the snapshot; the display fields come from the catalog.** They\nare two different places, and keeping them straight is the point (AD-21):\n\n- `start_time_utc` and `end_time_utc` are the **snapshot** — what the user saw when\n  they saved, updated only by AD-17 propagation.\n- `title`, `venue_name` and `canonical_url` are the **catalog's current** values, read\n  at request time. An editorial correction shows up immediately.\n\n`event_version` is the snapshot's version of the catalog event. It is what lets the\nsystem detect that the snapshot is behind, and it is what `stale` is measured against.",
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_version": {
+            "title": "Event Version",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "venue_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue City"
+          },
+          "venue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Name"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "title",
+          "canonical_url",
+          "start_time_utc",
+          "start_time_tz",
+          "event_version"
+        ],
+        "title": "SavedEventOut",
+        "type": "object"
+      },
       "SchedulingConflictDetails": {
         "description": "The `details` of a 409: which event was written, and what it clashes with.",
         "properties": {
@@ -888,7 +1038,7 @@
     },
     "/api/catalog/events/{event_id}": {
       "get": {
-        "description": "One published event by id. An event that is not public reads as not found. No session is used and none is set.",
+        "description": "One published event by id. An event that is not public — or that has already started — reads as not found, the same set the list shows. No session is used and none is set.",
         "operationId": "apps_catalog_api_get_event",
         "parameters": [
           {
@@ -1261,6 +1411,153 @@
           }
         },
         "summary": "Edit a personal event",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/saved-events": {
+      "get": {
+        "description": "The user's own saved events, soonest first. The times are the snapshots — what the user saw when they saved — and the titles and venues are the catalog's current values. `omitted` counts the saves whose catalog event has since disappeared; they are not listed, but they are not hidden either.",
+        "operationId": "apps_personalization_api_list_saved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "starts_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "starts_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedEventListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List the signed-in user's saved events",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/saved-events/{catalog_event_id}": {
+      "delete": {
+        "description": "Removes one of the signed-in user's saves. The conflict pairs it took part in close as `cleared_by_state_change` — the pair ended because a side went away, which is not a user resolution.",
+        "operationId": "apps_personalization_api_unsave_public_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "catalog_event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Catalog Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Unsave a public event",
+        "tags": [
+          "personal"
+        ]
+      },
+      "post": {
+        "description": "Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested. If the save clashes with a personal event, the response is 409 carrying the conflict and the three actions.",
+        "operationId": "apps_personalization_api_save_public_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "catalog_event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Catalog Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedEventOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedEventOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulingConflictOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Save a public event",
         "tags": [
           "personal"
         ]

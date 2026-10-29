@@ -844,3 +844,164 @@ conflict prompt. Session-based by design (AD-12 applies to the *public* catalog 
 - [x] Coverage target met (99.28% overall, 100% for `domain/`)
 - [x] All acceptance criteria validated
 - [x] No critical issues open
+
+---
+
+## Work Item: saved-events-api
+
+**Intent:** `personal-events-and-saved-catalog` · **Work item:** `saved-events-api` ·
+**Complexity:** medium · **Mode:** confirm
+
+### Test Results
+
+| Suite | Result |
+|---|---|
+| `backend/tests/personalization/test_saved_events_api.py` | 30 passed |
+| `backend/tests/personalization/test_saved_events.py` | 21 passed |
+| `backend/tests/api/test_catalog_read_service.py` | 24 passed |
+| `backend/tests/api/test_catalog_api.py` | 23 passed |
+| **Backend, whole suite** | **2060 passed, 0 failed** |
+| **Backend coverage** | **99.29%** (gate ≥80%) |
+| **`domain/` coverage** | **100%** (gate 100%) |
+| `frontend` Vitest | 51 passed (9 files) |
+| `lint-imports` | 13 contracts, 0 broken |
+| `ruff check` / `ruff format --check` | clean |
+| `makemigrations --check --dry-run` | no changes detected |
+| `manage.py check` | no issues |
+| `eslint` / `tsc --noEmit` / `prettier --check` | clean |
+
+### Acceptance Criteria Validation
+
+| Criterion | Evidence | Result |
+|---|---|---|
+| a save succeeds and returns the record | the 201 body carries the snapshot's times, the catalog's title, venue and canonical URL | PASS |
+| a double-save is idempotent | the second answers 200, the body carries the same `id`, and `SavedEvent.objects.count() == 1` | PASS |
+| an unsave removes the save and closes the pairs | 204; the pair closes as `cleared_by_state_change` with `resolution is None` | PASS |
+| the list is scoped to the user | another user's saves are not listed, and cannot be asked for | PASS |
+| a cross-user unsave is 404, not 403 | the other user's save survives the attempt | PASS |
+| saving a non-public event is 404 | four cases: nonexistent, in review, superseded, already started | PASS |
+| a conflict with a personal event returns the three actions | the 409 payload's `details.conflicts[0].actions` has exactly three entries and no `dismiss` | PASS |
+| the save race is exposed, not papered over | `stale` is true, `current_version` is the moved version, and `repropagation_requested` is audited | PASS |
+| an unauthenticated request is 401 | all three endpoints answer 401 with `not_authenticated` | PASS |
+| the OpenAPI schema carries the endpoints | both paths present, and the `SavedEventOut` schema carries `stale` and `current_version` | PASS |
+
+### Tests Written
+
+**`backend/tests/personalization/test_saved_events_api.py`** (new, 30 tests) — the HTTP
+surface:
+
+- *Saving* — returns the record; carries the snapshot's times and the catalog's display
+  fields; belongs to the signed-in user; a repeat save answers 200 and the same id; a
+  nonexistent, in-review, superseded, or already-started event is a 404 and writes
+  nothing; a save of an event that has since started stays listed.
+- *The save race* — the version moves between the service's first read and its check, so
+  `stale` is true and `current_version` is the moved version; a save with no race is not
+  stale and reports no `current_version`; a stale save writes a
+  `saved_event.stale_detected` audit entry carrying `repropagation_requested`.
+- *Conflicts* — a clashing save answers 409 with the three actions; the save row is still
+  written and the pair stays `active` with no resolution.
+- *Un-saving* — removes the save; an unsave of something not saved is a 404; the pairs it
+  took part in close as `cleared_by_state_change`; another user's save is a 404 and
+  survives.
+- *Listing* — returns the user's saves; does not show another user's; orders by the
+  snapshot's start time; the query bounds filter by the snapshot's start time; a save
+  whose catalog event has gone is omitted and counted in `omitted`.
+- *The session seam* — all three endpoints refuse an anonymous request with 401; no
+  endpoint accepts a `user_id` in the body.
+- *The contract* — both paths are in `openapi.json`; `SavedEventOut` carries `stale` and
+  `current_version`; the API layer does not import `apps.ingestion.models`.
+
+**`backend/tests/personalization/test_saved_events.py`** (extended, +4 tests) — the
+service's list read: ordering, user scoping, inclusive bounds on the snapshot's start
+time, and no bounds meaning no filter.
+
+**`backend/tests/api/test_catalog_read_service.py`** (+2 tests) — the published read's
+`now` bound: an event that has started is not found when `now` is given; it *is* found
+when `now=None`, because a record of something already saved stays readable.
+
+**`backend/tests/api/test_catalog_api.py`** (+1 test) — the catalog detail shows the same
+set the list does: an event that has already started is a 404.
+
+### The defects this item found
+
+1. **The published catalog read never applied its own documented rule.**
+   `catalog_read.get_public_event`'s docstring promised that "only published,
+   non-superseded, **upcoming** events are visible" — but only `list_public_events`
+   enforced "upcoming". The detail endpoint returned events that had already started, and
+   a save could take an event into a personal calendar after it had begun.
+
+   This was a defect in `ingestion`'s published interface, not in `personalization`. It
+   was fixed at the source: `get_public_event` gained an optional `now`, and the rule is
+   applied at every point where "has not started yet" is the question. Papering over it
+   in the personalization layer would have meant the catalog's rule lived in two places,
+   one of them private.
+
+2. **A save was possible after the event had started.** The service's first read was
+   unbounded, so `POST /api/personal/saved-events/{id}` accepted an event an hour old.
+   Fixed by bounding that read with `now` — "you take an event into your calendar while it
+   is still ahead of you".
+
+3. **The staleness check would have failed a save for the wrong reason.** Once the read
+   was bounded, the *second* read — the race check — had to stay unbounded: it asks only
+   whether the version moved, and re-applying the "not started" rule there would have
+   failed a save whose event merely *began* while the write was in flight. The two reads
+   answer different questions and are now bounded differently on purpose.
+
+4. **The API could not tell a first save from a repeat.** `update_or_create` returns the
+   existing row for a repeat, but the service did not report which happened, and the
+   endpoint had no way to answer 201 versus 200. `SaveResult.created` now carries it.
+
+5. **The list endpoint ignored the bounds its service accepted.** `list_saved_events`
+   took `starts_after`/`starts_before` and the API never passed them — a filter the client
+   could send and the server ignored. Fixed by adding `SavedEventListQuery` and wiring the
+   bounds through; the same lesson as item ⑥'s `PersonalEventListQuery`.
+
+### The contract the response keeps
+
+The response has **two sources**, and the tests keep them apart: the times come from the
+snapshot on the personal row, and the title, venue and canonical URL come from the
+catalog, read at request time. A saved event is not a copy of a catalog event — it is a
+personal record that points at one.
+
+This is why `list_saved_events` reads the personal side only, and why the API layer
+resolves the catalog side one event at a time: a save whose catalog event has since
+disappeared is the caller's to notice, and the `omitted` count is how it notices.
+
+### Coverage
+
+| Module | Coverage | Notes |
+|---|---|---|
+| `apps/personalization/api.py` | 100% | All three endpoints, both conflict paths. |
+| `apps/personalization/schemas.py` | 100% | Every projection, and the query model. |
+| `apps/personalization/services/saved_events.py` | 100% | Including both bounds and the race protocol. |
+| `apps/ingestion/services/catalog_read.py` | 100% | Including both the bounded and unbounded read. |
+| **Overall** | **99.29%** | Gate: ≥80%. |
+| **`domain/`** | **100%** | Gate: 100%. |
+
+### Known Gaps / Deliberate Omissions
+
+- **FR-48's free-tier quota is not enforced.** The `identity` subscription model does not
+  exist yet, so there is nothing to count saves against. The work item calls skipping
+  this the smaller sin, and this is the note the Pro tier intent needs: the save endpoints
+  are the place a quota will land, and they are the only place it can be enforced
+  correctly — the count is `SavedEvent.objects.filter(user_id=…).count()` at write time,
+  inside the same transaction as the save.
+- **AD-17's propagation job is not implemented.** The protocol is exposed — the service
+  detects the race and writes the audit entry that asks for re-propagation — but the job
+  that calls `update_saved_event_snapshot` is later work. Until it exists, a stale
+  snapshot stays stale; the client is told (`stale`, `current_version`), so it is never
+  shown as current.
+- **No frontend for this surface.** The save button, the saved-events list and the
+  "2 saved events are no longer available" notice are item ⑧.
+- **The list has no pagination.** The saved-events list is bounded by the user's own
+  saves and is returned whole, with the query bounds available for narrowing.
+- **The catalog detail endpoint's behaviour changed.** An event that has already started
+  is now a 404 there, matching the list. The catalog's own client may have relied on the
+  old behaviour; the change is deliberate and is pinned by a test.
+
+### Ready for Completion
+
+- [x] All tests passing
+- [x] Coverage target met (99.29% overall, 100% for `domain/`)
+- [x] All acceptance criteria validated
+- [x] No critical issues open

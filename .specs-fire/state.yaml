@@ -314,8 +314,8 @@ runs:
           intent: personal-events-and-saved-catalog
           mode: confirm
           status: in_progress
-          current_phase: plan
-          checkpoint_state: none
+          current_phase: review
+          checkpoint_state: approved
           current_checkpoint: plan
         - id: frontend-personal-and-conflict-surfaces
           intent: personal-events-and-saved-catalog

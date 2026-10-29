@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * Get one public event
-         * @description One published event by id. An event that is not public reads as not found. No session is used and none is set.
+         * @description One published event by id. An event that is not public — or that has already started — reads as not found, the same set the list shows. No session is used and none is set.
          */
         get: operations["apps_catalog_api_get_event"];
         put?: never;
@@ -131,6 +131,50 @@ export interface paths {
          * @description Edits a personal event and re-runs conflict detection. A conflicting edit returns the same 409 payload a conflicting create does.
          */
         patch: operations["apps_personalization_api_edit_event"];
+        trace?: never;
+    };
+    "/api/personal/saved-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's saved events
+         * @description The user's own saved events, soonest first. The times are the snapshots — what the user saw when they saved — and the titles and venues are the catalog's current values. `omitted` counts the saves whose catalog event has since disappeared; they are not listed, but they are not hidden either.
+         */
+        get: operations["apps_personalization_api_list_saved"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/saved-events/{catalog_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a public event
+         * @description Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested. If the save clashes with a personal event, the response is 409 carrying the conflict and the three actions.
+         */
+        post: operations["apps_personalization_api_save_public_event"];
+        /**
+         * Unsave a public event
+         * @description Removes one of the signed-in user's saves. The conflict pairs it took part in close as `cleared_by_state_change` — the pair ended because a side went away, which is not a user resolution.
+         */
+        delete: operations["apps_personalization_api_unsave_public_event"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -470,6 +514,90 @@ export interface components {
             start_time_utc?: string | null;
         };
         /**
+         * SavedEventListOut
+         * @description The user's saved events, and how many were left out.
+         *
+         *     `omitted` counts the saves whose catalog event has since disappeared — superseded or
+         *     unpublished. They are not listed, because they have no title to show, but they are not
+         *     hidden either: the count lets the client tell the user that something they saved is no
+         *     longer available, rather than silently dropping it.
+         */
+        SavedEventListOut: {
+            /** Items */
+            items: components["schemas"]["SavedEventOut"][];
+            /**
+             * Omitted
+             * @default 0
+             */
+            omitted: number;
+        };
+        /**
+         * SavedEventListQuery
+         * @description The query parameters of the saved-events list endpoint.
+         *
+         *     The bounds are inclusive and apply to the **snapshot's** start time — the same value the
+         *     list returns — so a filtered item and its own timestamp never disagree (AD-21).
+         */
+        SavedEventListQuery: {
+            /** Starts After */
+            starts_after?: string | null;
+            /** Starts Before */
+            starts_before?: string | null;
+        };
+        /**
+         * SavedEventOut
+         * @description One saved public event.
+         *
+         *     **The times come from the snapshot; the display fields come from the catalog.** They
+         *     are two different places, and keeping them straight is the point (AD-21):
+         *
+         *     - `start_time_utc` and `end_time_utc` are the **snapshot** — what the user saw when
+         *       they saved, updated only by AD-17 propagation.
+         *     - `title`, `venue_name` and `canonical_url` are the **catalog's current** values, read
+         *       at request time. An editorial correction shows up immediately.
+         *
+         *     `event_version` is the snapshot's version of the catalog event. It is what lets the
+         *     system detect that the snapshot is behind, and it is what `stale` is measured against.
+         */
+        SavedEventOut: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** Current Version */
+            current_version?: number | null;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Title */
+            title: string;
+            /** Venue City */
+            venue_city?: string | null;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
          * SchedulingConflictDetails
          * @description The `details` of a 409: which event was written, and what it clashes with.
          */
@@ -798,6 +926,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchedulingConflictOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_list_saved: {
+        parameters: {
+            query?: {
+                starts_after?: string | null;
+                starts_before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedEventListOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_save_public_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                catalog_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedEventOut"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedEventOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingConflictOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_unsave_public_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                catalog_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

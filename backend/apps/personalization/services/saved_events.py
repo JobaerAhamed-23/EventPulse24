@@ -76,12 +76,17 @@ class SaveResult:
     the read that stamped the snapshot and the read that checked it. The caller asks for
     re-propagation for that user — it does not repair the snapshot itself, because repairing
     it is the propagation service's job (`update_saved_event_snapshot`).
+
+    `created` says whether this call made the save or found an existing one. The API needs
+    it: a first save is a creation (201) and a repeat is the same record returned again
+    (200). The save itself is idempotent either way — one row, never two.
     """
 
     saved: SavedEventSnapshot
     conflicts: tuple[DetectedConflict, ...] = ()
     stale: bool = False
     current_version: int | None = None
+    created: bool = False
 
 
 def _snapshot(saved: SavedEvent) -> SavedEventSnapshot:
@@ -116,7 +121,11 @@ def save_event(
         # Reading it inside the transaction rather than outside narrows the race window to
         # the write itself — a version read before the transaction opened could be older than
         # the one the snapshot records, which would make the staleness check below useless.
-        current = get_public_event(event_id=event_id)
+        #
+        # It is bounded by `now`: only an event that has not started yet is saveable. An
+        # event that is not public at all — unpublished, in review, superseded — is not
+        # found here either, and the save is refused with a 404.
+        current = get_public_event(event_id=event_id, now=now)
         saved, created = SavedEvent.objects.using(PERSONAL).update_or_create(
             user_id=user_id,
             event_id=event_id,
@@ -157,6 +166,11 @@ def save_event(
 
     # The third read: the check. If the catalog's version moved past the one the snapshot was
     # stamped with, a postponement landed while we were writing, and the snapshot is stale.
+    #
+    # It is **not** bounded by `now`. The first read already decided the event was saveable;
+    # re-applying that rule here would fail the save if the event merely *started* while we
+    # were writing — which is not a reason to refuse, and not a reason to lose the snapshot.
+    # This read is only asking whether the version moved.
     after = get_public_event(event_id=event_id)
     stale = after.event_version > current.event_version
     if stale:
@@ -177,6 +191,7 @@ def save_event(
         conflicts=conflicts,
         stale=stale,
         current_version=after.event_version,
+        created=created,
     )
 
 
@@ -282,10 +297,40 @@ def update_saved_event_snapshot(
         return True
 
 
+def list_saved_events(
+    *,
+    user_id: UUID,
+    starts_after: datetime | None = None,
+    starts_before: datetime | None = None,
+) -> list[SavedEventSnapshot]:
+    """The user's own saved events, soonest first.
+
+    The list is scoped to `user_id` and to nothing else. A save belongs to exactly one
+    user, so there is no visibility rule to apply beyond ownership — and no way to ask
+    for another user's saves at all.
+
+    The bounds are inclusive and apply to the **snapshot's** start time, not the catalog's
+    current one. A save's snapshot is what the user's own calendar shows (AD-21), so the
+    bound has to be applied to the same value the list returns — otherwise the filter and
+    the item would disagree about which event is which.
+
+    **This reads the personal side only.** The display fields come from `catalog`, and the
+    API layer resolves them separately, one event at a time — a save whose catalog event
+    has since disappeared is the caller's to notice, not this function's to hide.
+    """
+    queryset = SavedEvent.objects.using(PERSONAL).filter(user_id=user_id)
+    if starts_after is not None:
+        queryset = queryset.filter(start_utc__gte=starts_after)
+    if starts_before is not None:
+        queryset = queryset.filter(start_utc__lte=starts_before)
+    return [_snapshot(saved) for saved in queryset.order_by("start_utc", "id")]
+
+
 __all__ = [
     "SaveResult",
     "SavedEventNotFoundError",
     "SavedEventSnapshot",
+    "list_saved_events",
     "save_event",
     "unsave_event",
     "update_saved_event_snapshot",

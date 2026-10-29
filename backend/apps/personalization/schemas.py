@@ -23,9 +23,11 @@ from uuid import UUID
 
 from ninja import Field, Schema
 
+from apps.ingestion.services.catalog_read import PublicEvent
 from apps.personalization.services.conflict_resolutions import RESOLUTIONS_BY_KIND
 from apps.personalization.services.conflicts import DetectedConflict
 from apps.personalization.services.personal_events import PersonalEventSnapshot
+from apps.personalization.services.saved_events import SavedEventSnapshot
 from shared.errors import ErrorOut
 
 #: The three choices a conflict prompt offers, as a closed set. `keep_both` and
@@ -218,6 +220,91 @@ class SchedulingConflictOut(ErrorOut):
     details: SchedulingConflictDetails | None = None
 
 
+class SavedEventOut(Schema):
+    """One saved public event.
+
+    **The times come from the snapshot; the display fields come from the catalog.** They
+    are two different places, and keeping them straight is the point (AD-21):
+
+    - `start_time_utc` and `end_time_utc` are the **snapshot** — what the user saw when
+      they saved, updated only by AD-17 propagation.
+    - `title`, `venue_name` and `canonical_url` are the **catalog's current** values, read
+      at request time. An editorial correction shows up immediately.
+
+    `event_version` is the snapshot's version of the catalog event. It is what lets the
+    system detect that the snapshot is behind, and it is what `stale` is measured against.
+    """
+
+    #: The personal row's id. The save is a personal record; this is its identity.
+    id: UUID
+    #: The catalog event's id, by value.
+    event_id: UUID
+    title: str
+    canonical_url: str
+    venue_name: str | None = None
+    venue_city: str | None = None
+    #: The snapshot's times.
+    start_time_utc: datetime
+    end_time_utc: datetime | None = None
+    #: The catalog's IANA zone, for display. The snapshot itself is UTC.
+    start_time_tz: str
+    #: The snapshot's version of the catalog event.
+    event_version: int
+    #: True when the snapshot may already be behind the catalog (AD-21's save race).
+    stale: bool = False
+    #: The catalog's version now, when it differs from the snapshot's.
+    current_version: int | None = None
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        saved: SavedEventSnapshot,
+        public: PublicEvent,
+        *,
+        stale: bool = False,
+        current_version: int | None = None,
+    ) -> "SavedEventOut":
+        """Project the personal row and the catalog event onto the wire shape."""
+        return cls(
+            id=saved.id,
+            event_id=saved.event_id,
+            title=public.title,
+            canonical_url=public.canonical_url,
+            venue_name=public.venue_name,
+            venue_city=public.venue_city,
+            start_time_utc=saved.start_utc,
+            end_time_utc=saved.end_utc,
+            start_time_tz=public.start_time_tz,
+            event_version=saved.event_version,
+            stale=stale,
+            current_version=current_version,
+        )
+
+
+class SavedEventListQuery(Schema):
+    """The query parameters of the saved-events list endpoint.
+
+    The bounds are inclusive and apply to the **snapshot's** start time — the same value the
+    list returns — so a filtered item and its own timestamp never disagree (AD-21).
+    """
+
+    starts_after: datetime | None = None
+    starts_before: datetime | None = None
+
+
+class SavedEventListOut(Schema):
+    """The user's saved events, and how many were left out.
+
+    `omitted` counts the saves whose catalog event has since disappeared — superseded or
+    unpublished. They are not listed, because they have no title to show, but they are not
+    hidden either: the count lets the client tell the user that something they saved is no
+    longer available, rather than silently dropping it.
+    """
+
+    items: list[SavedEventOut]
+    omitted: int = 0
+
+
 __all__ = [
     "ConflictAction",
     "ConflictOut",
@@ -230,6 +317,9 @@ __all__ = [
     "PersonalEventListQuery",
     "PersonalEventOut",
     "PersonalEventPatchIn",
+    "SavedEventListOut",
+    "SavedEventListQuery",
+    "SavedEventOut",
     "SchedulingConflictDetails",
     "SchedulingConflictOut",
 ]

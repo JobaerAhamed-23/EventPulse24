@@ -127,14 +127,26 @@ def list_public_events(
     return items, total
 
 
-def get_public_event(*, event_id: UUID) -> PublicEvent:
+def get_public_event(*, event_id: UUID, now: datetime | None = None) -> PublicEvent:
     """One public event by id.
 
     An event that isn't public (unpublished, `in_review`) or that was superseded is not
     found: the public catalog has one truth, and a hidden event reads as absent.
+
+    **`now` bounds by "has not started yet".** It is the rule the module's own docstring
+    states — "Only published, non-superseded, **upcoming** events are visible" — and it is
+    the set a *save* may draw from: you take an event into your calendar while it is still
+    ahead of you. Pass `now` to enforce it.
+
+    Passing `now=None` skips the bound, and that is deliberate: a record of something the
+    user already saved has to stay readable after the event has started. The user's own
+    calendar does not un-save an event because it began.
     """
+    queryset = _public_events()
+    if now is not None:
+        queryset = queryset.filter(start_time_utc__gte=now)
     try:
-        event = _public_events().get(pk=event_id)
+        event = queryset.get(pk=event_id)
     except Event.DoesNotExist:
         raise EventNotFoundError(details={"event_id": str(event_id)}) from None
     return _to_public_event(event)

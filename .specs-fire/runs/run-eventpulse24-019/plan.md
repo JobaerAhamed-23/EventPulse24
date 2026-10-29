@@ -756,3 +756,121 @@ hand-edits the generated TypeScript client.
 | D53 | The API layer reads the side-kind constants from `services/conflicts.py` | The API layer must not import `apps.personalization.models`. The values live on the model, so the service layer — which already imports it — re-publishes them as plain strings. |
 | D54 | A create returns `ninja.Status(201, …)` and a delete `Status(204, None)` | Ninja looks up the *returned* status in the response dict. A bare value is a 200, and a 200 with no 200 schema is a `ConfigError` — a 500 on every create. `Status` is also the non-deprecated form in Ninja 1.7. |
 | D55 | The architecture checker's write rule excludes decorator position | `@router.delete(...)` registers a route; it does not delete a record. The route decorators are named after HTTP verbs, so a blanket "any attribute call" rule would flag every `DELETE` endpoint a surface declares. A real `obj.delete()` is still reported. |
+
+---
+
+## Work Item: saved-events-api
+
+**Intent:** `personal-events-and-saved-catalog` · **Work item:** `saved-events-api` ·
+**Complexity:** medium · **Mode:** confirm · **Depends on:** `personalization-write-services`
+
+### What this item builds
+
+The HTTP surface over saving and unsaving a public catalog event. Three endpoints on the
+**session-based personal router**:
+
+| Method | Path | Answers |
+|---|---|---|
+| `POST` | `/api/personal/saved-events/{catalog_event_id}` | Save a public event. Idempotent. |
+| `DELETE` | `/api/personal/saved-events/{catalog_event_id}` | Unsave it, closing the pairs it took part in. |
+| `GET` | `/api/personal/saved-events` | The user's saved events. |
+
+### D56 — The save endpoints live on the personal router, not the catalog's
+
+The work item names `POST /api/public-events/{id}/save`, but the catalog router is
+**session-free** (AD-12) and a save *writes personal data*. A mutation of personal data
+cannot sit on a router whose every endpoint works without a session — the surface that
+declares it session-free would be lying about two of its endpoints.
+
+So the save is addressed under `/api/personal/saved-events/{catalog_event_id}`. The path
+still names the **catalog** event's id — the resource being saved is a catalog event — but
+the surface is the personal one, which is where the session and the scoping live.
+
+Two routers are not needed: `config/api.py` composes by prefix, and all three endpoints
+share one auth seam (`apps.personalization.auth`) and one module
+(`apps.personalization.api`).
+
+**The prefix change is a change to the URL contract, and it is deliberate.** The catalog's
+public read surface is `/api/catalog/events`; a `/api/public-events/` prefix would sit
+beside it looking like a sibling, and it is not one.
+
+### D57 — A save whose catalog event has vanished is skipped, and the response says how many
+
+A `SAVED_EVENT` row outlives its catalog event: the event can be superseded or unpublished
+after the save. The display fields come from `catalog` at read time, so such a row has no
+title to show.
+
+The list **omits** it and reports the count in an `omitted` field. Silently dropping it
+would lose data the user believes they saved; showing it with null fields would render a
+half-empty card. A count lets the client say "2 saved events are no longer available" —
+the user is told, and nothing is hidden.
+
+### D58 — The response carries the snapshot's staleness
+
+AD-21's save race: a postponement that commits between the service's first read and its
+commit leaves the snapshot behind. The service detects it (`SaveResult.stale`) and asks for
+re-propagation; the API must not present a stale snapshot as if it were current.
+
+So the save response carries `stale` and `current_version`. When `stale` is true the
+client knows the times it is showing are behind the catalog and that propagation has been
+requested.
+
+### D59 — A double-save is 200, not 201
+
+The service's `update_or_create` returns the existing row for a repeat save. The AC says
+"returns the existing record with a success response, not a 409 and not a duplicate row" —
+so the second save answers **200** and the first answers **201**. The status is the only
+thing that differs; the body is the same shape either way.
+
+### Endpoints
+
+| Method | Path | Success | Errors |
+|---|---|---|---|
+| `POST` | `/api/personal/saved-events/{catalog_event_id}` | 201 (first) / 200 (repeat) | 404 not-public, 409 conflict |
+| `DELETE` | `/api/personal/saved-events/{catalog_event_id}` | 204 | 404 not-saved |
+| `GET` | `/api/personal/saved-events` | 200 | — |
+
+### Files to create / modify
+
+| File | Change |
+|---|---|
+| `backend/apps/personalization/schemas.py` | The saved-event wire shapes. |
+| `backend/apps/personalization/api.py` | The three endpoints. |
+| `backend/apps/personalization/services/saved_events.py` | A `list_saved_events` read — the service has the writes but no list. |
+| `backend/apps/personalization/services/catalog_read` | Reached through `ingestion`'s published interface, never `apps.ingestion.models`. |
+| `frontend/lib/api/openapi.json` | Regenerated by `make client`. |
+| `frontend/lib/api/schema.ts` | Regenerated by `make client`. Never hand-edited (AD-19). |
+
+### The tests to write
+
+| Property | Evidence |
+|---|---|
+| a save succeeds and returns the record | the 201 body carries the snapshot and the display fields |
+| a double-save is idempotent | the second answers 200, one row, the same id |
+| an unsave removes the save and closes the pairs | 204; the pair closes as `cleared_by_state_change` |
+| the list is scoped to the user | another user's saves are not listed |
+| a cross-user unsave is 404, not 403 | the other user's save survives |
+| saving a non-public event is 404 | unpublished, in review, superseded, nonexistent |
+| a conflict with a personal event returns the three actions | the 409 payload, exactly as the personal create |
+| the save race is exposed, not papered over | `stale` is true and `current_version` is reported |
+| an unauthenticated request is 401 | on all three endpoints |
+| the OpenAPI schema carries the endpoints | and `make client` regenerates cleanly |
+
+### Gates to run before the item closes.
+
+```bash
+cd backend && uv run python manage.py makemigrations --check --dry-run
+cd backend && uv run python manage.py check
+cd backend && uv run pytest -q --cov --cov-report=term
+cd backend && uv run coverage report --include='domain/*' --fail-under=100
+cd backend && uv run ruff check && uv run ruff format --check
+cd backend && uv run lint-imports
+make client
+cd frontend && pnpm vitest run
+```
+
+**What this item must not do.** It must not build the FR-48 free-tier quota — the
+`identity` subscription model does not exist, and the work item says explicitly that
+skipping the quota is the smaller sin. That gap goes in the test report so the Pro tier
+intent knows to add it. It must not implement AD-17's propagation job (it exposes the
+protocol; the job that calls it is later). It must not hand-edit the generated client.
