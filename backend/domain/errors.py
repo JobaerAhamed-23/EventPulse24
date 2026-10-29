@@ -51,7 +51,22 @@ class PermissionDeniedError(DomainError):
     default_message = "You don't have access to this."
 
 
-class AuthenticationFailedError(ValidationError):
+class NotAuthenticatedError(DomainError):
+    """The request carried no signed-in account.
+
+    This is a **refusal**, not a malformed request, so it is a 401 rather than the 422 a
+    `ValidationError` would give. It is raised at the API edge, after the domain has
+    decided that the request may not proceed.
+
+    The code and the message are the same for every unauthenticated request, so the
+    refusal says nothing about what the caller was trying to reach.
+    """
+
+    code = "not_authenticated"
+    default_message = "Please sign in to continue."
+
+
+class AuthenticationFailedError(NotAuthenticatedError):
     """The email and password did not match.
 
     One error for both failures: a wrong password and an unknown email are
@@ -87,6 +102,25 @@ class ThrottledError(DomainError):
 class ConflictError(DomainError):
     code = "conflict"
     default_message = "This changed since you last looked. Refresh and try again."
+
+
+class CsrfError(DomainError):
+    """The request carried no usable CSRF token, and was refused (D13).
+
+    A **refusal**, not a malformed request: the request was well-formed, it just could
+    not be shown to come from this site. It is a 403, and it has its own code so the
+    frontend can tell it apart from a permission problem — the remedy is different. A
+    CSRF failure means "fetch a fresh token and try again"; a permission failure does
+    not.
+
+    The message says nothing about *why* the check failed. Django's own reasons — a
+    missing cookie, a missing header, a token that does not match, an origin that is not
+    trusted — are not the caller's business, and telling them apart would be a way of
+    probing the check.
+    """
+
+    code = "csrf_failed"
+    default_message = "Your session needs refreshing. Reload the page and try again."
 
 
 class SchedulingConflictError(ConflictError):

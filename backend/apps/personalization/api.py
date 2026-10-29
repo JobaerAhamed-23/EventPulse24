@@ -26,8 +26,8 @@ from uuid import UUID
 from django.utils import timezone
 from ninja import Query, Router, Status
 
+from apps.identity.api_auth import current_user
 from apps.ingestion.services.catalog_read import EventNotFoundError, get_public_event
-from apps.personalization.auth import current_user
 from apps.personalization.schemas import (
     ConflictOut,
     ConflictResolutionIn,

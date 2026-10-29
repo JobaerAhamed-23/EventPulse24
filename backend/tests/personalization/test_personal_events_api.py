@@ -28,6 +28,7 @@ from django.test import Client
 from apps.personalization.models import ConflictPair, PersonalEvent
 from shared.constants import DEFAULT_REMINDER_PLAN
 from shared.db import PERSONAL
+from tests.csrf import CsrfClient
 from tests.personalization.factories import PersonalEventFactory
 
 pytestmark = pytest.mark.django_db(databases=[PERSONAL])
@@ -64,8 +65,13 @@ def make_event(user, *, name="Coffee with Sam", start=START, hours=2, **extra):
 
 
 def signed_in(user=None):
-    """A client whose session identifies `user`."""
-    client = Client()
+    """A client whose session identifies `user`.
+
+    It is a `CsrfClient`, because these endpoints resolve their user through `identity`'s
+    resolver and the resolver checks CSRF on every unsafe method (D13). The token is
+    fetched on the first unsafe request and travels in the `X-CSRFToken` header.
+    """
+    client = CsrfClient()
     client.force_login(user or make_user())
     return client
 

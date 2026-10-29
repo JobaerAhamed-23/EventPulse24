@@ -399,8 +399,8 @@ runs:
           intent: onboarding-and-account
           mode: confirm
           status: in_progress
-          current_phase: plan
-          checkpoint_state: none
+          current_phase: execute
+          checkpoint_state: approved
           current_checkpoint: plan
         - id: onboarding-state-and-interests
           intent: onboarding-and-account

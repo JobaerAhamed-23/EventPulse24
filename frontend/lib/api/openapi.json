@@ -203,6 +203,40 @@
         "title": "ConflictSideOut",
         "type": "object"
       },
+      "CsrfTokenOut": {
+        "description": "The CSRF token the frontend sends back on every unsafe request.\n\nThe token is also set as the `csrftoken` cookie on the same response; the frontend\nreads the cookie and echoes the value in the `X-CSRFToken` header. Sending both is\nDjango's own convention, and it is the one `CsrfViewMiddleware` checks.",
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfTokenOut",
+        "type": "object"
+      },
+      "CurrentUserOut": {
+        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe onboarding status is **not** here yet: `personalization` owns onboarding progress,\nand it does not exist yet. It is added when it does, through `personalization`'s\npublished interface — this item does not depend on that one.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "CurrentUserOut",
+        "type": "object"
+      },
       "ErrorOut": {
         "description": "`{code, message, details?}`. Validation errors use `details = {\"errors\": [ErrorItem]}`.",
         "properties": {
@@ -472,6 +506,63 @@
           "details"
         ],
         "title": "HealthUnavailableOut",
+        "type": "object"
+      },
+      "PasswordResetConfirmIn": {
+        "description": "The reset confirmation: the token from the reset link, and the new password.",
+        "properties": {
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "PasswordResetConfirmIn",
+        "type": "object"
+      },
+      "PasswordResetConfirmOut": {
+        "description": "The reset-confirmation answer.\n\nThe password has been changed and the account's other sessions have ended.",
+        "properties": {
+          "status": {
+            "default": "password_reset",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "PasswordResetConfirmOut",
+        "type": "object"
+      },
+      "PasswordResetRequestIn": {
+        "description": "The reset request: the address to reset.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "PasswordResetRequestIn",
+        "type": "object"
+      },
+      "PasswordResetRequestOut": {
+        "description": "The reset-request answer. The same for a known address and an unknown one.\n\nIt says the request was received, and nothing about whether there is an account.",
+        "properties": {
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "PasswordResetRequestOut",
         "type": "object"
       },
       "PersonalEventCreateIn": {
@@ -929,6 +1020,80 @@
         ],
         "title": "SchedulingConflictOut",
         "type": "object"
+      },
+      "SignInIn": {
+        "description": "The sign-in request: an address and a password.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignInIn",
+        "type": "object"
+      },
+      "SignInOut": {
+        "description": "The sign-in answer. The same for a wrong password and an unknown address.\n\nThe status is the only field. A body that named the account, or said which half of\nthe pair was wrong, would be the enumeration leak the services are careful to avoid.",
+        "properties": {
+          "status": {
+            "default": "signed_in",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "SignInOut",
+        "type": "object"
+      },
+      "SignOutOut": {
+        "description": "The sign-out answer. The session is over; nothing else is said.",
+        "properties": {
+          "status": {
+            "default": "signed_out",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "SignOutOut",
+        "type": "object"
+      },
+      "SignUpIn": {
+        "description": "The sign-up request: an address and a password.\n\nThe password is a plain string here and is never echoed back. It goes to\n`apps.identity.services.sign_up`, which validates it against Django's configured\npassword validators and hashes it.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignUpIn",
+        "type": "object"
+      },
+      "SignUpOut": {
+        "description": "The sign-up answer. The same for a new address and an existing one.\n\nThere is no `created` flag, and no account id: either would say whether the address\nwas taken. The account holder of an existing address is told by email instead.",
+        "properties": {
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "SignUpOut",
+        "type": "object"
       }
     }
   },
@@ -939,6 +1104,237 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/csrf": {
+      "get": {
+        "description": "The CSRF token the frontend sends back on every state-changing request, in the `X-CSRFToken` header. The token is also set as the `csrftoken` cookie on this response, so the frontend can read it from there. This is a safe request, so it is not itself checked for a token.",
+        "operationId": "apps_identity_api_get_csrf",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfTokenOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get a CSRF token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "description": "The signed-in user's id and email. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field.",
+        "operationId": "apps_identity_api_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "The signed-in user",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password-reset": {
+      "post": {
+        "description": "Asks for a reset link. A known address gets one, by transactional email; an unknown address gets nothing. The answer is the same either way, so the endpoint cannot be used to find out who has an account.",
+        "operationId": "apps_identity_api_password_reset_request",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetRequestOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Ask for a password reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password-reset/confirm": {
+      "post": {
+        "description": "Consumes a reset token and sets a new password. The token is single-use and short-lived: a token that was already used, revoked or expired is refused, and the refusal does not say which of the three it was. The account's other sessions end, so a stolen session does not survive the password change.",
+        "operationId": "apps_identity_api_password_reset_confirm",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetConfirmOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set a new password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/signin": {
+      "post": {
+        "description": "Authenticates an email and a password and establishes the session. A wrong password and an unknown address are answered identically — the same status and the same body — so neither can be used to find out who has an account.",
+        "operationId": "apps_identity_api_signin",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Sign in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/signout": {
+      "post": {
+        "description": "Ends the session the request carries. The session cookie is cleared, so the next request is anonymous.",
+        "operationId": "apps_identity_api_signout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignOutOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Sign out",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/signup": {
+      "post": {
+        "description": "Creates an account and signs the user in. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. A caller who signs up with an address that is already taken, and who does not know that account's password, is not signed in.",
+        "operationId": "apps_identity_api_signup",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignUpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignUpOut"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "summary": "Create an account",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/catalog/events": {
       "get": {
         "description": "Published, non-superseded events that have not started yet, soonest first. Optional city and date-range filters. No session is used and none is set.",

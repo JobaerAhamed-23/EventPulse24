@@ -28,12 +28,12 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import Client
 
 from apps.ingestion.models import Event, Source
 from apps.personalization.models import ConflictPair, PersonalEvent, SavedEvent
 from shared.constants import TITLE_TOKEN_OVERLAP_MIN
 from shared.db import CATALOG, PERSONAL
+from tests.csrf import CsrfClient
 from worker import tasks
 
 pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
@@ -72,8 +72,13 @@ def _run_tick_inline(enqueued) -> None:
 
 
 def _signed_in(user=None):
-    """A client whose session identifies `user`."""
-    client = Client()
+    """A client whose session identifies `user`.
+
+    It is a `CsrfClient`: the personal endpoints resolve their user through `identity`'s
+    resolver, and the resolver checks CSRF on every unsafe method (D13). The token is
+    fetched on the first unsafe request and travels in the `X-CSRFToken` header.
+    """
+    client = CsrfClient()
     client.force_login(user or User.objects.create_user(email="sam@example.test", password="pw"))
     return client
 

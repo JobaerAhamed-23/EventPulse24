@@ -1600,3 +1600,214 @@ Two docstrings were also corrected: they said the reconcile was "all-or-nothing"
 contradicted `_reconcile`'s own docstring. D15's actual requirement — a failed *fetch*
 writes nothing — holds and is tested; the reconcile is deliberately not atomic.
 
+
+---
+
+## Work Item: auth-api-and-session-seam
+
+Mode: **confirm** (1 checkpoint — this plan).
+
+### Approach
+
+`account-auth-core` built the identity *services*. This item puts the HTTP surface over
+them, and replaces the `current_user` seam in `apps/personalization/auth.py` with a
+resolver that `identity` publishes.
+
+The work splits into three movements.
+
+**1. The seam is replaced in one place.**
+
+`identity` publishes the resolver. It goes in `apps/identity/api_auth.py`, a module that
+is *not* `apps/identity/models.py`, so the `models-identity` import contract is untouched
+and other apps reach `identity` through a published interface. It exposes:
+
+- `current_user(request)` — the signed-in user, or a 401 with "Please sign in to continue."
+- `unauthenticated_user(request)` — the signed-in user, or `None`. For `GET /api/auth/me`,
+  where anonymous is a normal answer rather than an error.
+
+`apps/personalization/auth.py` then becomes a thin delegation to `identity`'s resolver.
+Its own docstring is rewritten: it no longer says it is "the seam", because it is not any
+more — it says it delegates, and why that keeps the diff to the existing routers at an
+import change.
+
+The shape is preserved exactly: `Router(auth=current_user)` and `request.user.pk` keep
+working, so `apps/personalization/api.py` changes by **one import line** and nothing else.
+That is the acceptance criterion "the seam is replaced in one place".
+
+**2. The endpoints.**
+
+A new `apps/identity/api.py` router, registered at `/api/auth` in `config/api.py`:
+
+| Endpoint | Method | Behaviour |
+|---|---|---|
+| `/api/auth/csrf` | GET | Issues the CSRF token and sets the cookie. |
+| `/api/auth/signup` | POST | Creates the account. Enumeration-safe. |
+| `/api/auth/signin` | POST | Authenticates, establishes the session. Enumeration-safe. |
+| `/api/auth/signout` | POST | Ends the session. |
+| `/api/auth/me` | GET | The signed-in user, or 401. |
+| `/api/auth/password-reset` | POST | Requests a reset. Enumeration-safe. |
+| `/api/auth/password-reset/confirm` | POST | Consumes a token, sets the password. |
+
+The router has **no** `auth=` of its own: sign-up and sign-in are how a session is created,
+so requiring a session to get one would be circular. The authed endpoints resolve the user
+explicitly through `identity`'s resolver.
+
+**3. Enumeration safety, at the HTTP edge.**
+
+The acceptance criterion is byte-identical bodies for a known and an unknown address. The
+services are already enumeration-safe; this item makes the *responses* identical too.
+
+- **Sign-up.** The service returns `SignUpOutcome()` either way. The endpoint answers
+  `201` with `{"status": "accepted"}` for both. It must **not** establish a session for a
+  duplicate address — the existing account holder is told by email, and signing the caller
+  in would be the enumeration leak.
+- **Sign-in.** A wrong password and an unknown address both raise
+  `AuthenticationFailedError` (a 422 in `config/errors.py` today). The endpoint does **not**
+  let that escape raw: it catches it and answers `401` with one fixed body, so the wire
+  shape says "credentials did not work" and never says which half was wrong. The body is
+  byte-identical across both cases *and* across the casing of the address.
+- **Reset request.** The service returns `None` either way. The endpoint answers `202` with
+  one fixed body for both.
+
+The tests compare `response.content` byte-for-byte, not the parsed shape.
+
+### The CSRF decision (the hard part)
+
+The work item requires: "CSRF is enforced on every state-changing endpoint, and the
+frontend has a documented way to obtain and send the token."
+
+**What was probed.** Django Ninja 1.7.1 (the pinned version) was read, not guessed:
+
+- `ninja/operation.py` sets `csrf_exempt = True` on **every** Ninja view wrapper. Django's
+  `CsrfViewMiddleware` — which is in `MIDDLEWARE` — therefore **does not protect any Ninja
+  endpoint**, including ours.
+- `ninja/security/session.py`'s `SessionAuth` extends `APIKeyCookie`, and
+  `APIKeyCookie._get_key` *does* call `ninja.utils.check_csrf`. But that check only runs
+  for routers that declare `auth=` with a cookie-based handler. Our `current_user` is a
+  plain function, not an `AuthBase` subclass, so it never reaches that check.
+- The auth router has no `auth=` at all (sign-in cannot require a session), so **no**
+  built-in check would run there either.
+
+So: **Django's CSRF machinery is present and configured, but nothing in the stack calls it
+for our endpoints.** Left alone, the auth endpoints would be CSRF-unprotected — and so
+would the existing personal endpoints, which are state-changing and session-cookie-borne.
+
+**The decision.** CSRF is enforced explicitly, in one place, using Django's own
+`CsrfViewMiddleware` (via `ninja.utils.check_csrf`) rather than a hand-rolled token
+comparison. Django's implementation is the one that gets the origin check, the referer
+fallback, the masked-token comparison and the `CSRF_TRUSTED_ORIGINS` allowlist right.
+
+The enforcement points are:
+
+- `identity`'s resolver (`current_user`) calls the check **before** it resolves the user.
+  That covers every authed endpoint in the project at once — the personal ones included —
+  because they all go through the one resolver.
+- The auth router's state-changing endpoints call it explicitly, because they have no
+  `auth=` and so no resolver runs.
+
+The check is applied only to unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`). `GET
+/api/auth/me` and `GET /api/auth/csrf` are safe and are not checked — the latter *issues*
+the token.
+
+**The frontend's way to obtain and send the token.** `GET /api/auth/csrf` calls Django's
+`get_token(request)`, which both returns the token and sets the `csrftoken` cookie. The
+frontend reads the cookie and sends the token back in the `X-CSRFToken` header, which is
+Django's own convention and what `CsrfViewMiddleware` reads. The proxy
+(`frontend/proxy.ts`) must forward both the `Cookie` and `X-CSRFToken` headers — a
+requirement this item records and the frontend item implements.
+
+Because the browser holds the cookie on the **frontend's** origin and the request goes
+through the proxy, Django's origin check compares the frontend's `Origin` header against
+`CSRF_TRUSTED_ORIGINS`. That is D13's mechanism, already configured
+(`config/env.py: csrf_trusted_origins` → `config/settings.py`). `USE_X_FORWARDED_HOST`
+stays `False`.
+
+**A hole worth naming.** Django's CSRF check refuses a request whose `Referer` is
+cross-origin, and for a same-origin request it accepts the token in the `X-CSRFToken`
+header. A request with **no** `Origin` and no `Referer` header (a plain `curl`, or a
+non-browser client) is refused by Django too — Django requires one of them for HTTPS. The
+tests therefore send an `Origin` header. That is the correct behaviour: a browser always
+sends `Origin` on a cross-origin-unsafe request, so requiring it does not weaken the
+protection against a browser, and it does refuse a scripted attacker who has no token.
+
+### Files to Create
+
+| Path | Purpose |
+|---|---|
+| `backend/apps/identity/api_auth.py` | The published resolver: `current_user`, `unauthenticated_user`, `require_csrf`. |
+| `backend/apps/identity/api.py` | The `/api/auth` router: six endpoints plus the CSRF endpoint. |
+| `backend/apps/identity/schemas.py` | Request and response schemas for the auth endpoints. |
+| `backend/tests/identity/test_auth_api.py` | Endpoint tests: success, failure, enumeration, CSRF, 429, sign-out, 7-day expiry. |
+| `backend/tests/identity/test_session_seam.py` | The seam: a real session through the real endpoint, then the personal endpoints; and the anonymous 401. |
+
+### Files to Modify
+
+| Path | Change |
+|---|---|
+| `backend/apps/personalization/auth.py` | Delegate to `identity`'s resolver. The seam is replaced **here, in one place**. |
+| `backend/apps/personalization/api.py` | One import line: `current_user` now comes from `identity`. |
+| `backend/config/api.py` | Register the `/api/auth` router. |
+| `backend/tests/identity/conftest.py` | Fixtures for the API tests (client, CSRF helper, fixed clock). |
+| `backend/tests/conftest.py` | Nothing — the existing personal-alias setup is enough. |
+| `frontend/lib/api/openapi.json` | Regenerated by `make client` (never hand-edited). |
+| `frontend/lib/api/schema.ts` | Regenerated by `make client` (never hand-edited). |
+
+### Tests
+
+- **Endpoint success paths**: sign-up creates the account and answers `201`; sign-in
+  establishes the session; `me` returns the id, the email and the onboarding status;
+  sign-out ends the session; reset-request and reset-confirm work.
+- **Enumeration safety**: for sign-up, sign-in and reset-request, a known address and an
+  unknown address produce **byte-identical** bodies and the same status. The comparison is
+  on `response.content`, not on a parsed shape.
+- **CSRF**: a state-changing request with no token is refused; one with a valid token
+  succeeds; one with a wrong token is refused. The refusal is a 403 in the project's error
+  shape.
+- **429**: a throttled sign-in answers `429` with the project's error shape.
+- **Sign-out ends the session**: after sign-out, `me` answers 401.
+- **A 7-day-old session is expired**, using a fixed clock — not a sleep.
+- **The personal endpoints work with a real session**: sign in through the real endpoint,
+  then exercise `/api/personal/*` and the save endpoints. An anonymous request still gets
+  401 with "Please sign in to continue."
+- **No internals leak**: `me` never returns the password hash.
+
+### Import contracts
+
+`personalization` reaches `identity` through `identity`'s published interface
+(`apps.identity.api_auth`), never through `apps.identity.models`. The `models-identity`
+contract already forbids the latter, and `lint-imports` proves it.
+
+### Risks
+
+1. **CSRF breaking the existing personal endpoints.** The resolver now enforces CSRF, so
+   the personal endpoints need a token they did not need before. That is the point — they
+   are state-changing and session-cookie-borne — but the frontend must be updated in the
+   same breath. The frontend item (`frontend-auth-surfaces`) carries that. The personal
+   endpoint tests in this item are updated to send a token.
+2. **`csrf_exempt` on the personal router.** The personal router's `auth=current_user` is a
+   plain function, so Ninja's own cookie-CSRF check never runs for it. The resolver's
+   explicit check is what closes that.
+3. **Sign-in answering 422 instead of 401.** `AuthenticationFailedError` is a
+   `ValidationError` subclass, so it maps to 422 in `config/errors.py`. The endpoint
+   catches it and answers 401 itself, which is the right status for failed credentials.
+   The exception mapping is not changed, because `config/errors.py` is one place for the
+   whole project.
+
+### Acceptance criteria mapping
+
+| Criterion | Where it is met |
+|---|---|
+| Six endpoints exist, registered in `config/api.py` | `apps/identity/api.py`, `config/api.py` |
+| Sign-up and sign-in establish a session | `django.contrib.auth.login` at the edge |
+| The cookie is first-party | The browser only calls `/api/*` on its own origin through `frontend/proxy.ts` |
+| `me` returns id, email, onboarding status; 401 when anonymous | `apps/identity/api.py` |
+| `me` never returns the password hash | The schema has no field for it |
+| Enumeration safety, byte-identical | The edge normalises every response |
+| 429 with the project's error shape | `ThrottledError` → `config/errors.py` |
+| CSRF enforced; frontend has a documented way | `require_csrf`, `GET /api/auth/csrf` |
+| The seam is replaced in one place | `apps/personalization/auth.py` delegates |
+| The personal endpoints work with a real session | `tests/identity/test_session_seam.py` |
+| Services receive an explicit actor, never `request` | The services already do (D20) |
+| OpenAPI regenerates; the client is regenerated with `make client` | `make client` |
+| The import contracts pass | `lint-imports` |
+| Tests cover every listed path | `tests/identity/test_auth_api.py` |

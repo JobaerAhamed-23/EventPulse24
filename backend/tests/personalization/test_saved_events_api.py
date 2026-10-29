@@ -27,6 +27,7 @@ from django.utils import timezone
 from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, SavedEvent
 from shared.db import CATALOG, PERSONAL
+from tests.csrf import CsrfClient
 from tests.ingestion.factories import EventFactory, make_superseded_pair
 from tests.personalization.factories import PersonalEventFactory
 
@@ -45,8 +46,13 @@ def make_user(email="sam@example.test"):
 
 
 def signed_in(user=None):
-    """A client whose session identifies `user`."""
-    client = Client()
+    """A client whose session identifies `user`.
+
+    It is a `CsrfClient`, because these endpoints resolve their user through `identity`'s
+    resolver and the resolver checks CSRF on every unsafe method (D13). The token is
+    fetched on the first unsafe request and travels in the `X-CSRFToken` header.
+    """
+    client = CsrfClient()
     client.force_login(user or make_user())
     return client
 

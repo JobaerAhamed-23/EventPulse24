@@ -4,6 +4,146 @@
  */
 
 export interface paths {
+    "/api/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a CSRF token
+         * @description The CSRF token the frontend sends back on every state-changing request, in the `X-CSRFToken` header. The token is also set as the `csrftoken` cookie on this response, so the frontend can read it from there. This is a safe request, so it is not itself checked for a token.
+         */
+        get: operations["apps_identity_api_get_csrf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user
+         * @description The signed-in user's id and email. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field.
+         */
+        get: operations["apps_identity_api_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a password reset
+         * @description Asks for a reset link. A known address gets one, by transactional email; an unknown address gets nothing. The answer is the same either way, so the endpoint cannot be used to find out who has an account.
+         */
+        post: operations["apps_identity_api_password_reset_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password
+         * @description Consumes a reset token and sets a new password. The token is single-use and short-lived: a token that was already used, revoked or expired is refused, and the refusal does not say which of the three it was. The account's other sessions end, so a stolen session does not survive the password change.
+         */
+        post: operations["apps_identity_api_password_reset_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in
+         * @description Authenticates an email and a password and establishes the session. A wrong password and an unknown address are answered identically — the same status and the same body — so neither can be used to find out who has an account.
+         */
+        post: operations["apps_identity_api_signin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out
+         * @description Ends the session the request carries. The session cookie is cleared, so the next request is anonymous.
+         */
+        post: operations["apps_identity_api_signout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account
+         * @description Creates an account and signs the user in. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. A caller who signs up with an address that is already taken, and who does not know that account's password, is not signed in.
+         */
+        post: operations["apps_identity_api_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/events": {
         parameters: {
             query?: never;
@@ -289,6 +429,38 @@ export interface components {
             start_time_utc: string;
         };
         /**
+         * CsrfTokenOut
+         * @description The CSRF token the frontend sends back on every unsafe request.
+         *
+         *     The token is also set as the `csrftoken` cookie on the same response; the frontend
+         *     reads the cookie and echoes the value in the `X-CSRFToken` header. Sending both is
+         *     Django's own convention, and it is the one `CsrfViewMiddleware` checks.
+         */
+        CsrfTokenOut: {
+            /** Csrf Token */
+            csrf_token: string;
+        };
+        /**
+         * CurrentUserOut
+         * @description The signed-in user.
+         *
+         *     The id and the email are what the frontend needs. There is no password field, no
+         *     permission field and no catch-all, so nothing internal can ride along.
+         *
+         *     The onboarding status is **not** here yet: `personalization` owns onboarding progress,
+         *     and it does not exist yet. It is added when it does, through `personalization`'s
+         *     published interface — this item does not depend on that one.
+         */
+        CurrentUserOut: {
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
          * ErrorOut
          * @description `{code, message, details?}`. Validation errors use `details = {"errors": [ErrorItem]}`.
          */
@@ -410,6 +582,50 @@ export interface components {
             details: components["schemas"]["HealthDetails"];
             /** Message */
             message: string;
+        };
+        /**
+         * PasswordResetConfirmIn
+         * @description The reset confirmation: the token from the reset link, and the new password.
+         */
+        PasswordResetConfirmIn: {
+            /** New Password */
+            new_password: string;
+            /** Token */
+            token: string;
+        };
+        /**
+         * PasswordResetConfirmOut
+         * @description The reset-confirmation answer.
+         *
+         *     The password has been changed and the account's other sessions have ended.
+         */
+        PasswordResetConfirmOut: {
+            /**
+             * Status
+             * @default password_reset
+             */
+            status: string;
+        };
+        /**
+         * PasswordResetRequestIn
+         * @description The reset request: the address to reset.
+         */
+        PasswordResetRequestIn: {
+            /** Email */
+            email: string;
+        };
+        /**
+         * PasswordResetRequestOut
+         * @description The reset-request answer. The same for a known address and an unknown one.
+         *
+         *     It says the request was received, and nothing about whether there is an account.
+         */
+        PasswordResetRequestOut: {
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
         };
         /**
          * PersonalEventCreateIn
@@ -631,6 +847,69 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * SignInIn
+         * @description The sign-in request: an address and a password.
+         */
+        SignInIn: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * SignInOut
+         * @description The sign-in answer. The same for a wrong password and an unknown address.
+         *
+         *     The status is the only field. A body that named the account, or said which half of
+         *     the pair was wrong, would be the enumeration leak the services are careful to avoid.
+         */
+        SignInOut: {
+            /**
+             * Status
+             * @default signed_in
+             */
+            status: string;
+        };
+        /**
+         * SignOutOut
+         * @description The sign-out answer. The session is over; nothing else is said.
+         */
+        SignOutOut: {
+            /**
+             * Status
+             * @default signed_out
+             */
+            status: string;
+        };
+        /**
+         * SignUpIn
+         * @description The sign-up request: an address and a password.
+         *
+         *     The password is a plain string here and is never echoed back. It goes to
+         *     `apps.identity.services.sign_up`, which validates it against Django's configured
+         *     password validators and hashes it.
+         */
+        SignUpIn: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * SignUpOut
+         * @description The sign-up answer. The same for a new address and an existing one.
+         *
+         *     There is no `created` flag, and no account id: either would say whether the address
+         *     was taken. The account holder of an existing address is told by email instead.
+         */
+        SignUpOut: {
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -640,6 +919,189 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    apps_identity_api_get_csrf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsrfTokenOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_password_reset_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetRequestOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_password_reset_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetConfirmOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_signin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_signout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignOutOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignUpIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignUpOut"];
+                };
+            };
+        };
+    };
     apps_catalog_api_list_events: {
         parameters: {
             query?: {
