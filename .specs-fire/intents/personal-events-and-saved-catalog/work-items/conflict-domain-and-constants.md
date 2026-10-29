@@ -4,8 +4,9 @@ title: Conflict Detection Domain Logic
 intent: personal-events-and-saved-catalog
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [repo-hygiene-cleanup]
+status: in_progress
+depends_on:
+  - repo-hygiene-cleanup
 created: 2026-10-29
 ---
 

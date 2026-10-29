@@ -189,12 +189,14 @@ intents:
     created: 2026-10-29
     work_items:
       - id: repo-hygiene-cleanup
-        status: pending
+        status: completed
         complexity: low
         mode: autopilot
         depends_on: []
+        run_id: run-eventpulse24-019
+        completed_at: 2026-10-29T02:20:28.744Z
       - id: conflict-domain-and-constants
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
