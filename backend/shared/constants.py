@@ -3,7 +3,7 @@
 Stdlib only, so `domain` can be allowed to import it (decision for architecture-contracts).
 """
 
-from datetime import timedelta
+from datetime import time, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from fractions import Fraction
@@ -177,3 +177,72 @@ CALENDAR_SYNC_BATCH = 100
 # comfortably longer than a fetch's worst case and comfortably shorter than the 1-hour
 # poll interval, so a lost claim is recovered well before the next scheduled poll.
 CALENDAR_CLAIM_TTL = timedelta(minutes=15)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Onboarding (FR-1)
+#
+# Stdlib only, like the sections above.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# FR-1: the ten interest chips, in the order the step-2 mockup shows them.
+#
+# **One copy.** The frontend gets this list from the API — the chips endpoint projects
+# this constant onto the wire — so the labels live here and nowhere else.
+#
+# The **key** is the contract: it is what the API accepts, what the database stores and
+# what identifies a chip forever. The **label** is display-only. They are separate because
+# a renamed label must not orphan a user's stored picks: changing "Tech & meetups" to
+# "Technology & meetups" changes the label and leaves every `tech_meetups` row valid.
+#
+# The keys are slugs rather than the labels themselves for the same reason — a slug is a
+# stable identifier, a label is prose.
+INTEREST_CHIPS = (
+    ("tech_meetups", "Tech & meetups"),
+    ("sports_fitness", "Sports & fitness"),
+    ("arts_culture", "Arts & culture"),
+    ("family_kids", "Family & kids"),
+    ("community_volunteering", "Community & volunteering"),
+    ("outdoors_nature", "Outdoors & nature"),
+    ("classes_workshops", "Classes & workshops"),
+    ("markets_fairs", "Markets & fairs"),
+    ("talks_lectures", "Talks & lectures"),
+    ("government_civic", "Government & civic"),
+)
+
+# FR-1: "up to 3 picks". A fourth is refused, not silently dropped.
+MAX_INTEREST_PICKS = 3
+
+# FR-1: "A user who leaves mid-step is resumed at the same step on return within 7 days."
+#
+# The window is **inclusive**: a user exactly 7 days after their last move is still
+# resumed at the same step. One second beyond it, the onboarding restarts at step 1.
+ONBOARDING_RESUME_WINDOW = timedelta(days=7)
+
+# FR-1: the onboarding flow has at most 3 user-visible steps, and every one can be skipped.
+#
+# The step's *name* is what the constant holds; its *position* (1, 2, 3) is what the
+# progress row stores, because the resume rule is about the position — "resumed at the
+# same step" means the same place in the flow.
+#
+#   1. `calendar`  — the optional calendar connect (owned by `calendar-connect-api`;
+#                    this flow only records that the step was passed)
+#   2. `interests` — the optional interest chips, up to 3 picks
+#   3. `digest`    — the digest delivery time and timezone
+ONBOARDING_STEPS = ("calendar", "interests", "digest")
+
+# FR-1 caps the flow at 3 steps: "exceeds 3 steps ... violates FR-1". The count is derived
+# from the tuple so the two cannot drift, and a test pins both the count and the
+# membership — a bare count would pass on the wrong three steps.
+ONBOARDING_STEP_COUNT = len(ONBOARDING_STEPS)
+
+# The digest preference a user gets when they skip step 3.
+#
+# **9:00 in UTC** is deliberately boring and documented rather than clever. A default that
+# guessed the user's local zone would need the guess, and the guess would be wrong for most
+# of the world. The user changes it in one tap.
+#
+# The default is *written* when step 3 is skipped, not merely assumed at read time, so the
+# preference is always a real row with a real value and `delivery` — which will consume the
+# delivery time — reads one row rather than branching on "was it set?".
+DEFAULT_DIGEST_DELIVERY_TIME = time(9, 0)
+DEFAULT_DIGEST_TIMEZONE = "UTC"

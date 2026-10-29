@@ -172,3 +172,44 @@ class CalendarProviderCapReached(DomainError):
 
     code = "calendar_cap_reached"
     default_message = "You've connected the calendars your plan allows."
+
+
+class TooManyInterestsError(ValidationError):
+    """The user picked more interest chips than the flow allows (FR-1).
+
+    FR-1 caps the picks at 3. The extra picks are refused rather than silently dropped,
+    because a silently dropped pick leaves the user looking at a chip they chose and is
+    not there.
+    """
+
+    code = "too_many_interests"
+    default_message = "You can pick up to three interests."
+
+
+class UnknownInterestError(ValidationError):
+    """One of the picked interest chips is not one we offer (FR-1).
+
+    The chip list is a fixed constant, so an unknown key means the caller sent something
+    that was never on offer. The offending key is named in `details` — it is not
+    sensitive (the list is public), and naming it lets the caller see *which* pick was
+    wrong.
+    """
+
+    code = "unknown_interest"
+    default_message = "That isn't one of the interests we offer."
+
+
+class OnboardingAlreadyCompleteError(ConflictError):
+    """The onboarding flow has already finished, so it cannot be moved (FR-1).
+
+    Completion is **terminal**: a user who finished onboarding is never sent back into
+    it. The refusal is at the command layer, so every caller gets it rather than only the
+    HTTP edge.
+
+    It is a **conflict**, not a malformed request: the request is well-formed, it just
+    conflicts with the flow's current state. That makes it a 409, which is what the
+    frontend branches on.
+    """
+
+    code = "onboarding_already_complete"
+    default_message = "You've already finished setting things up."

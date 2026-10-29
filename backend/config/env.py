@@ -35,6 +35,22 @@ class Settings(BaseSettings):
     # API, because the frontend is a different origin from this runtime.
     frontend_base_url: str = "http://localhost:3000"
 
+    # Whether the caller's IP may be read from the `X-Forwarded-For` header.
+    #
+    # The header is **attacker-controlled** unless something in front of this runtime
+    # overwrites it. Next's `NextResponse.rewrite` forwards the browser's headers as they
+    # arrived and only *adds* `x-forwarded-host`, so a browser that sets
+    # `X-Forwarded-For` has that value reach Django unchanged. Trusting it unconditionally
+    # let any caller mint a fresh throttle bucket per request by varying the header, which
+    # defeated the per-IP limit entirely.
+    #
+    # So it is off by default, and the per-IP throttle falls back to the socket address —
+    # every caller through the proxy shares one bucket, which is coarse but cannot be
+    # spoofed. Turning it on is only correct when a trusted edge overwrites the header
+    # with the real client address (a load balancer in `proxy_set_header` mode, or the
+    # Next proxy itself rewriting it).
+    trust_forwarded_for: bool = False
+
     # runtime: the app connects as the DML-only roles. owner: migrations and tests (DDL).
     django_db_role: Literal["runtime", "owner"] = "runtime"
 

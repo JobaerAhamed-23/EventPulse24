@@ -37,8 +37,8 @@ STATUS_BY_ERROR: dict[type[DomainError], int] = {
     CsrfError: 403,
     ConflictError: 409,
     # A refusal, not a malformed request: the credentials did not work, or there was no
-    # session. `AuthenticationFailedError` is a `ValidationError` and so a 422 — but at
-    # the HTTP edge a refused sign-in is a 401, which is what the frontend branches on.
+    # session. `AuthenticationFailedError` is a `NotAuthenticatedError`, so it is a 401
+    # here — which is what the frontend branches on.
     NotAuthenticatedError: 401,
     # Too many attempts. A 429 is a distinct status from the 400 a generic domain error
     # gets: the caller can act on it — wait and retry — and the frontend branches on it.

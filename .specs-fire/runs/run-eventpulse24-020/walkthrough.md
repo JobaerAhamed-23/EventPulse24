@@ -1,35 +1,28 @@
 ---
 run: run-eventpulse24-020
-work_item: calendar-sync-and-polling
+work_item: auth-api-and-session-seam
 intent: onboarding-and-account
 generated: 2026-10-29
-mode: validate
+mode: confirm
 ---
 
-# Implementation Walkthrough: Calendar Sync & Polling (AD-7, AD-18, FR-20, FR-50, FR-58)
+# Implementation Walkthrough: Auth API & Session Seam Replacement (FR-4, AD-5, AD-18, AD-19, D13)
 
 ## Summary
 
-One module that turns a connected calendar's feed into the user's own events, and one
-dispatcher that decides which connection to fetch next.
+Seven auth endpoints, one published session resolver, and a CSRF check that actually
+matches Django's own rules.
 
-The item's central problem is that **a feed is a snapshot, not a delta**. It says "here
-are my events", not "here is what changed". So every poll has to compute the difference
-between the feed and what is already stored — and the difference has four possible
-shapes, not two:
+The item's central problem is that **a session is a security boundary, and the boundary
+has to be in exactly one place**. "Who is making this request?" is asked by every
+authed endpoint in the project, and if each one answers it differently — or if the answer
+comes from the request body — then scoping can be forged. So `identity` publishes the
+resolver, every other app asks through it, and no endpoint accepts a user id.
 
-| In the feed | In the database | Action |
-|---|---|---|
-| yes | no | create |
-| yes | yes, identical | **nothing** |
-| yes | yes, different | update (unless the user owns the row) |
-| no | yes | delete |
-
-The third row of that table is the one that matters most, and it is the one this
-implementation got wrong the first time. A row the user has edited is **the user's**,
-not the feed's; a poll that overwrites it is a data-loss bug wearing a synchronisation
-feature's clothes. The review found that the implementation did exactly that, in a
-window the test suite could not see, and it is now fixed and pinned.
+The review found that the first implementation got the *enumeration* safety right in the
+body and wrong in the headers, trusted a header the caller controls, skipped one of
+Django's two CSRF branches, and kept a session it then silently destroyed. All four are
+fixed and pinned.
 
 ---
 
@@ -37,277 +30,805 @@ window the test suite could not see, and it is now fixed and pinned.
 
 ```
 backend/
+├── apps/identity/
+│   ├── api.py               ← the seven endpoints: csrf, signup, signin, signout, me, reset, reset/confirm
+│   ├── api_auth.py          ← THE SEAM: current_user, require_csrf, issue_csrf_token
+│   ├── schemas.py           ← the request and response shapes
+│   └── services/            ← the named commands (AD-5): sign_up, authenticate, password_reset, session, throttle
 ├── apps/personalization/
-│   ├── models.py                     ← the claim column, the cache validators, the flag
-│   ├── migrations/
-│   │   ├── 0003_calendarconnection_sync_claimed_at_and_more.py
-│   │   └── 0004_calendarconnection_etag_and_more.py
-│   └── services/
-│       ├── calendar_sync.py          ← NEW: the reconcile, the claim, the dispatcher API
-│       ├── calendar_connections.py   ← connect, reconnect, disconnect, purge
-│       ├── personal_events.py        ← the shared commands (create/update/delete)
-│       ├── conflicts.py              ← detection, with the duplicate rule switchable
-│       └── conflict_resolutions.py   ← the three buttons, and the imported-event refusal
-│
-├── apps/delivery/services/
-│   └── reminder_plans.py             ← `remove_plans_for_targets` (delivery owns the plans)
-│
-├── shared/constants.py               ← the batch size, the claim TTL
-└── worker/tasks.py                   ← the tick, the dispatcher, the sync job
+│   └── auth.py              ← a delegation to identity's resolver — not a second implementation
+├── config/
+│   ├── errors.py            ← the one exception→HTTP mapping
+│   ├── env.py               ← TRUST_FORWARDED_FOR
+│   └── settings.py
+└── tests/identity/          ← 61 tests for this item
 ```
 
-The layer rule is unchanged: `worker` → `apps` → `ports` → `domain` → `shared`. The
-17 import contracts are intact.
+The flow of a request is deliberately short:
+
+```
+browser
+  │
+  ▼
+POST /api/auth/signin   ──▶ require_csrf()      ──▶ Django's own CSRF rules
+                            authenticate()       ──▶ the service, which throttles and checks
+                            django_login()       ──▶ the session is created
+  │
+  ▼
+GET /api/personal/events
+  │
+  ▼
+current_user(request)    ──▶ Django's session      ──▶ the user id, or a 401
+```
+
+`current_user` is the only place a request's identity is established. The personal
+module's `auth.current_user` is the *same object* — not a copy — so the two cannot
+drift.
 
 ---
 
-## The Three Decisions That Carry the Item
+## Architecture
 
-### 1. The reconcile is a three-way diff, and "identical" means nothing happens
+### Pattern Used
 
-`sync_calendar` reads the connection's imported rows, reads the feed's entries, and
-diffs them on `(calendar_connection_id, source_uid)` — the unique constraint the model
-already carries.
+**Service layer with a published interface.** The services own the writes and the
+business rules; the endpoints own the HTTP projection. The endpoint layer never imports
+`apps.identity.models` — the `models-identity` import contract enforces that — so other
+apps reach `identity` through a named, published interface rather than through its
+tables.
 
-The **identical → nothing** branch is the one the whole design turns on. `version` feeds
-AD-7's send key. A poll that rewrote every row on every pass would bump every version,
-re-key every send, and **re-send every reminder for every imported event, every hour,
-forever**. So the branch is pinned from both sides:
+### Layer Structure
 
-- the row's `version` and `updated_at` are unchanged after a second sync of the same feed;
-- and the reminder is not re-sent.
+```text
+┌─────────────────────────────────────────────┐
+│  HTTP edge — apps/identity/api.py           │
+│  CSRF, body parsing, wire shape             │
+│  (no writes, no model imports)              │
+├─────────────────────────────────────────────┤
+│  Published interface — api_auth.py          │
+│  current_user, require_csrf, issue_csrf_token│
+├─────────────────────────────────────────────┤
+│  Services — apps/identity/services/         │
+│  sign_up, authenticate, password_reset,     │
+│  session, throttle                          │
+├─────────────────────────────────────────────┤
+│  Models — apps/identity/models.py           │
+│  (private to identity; the contract guards) │
+└─────────────────────────────────────────────┘
+```
 
-The id is the one the **adapter** produced (`domain.dedup.ics_item_id`), not one
-re-derived from the raw ICS UID. That matters for recurring events: an override of a
-master's own instance carries the same id as that master, and re-deriving would land the
-override *beside* the master it is supposed to replace.
+---
 
-### 2. The user's edit wins — and the flag is stored, not inferred
+## Files Changed
 
-"Who owns this row?" could be inferred by comparing the row with the feed. **That
-inference is exactly the case where the two disagree**, and its answer flips depending
-on which side you look from. So the flag is stored:
+### Created
 
-`PersonalEvent.user_modified` — `True` means the user owns the row, `False` means the
-feed owns it. A model constraint refuses `True` on a user-created event, because there
-is no feed to disagree with one.
+| File | Purpose |
+|------|---------|
+| `backend/apps/identity/api.py` | The seven endpoints. CSRF, body parsing, the wire shape — and no writes of its own |
+| `backend/apps/identity/api_auth.py` | The published resolver, the CSRF check, the token issuer. This is the seam |
+| `backend/apps/identity/schemas.py` | The request and response shapes |
+| `backend/apps/personalization/auth.py` | A delegation to `identity`'s resolver — not a second implementation |
+| `backend/tests/identity/test_auth_api.py` | 50 tests: the endpoints, the enumeration safety, the CSRF rules, the throttle, the session lifecycle |
+| `backend/tests/identity/test_session_seam.py` | 11 tests: the seam is in one place, and a real session works on the personal endpoints |
+| `backend/tests/csrf.py` | The shared CSRF client helper — the token, the `Origin`, the refusal |
 
-The first implementation had this **almost** right, and the gap was the interesting
-part. The command's parameter was `user_modified: bool`, and the import passed `False`.
-But `False` cannot mean "leave it alone" — it means "the feed owns this row". So every
-import write **reset** the flag, and a user's edit could be overwritten on the next
-poll.
+### Modified
 
-The fix gave the parameter a **third value**:
+| File | Changes |
+|------|---------|
+| `backend/apps/identity/services/sign_up.py` | No session, and no sign-in throttle charge. The service says nothing about whether it created the account |
+| `backend/apps/identity/services/authenticate.py` | The sign-in throttle, keyed on the IP and on the account |
+| `backend/apps/identity/services/session.py` | The docstring on the kept session: the row survives, but the edge must re-stamp the hash |
+| `backend/apps/identity/services/password_reset.py` | The docstring on `keep_session_key` |
+| `backend/apps/identity/services/throttle.py` | The bucket limits and the two key derivations |
+| `backend/config/env.py` | `trust_forwarded_for`, off by default |
+| `backend/config/settings.py` | `TRUST_FORWARDED_FOR` |
+| `backend/config/errors.py` | A wrong comment about the status of `AuthenticationFailedError` |
+| `backend/tests/identity/conftest.py` | The module patching became order-independent |
+| `frontend/lib/api/openapi.json` | Regenerated by `make client` |
+| `frontend/lib/api/schema.ts` | Regenerated by `make client` |
+
+---
+
+## Key Implementation Details
+
+### 1. The session resolver is published, and there is exactly one of them
+
+`apps/identity/api_auth.py` exports `current_user`. It reads the user id from Django's
+session — **never from the request body** — and returns `None` for an anonymous request.
+
+`apps/personalization/auth.py` re-exports it:
 
 ```python
-user_modified: bool | None = True,
+from apps.identity.api_auth import current_user
 ```
 
-`True` (the user owns it), `False` (the feed owns it), `None` (leave it as it stands).
-The import passes `None` — the only thing it is entitled to say, because it knows what
-the feed says but not whose edit it is.
+The two names are the *same object*. A copy would let them drift, which is the exact
+failure the one-place rule exists to prevent, so a test asserts the identity of the two
+objects and another asserts that the personal module has no `def current_user` of its
+own.
 
-And the decision itself is made against **committed state**, under a row lock, in the
-same transaction as the write — not against the snapshot the diff started with. A user's
-edit that lands mid-reconcile is now protected.
+`test_no_endpoint_takes_a_user_id_as_input` walks the generated OpenAPI schema and
+fails if any endpoint under `/api/auth` or `/api/personal` accepts a `user_id` or `user`
+field. There is nowhere for a forged id to come from.
 
-### 3. "Delete the new one" is not offered for an imported event
+### 2. Enumeration safety is enforced on the response, headers included
 
-An imported event is the **provider's**. Deleting the row would make the event vanish
-for an hour and then come back at the next poll — so the button would be a lie.
+AD-18 wants a known address and an unknown address answered identically. The bodies
+always were. The headers **were not**, because sign-up established a session — so a
+taken address answered with a `Set-Cookie: sessionid` and a `Vary: Cookie`, and a free
+one answered with neither.
 
-The refusal happens **before** the pair is marked resolved, so a refused attempt leaves
-the pair `active` and still answerable with a choice that works ("keep both", "edit the
-new one").
+The fix is to remove the session from sign-up entirely. The cookie's presence *is* the
+oracle, so there is no way to keep the sign-up session and make the headers identical at
+the same time. `signin` is now the one place a session is created.
 
----
+The test compares the **whole header set**, the **cookie set** and the `Vary` value, not
+just the body:
 
-## The Polling
+| Request | Body | Headers |
+|---------|------|---------|
+| New address, any password | `201 {"status":"accepted"}` | no `sessionid` |
+| Taken address, wrong password | `201 {"status":"accepted"}` | no `sessionid` |
+| Taken address, right password | `201 {"status":"accepted"}` | no `sessionid` |
 
-The dispatcher mirrors `ingestion`'s scheduling exactly.
+### 3. The CSRF check mirrors Django's own two branches
 
+Django Ninja sets `csrf_exempt = True` on every view it builds, and Ninja's own
+cookie-CSRF check only runs for routers with a cookie-based `auth=` — which this router
+does not have. So the check is made explicitly, through Django's own middleware.
+
+Django's `process_view` has two branches, and **both** are reproduced:
+
+| Request | Django's branch | What the check does |
+|---------|------------------|---------------------|
+| Has an `Origin` | origin check | compare against `CSRF_TRUSTED_ORIGINS` |
+| No `Origin`, over HTTPS | referer check | the MITM fallback: compare the `Referer` |
+| No `Origin`, not HTTPS | neither | the token check alone |
+
+The referer fallback is the branch that is easy to miss, and it is the one that exists
+for the network attacker: an active MITM can suppress `Origin` on a request it forwards
+to us, and the CSRF secret is a cookie rather than a session secret, so a MITM that can
+plant the cookie has both halves of the token.
+
+The check calls Django's own `_origin_verified`, `_check_referer` and `_check_token`
+rather than re-implementing them. Django's test-client escape hatch
+(`request._dont_enforce_csrf_checks`) is **not** consulted — otherwise the protection
+would silently vanish under the default test client and the tests would pass without the
+check ever running.
+
+### 4. The throttle buckets are one operation each
+
+| Bucket | Charged by | Per-IP | Per-account |
+|--------|-----------|--------|-------------|
+| `sign_up` | `POST /api/auth/signup` | ✓ | ✓ |
+| `sign_in` | `POST /api/auth/signin` | ✓ | ✓ |
+| `reset` | `POST /api/auth/password-reset` | ✓ | ✓ |
+
+Sign-up originally charged **two** buckets — its own, plus the sign-in bucket for the
+authentication attempt that followed. So an attacker naming a victim's address could
+spend the victim's own sign-in allowance and lock the real owner out. Removing the
+sign-up session removed the second charge with it.
+
+The account key is a SHA-256 digest of the normalised email, so the address itself
+never becomes a key.
+
+### 5. The caller's IP comes from `REMOTE_ADDR` unless a trusted edge says otherwise
+
+`X-Forwarded-For` is attacker-controlled: Next's rewrite forwards the browser's headers
+as they arrived. Reading it unconditionally let any caller mint a fresh throttle bucket
+per request, which defeated the per-IP limit completely — the review reproduced it with
+twenty spoofed IPs and twenty different buckets and zero 429s.
+
+The header is read only when `settings.TRUST_FORWARDED_FOR` is on, which is **off by
+default**. The value must also parse as an IP address before it is used, so it cannot be
+padded with arbitrary text. It is never logged and never stored (AD-13); it only ever
+becomes part of a throttle key.
+
+### 6. The reset keeps the session it was made from — and says so in the code
+
+The reset service keeps the session row and ends the account's other sessions. The
+*edge* then has to re-stamp the session with the new password hash, because Django
+compares `user.get_session_auth_hash()` against the session's stored hash on every
+request and **flushes the session** on a mismatch.
+
+Django's `update_session_auth_hash` cannot do this here. It stamps only when
+`request.user == user`, and by the time the endpoint body runs, `AuthenticationMiddleware`
+has already compared the stale hash, flushed the session and left `request.user`
+anonymous — so the guard is false and the helper writes nothing, silently.
+
+So the hash is written directly:
+
+```python
+session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+session.cycle_key()
 ```
-tick (every 60s)  →  schedule_calendars  →  claim_due_connections  →  one job per claim
-                                                                    →  sync_calendar
+
+The session key is cycled too, so a key that was on the wire before the reset cannot be
+reused afterwards.
+
+---
+
+## Security Considerations
+
+| Concern | Approach |
+|---------|----------|
+| Account enumeration | Byte-identical **and** header-identical responses for a known and an unknown address. Sign-up establishes no session, so there is no `Set-Cookie` to distinguish them |
+| Forged user scoping | The user id comes from the session only. No endpoint accepts a user id; a schema-walking test enforces it |
+| CSRF | Django's own rules, both branches, applied explicitly because Ninja exempts every view it builds |
+| Brute force | Three throttle buckets, each with a per-IP and a per-account limit, keyed on a digest of the normalised email |
+| Rate-limit bypass | `X-Forwarded-For` is trusted only when a deployment says a proxy overwrites it (`TRUST_FORWARDED_FOR`, off by default) |
+| Session fixation | The session key is cycled on a password reset; Django's `login()` rotates the token on sign-in |
+| Stale session after a password change | The kept session is re-stamped with the new hash, so it keeps working — and only that one session does |
+| Password storage | Django's hashers, via `UserFactory` / `create_user`. The plain password is never stored, logged or returned |
+| Secret leakage | The IP is never logged or stored. The email is never logged. The password hash never appears in a response |
+
+---
+
+## Performance Considerations
+
+| Requirement | Implementation |
+|-------------|----------------|
+| The resolver must be cheap | It reads Django's session — one cached lookup per request — and nothing else. It touches no table of its own |
+| Throttle lookups must not be a hot path | The throttle adapter is behind a port; the in-memory adapter is a dict lookup, Redis is one `GET`/`INCR` pair |
+| The account key must not leak the address | SHA-256 of the normalised email, so the key is fixed-length and the address is not recoverable from it |
+| `me` must not cost a query when the session is anonymous | The anonymous path returns before any user lookup |
+
+---
+
+## Decisions Made
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Where the session resolver lives | `apps/identity/api_auth.py`, published | `identity` owns the user and the auth flows, so it owns the answer to "who is this request?". The old seam in `personalization` was a placeholder waiting to be replaced |
+| What happens to the old seam | A delegation, not a copy | Two implementations would drift. The test asserts the two names are the *same object* |
+| Whether sign-up establishes a session | No | The `Set-Cookie` header is a confirmed-password oracle. There is no way to keep the session and make the headers identical |
+| Where the CSRF check lives | In the resolver, applied explicitly | Ninja exempts every view it builds, and Ninja's own cookie-CSRF check does not run for a plain-function resolver |
+| How to implement the CSRF check | By calling Django's own methods | Re-implementing the origin rules would drift from Django and from `CSRF_TRUSTED_ORIGINS` |
+| How to re-stamp the session after a reset | Write `HASH_SESSION_KEY` directly | `update_session_auth_hash`'s guard cannot be satisfied at that point in the request, and it fails *silently* |
+| Where the caller's IP comes from | `REMOTE_ADDR` by default | `X-Forwarded-For` is attacker-controlled. The deployment has to say a proxy overwrites it |
+| Whether to trust the forwarded header at all | Yes, but off by default and IP-validated | A deployment behind a proxy needs it; a directly-connected client must not be able to forge it |
+| Whether `me` includes the onboarding status | Not yet | The work item says so: the status is read through `personalization`'s published interface once `onboarding-state-and-interests` exists |
+| How errors become HTTP responses | One mapping in `config/errors.py` | No per-endpoint `try`/`except` building HTTP responses by hand |
+
+---
+
+## Deviations from Plan
+
+1. **Sign-up no longer establishes a session.** The work item's acceptance criteria say
+   "sign-up and sign-in establish a session". The review found that a session on sign-up
+   leaks account existence through the response headers — a `Set-Cookie` on one response
+   and not on another is an oracle of the same strength as a different body, and a
+   stronger one, since it confirms the **password**. AD-18 requires byte-identical
+   responses; the headers are part of the response.
+
+   The criterion is met by the **frontend** signing in after signing up, which is one
+   extra request and one place where a session is created rather than two.
+   `frontend-auth-surfaces` carries the frontend side of that flow.
+
+2. **Sign-up charges one throttle bucket instead of two.** A consequence of the same
+   change, and a fix in its own right: an attacker naming a victim's address could
+   otherwise spend the victim's own sign-in allowance and lock the real owner out.
+
+3. **`TRUST_FORWARDED_FOR` is a new setting.** The per-IP throttle limit did not exist
+   without it. It is off by default, so the default is the safe one, and a deployment
+   behind a rewriting proxy can turn it on deliberately.
+
+4. **The password reset's session is re-stamped at the edge, not in the service.** The
+   service already kept the row. The hash is the edge's job because the edge is what
+   knows the request's session.
+
+---
+
+## Dependencies Added
+
+| Package | Why Needed |
+|---------|------------|
+| (none) | No new package. The implementation uses Django's own session, auth and CSRF machinery, which was already a dependency |
+
+---
+
+## How to Verify
+
+1. **The whole backend suite, with coverage**
+   ```bash
+   cd backend && .venv/bin/python -m pytest --cov --cov-report=term
+   ```
+   Expected: `2710 passed`, coverage `98.99%`, and `apps/identity/api.py`,
+   `apps/identity/api_auth.py`, `apps/identity/schemas.py` and
+   `apps/personalization/auth.py` all at **100%**.
+
+2. **This item's own tests**
+   ```bash
+   cd backend && .venv/bin/python -m pytest tests/identity/test_auth_api.py tests/identity/test_session_seam.py -v
+   ```
+   Expected: `61 passed`.
+
+3. **The linter, the format check and the import contracts**
+   ```bash
+   make lint-backend
+   ```
+   Expected: `All checks passed!` and `Contracts: 17 kept, 0 broken.`
+
+4. **The committed schema matches the live API** (AD-19)
+   ```bash
+   make client && git status --short frontend/lib/api/
+   ```
+   Expected: no drift. `tests/api/test_contract.py` asserts the same thing.
+
+5. **The frontend suite**
+   ```bash
+   make test-web
+   ```
+   Expected: `149 passed (16 files)`.
+
+6. **Manually: sign-up answers identically for a taken and a free address**
+   ```bash
+   curl -si -X POST http://127.0.0.1:8000/api/auth/signup \
+     -H 'Content-Type: application/json' \
+     -H "X-CSRFToken: $TOKEN" \
+     -H 'Origin: http://127.0.0.1:3000' \
+     -d '{"email":"taken@example.test","password":"correct-horse-battery"}'
+   ```
+   Expected: `201`, body `{"status":"accepted"}`, and **no `Set-Cookie: sessionid`** —
+   whether or not the address is taken.
+
+7. **Manually: a real session reaches a personal endpoint**
+   ```bash
+   curl -si -X POST http://127.0.0.1:8000/api/auth/signin \
+     -H 'Content-Type: application/json' -H "X-CSRFToken: $TOKEN" \
+     -H 'Origin: http://127.0.0.1:3000' \
+     -d '{"email":"you@example.test","password":"..."}'
+   curl -si http://127.0.0.1:8000/api/auth/me -H "Cookie: sessionid=$SESSIONID"
+   ```
+   Expected: the first returns `200` and a `sessionid`; the second returns `200` with
+   the id and the email.
+
+8. **Manually: the password reset keeps its own session**
+   Sign in, request a reset, confirm it with the token from the email, then call
+   `/api/auth/me` with the same cookie.
+   Expected: `200`. Without the fix: `401`.
+
+---
+
+## Test Coverage
+
+- Tests added: 61 (50 in `test_auth_api.py`, 11 in `test_session_seam.py`)
+- Coverage: 100% on the item's four modules; 98.99% across the backend
+- Status: passing — 2710 backend, 149 frontend, 0 failures
+
+---
+
+## Ready for Review
+
+- [x] All acceptance criteria met
+- [x] Tests passing
+- [x] No critical issues
+- [x] Documentation updated (if applicable)
+- [x] Developer notes captured
+
+---
+
+## Developer Notes
+
+**The Django session hash trap.** Django compares `user.get_session_auth_hash()` with
+the session's stored `_auth_user_hash` on **every** request, and flushes the session on
+a mismatch. That check happens in `AuthenticationMiddleware.process_request`, *before*
+your view runs. So by the time you try to fix a changed password, `request.user` is
+already anonymous and `update_session_auth_hash` will not stamp anything. Write
+`session[HASH_SESSION_KEY] = user.get_session_auth_hash()` yourself.
+
+**A helper that fails silently is worse than one that raises.** `update_session_auth_hash`
+did not raise when its guard failed — it wrote nothing. The endpoint returned 200, the
+service had done exactly what it was asked, and the session was gone. If a helper's
+failure is a no-op, every caller has to verify the effect, and the test has to assert
+the *effect* — not the status code.
+
+**A body-identical response can still be an oracle.** The first implementation compared
+`response.content` and passed. The `Set-Cookie` header told a different story. When
+asserting enumeration safety, compare the whole header set and the cookie set too. And
+remember *which* pair of requests exposes the difference: for sign-up it is a new
+address against a taken address with a **wrong** password — one verifies, one does not.
+
+**Django's CSRF check has two branches, not one.** The origin branch is the one people
+remember. The referer branch is the one that protects HTTPS from a network attacker.
+Read `CsrfViewMiddleware.process_view` rather than assuming.
+
+**Ninja exempts every view it builds from Django's CSRF middleware.** `csrf_exempt = True`
+in `ninja/operation.py`. If your router has no cookie-based `auth=`, nothing checks
+CSRF for you.
+
+**The test client can turn your protection off.** Django's test client sets
+`request._dont_enforce_csrf_checks` unless it is built with
+`enforce_csrf_checks=True`. `ninja.utils.check_csrf` honours that flag, so using it
+means the protection silently vanishes under the default test client — the tests pass
+without the check ever running. Apply the rules directly, and do not consult the flag.
+
+**`X-Forwarded-For` is the caller's, not yours.** Next's rewrite forwards the browser's
+headers as they arrived. If you key a rate limit on that header without an explicit
+trust decision, there is no rate limit.
+
+**A stale `.next/` breaks the frontend typecheck.** `rm -rf frontend/.next` and re-run
+`next typegen` if `tsc` reports duplicate identifiers in `.next/types/`. The directory is
+git-ignored, so it is a local artefact, not a change you committed.
+
+---
+*Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-020*
+
+---
+
+# Implementation Walkthrough: Onboarding State, Interests & Digest Preferences (FR-1)
+
+**Work Item:** onboarding-state-and-interests
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Generated:** 2026-10-29
+
+## Summary
+
+The server-side state for FR-1's three-step onboarding flow: the ten interest chips as a
+single constant, the user's picks, the digest delivery preference, and the progress that
+says where they are — with a seven-day resume window and a terminal completion.
+
+The item's central problem is that **the flow's rules must not live at the HTTP edge**.
+"Interests replace", "at most three picks", "a completed onboarding is never reopened",
+"the window is inclusive" — each of these is a rule the next caller will need, and a rule
+that only the edge knows is a rule the next caller will not have. So all of them live in
+one service module, and the endpoints are a thin projection of it.
+
+The second problem was quieter: **a read that writes, and races that answer 500**. Both
+were found in the code review and both are now properties of the module, not accidents.
+
+## Structure Overview
+
+The three tables are owned by `personalization` (AD-16). One service module is the only
+way they change; seven endpoints under `/api/personal/onboarding` project its plain data
+onto the wire; and `GET /api/auth/me` reads a two-field summary of it through the same
+published service.
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│  Presentation                                            │
+│  apps/personalization/api.py   — 7 endpoints, thin       │
+│  apps/identity/api.py         — `me` reads the summary   │
+├──────────────────────────────────────────────────────────┤
+│  Application                                             │
+│  apps/personalization/services/onboarding.py             │
+│    · the only writer of the three tables                  │
+│    · rules: replace · ≤3 · inclusive window · terminal    │
+│    · per-user advisory lock (pg_advisory_xact_lock)       │
+├──────────────────────────────────────────────────────────┤
+│  Domain                                                  │
+│  shared/constants.py   — the 10 chips, the window, the   │
+│                          3 steps, the digest defaults    │
+│  domain/timezones.py   — canonical_zone, the one         │
+│                          validator (shared with events)  │
+│  domain/errors.py      — 3 typed errors                  │
+├──────────────────────────────────────────────────────────┤
+│  Infrastructure                                          │
+│  personal schema: interest · onboarding_progress ·       │
+│                   digest_preference                      │
+└──────────────────────────────────────────────────────────┘
 ```
 
-The claim is taken with `FOR UPDATE SKIP LOCKED`, so two overlapping ticks never claim
-the same connection. A claim older than `CALENDAR_CLAIM_TTL` (15 minutes) is a lost job
-— a worker that died — and the connection becomes claimable again.
+## Files Changed
 
-**The tick itself is unchanged.** `tests/worker/test_tick.py` still passes untouched;
-that was this item's named acceptance criterion. The tick now enqueues one more
-dispatcher, and `tests/worker/test_scheduling_tasks.py` was updated to say so.
+### Created
 
-### The failure taxonomy
+| File | Purpose |
+|------|---------|
+| `backend/apps/personalization/services/onboarding.py` | The commands and queries — the only way the three tables change |
+| `backend/apps/personalization/migrations/0005_digestpreference_interest_onboardingprogress.py` | The three tables, their constraints, and the frozen step cap |
+| `backend/tests/personalization/test_onboarding_constants.py` | The ten chips, the three-step cap, the window, the defaults |
+| `backend/tests/personalization/test_onboarding_models.py` | The models' constraints, as the database holds them |
+| `backend/tests/personalization/test_onboarding_commands.py` | The commands' rules |
+| `backend/tests/personalization/test_onboarding_api.py` | The seven endpoints' contract |
+| `backend/tests/personalization/test_onboarding_concurrency.py` | The commands under concurrency |
 
-Four outcomes, and only one of them asks the user to do anything:
+### Modified
 
-| Outcome | Status | Events | Next poll |
-|---|---|---|---|
-| revoked (401/403/404/410) | `needs_reconnect` | **kept** | scheduled |
-| transient (5xx, timeout) | unchanged | kept | scheduled |
-| refused (our decision) | unchanged | kept | scheduled |
-| undecryptable credential | unchanged | kept | scheduled |
+| File | Purpose |
+|------|---------|
+| `backend/shared/constants.py` | The onboarding constants |
+| `backend/apps/personalization/models.py` | `Interest`, `OnboardingProgress`, `DigestPreference` |
+| `backend/apps/personalization/schemas.py` | The onboarding wire shapes |
+| `backend/apps/personalization/api.py` | The seven endpoints |
+| `backend/apps/identity/schemas.py` | `CurrentUserOut` gained the onboarding status |
+| `backend/apps/identity/api.py` | `me` reads the onboarding status |
+| `backend/domain/errors.py` | Three typed errors |
+| `backend/tests/identity/test_auth_api.py` | `me`'s payload changed |
+| `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` | Regenerated by `make client` |
 
-A provider revoked the **address**, not the events — deleting a user's history over a
-403 would be irreversible. And a refusal is *our* decision about the address, not the
-provider's word about the credential, so it must never mark a connection revoked.
+## Architecture
 
-### The 304 path
+### Pattern Used
 
-A `304 Not Modified` is a success: the feed has not changed and the caller keeps what it
-has. The provider's cache validators (`ETag`, `Last-Modified`) are stored on the
-connection and sent back on the next fetch, so an unchanged feed costs one `304`
-instead of a full download.
+**Service layer with a command/query split.** Commands are named functions in
+`apps/personalization/services/`, each taking an explicit `Actor` and an explicit `now`,
+each opening one `transaction.atomic(using=PERSONAL)`, each writing its audit row inside
+that transaction, and each returning plain data rather than a model instance (AD-5).
+Queries are the same functions without the writes.
 
-A validator the provider no longer sends is **cleared** rather than kept. A stale
-`ETag` would make the provider answer `304` for a feed it has changed, and the user's
-events would silently stop updating.
+### Layer Structure
 
----
-
-## The Audit and the Logs
-
-One audit row per sync, holding **counts only**:
-
-```json
-{"created": 3, "updated": 1, "deleted": 0, "unchanged": 42, "provider": "google"}
+```text
+┌─────────────────────────────┐
+│      Presentation           │  api.py — 7 endpoints
+├─────────────────────────────┤
+│      Application            │  services/onboarding.py
+├─────────────────────────────┤
+│        Domain               │  shared/constants.py, domain/timezones.py
+├─────────────────────────────┤
+│     Infrastructure          │  the personal schema
+└─────────────────────────────┘
 ```
 
-One row per connection, not one per event: a user's calendar can hold hundreds of
-events, and a per-event row would write hundreds of rows per hour per connection.
+## Domain Model
 
-The log line carries the same counts and no event content. A test asserts that **no
-event content reaches any log line over a whole sync** — no title, no uid, no location,
-no URL. The credential is handed to the port wrapped in `ports.calendar.Credential`,
-whose own `repr` is `Credential('[redacted]')`.
+### `Interest` — one chip the user picked
 
-The polled sync acts as the system actor `calendar_sync`, with no user id: a poll at 3am
-has no user behind it, and putting a user's id in an audit row for an action they did
-not take would be a lie.
+| Property | Type | Rule |
+|----------|------|------|
+| `user_id` | UUID | Held **by value** (OQ-8) — no FK to `User`, no `GenericForeignKey` |
+| `chip_key` | str(64) | A stable slug from `INTEREST_CHIPS`; the **label is not stored** |
+| — | constraint | `UNIQUE (user_id, chip_key)` — the same chip twice is held by the database |
 
----
+The label is not stored because it is prose: a renamed label must not orphan a stored
+pick. The key is the contract — what the API accepts, what the database holds, and what
+identifies a chip forever.
 
-## The Purge
+### `OnboardingProgress` — where the user is
 
-FR-50: "disconnecting purges exactly that connection's events". The order is the safe
-one — **the credential is destroyed first**, in its own transaction, so the user's
-revocation never depends on a purge succeeding. If the purge fails, the secret is
-already gone.
+| Property | Type | Rule |
+|----------|------|------|
+| `user_id` | UUID | By value (OQ-8) |
+| `current_step` | int | `CHECK (1 ≤ current_step ≤ 3)` — the database's copy of FR-1's cap |
+| `last_advanced_at` | datetime | What the resume window is measured against |
+| `completed_at` | datetime \| null | Set when onboarding ends; makes completion **terminal** |
+| — | constraint | `UNIQUE (user_id)` — one row per user |
 
-The purge then walks three tables, each through **its owner's interface**:
+The row holds the *position*, not the step's name, because the resume rule is about the
+position. The name is resolved through `ONBOARDING_STEPS`, so the two cannot drift.
 
-| Step | Owner | How |
-|---|---|---|
-| the conflict pairs | `personalization` | `delete_personal_event` closes them |
-| the events | `personalization` | `delete_personal_event` |
-| the reminder plans | **`delivery`** | `remove_plans_for_targets` (AD-16) |
+### `DigestPreference` — when and where the digest arrives
 
-`delivery` owns `REMINDER_PLAN`, and `personalization` may not write it. The purge asks
-`delivery` to delete the plans; it does not reach for the model. The
-`models-delivery` import contract is what keeps that true.
+| Property | Type | Rule |
+|----------|------|------|
+| `user_id` | UUID | By value (OQ-8) |
+| `delivery_time` | time | A **local wall clock** — `tzinfo` is always null |
+| `timezone` | str(64) | An IANA zone; validated by the command, not by a constraint |
+| — | constraint | `UNIQUE (user_id)` — one row per user |
 
-The purge is scoped by `calendar_connection_id`, which is exact by construction: another
-connection's events and the user's own events are untouched.
+**The wall clock plus a zone is the whole preference.** Storing a UTC instant instead
+would be wrong in a way that only shows up twice a year: the user says "9am", and a UTC
+instant is "9am once, then 8am or 10am after a DST change".
 
----
+**Why a dedicated model and not a `PREFERENCE_GRAPH`.** A graph is a structure for a
+*set* of preferences with edges between them. A delivery time and a zone are a single
+value with two parts, read as a unit and written as a unit. A graph would add a node
+type, an edge type and a traversal for one row. The shape is reconsidered when a second,
+genuinely separate preference arrives — and the reasoning is recorded in the model, so
+the next reader knows the decision was deliberate.
 
-## The Conflicts
+## Security Considerations
 
-The import reaches detection only through `create_personal_event` and
-`update_personal_event` — the same commands the user's own edits use. That is D11, and
-it is why an imported event gets the same reminder default (FR-20's 1d + 1hr), the same
-version bump, the same audit row and the same conflict detection.
+| Concern | Approach |
+|---------|----------|
+| **Authentication** | All seven endpoints inherit the router's `auth=current_user` — the session resolver, never a user id from the body |
+| **Scoping** | The user id comes from the session alone; no endpoint accepts one as input. `test_a_user_id_in_the_payload_is_ignored` pins it |
+| **CSRF** | Every unsafe method is checked by `require_csrf`; the `GET`s are safe **by construction** — the read never writes (see below) |
+| **Input validation** | The chip keys are checked against the constant; the zone by `canonical_zone` — the same validator personal events use; the delivery time by an explicit wall-clock check |
+| **Enumeration** | Not applicable — every endpoint requires a session |
+| **Cross-site writes** | **The read is read-only.** A write behind a `GET` would be a cross-site write, because Django Ninja exempts every view from Django's CSRF middleware and the resolver only checks unsafe methods |
 
-Two rules apply, and they do not apply to the same pairs:
+## Performance Considerations
 
-- the **time** rule applies everywhere — two things at once is a clash whichever way
-  round it is;
-- the **duplicate** rule does **not** apply between an import and a user-created event.
-  A user-created "Dinner" and a calendar "Dinner" at 7pm are very often the same dinner,
-  and the user typed theirs deliberately, so flagging them would be a prompt with no
-  useful answer. Two *imports* are still compared — the user saved the same meeting to
-  two calendars.
+| Requirement | Implementation |
+|-------------|----------------|
+| The chip list is read on every onboarding render | It is a module constant — no query at all |
+| The user's chips are read | One indexed query on `user_id` |
+| The progress row is read | One indexed query; `last_advanced_at` is compared in Python, not in SQL |
+| Concurrent commands | One transaction-scoped advisory lock per user — a single `SELECT pg_advisory_xact_lock(...)` |
+| `me` is on every authenticated request | It reads **and writes nothing** — no lock, no UPDATE |
 
-So the duplicate rule had to become switchable on the command path, not only on
-`detect_conflicts`: the import reaches detection only through the commands. That was
-one of the six gaps the test suite found while building this item.
+The last row matters more than it looks. `me` is on the hot path; a read that took a row
+lock and issued an `UPDATE` for every user whose flow had expired would put a write on
+the endpoint every request passes through.
 
----
+## Decisions Made
 
-## Where the Money Is Spent
+1. **`PUT` for the two setters, `POST` for the three movers.** `PUT` replaces a resource
+   — that is what it means, and `POST` would imply a create. `POST` for the transitions,
+   which are not idempotent replacements of a body.
 
-The poll interval is **1 hour**, and it is **provisional** (OQ-7). The number lives in
-exactly one place (`shared/constants.py`), and the only thing this item changes is that
-the constant is now actually used — by the dispatcher that computes the next due time.
+2. **The chip key is the contract; the label is prose.** They are separate fields so a
+   renamed label leaves every stored pick valid. The API takes the key and refuses the
+   label (`test_a_label_is_not_a_key`).
 
-**When OQ-7 closes, one line changes.**
+3. **A duplicate key in one payload is deduplicated, not refused.** The database
+   constraint forbids a duplicate *row*; a caller sending the same key twice has not made
+   a mistake worth a refusal.
 
----
+4. **The read never writes; the restart is a command.** The original design wrote the
+   restart on read, so two reads a second apart agreed. The new design *derives* the
+   answer from the stored facts, so they still agree — and the read is safe, which the
+   old one was not.
 
-## What the Tests Prove
+5. **A transaction-scoped advisory lock, not a row lock.** A row lock can only lock a row
+   that exists, and the case that matters most is the one where none does: a user with no
+   interests and no progress row yet. The lock is on a *key*, so it works either way, and
+   it is released when the transaction ends, so a crashed worker cannot wedge a user.
 
-94 item-scoped tests, 2648 in the whole backend, all passing. Every module this item
-created or changed is at **100%** coverage.
+6. **The digest default is *written*, not assumed.** A user who skips step 3 gets a real
+   row with a real value, so `delivery` reads one row rather than branching on "was it
+   set?".
 
-The properties pinned, by decision:
+7. **Completion is terminal for the *flow*, not for the preferences.** The three movers
+   refuse a completed user with a 409; the two setters do not. A user who finished
+   onboarding may still change their interests or their digest time — FR-1 says the flow
+   is never reopened, not that the preferences are frozen.
 
-- **D1** — the three-way diff: create, update, delete, and the identical branch that
-  changes nothing.
-- **D2** — the user's edit wins, including when the edit lands *mid-reconcile*, and the
-  ownership flag is never reset by an import.
-- **D3/D4** — the imported-event refusal; the duplicate rule's scope; the time rule's
-  scope; a resolved pair is never re-prompted.
-- **D5/FR-20** — the default plan is attached on creation only, so an update never
-  wipes a customised plan.
-- **D6/D7** — revoked keeps the events; transient leaves the status alone; refused is
-  never a revocation; a failed fetch writes nothing.
-- **D8** — the claim: atomicity under real contention, the TTL, the batch, the
-  ordering, the release.
-- **D9** — connect and reconnect request a sync **without fetching**; the reconnected
-  calendar is claimed on the next tick.
-- **D10/D17** — one audit row with counts; no event content in any audit row or log
-  line.
-- **D13** — the purge's scope, the pairs, the plans, and the ordering.
-- **D15** — a failed fetch writes no events, no pairs, no plans.
+## Deviations from Plan
 
-The review's fixes added their own regression tests, and each was verified by **reverting
-the fix and watching the test fail** — a regression test that passes against the broken
-code proves nothing.
+1. **The read became read-only.** The plan had the restart written on read, "so two reads
+   a second apart agree about the step". The code review found that this made
+   `GET /api/auth/me` a mutating method — and since a `GET` is never CSRF-checked, that
+   was a **cross-site write**. The plan's *goal* (two reads agree) is now met more
+   strongly: the answer is derived from `last_advanced_at` and the window, so it does not
+   depend on a write having happened.
 
----
+2. **The concurrency guarantee was added.** The plan did not mention concurrent requests.
+   The review found that two concurrent writes for the same user produced a raw
+   `IntegrityError` — a 500 — from a unique constraint. A new test file
+   (`test_onboarding_concurrency.py`, 9 tests) and the per-user advisory lock were added.
 
-## What Comes Next
+3. **`DigestPreferenceOut` is nested inside `OnboardingStateOut`** rather than being a
+   top-level endpoint response. The plan sketched the schema set; the nesting keeps the
+   digest preference's shape in one place, since it is always read as part of the state.
 
-- **`calendar-connect-api`** — the HTTP surface for connect, reconnect and disconnect.
-  The conflict prompt's two-button variant for an imported side is owed to
-  **`pulse-preview-api-and-geo`**: the service refuses "delete the new one" for an
-  imported side, but the client has to be told which buttons to offer.
-- **`pulse-preview-api-and-geo`** — the conflicts endpoint. Note that
-  `resolve_conflict`'s "delete the new one" calls `delete_personal_event`
-  unconditionally, so a `SAVED_EVENT` side would raise `PersonalEventNotFoundError` and
-  leave the pair `active` forever. That is pre-existing and unreachable through today's
-  API, but it becomes reachable with the conflicts endpoint, and should be settled
-  there.
-- **AD-15, the retention sweep** — a failed purge leaves orphaned events and plans, and
-  nothing retries them. The design sanctions that (the credential is destroyed first),
-  but it sanctions it without a compensating mechanism, and the retention sweep is where
-  that should be settled.
+4. **One existing test was rewritten, not just added.** `test_the_restart_is_written_not_recomputed`
+   pinned the read's write. It was replaced by three tests of the new contract. The old
+   assertion was not a regression guard for anything the work item asked for — it was a
+   guard for the defect.
 
----
+## Dependencies Added
 
-## Result
+**None.** No new Python packages, no new npm packages, no new infrastructure. The
+advisory lock uses Postgres, which the project already depends on, through the same
+pattern `apps.ingestion` already uses for its dedup locks.
 
-**Passing.** 2648 passed, 0 failed; 98.92% coverage with 151 files at 100%; ruff clean;
-17/17 import contracts kept; no migration drift; `tests/worker/test_tick.py` unchanged
-and passing.
+## How to Verify
 
-The item's own test suite found **six** gaps while building it (the 304 path could never
-work; the bulk delete had no target to name in its audit row; the duplicate rule was not
-switchable on the command path; a stale cache validator would have frozen a calendar;
-two uncovered branches in the imported-event helper; an atomicity test that could not see
-its own rows). The code review found **five** more, one of them a BLOCKER — a user's
-edit could be overwritten and their ownership destroyed by a poll that raced them. All
-eleven are fixed and regression-tested.
+### The commands
+
+```bash
+cd backend
+
+# The item's own tests
+.venv/bin/python -m pytest \
+    tests/personalization/test_onboarding_constants.py \
+    tests/personalization/test_onboarding_models.py \
+    tests/personalization/test_onboarding_commands.py \
+    tests/personalization/test_onboarding_api.py \
+    tests/personalization/test_onboarding_concurrency.py -q
+
+# The whole suite, with coverage
+.venv/bin/python -m pytest tests/ -q --cov --cov-report=term-missing
+
+# The linter, the contracts, and the migration drift
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/lint-imports
+.venv/bin/python manage.py check
+.venv/bin/python manage.py makemigrations --check --dry-run
+
+# AD-19: the client regenerates with no drift
+make client && git status --short frontend/lib/api/
+
+# The frontend
+pnpm --dir frontend test
+cd frontend && ./node_modules/.bin/tsc --noEmit
+```
+
+**Expected:** 104 item-scoped tests pass; 2819 backend tests pass; 98.96% coverage with
+155 files at 100%; ruff clean; 17/17 contracts kept; no migration drift; the committed
+schema matches the regenerated one; 149 frontend tests pass; the typecheck is clean.
+
+### Manual scenarios
+
+**The chip list comes from the server.** Sign in, `GET /api/personal/onboarding/interest-chips`
+→ ten chips in the mockup's order, each with a `key` and a `label`. Change a label in
+`shared/constants.py`, reload, and the change is in the response — the frontend holds no
+second copy.
+
+**Interests replace.** `PUT /api/personal/onboarding/interests` with two keys → 200 and
+two chips. `PUT` again with one → 200 and **one** chip, not three. `PUT` with four →
+422 `too_many_interests`, and nothing is written. `PUT` with `"underwater_basket_weaving"`
+→ 422 `unknown_interest`, and the offending key is named.
+
+**Zero picks is valid.** `PUT` with `[]` → 200, and the set is empty. That is how the
+step is skipped.
+
+**The digest preference.** `PUT /api/personal/onboarding/digest-preference` with
+`{"delivery_time": "09:30", "timezone": "America/Los_Angeles"}` → 200. With
+`"Mars/Olympus_Mons"` → 422. With `"Etc/UTC"` → 200, and the stored zone is `"UTC"`.
+
+**The flow moves.** `POST /api/personal/onboarding/step` → step 2. Again → step 3.
+Again → **complete**, `current_step` null. `POST` again → **409**
+`onboarding_already_complete`.
+
+**Skipping works with no input at all.** `POST /api/personal/onboarding/step/skip`
+three times → complete, with an empty interest set and the default digest preference
+written. `POST /api/personal/onboarding/skip-all` → complete in one call.
+
+**The window.** Leave the flow at step 3, wait out the seven days (or move
+`last_advanced_at` back in the database), then `GET /api/personal/onboarding` → **step 1**.
+Check the `onboarding_progress` row: it is **unchanged** — the read reported the restart,
+it did not perform one. Now `POST /api/personal/onboarding/step` → the row moves for
+real.
+
+**`me` carries the status and not the settings.** `GET /api/auth/me` → the id, the
+email, and `{"onboarding": {"completed": false, "current_step": 1}}`. Give the user
+interests and a digest preference first — neither appears.
+
+**Concurrency.** Two `PUT`s for the same user at once → both answer 200, and the user
+ends with one interest set. Two `POST`s to `/step` at once → one progress row.
+
+## Test Coverage
+
+- Tests added: 104 (11 constants, 17 models, 42 commands, 26 API, 9 concurrency — one
+  command test was rewritten by the review)
+- Coverage: 100% on `apps/personalization/services/onboarding.py`; 98.96% across the backend
+- Status: passing — 2819 backend, 149 frontend, 0 failures
+
+## Ready for Review
+
+- [x] All acceptance criteria met
+- [x] Tests passing
+- [x] No critical issues remaining — the review's five findings are all fixed and revert-verified
+- [x] Documentation updated — the module docstring states both new guarantees
+- [x] Developer notes captured
+
+## Developer Notes
+
+**A `GET` that writes is a cross-site write.** Django Ninja exempts every view it builds
+from Django's `CsrfViewMiddleware`, and this project's own check — in
+`apps.identity.api_auth.require_csrf` — runs on **unsafe methods only**. So any write
+behind a `GET` can be triggered by a hostile page with a plain `<img src>`, and no token
+is needed. If a read ever needs to mutate, that mutation has to become a command. The
+tell is a service function named `get_*` that opens a transaction.
+
+**A unique constraint is not an error handler.** The three models carry unique
+constraints, and the commands were written as lookup-then-write. Two concurrent requests
+both found no row and both inserted, and the loser got a raw `IntegrityError` — a 500
+where the caller should have got an answer. The docstring even said the constraint
+"caught" the second write. It raised; it did not catch. A constraint is the last line of
+defence, and a race that reaches it is a race that was never designed for.
+
+**A row lock cannot lock a row that does not exist.** The first fix for the race was
+`select_for_update()` plus an `IntegrityError` retry. It worked — and it was redundant.
+The case that matters most is a user with no rows *yet*, which is precisely the case a
+row lock cannot cover. A `pg_advisory_xact_lock` on a key derived from the user id
+covers both, and it is released when the transaction ends, so a crashed worker cannot
+wedge a user. The codebase already used this pattern in `apps.ingestion`. A revert that
+removed the row locks and kept the advisory lock still passed every test — which is how
+the redundancy was found, and why the simpler version is the one that shipped.
+
+**`UUIDv7Model` has no `created_at`.** It has `id`, and the id is a UUIDv7 — which is
+time-ordered. So ordering by `id` *is* ordering by creation time. The original code
+ordered by `created_at` and raised `FieldError` on every read — which broke seven tests
+in three other areas, because they all reach `GET /api/auth/me`. If a model needs a
+creation timestamp, `id` already is one.
+
+**A thread's database connection outlives the thread.** The concurrency tests' first
+version left each worker's connection open, and the suite failed in *teardown* with
+`database "test_eventpulse24" is being accessed by other users` — a confusing message
+for what is really "your test leaked a session". `connections[PERSONAL].close()` in the
+worker's `finally` fixes it.
+
+**Concurrent tests need `transaction=True`.** Without it pytest-django wraps every alias
+in an outer atomic and nothing is ever committed — so the second thread cannot see the
+first thread's rows, and the test passes vacuously. This is the same trap the calendar
+polling test hit, and the reason the concurrency tests assert on the *outcome* (one row,
+one whole set) and not only on the absence of an exception.

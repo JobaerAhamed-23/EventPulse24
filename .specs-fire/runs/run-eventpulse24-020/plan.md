@@ -1811,3 +1811,570 @@ contract already forbids the latter, and `lint-imports` proves it.
 | OpenAPI regenerates; the client is regenerated with `make client` | `make client` |
 | The import contracts pass | `lint-imports` |
 | Tests cover every listed path | `tests/identity/test_auth_api.py` |
+
+---
+
+## Work Item: onboarding-state-and-interests
+
+**Intent**: `onboarding-and-account` · **Mode**: confirm (1 checkpoint — this plan)
+**Depends on**: `auth-api-and-session-seam` (complete)
+
+### Approach
+
+FR-1's onboarding flow needs server-side state: which step the user is on, what they picked,
+and when the digest should arrive. This item builds that state and the HTTP surface over it.
+
+The work splits into four movements.
+
+**1. The vocabulary (`shared/constants.py`).**
+
+`INTEREST_CHIPS` is one constant holding the ten chips with **stable keys** and display
+labels. The keys are the contract: they are what the API accepts, what the database stores,
+and what the frontend renders. They are slug-like (`tech_meetups`, `sports_fitness`, …) so a
+label can change without invalidating a stored pick — a renamed chip must not orphan a
+user's existing rows.
+
+The frontend gets the list **from the API**, not from a second copy. The chips endpoint
+projects the constant onto the wire, so the mockup's ten labels live in exactly one place.
+
+**2. The models (`personalization`).**
+
+Three models, all in the `personal` schema, all owned by `personalization` (AD-16), all
+holding the user **by value** (OQ-8 — no FK to `User`):
+
+| Model | Holds | Constraint |
+|---|---|---|
+| `Interest` | the user + one chip key | unique `(user_id, chip_key)` — **the DB constraint**, so a duplicate is impossible even under a race |
+| `OnboardingProgress` | the user + current step + the moment they last moved | unique `user_id` |
+| `DigestPreference` | the user + delivery time + IANA zone | unique `user_id` |
+
+**The digest preference is a small dedicated model, not a `PREFERENCE_GRAPH`.** The work
+item asks for that decision explicitly and says not to create a `PREFERENCE_GRAPH`
+speculatively. A graph is a structure for a *set* of preferences with edges between them; a
+digest's delivery time and zone are a single value with two parts, read as a unit and
+written as a unit. A graph would add a node type, an edge type and a traversal for a value
+that is one row. When a second, genuinely separate preference arrives (notification
+language, digest frequency, quiet hours), *that* is when the shape is reconsidered — and the
+plan records that so the next reader knows the decision was deliberate, not accidental.
+
+**3. The commands (`apps/personalization/services/onboarding.py`).**
+
+One module, four commands and three queries. Every command takes an explicit `Actor` and an
+explicit `now`, opens one `transaction.atomic(using=PERSONAL)`, and writes its audit row
+inside it (AD-5) — the same shape as `personal_events.py` and `saved_events.py`.
+
+- `set_interests(...)` — **replaces** the user's set.
+- `set_digest_preference(...)` — writes the delivery time and the zone.
+- `advance_step(...)` / `skip_step(...)` — moves the progress row.
+- `skip_onboarding(...)` — completes it in one move.
+- `get_onboarding_state(...)` — the read.
+
+**4. The surface (`/api/personal/onboarding`).**
+
+A new router in `apps/personalization/api.py`, mounted under the existing `/api/personal`
+prefix, so the endpoints are `/api/personal/onboarding/…`. The router keeps the existing
+`auth=current_user`, so every endpoint is authed and scoped to the session user — and no
+endpoint accepts a user id as input.
+
+`GET /api/auth/me` gains the onboarding status, read through **`personalization`'s published
+interface** (`apps.personalization.services.onboarding`), never through its models. The
+`models-personalization` import contract already forbids `apps.identity` reaching
+`apps.personalization.models`, and `lint-imports` proves it.
+
+### The decisions that shape the code
+
+| # | Decision | Why |
+|---|---|---|
+| D1 | Chip **keys** are stable slugs; labels are display-only | A renamed chip must not orphan stored picks |
+| D2 | `Interest` is one row per chip, unique `(user_id, chip_key)` | The duplicate is impossible at the DB level, not just in the service |
+| D3 | Setting interests **replaces** the set | The API is a *set*, not a delta; "I changed my mind" is one call |
+| D4 | **Zero picks is valid** | That is how step 2 is skipped |
+| D5 | The digest preference is a **dedicated model**, not a `PREFERENCE_GRAPH` | A single value with two parts is not a graph; the work item forbids the speculative one |
+| D6 | The delivery time is a **local wall clock** + an IANA zone | The instant depends on the zone; storing a UTC time would freeze the user's intent |
+| D7 | The zone is validated by **`domain.timezones.canonical_zone`** | The same validator personal events use, so "UTC" and "Etc/UTC" mean the same thing everywhere |
+| D8 | Progress is **one row per user**, holding the current step | One row, one write, no ordering ambiguity |
+| D9 | The resume window is **`ONBOARDING_RESUME_WINDOW`**, 7 days | A named constant, pinned by a test with a fixed clock |
+| D10 | After the window, onboarding **restarts at step 1** | The stored step expires with it |
+| D11 | **Complete is terminal** | A completed user is never sent back into onboarding |
+| D12 | There are exactly **3 steps** | FR-1: "exceeds 3 steps … violates FR-1" |
+| D13 | **Every step can be skipped**; no step requires input | FR-1 |
+| D14 | Step 1 records that it was *passed*; it does not own the connection | The connection belongs to `calendar-connect-api` |
+| D15 | The `me` endpoint reads the status through the published interface | AD-2 / the import contracts |
+
+### The step model — exactly three, and a test that fails if a fourth appears
+
+The steps are a **constant**, not a model's rows:
+
+```python
+ONBOARDING_STEPS = ("calendar", "interests", "digest")
+ONBOARDING_STEP_COUNT = len(ONBOARDING_STEPS)
+```
+
+Step 1 is `calendar` — the optional calendar connect. Step 2 is `interests` — the chips.
+Step 3 is `digest` — the delivery time and zone.
+
+**A test fails if a fourth step is added.** The test asserts `ONBOARDING_STEP_COUNT == 3`
+*and* that the tuple has exactly the three expected members. A bare `== 3` would pass on a
+three-element tuple of the wrong steps; asserting the membership as well pins *which* three.
+This is the acceptance criterion's "a test fails if a 4th is added" read literally.
+
+The progress row stores the step as an **integer** (1, 2, 3), because the step's *position*
+is what the resume rule is about ("resumed at the same step"). The step's identity is
+resolved through the constant, so the two can never drift: the integer indexes
+`ONBOARDING_STEPS`.
+
+### The resume rule
+
+> A user who leaves mid-step is resumed at the same step on return within 7 days.
+
+The rule is stated in terms of *returning*, so the implementation is:
+
+- `OnboardingProgress` holds `current_step` (1–3) and `last_advanced_at` (the moment the
+  user last advanced, completed or skipped a step).
+- On read, if `now - last_advanced_at > ONBOARDING_RESUME_WINDOW`, the stored step has
+  expired: the read **restarts at step 1**. The row is rewritten at that point (in its own
+  transaction), so the restart is not recomputed on every read.
+- Within the window, the stored step is returned as-is.
+
+**The boundary is pinned with a fixed clock.** The test asserts three points: at
+`now - last_advanced_at == ONBOARDING_RESUME_WINDOW` the user is **still** resumed at the
+stored step (the window is inclusive), one second beyond it they are **not**, and well
+inside it they are.
+
+**Complete is terminal.** A progress row with `completed_at` set is never returned as
+"in progress", whatever the clock says. A completed user is never sent back into
+onboarding — that is the acceptance criterion, and the read is where it is enforced.
+
+### The digest preference's default
+
+> A user who skips step 3 gets a documented default, held as a named constant.
+
+```python
+DEFAULT_DIGEST_DELIVERY_TIME = time(9, 0)
+DEFAULT_DIGEST_TIMEZONE = "UTC"
+```
+
+Both are named constants in `shared/constants.py`, next to the chips. The default is
+**written** when step 3 is skipped, not merely assumed at read time — so the preference is
+always a real row with a real value, and `delivery` (which will consume the delivery time)
+reads one row rather than branching on "was it set?".
+
+The default is **9:00 in UTC**. It is deliberately boring and documented rather than clever:
+a default that guessed the user's local zone would need the guess, and the guess would be
+wrong for most of the world. The user changes it in one tap, or the Pulse Digest intent
+refines it once the user's activity is known.
+
+### The delivery time is a local wall clock
+
+The delivery time is stored as a **`TimeField`** (a local wall clock, no zone) **plus** a
+separate IANA zone. The pair is the whole preference.
+
+Storing a UTC instant instead would be wrong in a way that only shows up twice a year: the
+user says "9am", and a UTC instant is "9am once, then 8am or 10am after a DST change". A
+wall clock + zone is what the user actually meant, and it is what `delivery` will read when
+it computes the next send time.
+
+### The interests' shape
+
+`set_interests` takes a list of **chip keys**, not labels. The service:
+
+1. Refuses more than `MAX_INTEREST_PICKS` (3) — with a calm message.
+2. Refuses an unknown key — with a calm message, and **naming** the offending key so the
+   caller can see which one was wrong.
+3. Refuses duplicates within one call? No — a duplicate is **deduplicated**, not refused.
+   The DB constraint forbids a duplicate *row*; a caller sending the same key twice has not
+   made a mistake worth a refusal, and deduplicating is friendlier. The constraint still
+   holds, because the set is written once, atomically.
+4. Zero picks is valid: it clears the set. That is how step 2 is skipped.
+5. **Replaces**: the old rows are deleted and the new ones written in the same transaction.
+   A user who goes from three chips to one has one chip afterwards, not four.
+
+The refusals are `ValidationError` subclasses with their own codes, so the client can tell
+"too many" from "unknown key" — but both carry a **calm** message, per the project's voice.
+
+### The surface
+
+| Endpoint | Method | Behaviour |
+|---|---|---|
+| `/api/personal/onboarding` | GET | The whole state: progress, interests, digest preference, the chip list |
+| `/api/personal/onboarding/interest-chips` | GET | The ten chips, from the constant |
+| `/api/personal/onboarding/interests` | PUT | **Replace** the user's picks |
+| `/api/personal/onboarding/digest-preference` | PUT | Set the delivery time and zone |
+| `/api/personal/onboarding/step` | POST | Advance to the next step |
+| `/api/personal/onboarding/step/skip` | POST | Skip the current step |
+| `/api/personal/onboarding/skip-all` | POST | Skip everything; onboarding is complete |
+
+`PUT` for the two setters, because they **replace** a resource — that is what `PUT` means,
+and `POST` would imply a create. `POST` for the three step movers, because they are
+transitions, not idempotent replacements of a body.
+
+Every endpoint is scoped to `request.user.pk`. **No endpoint accepts a user id as input**
+— the same rule the rest of the personal surface follows, so the scoping cannot be talked
+out of by a payload.
+
+### `GET /api/auth/me` gains the onboarding status
+
+The schema gains two fields:
+
+```python
+class CurrentUserOut(Schema):
+    id: UUID
+    email: str
+    onboarding: OnboardingStatusOut
+```
+
+`OnboardingStatusOut` carries `completed: bool` and `current_step: int | None` — enough for
+the frontend to decide "show onboarding, or show home". It carries **no** interests and
+**no** digest preference: the `me` endpoint is about who the user is, not about their
+settings, and a settings blob there would grow without bound.
+
+`identity` reads the status through `personalization`'s **published interface** — the
+service function, never the model. The `models-personalization` import contract forbids
+`apps.identity` → `apps.personalization.models`; the published-service call is exactly the
+seam the architecture intends.
+
+**A circular import is the risk here, and it is real.** `identity` → `personalization`
+(services) → `delivery` (services) → … must not loop back into `identity`. The
+`personalization` service module imports nothing from `identity`, so the arrow is one-way.
+`lint-imports` proves it.
+
+### Files to Create
+
+| Path | Purpose |
+|---|---|
+| `backend/apps/personalization/services/onboarding.py` | The commands and queries: interests, digest preference, progress. |
+| `backend/apps/personalization/schemas.py` (added to) | The onboarding wire shapes. |
+| `backend/tests/personalization/test_onboarding_constants.py` | The chip list, the step count, the defaults. |
+| `backend/tests/personalization/test_onboarding_models.py` | The constraints: the chip uniqueness, the retention categories, the step check. |
+| `backend/tests/personalization/test_onboarding_commands.py` | The commands: replace, the 3-pick limit, the unknown key, the IANA refusal, the resume window, the terminal state. |
+| `backend/tests/personalization/test_onboarding_api.py` | The endpoints: the authed scope, the projections, the refusals. |
+
+## Files to Modify
+
+| Path | Change |
+|---|---|
+| `backend/shared/constants.py` | `INTEREST_CHIPS`, `ONBOARDING_STEPS`, `ONBOARDING_STEP_COUNT`, `MAX_INTEREST_PICKS`, `ONBOARDING_RESUME_WINDOW`, `DEFAULT_DIGEST_DELIVERY_TIME`, `DEFAULT_DIGEST_TIMEZONE`. |
+| `backend/apps/personalization/models.py` | `Interest`, `OnboardingProgress`, `DigestPreference`. |
+| `backend/apps/personalization/migrations/0005_*.py` | The three tables. |
+| `backend/apps/personalization/api.py` | The `/onboarding` endpoints. |
+| `backend/apps/personalization/admin.py` | Read-only registrations, if the file has any. |
+| `backend/apps/identity/api.py` | `me` gains the onboarding status. |
+| `backend/apps/identity/schemas.py` | `CurrentUserOut` gains `onboarding`. |
+| `backend/domain/errors.py` | The typed refusals: too many picks, unknown chip, onboarding already complete. |
+| `backend/apps/personalization/services/__init__.py` | Export the new commands. |
+| `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` | Regenerated by `make client` (never hand-edited). |
+
+## The models, in detail
+
+```python
+class Interest(UUIDv7Model):
+    """One interest chip the user picked."""
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # A stable key from `shared.constants.INTEREST_CHIPS`, e.g. "tech_meetups".
+    chip_key = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "chip_key"], name="interest_user_chip_uq"
+            ),
+        ]
+        indexes = [models.Index(fields=["user_id"])]
+```
+
+`PREFERENCE_SIGNALS` is the right retention category: a chip is a signal about the user,
+not account content and not an audit log.
+
+```python
+class OnboardingProgress(UUIDv7Model):
+    """Where the user is in the 3-step onboarding flow."""
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    user_id = models.UUIDField()
+    # 1..3 — the index into `shared.constants.ONBOARDING_STEPS`.
+    current_step = models.PositiveSmallIntegerField(default=1)
+    # The moment the user last advanced, completed or skipped.
+    last_advanced_at = models.DateTimeField()
+    # Set when onboarding ends. A completed user is never sent back into it.
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id"], name="onboarding_progress_user_uq"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(current_step__gte=1) & models.Q(current_step__lte=3),
+                name="onboarding_progress_step_ck",
+            ),
+        ]
+```
+
+**The step check constraint is the database's copy of D12.** The constant is the source of
+truth; the constraint is the backstop for a row written by something other than the
+service. Both say 3, and the test asserts the constant is 3 — so a fourth step would have to
+change the constant, the constraint *and* the migration before the check would stop it.
+
+```python
+class DigestPreference(UUIDv7Model):
+    """When and where the Pulse Digest should arrive."""
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    user_id = models.UUIDField()
+    # A local wall clock (HH:MM), NOT an instant. Paired with `timezone`.
+    delivery_time = models.TimeField()
+    # An IANA zone name, e.g. "America/Los_Angeles". Validated by the command.
+    timezone = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id"], name="digest_preference_user_uq"
+            ),
+        ]
+```
+
+**`timezone` as a column name.** Django's `models.TimeField` is a time; the zone is a
+string. The column is called `timezone` because that is what it is — but it shadows nothing,
+and it is not `models.TimeField`. `start_time_tz` is the precedent in `PersonalEvent`.
+
+## The commands, in detail
+
+### `set_interests`
+
+```python
+def set_interests(
+    *, user_id: UUID, chip_keys: Sequence[str], actor: Actor, now: datetime
+) -> InterestSetSnapshot
+```
+
+1. **Validate the count.** More than `MAX_INTEREST_PICKS` → `TooManyInterestsError`.
+2. **Validate the keys.** Each key must be in the constant's key set → `UnknownInterestError`
+   naming the key. The check is against the *constant*, not against the database, so an
+   unknown key is refused before any write.
+3. **Deduplicate**, preserving the caller's order.
+4. **Replace**, in one transaction: delete the user's rows, insert the new ones, write the
+   audit row.
+
+The replace is one transaction because a half-applied set is worse than a failed one: the
+user would see picks they did not choose.
+
+**The audit row** carries the count and the keys — the keys are not sensitive (they are a
+fixed public list), and an audit row that says only "3 interests changed" cannot say *what*.
+
+### `set_digest_preference`
+
+```python
+def set_digest_preference(
+    *, user_id: UUID, delivery_time: time, timezone_name: str, actor: Actor, now: datetime
+) -> DigestPreferenceSnapshot
+```
+
+1. **Validate the zone** with `domain.timezones.canonical_zone` — the same validator
+   personal events use. `None` → `InvalidTimezoneError`. The canonical name is stored, so
+   "Etc/UTC" is stored as "UTC".
+2. **Validate the time** is a real `time` (the schema already guarantees the type; a
+   `time` with a non-zero tzinfo would be a wall clock *with* an offset, which is not what
+   this field means — the service refuses one).
+3. **Write** in one transaction, with the audit row.
+
+The write is an **upsert**: one row per user, so setting the preference twice updates it.
+
+### The progress commands
+
+```python
+def get_onboarding_state(*, user_id: UUID, now: datetime) -> OnboardingStateSnapshot
+def advance_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingStateSnapshot
+def skip_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingStateSnapshot
+def skip_all(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingStateSnapshot
+```
+
+**`get_onboarding_state`** is the read, and it is where the resume rule and the terminal
+rule live:
+
+- No progress row → the user is at step 1, in progress. (The row is created lazily on the
+  first *write*, so a user who only ever reads does not get a row.)
+- A row with `completed_at` set → **complete**, whatever the clock says.
+- A row whose `last_advanced_at` is older than the window → **restart at step 1**, and the
+  row is rewritten in its own transaction.
+- Otherwise → the stored step.
+
+**`advance_step`** moves `current_step` forward by one and sets `last_advanced_at = now`.
+Advancing past step 3 **completes** the onboarding: step 3 is the last one, so there is no
+step 4. That is D12 at the command level — the flow cannot have a fourth step because
+advancing from 3 ends it.
+
+**`skip_step`** moves to the next step the same way, but the difference is *what was
+recorded*:
+
+- Skipping step 1 (calendar) writes nothing else — the connection belongs to
+  `calendar-connect-api`.
+- Skipping step 2 (interests) clears the interest set (D4: zero picks is valid).
+- Skipping step 3 (digest) writes the **default** digest preference (the named constants).
+
+So a skipped step 3 leaves a real, default-valued preference row, and `delivery` will read
+one row rather than branching on whether it was set.
+
+**`skip_all`** completes the onboarding in one move: it writes the default digest
+preference, clears the interests, and sets `completed_at = now`. A user who skips
+everything has still finished onboarding — which is FR-1's "a user who skips everything
+still finishes onboarding".
+
+**Every command refuses to act on a completed user.** `advance_step`, `skip_step` and
+`skip_all` on a completed onboarding raise `OnboardingAlreadyCompleteError`. D11 is
+terminal, and the refusal is at the command, not at the edge — so every caller gets it.
+
+### The tests
+
+| Test | What it pins |
+|---|---|
+| `test_the_chip_list_is_the_ten_from_the_mockup` | The constant's exact labels, in order |
+| `test_the_chip_keys_are_stable_slugs` | The keys are slug-shaped and unique — a renamed label must not change a key |
+| `test_there_are_exactly_three_onboarding_steps` | The step count **and** the step membership (D12) |
+| `test_a_fourth_step_would_break_the_test` | The same assertion, stated as the cap |
+| `test_the_resume_window_is_seven_days` | The named constant's value |
+| `test_the_default_digest_preference_is_the_documented_one` | The two named defaults |
+| `test_the_same_chip_cannot_be_held_twice` | The DB constraint fires on a direct second insert |
+| `test_setting_interests_replaces_the_set` | Three chips then one → one chip, and the old rows are gone |
+| `test_more_than_three_picks_is_refused` | The limit, with a calm message |
+| `test_an_unknown_chip_key_is_refused` | The key is named in the refusal |
+| `test_zero_picks_is_valid_and_clears_the_set` | D4 |
+| `test_a_duplicate_key_in_one_call_is_deduplicated` | Not refused |
+| `test_a_non_iana_timezone_is_refused` | D7 — the same validator as personal events |
+| `test_the_zone_is_stored_canonically` | "Etc/UTC" → "UTC" |
+| `test_a_user_is_resumed_at_the_same_step_within_the_window` | The resume rule, fixed clock |
+| `test_a_user_at_the_window_boundary_is_still_resumed` | The boundary is **inclusive** |
+| `test_onboarding_restarts_at_step_one_after_the_window` | D10 |
+| `test_skipping_the_digest_step_writes_the_default_preference` | The default is written, not assumed |
+| `test_skipping_the_interests_step_clears_the_set` | D4 through the step |
+| `test_skip_all_completes_onboarding` | FR-1's "a user who skips everything still finishes" |
+| `test_a_completed_user_is_never_sent_back_into_onboarding` | D11 — including after the window expires |
+| `test_advancing_past_the_last_step_completes_onboarding` | D12 at the command level |
+| `test_every_step_can_be_skipped_with_empty_input` | FR-1: no step requires input |
+| `test_the_endpoints_require_a_session` | The auth scope |
+| `test_the_endpoints_are_scoped_to_the_session_user` | Another user's rows are invisible |
+| `test_the_chip_endpoint_projects_the_constant` | The frontend gets one source |
+| `test_me_carries_the_onboarding_status` | The `me` addition |
+| `test_me_does_not_carry_the_interests_or_the_digest_preference` | `me` is about who, not what |
+
+## The gates
+
+| Gate | Command | Must hold |
+|---|---|---|
+| Tests | `pytest tests/ -q` | 0 failures; the existing 2710 still pass |
+| Coverage | `pytest --cov` | The project's floor; the new module at 100% |
+| Lint | `ruff check . && ruff format --check .` | Clean |
+| Contracts | `lint-imports` | 17 kept, 0 broken |
+| Django | `manage.py check` | No issues |
+| Migrations | `makemigrations --check --dry-run` | No drift |
+| Client | `make client` | The committed schema matches the regenerated one |
+
+## The risks
+
+| Risk | If it happens |
+|---|---|
+| `identity` → `personalization` creates an import cycle | The service module imports nothing from `identity`; `lint-imports` proves it |
+| The step constant and the DB check constraint drift | Both say 3, and the migration carries the constraint; a test asserts the constant |
+| The replace is not atomic and the user sees a half-applied set | One `transaction.atomic(using=PERSONAL)`; a test asserts the old rows are gone |
+| The resume rule is off by one at the boundary | The window is inclusive and pinned by a test at the exact instant |
+| A completed user is sent back into onboarding after 7 days | The read checks `completed_at` **before** the window; a test covers it |
+| The frontend keeps a second copy of the chips | The API is the only source; the frontend item reads it |
+| A 4th step is added later without noticing | The step count test fails; the constraint backstops it |
+
+## Acceptance criteria mapping
+
+| Criterion | Where it is met |
+|---|---|
+| `INTEREST_CHIPS` is one constant, with stable keys and labels | `shared/constants.py`; `GET /onboarding/interest-chips` |
+| The frontend gets the list from the API | The endpoint; the frontend item reads it |
+| An `Interest` model holds the user by value and a chip key | `apps/personalization/models.py` |
+| One user can't hold the same chip twice (DB constraint) | `interest_user_chip_uq` |
+| Setting interests replaces the set | `set_interests` |
+| >3 picks or an unknown key is refused, calmly | `TooManyInterestsError`, `UnknownInterestError` |
+| Zero picks is valid | `set_interests` with an empty list |
+| The digest holds a delivery time and an IANA zone | `DigestPreference` |
+| A non-IANA or ambiguous zone is refused, by the same validator | `domain.timezones.canonical_zone` |
+| A skipped step 3 gets a documented default, a named constant | `DEFAULT_DIGEST_DELIVERY_TIME`, `DEFAULT_DIGEST_TIMEZONE` |
+| Progress records the step and the last advance | `OnboardingProgress` |
+| Resume within 7 days; restart after; a named constant | `ONBOARDING_RESUME_WINDOW`; the read |
+| Complete or skip-all completes; completed is terminal | `skip_all`; the commands refuse a completed user |
+| At most 3 steps; a test fails if a 4th is added | `ONBOARDING_STEPS`; the step-count test |
+| Every step can be skipped | `skip_step`; the empty-input test |
+| The endpoints under `/api/personal/onboarding`, authed and scoped | `apps/personalization/api.py` |
+| `me` gains the onboarding status, through the published interface | `apps/identity/api.py` → the service |
+| Every new model declares a retention category | The three models |
+| `lint-imports` and `manage.py check` pass | The gates |
+| Client regenerated | `make client` |
+| The tests cover the listed cases | The test table above |
+
+---
+*Plan pending approval at checkpoint.*
+
+---
+
+## Work Item: onboarding-state-and-interests — Post-Review Amendments
+
+The plan above is the plan as approved. The code review found five defects and fixed
+them; three of them changed the plan, and the amendments are recorded here so the plan
+and the code agree.
+
+### A1 — The read became read-only (plan decision D8 reversed)
+
+**The plan said**: the restart is *written*, not recomputed on every read, "so two reads
+a second apart agree about the step".
+
+**The review found**: a write behind a `GET` is a **cross-site write**. Django Ninja
+exempts every view from Django's CSRF middleware, and the project's own check runs on
+unsafe methods only — so a hostile page could restart a user's onboarding flow with a
+plain `<img src="/api/auth/me">` and no token at all. `me` is on the hot path, so it also
+put a row lock and an `UPDATE` on every authenticated request.
+
+**The amendment**: `get_onboarding_state` now *reports* step 1 for an expired flow and
+leaves the row alone. The restart became a command — it happens in `_require_incomplete`,
+under the user's lock, in its own transaction.
+
+**The plan's goal is met more strongly, not less.** The original reason for writing the
+restart was that two reads must agree. The new answer is derived from `last_advanced_at`
+and the window — facts, not from a row that may or may not have been touched — so two
+reads agree *without* depending on a write having happened.
+
+### A2 — A concurrency guarantee was added (new plan decision)
+
+The plan did not mention concurrent requests at all. The review found that two concurrent
+commands for the same user both found no row and both inserted, and the loser of that
+race got a raw `IntegrityError` from a unique constraint — a **500**.
+
+**The amendment**: every command takes the user's **transaction-scoped advisory lock**
+(`pg_advisory_xact_lock`, keyed by `blake2b(user_id)` under a dedicated personalisation)
+before it reads or writes. The lock is on a *key*, not a row, because the case that
+matters most is the one where no row exists yet — a user's very first command. It is
+released when the transaction ends, so a crashed worker cannot wedge a user.
+
+A new test file, `tests/personalization/test_onboarding_concurrency.py` (9 tests), pins
+it.
+
+### A3 — The row locks were removed as redundant
+
+The first implementation of A2 used `select_for_update()` row locks plus an
+`IntegrityError` retry. A revert that removed the row locks and kept the advisory lock
+still passed every test — so the row locks were redundant, and were removed. One
+mechanism is easier to reason about than two.
+
+### A4 — One existing test was rewritten
+
+`test_the_restart_is_written_not_recomputed` asserted `last_advanced_at == expired`
+after a read. It pinned the defect. It was replaced by `test_a_read_never_writes`,
+`test_two_reads_of_an_expired_flow_agree` and `test_a_command_restarts_the_expired_flow`.
+
+### A5 — `DigestPreferenceOut` is nested, not top-level
+
+The plan sketched `DigestPreferenceOut` as a sibling schema. It is nested inside
+`OnboardingStateOut` as the `digest` field, so the digest preference's shape lives in
+one place — it is always read as part of the state, and is never a response body of its
+own.

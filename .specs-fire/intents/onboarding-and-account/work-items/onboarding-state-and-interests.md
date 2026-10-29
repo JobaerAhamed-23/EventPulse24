@@ -4,10 +4,12 @@ title: Onboarding State, Interests & Digest Preferences
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - auth-api-and-session-seam
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-29T16:11:06.375Z
 ---
 
 # Work Item: Onboarding State, Interests & Digest Preferences

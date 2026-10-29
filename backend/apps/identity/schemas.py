@@ -19,6 +19,8 @@ from uuid import UUID
 
 from ninja import Schema
 
+from apps.personalization.schemas import OnboardingStatusOut
+
 
 class SignUpIn(Schema):
     """The sign-up request: an address and a password.
@@ -71,13 +73,20 @@ class CurrentUserOut(Schema):
     The id and the email are what the frontend needs. There is no password field, no
     permission field and no catch-all, so nothing internal can ride along.
 
-    The onboarding status is **not** here yet: `personalization` owns onboarding progress,
-    and it does not exist yet. It is added when it does, through `personalization`'s
-    published interface — this item does not depend on that one.
+    The **onboarding status** is here, and it is here because the frontend needs it to
+    decide between the onboarding flow and the home. It says only whether the onboarding
+    is finished and which step the user is on — it carries no interests and no digest
+    preference, because `me` is about *who* the user is and a settings blob there would
+    grow without bound. The full state lives at `/api/personal/onboarding`.
+
+    It is read through `personalization`'s **published interface** — the service, never
+    the model — because `identity` may not reach into another app's tables (AD-2). The
+    import contract `models-personalization` proves it.
     """
 
     id: UUID
     email: str
+    onboarding: OnboardingStatusOut
 
 
 class PasswordResetRequestIn(Schema):

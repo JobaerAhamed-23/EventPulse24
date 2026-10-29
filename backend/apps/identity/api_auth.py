@@ -95,9 +95,9 @@ def _check_csrf_token(request) -> None:
     """Run Django's CSRF rules over this request, and refuse it if they fail.
 
     **Django's own rules, and Django's own implementation.** The origin allowlist
-    (`CSRF_TRUSTED_ORIGINS`), the masked-token comparison and the "a POST needs a CSRF
-    cookie at all" rule are all Django's, so they behave exactly as they do for an
-    ordinary Django view. Nothing here re-implements any of them.
+    (`CSRF_TRUSTED_ORIGINS`), the HTTPS referer fallback, the masked-token comparison and
+    the "a POST needs a CSRF cookie at all" rule are all Django's, so they behave exactly
+    as they do for an ordinary Django view. Nothing here re-implements any of them.
 
     **Why not `ninja.utils.check_csrf`.** That helper runs `CsrfViewMiddleware` over the
     request, which is Django's own code — but Django's `process_view` honours
@@ -121,13 +121,33 @@ def _check_csrf_token(request) -> None:
     # same first step Django's own middleware takes.
     middleware.process_request(request)
 
-    # The origin check. Django refuses a request whose `Origin` is not the request's own
-    # host and is not in `CSRF_TRUSTED_ORIGINS`. A request with no `Origin` header at
-    # all skips this step — Django only falls back to the referer for HTTPS requests,
-    # and the token check below is what stops a token-less request either way.
+    # The origin check, and the referer fallback — Django's own two branches.
+    #
+    # Django's `process_view` does this:
+    #
+    #     if "HTTP_ORIGIN" in request.META:
+    #         if not self._origin_verified(request): reject
+    #     elif request.is_secure():
+    #         self._check_referer(request)
+    #
+    # Both branches are reproduced here, because the second one is not decoration. Django
+    # added the referer fallback for HTTPS **precisely to stop a network attacker**: an
+    # active MITM can suppress `Origin` and `Referer` on a request it forwards to us, and
+    # the CSRF secret is a cookie rather than a session secret, so a MITM that can read or
+    # plant the cookie has both halves of the token. Django's own comment says so.
+    #
+    # Checking only the token would therefore have been Django's rules *minus* the one
+    # that covers HTTPS — a silent weakening on exactly the requests that need the
+    # strongest answer.
     origin = request.META.get("HTTP_ORIGIN")
-    if origin is not None and not middleware._origin_verified(request):
-        raise CsrfError()
+    if origin is not None:
+        if not middleware._origin_verified(request):
+            raise CsrfError()
+    elif request.is_secure():
+        try:
+            middleware._check_referer(request)
+        except RejectRequest:
+            raise CsrfError() from None
 
     # The token check. This raises `RejectRequest` for a missing cookie, a missing
     # token, a malformed token and a token that does not match — all of them a refusal.

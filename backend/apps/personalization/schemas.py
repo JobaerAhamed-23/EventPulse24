@@ -17,7 +17,7 @@ A conflict payload carries **no internal field**: no reminder-plan state, no cat
 no field the client has no use for.
 """
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Literal
 from uuid import UUID
 
@@ -305,6 +305,104 @@ class SavedEventListOut(Schema):
     omitted: int = 0
 
 
+class InterestChipOut(Schema):
+    """One interest chip: its stable key and its display label.
+
+    The **key** is what the API accepts and what is stored; the **label** is what the UI
+    shows. They are separate because a renamed label must not invalidate a stored pick.
+    """
+
+    key: str
+    label: str
+
+
+class InterestChipsOut(Schema):
+    """The ten interest chips, in the order the flow shows them."""
+
+    items: list[InterestChipOut]
+
+
+class InterestsIn(Schema):
+    """The user's interest picks.
+
+    The list **replaces** the user's set: it is the whole set, not a delta. An empty list
+    is valid — that is how the step is skipped, and it clears the set.
+
+    The keys are what is sent, never the labels: a label may be renamed, a key may not.
+    """
+
+    chip_keys: list[str] = []
+
+
+class InterestsOut(Schema):
+    """The user's stored interest picks."""
+
+    chip_keys: list[str]
+
+
+class DigestPreferenceIn(Schema):
+    """The digest delivery time and timezone.
+
+    The delivery time is a **local wall clock** — "09:00" means nine in the morning where
+    the user is, not nine in the morning UTC. The zone says where that is.
+    """
+
+    delivery_time: time
+    timezone: str
+
+
+class DigestPreferenceOut(Schema):
+    """The stored digest delivery time and timezone."""
+
+    delivery_time: time | None = None
+    timezone: str | None = None
+
+
+class OnboardingStatusOut(Schema):
+    """How far through the onboarding the user is.
+
+    This is what `GET /api/auth/me` carries. It says **only** whether the onboarding is
+    finished and which step the user is on — enough for the frontend to choose between the
+    onboarding flow and the home. It carries no interests and no digest preference: `me`
+    is about *who* the user is, and a settings blob there would grow without bound.
+    """
+
+    completed: bool
+    current_step: int | None = None
+
+
+class OnboardingStateOut(Schema):
+    """The whole onboarding state: the progress, the interests and the digest preference.
+
+    The interests and the digest preference are the **stored** values, so a skipped step
+    shows what the skip wrote (an empty set, the default preference) rather than nothing.
+    """
+
+    completed: bool
+    current_step: int | None = None
+    step_name: str | None = None
+    interests: list[str] = []
+    digest: DigestPreferenceOut = DigestPreferenceOut()
+    last_advanced_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    @classmethod
+    def from_state(cls, state) -> "OnboardingStateOut":
+        """Project the service's plain data onto the wire shape."""
+        return cls(
+            completed=state.completed,
+            current_step=state.current_step,
+            step_name=state.step_name,
+            interests=list(state.interests),
+            digest=DigestPreferenceOut(
+                delivery_time=state.digest_delivery_time,
+                timezone=state.digest_timezone,
+            ),
+            last_advanced_at=state.last_advanced_at,
+            completed_at=state.completed_at,
+        )
+
+
 __all__ = [
     "ConflictAction",
     "ConflictOut",
@@ -312,6 +410,14 @@ __all__ = [
     "ConflictResolutionOut",
     "ConflictResolutionValue",
     "ConflictSideOut",
+    "DigestPreferenceIn",
+    "DigestPreferenceOut",
+    "InterestChipOut",
+    "InterestChipsOut",
+    "InterestsIn",
+    "InterestsOut",
+    "OnboardingStateOut",
+    "OnboardingStatusOut",
     "PersonalEventCreateIn",
     "PersonalEventListOut",
     "PersonalEventListQuery",

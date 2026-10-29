@@ -8,9 +8,15 @@ Two commands, and the difference between them matters:
 
 - **`end_other_sessions(user, *, keep_session_key=None)`** ends *all of that user's other*
   sessions. This is what a password reset does: a stolen session must not survive a password
-  change. The session the user reset *from* is kept — it is rotated (a new session key) by
-  the caller, not deleted — so the person who just reset their password is not signed out
-  of the browser they did it in.
+  change. The session the user reset *from* is kept — its row is not deleted here — so the
+  person who just reset their password is not signed out of the browser they did it in.
+
+  Keeping the row is necessary but not sufficient: changing the password changes
+  `get_session_auth_hash()`, and Django compares that against the hash stored in the
+  session on every request, so a kept session whose hash is stale is treated as anonymous
+  anyway. The API edge therefore re-stamps the hash on the kept session
+  (`update_session_auth_hash`) and cycles its key, so the key that was on the wire before
+  the reset cannot be reused.
 
 Why the rows are deleted rather than flagged: Django's session store is keyed by a random
 session key, and the row is the whole session. Deleting the row is what makes the session

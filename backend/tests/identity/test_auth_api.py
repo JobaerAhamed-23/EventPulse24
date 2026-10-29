@@ -24,7 +24,7 @@ from django.test import Client
 from django.utils import timezone
 
 from shared.db import PERSONAL
-from tests.csrf import ORIGIN, CsrfClient
+from tests.csrf import ORIGIN, CsrfClient, csrf_token
 from tests.identity.factories import UserFactory
 
 pytestmark = pytest.mark.django_db(databases=[PERSONAL])
@@ -94,8 +94,8 @@ def test_the_csrf_endpoint_is_a_safe_request():
 # ---------------------------------------------------------------------------
 
 
-def test_signing_up_creates_an_account_and_a_session():
-    """A new account is created and the caller is signed in."""
+def test_signing_up_creates_an_account():
+    """A new account is created."""
     client = csrf_json_client()
 
     response = body(client, "/api/auth/signup", signup_payload())
@@ -103,8 +103,27 @@ def test_signing_up_creates_an_account_and_a_session():
     assert response.status_code == 201
     assert response.json() == {"status": "accepted"}
     assert User.objects.filter(email="maya@example.test").exists()
-    # The session cookie is set, so the next request is not anonymous.
-    assert "sessionid" in client.cookies
+
+
+def test_signing_up_does_not_establish_a_session():
+    """Sign-up creates the account; it does not sign anyone in.
+
+    This is what makes the sign-up response **header-identical** as well as
+    byte-identical. Had sign-up signed the caller in whenever the password they supplied
+    verified, the presence of a `sessionid` cookie would have said "this address exists
+    and you have just proved you know its password" — a confirmed-password oracle that
+    the byte-identical body would not have revealed.
+
+    So sign-up establishes no session, and `/api/auth/signin` is the one place a session
+    is created.
+    """
+    client = csrf_json_client()
+
+    response = body(client, "/api/auth/signup", signup_payload())
+
+    assert response.status_code == 201
+    assert "sessionid" not in client.cookies
+    assert client.get("/api/auth/me").status_code == 401
 
 
 def test_signing_up_with_a_taken_address_gives_the_same_bytes_as_a_new_address():
@@ -125,6 +144,38 @@ def test_signing_up_with_a_taken_address_gives_the_same_bytes_as_a_new_address()
     assert fresh_response.content == taken_response.content
 
 
+def test_signing_up_answers_identically_in_the_headers_too():
+    """AD-18: the response must not say whether the address was taken — in the headers
+    either.
+
+    The body comparison is not enough on its own. A `Set-Cookie: sessionid` header on one
+    response and not on another is an oracle of the same strength as a different body, and
+    a stronger one, because it confirms a password rather than merely an account.
+
+    The whole response header set is compared, so any future header that varies with the
+    account's existence fails this test.
+
+    **The two cases differ in the password, and that is the point.** The oracle is
+    "the password I just supplied verified", so the pair that exposes it is a *new*
+    address with the supplied password (which verifies — the account is created) against
+    a *taken* address with a **wrong** password (which does not). The body is identical
+    for both. The headers must be identical too, or the cookie's presence says which
+    half of the pair happened.
+    """
+    UserFactory(email="maya@example.test", plain_password=PASSWORD)
+
+    fresh = csrf_json_client()
+    taken = csrf_json_client()
+
+    fresh_response = body(fresh, "/api/auth/signup", signup_payload("new@example.test"))
+    taken_response = body(taken, "/api/auth/signup", signup_payload(password=OTHER_PASSWORD))
+
+    assert fresh_response.content == taken_response.content
+    assert set(fresh_response.headers) == set(taken_response.headers)
+    assert sorted(fresh_response.cookies) == sorted(taken_response.cookies)
+    assert fresh_response.get("Vary") == taken_response.get("Vary")
+
+
 def test_signing_up_with_a_taken_address_does_not_sign_the_caller_in():
     """The caller does not know the existing account's password, so they get no session —
     even though the body is identical to the new-address case."""
@@ -143,12 +194,14 @@ def test_signing_up_with_a_taken_address_does_not_sign_the_caller_in():
     assert me.status_code == 401
 
 
-def test_signing_up_with_a_taken_address_and_the_right_password_does_sign_the_caller_in():
-    """The other side of the same rule: the caller *does* know the password, so they are
-    the account's owner and signing them in is legitimate.
+def test_signing_up_with_a_taken_address_and_the_right_password_does_not_sign_the_caller_in():
+    """The caller *does* know the password here, so they are the account's owner.
 
-    The body is the same in both cases — only the session differs, and the session is not
-    part of the body.
+    They still get no session, and that is deliberate. Signing them in would have made
+    the presence of the session cookie say "this address exists and the password is
+    right" — which is exactly the oracle the header-identical test forbids. Sign-up
+    never signs anyone in; `/api/auth/signin` does, and it is safe there because a
+    successful sign-in says nothing the caller did not already know.
     """
     UserFactory(email="maya@example.test", plain_password=PASSWORD)
 
@@ -158,7 +211,7 @@ def test_signing_up_with_a_taken_address_and_the_right_password_does_sign_the_ca
 
     assert response.status_code == 201
     assert response.json() == {"status": "accepted"}
-    assert client.get("/api/auth/me").status_code == 200
+    assert client.get("/api/auth/me").status_code == 401
 
 
 def test_signing_up_with_a_weak_password_is_refused_with_the_projects_error_shape():
@@ -240,8 +293,14 @@ def test_a_wrong_password_does_not_establish_a_session():
 # ---------------------------------------------------------------------------
 
 
-def test_me_returns_the_id_and_the_email_and_nothing_else():
-    """No password hash, no permission list, no catch-all field."""
+def test_me_returns_the_id_the_email_and_the_onboarding_status_and_nothing_else():
+    """No password hash, no permission list, no catch-all field.
+
+    The onboarding status is the one addition: the frontend needs it to decide between
+    the onboarding flow and the home. It carries **no** interests and **no** digest
+    preference — `me` is about who the user is, and a settings blob there would grow
+    without bound. The full state lives at `/api/personal/onboarding`.
+    """
     user = UserFactory(email="maya@example.test", plain_password=PASSWORD)
     client = csrf_json_client()
     body(client, "/api/auth/signin", signup_payload())
@@ -250,9 +309,39 @@ def test_me_returns_the_id_and_the_email_and_nothing_else():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload == {"id": str(user.pk), "email": "maya@example.test"}
+    assert payload == {
+        "id": str(user.pk),
+        "email": "maya@example.test",
+        "onboarding": {"completed": False, "current_step": 1},
+    }
     # The hash is not in the body under any key.
     assert user.password not in response.content.decode()
+
+
+def test_me_carries_the_onboarding_status_and_no_settings():
+    """The onboarding status is on `me`; the user's settings are not."""
+    UserFactory(email="maya@example.test", plain_password=PASSWORD)
+    client = csrf_json_client()
+    body(client, "/api/auth/signin", signup_payload())
+
+    # Give the user some interests and a digest preference, so a leak would show.
+    body(client, "/api/personal/onboarding/interests", {"chip_keys": ["tech_meetups"]})
+    body(
+        client,
+        "/api/personal/onboarding/digest-preference",
+        {"delivery_time": "09:00", "timezone": "America/Los_Angeles"},
+    )
+
+    response = client.get("/api/auth/me")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["onboarding"] == {"completed": False, "current_step": 1}
+    # The settings are not on `me` — not the chip keys, not the zone, not the time.
+    assert "tech_meetups" not in response.content.decode()
+    assert "America/Los_Angeles" not in response.content.decode()
+    assert "interests" not in payload
+    assert "digest" not in payload
 
 
 def test_me_refuses_an_anonymous_request_with_a_401():
@@ -396,6 +485,60 @@ def test_a_reset_ends_the_accounts_other_sessions(email_adapter):
     assert other.get("/api/auth/me").status_code == 401
 
 
+def test_a_reset_keeps_the_session_it_was_made_from(email_adapter):
+    """The person who just reset their password is not signed out of that browser.
+
+    The other half of D12's rule, and the half that is easy to get wrong. Keeping the
+    session **row** is not enough: changing the password changes
+    `get_session_auth_hash()`, and Django compares that against the hash stored in the
+    session on every request. A kept session with a stale hash is anonymous — so the
+    session died with every other one, despite the code saying it was kept.
+
+    The edge re-stamps the hash on the kept session (`update_session_auth_hash`), which
+    is what makes the claim true.
+    """
+    UserFactory(email="maya@example.test", plain_password=PASSWORD)
+
+    resetting = csrf_json_client()
+    assert body(resetting, "/api/auth/signin", signup_payload()).status_code == 200
+    assert resetting.get("/api/auth/me").status_code == 200
+
+    body(resetting, "/api/auth/password-reset", {"email": "maya@example.test"})
+    token = _token_from(email_adapter)
+    body(
+        resetting,
+        "/api/auth/password-reset/confirm",
+        {"token": token, "new_password": OTHER_PASSWORD},
+    )
+
+    # The session the reset was made from still works.
+    assert resetting.get("/api/auth/me").status_code == 200
+
+
+def test_a_reset_rotates_the_session_key_it_keeps(email_adapter):
+    """The kept session gets a new key, so the key that was on the wire before the reset
+    cannot be replayed.
+
+    The row is kept, but it is not the same row: the key is cycled, so a session key
+    captured before the password change is worthless afterwards.
+    """
+    UserFactory(email="maya@example.test", plain_password=PASSWORD)
+
+    resetting = csrf_json_client()
+    body(resetting, "/api/auth/signin", signup_payload())
+    old_key = resetting.cookies["sessionid"].value
+
+    body(resetting, "/api/auth/password-reset", {"email": "maya@example.test"})
+    token = _token_from(email_adapter)
+    body(
+        resetting,
+        "/api/auth/password-reset/confirm",
+        {"token": token, "new_password": OTHER_PASSWORD},
+    )
+
+    assert resetting.cookies["sessionid"].value != old_key
+
+
 def _token_from(email_adapter) -> str:
     """The raw token from the reset mail that was sent.
 
@@ -485,6 +628,91 @@ def test_an_unsafe_request_from_an_untrusted_origin_is_refused():
     assert response.json()["code"] == "csrf_failed"
 
 
+def test_an_unsafe_https_request_with_no_origin_and_no_referer_is_refused():
+    """D13: a secure request with neither header is refused.
+
+    Django's referer fallback needs a `Referer` to check; there is none here, so the
+    request is refused before the token is even looked at. The token check would refuse
+    it too — this test pins the *ordering*, so a future change that checks the token
+    first cannot quietly turn a missing referer into an acceptable request.
+    """
+    client = Client()
+    client.defaults["CONTENT_TYPE"] = "application/json"
+
+    response = client.post(
+        "/api/auth/signup",
+        signup_payload(),
+        content_type="application/json",
+        secure=True,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "csrf_failed"
+
+
+def test_an_unsafe_https_request_with_a_valid_token_and_an_untrusted_referer_is_refused():
+    """D13: Django's referer fallback is what refuses a hostile `Referer` over HTTPS.
+
+    Django's own `process_view` checks the `Origin` header when it is present, and
+    otherwise — **over HTTPS** — checks the `Referer` header. The second branch is not
+    decoration: it is there for the network attacker. An active MITM can suppress
+    `Origin` and `Referer` on a request it forwards to us, and the CSRF secret is a
+    cookie rather than a session secret, so a MITM that can read or plant the cookie has
+    both halves of the token. Django's own comment says so.
+
+    **This test carries a valid token and a valid cookie**, so the token check passes
+    and the *only* thing that can refuse the request is the referer check. Without the
+    fallback the request would be accepted, which is Django's rules minus the one that
+    covers HTTPS — a silent weakening on exactly the requests that need the strongest
+    answer.
+
+    The `Referer` is `https://evil.example/` — a secure URL, so it is not refused for
+    being insecure, and not the request's own host, so it is not accepted. It is refused
+    because it is not ours.
+    """
+    client = Client()
+    client.defaults["CONTENT_TYPE"] = "application/json"
+
+    # A real token and a real cookie, so the token check passes.
+    token = csrf_token(client)
+    assert token
+
+    response = client.post(
+        "/api/auth/signup",
+        signup_payload(),
+        content_type="application/json",
+        secure=True,
+        headers={"referer": "https://evil.example/", "x-csrftoken": token},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "csrf_failed"
+
+
+def test_an_unsafe_https_request_with_a_valid_token_and_a_trusted_referer_is_accepted():
+    """The referer fallback must not refuse an ordinary request.
+
+    The check above proves the refusal. This proves the check is *narrow*: a request
+    over HTTPS from our own origin, with a valid token, is accepted. A referer check
+    that refused everything would pass the refusal test while breaking every real
+    HTTPS caller.
+    """
+    client = Client()
+    client.defaults["CONTENT_TYPE"] = "application/json"
+
+    token = csrf_token(client)
+
+    response = client.post(
+        "/api/auth/signup",
+        signup_payload(),
+        content_type="application/json",
+        secure=True,
+        headers={"referer": "https://testserver/", "x-csrftoken": token},
+    )
+
+    assert response.status_code == 201
+
+
 def test_a_get_is_not_checked_for_a_token():
     """A safe request cannot change anything, so it is not checked. The `csrftoken`
     endpoint is itself a `GET`."""
@@ -497,9 +725,32 @@ def test_a_get_is_not_checked_for_a_token():
     assert response.json()["code"] == "not_authenticated"
 
 
-def test_the_callers_ip_comes_from_the_forwarded_header_when_there_is_one():
-    """The proxy is the one talking to this runtime, so `X-Forwarded-For` is where the
-    caller's address is (AD-13).
+def test_the_forwarded_header_is_ignored_unless_a_trusted_edge_overwrites_it(settings):
+    """`X-Forwarded-For` is attacker-controlled, so it is not read by default.
+
+    Next's rewrite forwards the browser's headers as they arrived and only *adds*
+    `x-forwarded-host`, so a browser that sets `X-Forwarded-For` has that value reach
+    Django unchanged. Trusting it unconditionally let any caller mint a fresh throttle
+    bucket per request — which defeated the per-IP limit completely, because the header
+    is the only part of the throttle key the caller controls.
+
+    The header is therefore read only when `TRUST_FORWARDED_FOR` says a trusted edge
+    overwrites it.
+    """
+    from apps.identity.api import _client_ip
+
+    class _Request:
+        headers = {"x-forwarded-for": "203.0.113.7, 70.41.3.18"}
+        META = {"REMOTE_ADDR": "10.0.0.1"}
+
+    settings.TRUST_FORWARDED_FOR = False
+    assert _client_ip(_Request()) == "10.0.0.1"
+
+
+def test_the_callers_ip_comes_from_the_forwarded_header_when_a_trusted_edge_sets_it(
+    settings,
+):
+    """With a trusted edge in front, `X-Forwarded-For` is where the caller's address is.
 
     The value only ever becomes part of a throttle key; it is never logged and never
     stored. The first entry of a chain is the caller's own address.
@@ -510,7 +761,25 @@ def test_the_callers_ip_comes_from_the_forwarded_header_when_there_is_one():
         headers = {"x-forwarded-for": "203.0.113.7, 70.41.3.18"}
         META = {"REMOTE_ADDR": "10.0.0.1"}
 
+    settings.TRUST_FORWARDED_FOR = True
     assert _client_ip(_Request()) == "203.0.113.7"
+
+
+def test_a_forwarded_header_that_is_not_an_address_is_ignored(settings):
+    """The forwarded value must parse as an IP address.
+
+    Otherwise a caller could pad the throttle key with arbitrary text — and, worse,
+    make two different callers land in two different buckets with a single header value
+    that was never an address at all.
+    """
+    from apps.identity.api import _client_ip
+
+    class _Request:
+        headers = {"x-forwarded-for": "not-an-address"}
+        META = {"REMOTE_ADDR": "10.0.0.1"}
+
+    settings.TRUST_FORWARDED_FOR = True
+    assert _client_ip(_Request()) == "10.0.0.1"
 
 
 def test_the_callers_ip_falls_back_to_the_remote_address():
@@ -575,6 +844,64 @@ def test_too_many_sign_in_attempts_are_refused_with_a_429_in_the_projects_shape(
     payload = response.json()
     assert payload["code"] == "rate_limited"
     assert payload["message"]
+
+
+def test_a_sign_up_does_not_spend_the_sign_in_throttle_budget(throttle_adapter):
+    """A sign-up must not consume the *sign-in* allowance.
+
+    Sign-up used to authenticate the caller straight after creating the account, and
+    that authentication attempt ran against the sign-in bucket. So a sign-up spent two
+    buckets: its own, and the victim's sign-in allowance.
+
+    The consequence was a denial of service against any known account: naming a victim's
+    address three times from one host left the real owner two sign-in attempts instead of
+    five, and the attacker could repeat it from as many hosts as they liked.
+
+    Sign-up no longer authenticates at all — it only creates the account — so the
+    sign-in bucket is untouched.
+    """
+    UserFactory(email="victim@example.test", plain_password=PASSWORD)
+    client = csrf_json_client()
+
+    for _ in range(3):
+        body(client, "/api/auth/signup", signup_payload("victim@example.test"))
+
+    # The victim's own sign-in allowance is intact: no attempt has been charged to it.
+    statuses = []
+    for _ in range(5):
+        response = body(
+            client, "/api/auth/signin", signup_payload("victim@example.test", OTHER_PASSWORD)
+        )
+        statuses.append(response.status_code)
+
+    assert 429 not in statuses
+
+
+def test_a_spoofed_forwarded_header_cannot_mint_a_new_throttle_bucket(throttle_adapter):
+    """The per-IP limit cannot be defeated by varying `X-Forwarded-For`.
+
+    The header is attacker-controlled — Next's rewrite forwards the browser's headers as
+    they arrived — so reading it unconditionally would let any caller start a fresh
+    bucket per request. The per-IP limit is the only defence against one host spraying
+    many accounts, so it has to hold.
+
+    The header is ignored unless a trusted edge overwrites it, so every request below
+    lands in the same bucket.
+    """
+    statuses = []
+    for index in range(20):
+        attempt = csrf_json_client()
+        attempt.defaults["HTTP_X_FORWARDED_FOR"] = f"203.0.113.{index}"
+        response = body(
+            attempt,
+            "/api/auth/signin",
+            signup_payload(f"nobody{index}@example.test", OTHER_PASSWORD),
+        )
+        statuses.append(response.status_code)
+        if response.status_code == 429:
+            break
+
+    assert 429 in statuses
 
 
 def test_a_throttled_sign_in_does_not_say_whether_the_account_exists(throttle_adapter):

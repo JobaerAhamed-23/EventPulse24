@@ -16,6 +16,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.personalization.fields import EncryptedTextField
+from shared.constants import ONBOARDING_STEP_COUNT
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -429,6 +430,139 @@ class ConflictPair(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"{self.kind} conflict {self.status}"
+
+
+class Interest(UUIDv7Model):
+    """One interest chip the user picked (FR-1).
+
+    The user is held **by value** (OQ-8): no relation to `User`, no `GenericForeignKey`.
+
+    One row per chip, with the unique constraint on `(user_id, chip_key)` — so the
+    "same chip twice" rule is held by the **database**, not merely by the service. A
+    concurrent double-write would be caught by the constraint even if the service's
+    replace were not atomic.
+
+    `chip_key` is a stable slug from `shared.constants.INTEREST_CHIPS` — e.g.
+    `"tech_meetups"`. The display label is **not** stored: the label is prose and may
+    change, and a stored label would orphan the key the day it did.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # A stable key from `shared.constants.INTEREST_CHIPS`.
+    chip_key = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            # The same chip cannot be held twice. This is the acceptance criterion's
+            # "DB constraint", held by the database so it holds under a race.
+            models.UniqueConstraint(fields=["user_id", "chip_key"], name="interest_user_chip_uq"),
+        ]
+        indexes = [
+            # The digest reads one user's chips.
+            models.Index(fields=["user_id"], name="interest_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.chip_key
+
+
+class OnboardingProgress(UUIDv7Model):
+    """Where the user is in the 3-step onboarding flow (FR-1).
+
+    One row per user. The row holds the *position* (`current_step`, 1–3) rather than the
+    step's name, because the resume rule is about the position: "resumed at the same
+    step" means the same place in the flow. The name is resolved through
+    `shared.constants.ONBOARDING_STEPS`, so the two cannot drift.
+
+    `last_advanced_at` is the moment the user last advanced, completed or skipped a step.
+    It is what the resume window is measured against — a user who leaves mid-step and
+    comes back within `ONBOARDING_RESUME_WINDOW` resumes at the same step; after the
+    window, the onboarding restarts at step 1.
+
+    `completed_at` makes completion **terminal**: a completed user is never sent back
+    into onboarding, whatever the clock says.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # 1..3 — the index into `shared.constants.ONBOARDING_STEPS`.
+    current_step = models.PositiveSmallIntegerField(default=1)
+    # The moment the user last advanced, completed or skipped a step.
+    last_advanced_at = models.DateTimeField()
+    # Set when onboarding ends. A completed user is never sent back into it.
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user_id"], name="onboarding_progress_user_uq"),
+            # FR-1's three-step cap, held by the database. The constant
+            # `ONBOARDING_STEP_COUNT` is the source of truth; this is the backstop for a
+            # row written by anything other than the command layer.
+            models.CheckConstraint(
+                condition=models.Q(current_step__gte=1)
+                & models.Q(current_step__lte=ONBOARDING_STEP_COUNT),
+                name="onboarding_progress_step_ck",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="onboarding_progress_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        if self.completed_at is not None:
+            return "onboarding complete"
+        return f"onboarding step {self.current_step}"
+
+
+class DigestPreference(UUIDv7Model):
+    """When and where the Pulse Digest should arrive (FR-1, step 3).
+
+    The user is held **by value** (OQ-8): no relation to `User`.
+
+    **The delivery time is a local wall clock, not an instant.** It is paired with an
+    IANA zone, and the pair is the whole preference. Storing a UTC instant instead would
+    be wrong in a way that only shows up twice a year: the user says "9am", and a UTC
+    instant is "9am once, then 8am or 10am after a DST change". A wall clock plus a zone
+    is what the user actually meant, and it is what `delivery` will read when it computes
+    the next send time.
+
+    **This is a small dedicated model, not a `PREFERENCE_GRAPH`.** A graph is a structure
+    for a *set* of preferences with edges between them; a delivery time and a zone are a
+    single value with two parts, read as a unit and written as a unit. A graph would add a
+    node type, an edge type and a traversal for one row. The shape is reconsidered when a
+    second, genuinely separate preference arrives — and the reason is recorded here so the
+    next reader knows the decision was deliberate, not accidental.
+
+    The zone is validated by the command, not by a check constraint: a database check
+    cannot see the timezone database.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # A local wall clock (HH:MM), NOT an instant. Paired with `timezone`.
+    delivery_time = models.TimeField()
+    # An IANA zone name, e.g. "America/Los_Angeles". Validated by the command.
+    timezone = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user_id"], name="digest_preference_user_uq"),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="digest_preference_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"digest at {self.delivery_time} {self.timezone}"
 
 
 class PersonalizationAuditEntry(AuditEntry):

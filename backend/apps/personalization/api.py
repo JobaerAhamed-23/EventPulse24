@@ -32,6 +32,12 @@ from apps.personalization.schemas import (
     ConflictOut,
     ConflictResolutionIn,
     ConflictResolutionOut,
+    DigestPreferenceIn,
+    InterestChipOut,
+    InterestChipsOut,
+    InterestsIn,
+    InterestsOut,
+    OnboardingStateOut,
     PersonalEventCreateIn,
     PersonalEventListOut,
     PersonalEventListQuery,
@@ -44,6 +50,15 @@ from apps.personalization.schemas import (
 )
 from apps.personalization.services.conflict_resolutions import resolve_conflict
 from apps.personalization.services.conflicts import PERSONAL_EVENT_SIDE
+from apps.personalization.services.onboarding import (
+    advance_step,
+    get_onboarding_state,
+    list_interest_chips,
+    set_digest_preference,
+    set_interests,
+    skip_all,
+    skip_step,
+)
 from apps.personalization.services.personal_events import (
     ConflictFound,
     create_personal_event,
@@ -333,6 +348,157 @@ def list_saved(request, filters: SavedEventListQuery = EVENT_LIST_QUERY):
             continue
         items.append(SavedEventOut.from_snapshot(saved, public))
     return SavedEventListOut(items=items, omitted=omitted)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The onboarding flow (FR-1)
+#
+# Seven endpoints under `/api/personal/onboarding`. They share the router's
+# `auth=current_user`, so every one is authed, and **none of them accepts a user id as
+# input** — the scoping comes from the session and cannot be talked out of by a payload.
+#
+# `PUT` for the two setters, because they **replace** a resource — that is what `PUT`
+# means, and `POST` would imply a create. `POST` for the three step movers, because they
+# are transitions, not idempotent replacements of a body.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/onboarding",
+    response={200: OnboardingStateOut},
+    summary="The signed-in user's onboarding state",
+    description=(
+        "Where the user is in the 3-step onboarding flow, their interest picks and their "
+        "digest delivery preference. A user who left mid-step is resumed at the same step "
+        "within 7 days; after that the flow restarts at step 1. A user who has finished "
+        "onboarding is never sent back into it."
+    ),
+)
+def read_onboarding(request):
+    """The signed-in user's whole onboarding state."""
+    state = get_onboarding_state(user_id=request.user.pk, now=timezone.now())
+    return OnboardingStateOut.from_state(state)
+
+
+@router.get(
+    "/onboarding/interest-chips",
+    response={200: InterestChipsOut},
+    summary="The interest chips on offer",
+    description=(
+        "The ten interest chips, in the order the flow shows them. This list comes from "
+        "the server, so the frontend holds no second copy of it. Each chip carries a "
+        "stable `key` and a display `label` — send the key back, not the label."
+    ),
+)
+def read_interest_chips(request):
+    """The ten interest chips, from the server's constant."""
+    return InterestChipsOut(
+        items=[InterestChipOut(key=chip.key, label=chip.label) for chip in list_interest_chips()]
+    )
+
+
+@router.put(
+    "/onboarding/interests",
+    response={200: InterestsOut, 422: ErrorOut},
+    summary="Set the user's interest picks",
+    description=(
+        "Replaces the user's interest picks with the given set. At most 3 chips may be "
+        "picked, and every key must be one the chips endpoint offers. An empty list is "
+        "valid — that is how the step is skipped, and it clears the set."
+    ),
+)
+def put_interests(request, body: InterestsIn):
+    """Replace the user's interest picks."""
+    state = set_interests(
+        user_id=request.user.pk,
+        chip_keys=body.chip_keys,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return InterestsOut(chip_keys=list(state.interests))
+
+
+@router.put(
+    "/onboarding/digest-preference",
+    response={200: OnboardingStateOut, 422: ErrorOut},
+    summary="Set the digest delivery time and timezone",
+    description=(
+        "Sets when and where the Pulse Digest should arrive. The delivery time is a "
+        "local wall clock, so it means nine in the morning where the user is. The "
+        "timezone must be an IANA zone name."
+    ),
+)
+def put_digest_preference(request, body: DigestPreferenceIn):
+    """Set the digest delivery time and timezone."""
+    state = set_digest_preference(
+        user_id=request.user.pk,
+        delivery_time=body.delivery_time,
+        timezone_name=body.timezone,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return OnboardingStateOut.from_state(state)
+
+
+@router.post(
+    "/onboarding/step",
+    response={200: OnboardingStateOut, 409: ErrorOut},
+    summary="Advance to the next onboarding step",
+    description=(
+        "Moves the user to the next step. Advancing past the last step finishes the "
+        "onboarding — there is no fourth step. A user who has already finished is not "
+        "moved again."
+    ),
+)
+def post_advance_step(request):
+    """Advance to the next onboarding step."""
+    state = advance_step(
+        user_id=request.user.pk,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return OnboardingStateOut.from_state(state)
+
+
+@router.post(
+    "/onboarding/step/skip",
+    response={200: OnboardingStateOut, 409: ErrorOut},
+    summary="Skip the current onboarding step",
+    description=(
+        "Skips the current step. No step requires any input, so every one of them can be "
+        "skipped. Skipping the interests step clears the picks; skipping the digest step "
+        "writes the default delivery preference. Skipping the last step finishes the "
+        "onboarding."
+    ),
+)
+def post_skip_step(request):
+    """Skip the current onboarding step."""
+    state = skip_step(
+        user_id=request.user.pk,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return OnboardingStateOut.from_state(state)
+
+
+@router.post(
+    "/onboarding/skip-all",
+    response={200: OnboardingStateOut, 409: ErrorOut},
+    summary="Skip the whole onboarding flow",
+    description=(
+        "Skips every step and finishes the onboarding. A user who skips everything has "
+        "still finished onboarding — the default digest preference is written, so the "
+        "digest has a delivery time to work with."
+    ),
+)
+def post_skip_all(request):
+    """Skip the whole onboarding flow."""
+    state = skip_all(
+        user_id=request.user.pk,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return OnboardingStateOut.from_state(state)
 
 
 __all__ = ["router"]

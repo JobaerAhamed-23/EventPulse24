@@ -218,7 +218,7 @@
         "type": "object"
       },
       "CurrentUserOut": {
-        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe onboarding status is **not** here yet: `personalization` owns onboarding progress,\nand it does not exist yet. It is added when it does, through `personalization`'s\npublished interface — this item does not depend on that one.",
+        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe **onboarding status** is here, and it is here because the frontend needs it to\ndecide between the onboarding flow and the home. It says only whether the onboarding\nis finished and which step the user is on — it carries no interests and no digest\npreference, because `me` is about *who* the user is and a settings blob there would\ngrow without bound. The full state lives at `/api/personal/onboarding`.\n\nIt is read through `personalization`'s **published interface** — the service, never\nthe model — because `identity` may not reach into another app's tables (AD-2). The\nimport contract `models-personalization` proves it.",
         "properties": {
           "email": {
             "title": "Email",
@@ -228,13 +228,67 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "onboarding": {
+            "$ref": "#/components/schemas/OnboardingStatusOut"
           }
         },
         "required": [
           "id",
-          "email"
+          "email",
+          "onboarding"
         ],
         "title": "CurrentUserOut",
+        "type": "object"
+      },
+      "DigestPreferenceIn": {
+        "description": "The digest delivery time and timezone.\n\nThe delivery time is a **local wall clock** — \"09:00\" means nine in the morning where\nthe user is, not nine in the morning UTC. The zone says where that is.",
+        "properties": {
+          "delivery_time": {
+            "format": "time",
+            "title": "Delivery Time",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_time",
+          "timezone"
+        ],
+        "title": "DigestPreferenceIn",
+        "type": "object"
+      },
+      "DigestPreferenceOut": {
+        "description": "The stored digest delivery time and timezone.",
+        "properties": {
+          "delivery_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Time"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "DigestPreferenceOut",
         "type": "object"
       },
       "ErrorOut": {
@@ -506,6 +560,178 @@
           "details"
         ],
         "title": "HealthUnavailableOut",
+        "type": "object"
+      },
+      "InterestChipOut": {
+        "description": "One interest chip: its stable key and its display label.\n\nThe **key** is what the API accepts and what is stored; the **label** is what the UI\nshows. They are separate because a renamed label must not invalidate a stored pick.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "InterestChipOut",
+        "type": "object"
+      },
+      "InterestChipsOut": {
+        "description": "The ten interest chips, in the order the flow shows them.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InterestChipOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "InterestChipsOut",
+        "type": "object"
+      },
+      "InterestsIn": {
+        "description": "The user's interest picks.\n\nThe list **replaces** the user's set: it is the whole set, not a delta. An empty list\nis valid — that is how the step is skipped, and it clears the set.\n\nThe keys are what is sent, never the labels: a label may be renamed, a key may not.",
+        "properties": {
+          "chip_keys": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Chip Keys",
+            "type": "array"
+          }
+        },
+        "title": "InterestsIn",
+        "type": "object"
+      },
+      "InterestsOut": {
+        "description": "The user's stored interest picks.",
+        "properties": {
+          "chip_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chip Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chip_keys"
+        ],
+        "title": "InterestsOut",
+        "type": "object"
+      },
+      "OnboardingStateOut": {
+        "description": "The whole onboarding state: the progress, the interests and the digest preference.\n\nThe interests and the digest preference are the **stored** values, so a skipped step\nshows what the skip wrote (an empty set, the default preference) rather than nothing.",
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "digest": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DigestPreferenceOut"
+              }
+            ],
+            "default": {
+              "delivery_time": null,
+              "timezone": null
+            }
+          },
+          "interests": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Interests",
+            "type": "array"
+          },
+          "last_advanced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Advanced At"
+          },
+          "step_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Name"
+          }
+        },
+        "required": [
+          "completed"
+        ],
+        "title": "OnboardingStateOut",
+        "type": "object"
+      },
+      "OnboardingStatusOut": {
+        "description": "How far through the onboarding the user is.\n\nThis is what `GET /api/auth/me` carries. It says **only** whether the onboarding is\nfinished and which step the user is on — enough for the frontend to choose between the\nonboarding flow and the home. It carries no interests and no digest preference: `me`\nis about *who* the user is, and a settings blob there would grow without bound.",
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          }
+        },
+        "required": [
+          "completed"
+        ],
+        "title": "OnboardingStatusOut",
         "type": "object"
       },
       "PasswordResetConfirmIn": {
@@ -1129,7 +1355,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "description": "The signed-in user's id and email. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field.",
+        "description": "The signed-in user's id, email and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.",
         "operationId": "apps_identity_api_me",
         "parameters": [],
         "responses": {
@@ -1304,7 +1530,7 @@
     },
     "/api/auth/signup": {
       "post": {
-        "description": "Creates an account and signs the user in. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. A caller who signs up with an address that is already taken, and who does not know that account's password, is not signed in.",
+        "description": "Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.",
         "operationId": "apps_identity_api_signup",
         "parameters": [],
         "requestBody": {
@@ -1807,6 +2033,237 @@
           }
         },
         "summary": "Edit a personal event",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding": {
+      "get": {
+        "description": "Where the user is in the 3-step onboarding flow, their interest picks and their digest delivery preference. A user who left mid-step is resumed at the same step within 7 days; after that the flow restarts at step 1. A user who has finished onboarding is never sent back into it.",
+        "operationId": "apps_personalization_api_read_onboarding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStateOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The signed-in user's onboarding state",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding/digest-preference": {
+      "put": {
+        "description": "Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.",
+        "operationId": "apps_personalization_api_put_digest_preference",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigestPreferenceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStateOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set the digest delivery time and timezone",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding/interest-chips": {
+      "get": {
+        "description": "The ten interest chips, in the order the flow shows them. This list comes from the server, so the frontend holds no second copy of it. Each chip carries a stable `key` and a display `label` — send the key back, not the label.",
+        "operationId": "apps_personalization_api_read_interest_chips",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestChipsOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The interest chips on offer",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding/interests": {
+      "put": {
+        "description": "Replaces the user's interest picks with the given set. At most 3 chips may be picked, and every key must be one the chips endpoint offers. An empty list is valid — that is how the step is skipped, and it clears the set.",
+        "operationId": "apps_personalization_api_put_interests",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterestsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set the user's interest picks",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding/skip-all": {
+      "post": {
+        "description": "Skips every step and finishes the onboarding. A user who skips everything has still finished onboarding — the default digest preference is written, so the digest has a delivery time to work with.",
+        "operationId": "apps_personalization_api_post_skip_all",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStateOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Skip the whole onboarding flow",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding/step": {
+      "post": {
+        "description": "Moves the user to the next step. Advancing past the last step finishes the onboarding — there is no fourth step. A user who has already finished is not moved again.",
+        "operationId": "apps_personalization_api_post_advance_step",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStateOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Advance to the next onboarding step",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/onboarding/step/skip": {
+      "post": {
+        "description": "Skips the current step. No step requires any input, so every one of them can be skipped. Skipping the interests step clears the picks; skipping the digest step writes the default delivery preference. Skipping the last step finishes the onboarding.",
+        "operationId": "apps_personalization_api_post_skip_step",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStateOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Skip the current onboarding step",
         "tags": [
           "personal"
         ]

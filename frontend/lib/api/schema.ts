@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * The signed-in user
-         * @description The signed-in user's id and email. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field.
+         * @description The signed-in user's id, email and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
          */
         get: operations["apps_identity_api_me"];
         put?: never;
@@ -135,7 +135,7 @@ export interface paths {
         put?: never;
         /**
          * Create an account
-         * @description Creates an account and signs the user in. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. A caller who signs up with an address that is already taken, and who does not know that account's password, is not signed in.
+         * @description Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.
          */
         post: operations["apps_identity_api_signup"];
         delete?: never;
@@ -271,6 +271,146 @@ export interface paths {
          * @description Edits a personal event and re-runs conflict detection. A conflicting edit returns the same 409 payload a conflicting create does.
          */
         patch: operations["apps_personalization_api_edit_event"];
+        trace?: never;
+    };
+    "/api/personal/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's onboarding state
+         * @description Where the user is in the 3-step onboarding flow, their interest picks and their digest delivery preference. A user who left mid-step is resumed at the same step within 7 days; after that the flow restarts at step 1. A user who has finished onboarding is never sent back into it.
+         */
+        get: operations["apps_personalization_api_read_onboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/digest-preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the digest delivery time and timezone
+         * @description Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.
+         */
+        put: operations["apps_personalization_api_put_digest_preference"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/interest-chips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The interest chips on offer
+         * @description The ten interest chips, in the order the flow shows them. This list comes from the server, so the frontend holds no second copy of it. Each chip carries a stable `key` and a display `label` — send the key back, not the label.
+         */
+        get: operations["apps_personalization_api_read_interest_chips"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the user's interest picks
+         * @description Replaces the user's interest picks with the given set. At most 3 chips may be picked, and every key must be one the chips endpoint offers. An empty list is valid — that is how the step is skipped, and it clears the set.
+         */
+        put: operations["apps_personalization_api_put_interests"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/skip-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip the whole onboarding flow
+         * @description Skips every step and finishes the onboarding. A user who skips everything has still finished onboarding — the default digest preference is written, so the digest has a delivery time to work with.
+         */
+        post: operations["apps_personalization_api_post_skip_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance to the next onboarding step
+         * @description Moves the user to the next step. Advancing past the last step finishes the onboarding — there is no fourth step. A user who has already finished is not moved again.
+         */
+        post: operations["apps_personalization_api_post_advance_step"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/step/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip the current onboarding step
+         * @description Skips the current step. No step requires any input, so every one of them can be skipped. Skipping the interests step clears the picks; skipping the digest step writes the default delivery preference. Skipping the last step finishes the onboarding.
+         */
+        post: operations["apps_personalization_api_post_skip_step"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/personal/saved-events": {
@@ -447,9 +587,15 @@ export interface components {
          *     The id and the email are what the frontend needs. There is no password field, no
          *     permission field and no catch-all, so nothing internal can ride along.
          *
-         *     The onboarding status is **not** here yet: `personalization` owns onboarding progress,
-         *     and it does not exist yet. It is added when it does, through `personalization`'s
-         *     published interface — this item does not depend on that one.
+         *     The **onboarding status** is here, and it is here because the frontend needs it to
+         *     decide between the onboarding flow and the home. It says only whether the onboarding
+         *     is finished and which step the user is on — it carries no interests and no digest
+         *     preference, because `me` is about *who* the user is and a settings blob there would
+         *     grow without bound. The full state lives at `/api/personal/onboarding`.
+         *
+         *     It is read through `personalization`'s **published interface** — the service, never
+         *     the model — because `identity` may not reach into another app's tables (AD-2). The
+         *     import contract `models-personalization` proves it.
          */
         CurrentUserOut: {
             /** Email */
@@ -459,6 +605,33 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            onboarding: components["schemas"]["OnboardingStatusOut"];
+        };
+        /**
+         * DigestPreferenceIn
+         * @description The digest delivery time and timezone.
+         *
+         *     The delivery time is a **local wall clock** — "09:00" means nine in the morning where
+         *     the user is, not nine in the morning UTC. The zone says where that is.
+         */
+        DigestPreferenceIn: {
+            /**
+             * Delivery Time
+             * Format: time
+             */
+            delivery_time: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /**
+         * DigestPreferenceOut
+         * @description The stored digest delivery time and timezone.
+         */
+        DigestPreferenceOut: {
+            /** Delivery Time */
+            delivery_time?: string | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /**
          * ErrorOut
@@ -582,6 +755,97 @@ export interface components {
             details: components["schemas"]["HealthDetails"];
             /** Message */
             message: string;
+        };
+        /**
+         * InterestChipOut
+         * @description One interest chip: its stable key and its display label.
+         *
+         *     The **key** is what the API accepts and what is stored; the **label** is what the UI
+         *     shows. They are separate because a renamed label must not invalidate a stored pick.
+         */
+        InterestChipOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * InterestChipsOut
+         * @description The ten interest chips, in the order the flow shows them.
+         */
+        InterestChipsOut: {
+            /** Items */
+            items: components["schemas"]["InterestChipOut"][];
+        };
+        /**
+         * InterestsIn
+         * @description The user's interest picks.
+         *
+         *     The list **replaces** the user's set: it is the whole set, not a delta. An empty list
+         *     is valid — that is how the step is skipped, and it clears the set.
+         *
+         *     The keys are what is sent, never the labels: a label may be renamed, a key may not.
+         */
+        InterestsIn: {
+            /**
+             * Chip Keys
+             * @default []
+             */
+            chip_keys: string[];
+        };
+        /**
+         * InterestsOut
+         * @description The user's stored interest picks.
+         */
+        InterestsOut: {
+            /** Chip Keys */
+            chip_keys: string[];
+        };
+        /**
+         * OnboardingStateOut
+         * @description The whole onboarding state: the progress, the interests and the digest preference.
+         *
+         *     The interests and the digest preference are the **stored** values, so a skipped step
+         *     shows what the skip wrote (an empty set, the default preference) rather than nothing.
+         */
+        OnboardingStateOut: {
+            /** Completed */
+            completed: boolean;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Current Step */
+            current_step?: number | null;
+            /**
+             * @default {
+             *       "delivery_time": null,
+             *       "timezone": null
+             *     }
+             */
+            digest: components["schemas"]["DigestPreferenceOut"];
+            /**
+             * Interests
+             * @default []
+             */
+            interests: string[];
+            /** Last Advanced At */
+            last_advanced_at?: string | null;
+            /** Step Name */
+            step_name?: string | null;
+        };
+        /**
+         * OnboardingStatusOut
+         * @description How far through the onboarding the user is.
+         *
+         *     This is what `GET /api/auth/me` carries. It says **only** whether the onboarding is
+         *     finished and which step the user is on — enough for the frontend to choose between the
+         *     onboarding flow and the home. It carries no interests and no digest preference: `me`
+         *     is about *who* the user is, and a settings blob there would grow without bound.
+         */
+        OnboardingStatusOut: {
+            /** Completed */
+            completed: boolean;
+            /** Current Step */
+            current_step?: number | null;
         };
         /**
          * PasswordResetConfirmIn
@@ -1388,6 +1652,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchedulingConflictOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_read_onboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_put_digest_preference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DigestPreferenceIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_read_interest_chips: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestChipsOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_put_interests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterestsIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestsOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_skip_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_advance_step: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_skip_step: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

@@ -112,9 +112,11 @@ def reset_password(
         now: The moment to compare the expiry against. Defaults to the current time; a
             test passes a fixed value to pin the expiry boundary.
         keep_session_key: The session key of the session the reset is being made *from*.
-            That session survives; every other session of the account ends. The API edge
-            passes the current session's key, so the person who just reset their password
-            is not signed out of the browser they did it in (D12).
+            That session's **row** survives; every other session of the account ends. The
+            API edge passes the current session's key, so the person who just reset their
+            password is not signed out of the browser they did it in (D12). The edge also
+            re-stamps the session's auth hash, because the password change invalidates
+            it — keeping the row alone would not keep the session usable.
 
     Returns:
         The user, with the new password set.

@@ -15,6 +15,7 @@ imports it), not the submodule. Only `sys.modules` holds the module object itsel
 `patch_module_attribute` looks it up there.
 """
 
+import importlib
 import sys
 
 import pytest
@@ -29,6 +30,20 @@ _EMAIL_CONSUMERS = (
 )
 
 
+def _ensure_imported(module_path: str) -> None:
+    """Make sure the module is in `sys.modules` before it is looked up there.
+
+    `patch_module_attribute` resolves through `sys.modules`, and a module is only in
+    `sys.modules` once something has imported it. Without this, the fixture would depend
+    on which test happened to run first: a test that needs the email adapter and happens
+    to be the first in the file would fail with a `KeyError` on the module name, while the
+    same test would pass later in the run. Importing here makes the fixture
+    order-independent.
+    """
+    if module_path not in sys.modules:
+        importlib.import_module(module_path)
+
+
 def patch_module_attribute(monkeypatch, module_path: str, attribute: str, value) -> None:
     """Patch `attribute` on the module object named `module_path`.
 
@@ -37,6 +52,7 @@ def patch_module_attribute(monkeypatch, module_path: str, attribute: str, value)
     `sign_up` **function** (the package's `__init__` imports it), not the submodule. Only
     `sys.modules` holds the module object itself.
     """
+    _ensure_imported(module_path)
     module = sys.modules[module_path]
     monkeypatch.setattr(module, attribute, value)
 

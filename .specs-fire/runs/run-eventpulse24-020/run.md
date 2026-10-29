@@ -33,24 +33,24 @@ work_items:
   - id: auth-api-and-session-seam
     intent: onboarding-and-account
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: onboarding-state-and-interests
     intent: onboarding-and-account
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: calendar-connect-api
     intent: onboarding-and-account
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: event-fit
     intent: onboarding-and-account
     mode: confirm
@@ -93,7 +93,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: auth-api-and-session-seam
+current_item: calendar-connect-api
 status: in_progress
 started: 2026-10-29T06:25:40.374Z
 completed: null
@@ -109,9 +109,9 @@ wide (13 work items)
 2. **calendar-connection-model** (validate) — completed
 3. **ics-calendar-adapter** (validate) — completed
 4. **calendar-sync-and-polling** (validate) — completed
-5. **auth-api-and-session-seam** (confirm) — in_progress
-6. **onboarding-state-and-interests** (confirm) — pending
-7. **calendar-connect-api** (confirm) — pending
+5. **auth-api-and-session-seam** (confirm) — completed
+6. **onboarding-state-and-interests** (confirm) — completed
+7. **calendar-connect-api** (confirm) — in_progress
 8. **event-fit** (confirm) — pending
 9. **pulse-preview-api-and-geo** (confirm) — pending
 10. **frontend-auth-surfaces** (confirm) — pending
@@ -121,7 +121,7 @@ wide (13 work items)
 
 
 ## Current Item
-auth-api-and-session-seam (confirm)
+calendar-connect-api (confirm)
 
 ## Files Created
 (none yet)

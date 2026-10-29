@@ -114,17 +114,31 @@ def test_a_session_from_the_signin_endpoint_identifies_the_user_on_the_personal_
     assert listed.status_code == 200
 
 
-def test_a_session_from_the_signup_endpoint_identifies_the_user_on_the_personal_endpoint():
-    """A sign-up establishes a session too, and it works the same way."""
+def test_a_signup_then_a_signin_identifies_the_user_on_the_personal_endpoint():
+    """The account is created, and signing in with it identifies the user.
+
+    Sign-up does not establish a session — it only creates the account. That is what
+    keeps the sign-up response identical in its headers as well as its body, so no
+    response can be used to find out whether an address is taken. `/api/auth/signin` is
+    where the session is created, and the seam treats it exactly like any other.
+    """
     client = CsrfClient()
 
-    response = client.post(
+    signup = client.post(
         "/api/auth/signup",
         {"email": EMAIL, "password": PASSWORD},
         content_type="application/json",
     )
+    assert signup.status_code == 201
+    # No session yet: the account exists, but the browser is not signed in.
+    assert client.get("/api/personal/events").status_code == 401
 
-    assert response.status_code == 201
+    signin = client.post(
+        "/api/auth/signin",
+        {"email": EMAIL, "password": PASSWORD},
+        content_type="application/json",
+    )
+    assert signin.status_code == 200
     assert client.get("/api/personal/events").status_code == 200
 
 

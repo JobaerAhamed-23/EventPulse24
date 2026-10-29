@@ -1,276 +1,253 @@
 ---
 run: run-eventpulse24-020
-work_item: calendar-sync-and-polling
+work_item: onboarding-state-and-interests
 intent: onboarding-and-account
 generated: 2026-10-29
 status: passing
 ---
 
-# Test Report: Calendar Sync & Polling (AD-7, AD-18, FR-20, FR-50, FR-58)
+# Test Report: Onboarding State & Interests (FR-1)
 
 ## Summary
 
 | Category | Passed | Failed | Skipped | Coverage |
 |----------|--------|--------|---------|----------|
-| Item-scoped | 107 | 0 | 0 | 100% (the item's modules) |
-| **Total (whole backend)** | **2648** | **0** | **0** | **98.92%** |
+| Item-scoped | 104 | 0 | 0 | 100% (the item's modules) |
+| **Total (whole backend)** | **2819** | **0** | **0** | **98.96%** |
 
-The 107 item-scoped tests are a subset of the 2648-test backend suite. The whole backend
-suite is **2648 passed, 0 failed** in 207.33s; coverage is **98.92%** across 5816
-statements with **151 files at 100%**.
+The 104 item-scoped tests are a subset of the 2819-test backend suite. The whole backend
+suite is **2819 passed, 0 failed** in 73.37s; coverage is **98.96%** across 6260
+statements, with **155 files at 100%**.
 
-**Every module this item created or changed is at 100%** — `calendar_sync.py`,
-`calendar_connections.py`, `conflicts.py`, `conflict_resolutions.py`,
-`reminder_plans.py`, `personal_events.py` and `worker/tasks.py`. The 63 uncovered
-statements are all pre-existing gaps elsewhere in the codebase (`adapters/throttle/redis.py`,
-`config/asgi.py`, `apps/identity/*` and friends).
+**Every module this item created or changed is at 100%** — notably
+`apps/personalization/services/onboarding.py`. The 65 uncovered statements are pre-existing
+gaps elsewhere in the codebase.
 
 ## Test Commands
 
 ```bash
 # The item's own tests
 cd backend && .venv/bin/python -m pytest \
-    tests/personalization/test_calendar_sync.py \
-    tests/personalization/test_calendar_polling.py \
-    tests/personalization/test_calendar_disconnect_purge.py \
-    tests/personalization/test_calendar_conflict_resolution.py \
-    tests/worker/test_calendar_tasks.py \
-    tests/delivery/test_reminder_plans.py -q
+    tests/personalization/test_onboarding_constants.py \
+    tests/personalization/test_onboarding_models.py \
+    tests/personalization/test_onboarding_commands.py \
+    tests/personalization/test_onboarding_api.py -q
 
 # The whole backend suite, with coverage
 cd backend && .venv/bin/python -m pytest tests/ -q --cov --cov-report=term-missing
 
-# The linter
+# The linter and the format check
 cd backend && .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check .
 
 # The import contracts
 cd backend && .venv/bin/lint-imports
 
-# The tick's own acceptance criterion
-cd backend && .venv/bin/python -m pytest tests/worker/test_tick.py -q
+# Django's own checks and the migration drift
+cd backend && .venv/bin/python manage.py check
+cd backend && .venv/bin/python manage.py makemigrations --check --dry-run
+
+# AD-19: the schema and the TypeScript client regenerate with no drift
+make client
+
+# The frontend suite (the client is regenerated from the OpenAPI schema)
+pnpm --dir frontend test
 ```
 
 ## What Was Added
 
 | File | Tests | Covers |
 |------|-------|--------|
-| `backend/tests/personalization/test_calendar_sync.py` | 39 | The reconcile: the three branches, idempotence, ownership, the failures, the conflicts, the audit and the logs |
-| `backend/tests/personalization/test_calendar_polling.py` | 19 | The due-claim: atomicity, the TTL, the batch, the ordering, the due rule |
-| `backend/tests/personalization/test_calendar_conflict_resolution.py` | 23 | The imported-event conflict rules (D3) and the reconnect command (D6, D9) |
-| `backend/tests/personalization/test_calendar_disconnect_purge.py` | 9 | The disconnect purge: the scope, the pairs, the plans, the ordering (D13) |
-| `backend/tests/worker/test_calendar_tasks.py` | 12 | The dispatcher and the sync job (D8) |
-| `backend/tests/delivery/test_reminder_plans.py` | +4 | `remove_plans_for_targets` — the bulk delete and its audit rows |
-| `backend/tests/personalization/test_calendar_connection_commands.py` | 3 | The purge's scope, now asserted against the command path |
+| `backend/tests/personalization/test_onboarding_constants.py` | 11 | The ten chips, their order and their uniqueness; the three-step cap derived from the tuple; the 7-day window; the default digest time and zone |
+| `backend/tests/personalization/test_onboarding_models.py` | 17 | The three models: the user held by value, the uniqueness constraints, the step range check, the retention categories, the wall-clock time |
+| `backend/tests/personalization/test_onboarding_commands.py` | 42 | The commands: replace semantics, the pick limit, the unknown key, the zone and time validation, the step transitions, the resume window, the terminal state |
+| `backend/tests/personalization/test_onboarding_api.py` | 26 | The seven endpoints: the chip list, the 401s, the two setters, the three movers, the CSRF refusal, the session scoping, and the safe-methods guarantee |
+| `backend/tests/personalization/test_onboarding_concurrency.py` | 9 | The commands under concurrency: two writers, one row, no `IntegrityError` |
 
 ## What Was Changed in the Existing Tests
 
-Exactly one existing test file changed, and it changed because the tick's behaviour changed:
+Exactly one existing test file changed, and it changed because the `me` payload changed:
 
-`backend/tests/worker/test_scheduling_tasks.py` — the tick's enqueued job list now includes
-`worker.tasks.schedule_calendars`. The tick still enqueues `schedule_sources` and
-`reconcile_outbox` exactly as before; it enqueues one more dispatcher.
-
-**`backend/tests/worker/test_tick.py` is unchanged**, which is the acceptance criterion the
-work item names. It asserts that `beat_schedule` is exactly one 60s tick, that the tick is
-registered under its scheduled name, that it logs and returns nothing, and that it runs
-through Celery — none of which the new dispatcher disturbs. It passes untouched.
+`backend/tests/identity/test_auth_api.py` — `me` now carries the onboarding status, so
+`test_me_returns_the_id_the_email_and_the_onboarding_status_and_nothing_else` asserts the
+payload includes `{"onboarding": {"completed": False, "current_step": 1}}`. A companion
+test, `test_me_carries_the_onboarding_status_and_no_settings`, gives the user interests
+and a digest preference and asserts that **neither** appears on `me` — the status is on
+`me`; the settings are not.
 
 ## The Properties Pinned
 
-### The reconcile is a three-way diff (D1)
+### The chips live in one place
 
-| In the feed | In the database | Action |
-|---|---|---|
-| yes | no | create |
-| yes | yes, identical | **nothing** |
-| yes | yes, different | update (unless the user owns the row — D2) |
-| no | yes | delete |
+- `test_the_chip_list_comes_from_the_constant` — the API projects the constant, so the
+  labels exist exactly once.
+- `test_the_chip_labels_are_the_ten_in_order` — the order the step-2 mockup shows.
+- `test_the_chip_keys_are_unique_slugs` — a key is a stable identifier; a duplicate key
+  would orphan a user's stored pick.
 
-The **identical → nothing** branch is the one that matters most, and it is pinned from
-both sides:
+### The pick limit is three
 
-- `test_resyncing_an_unchanged_feed_changes_nothing` — the row's `version` and
-  `updated_at` are unchanged after a second sync of the same feed.
-- `test_an_unchanged_feed_sends_no_reminders_again` — the version did not move, so AD-7's
-  send key did not move, so the reminder is not re-sent.
+- `test_more_than_three_picks_is_refused` — the extra picks are **refused**, not
+  silently dropped, and nothing is written.
+- `test_exactly_three_picks_are_allowed` — the limit is three, not two.
 
-The reason is worth stating, because it is the whole reason the branch exists: `version`
-feeds the send key, so a sync that rewrote every row on every poll would re-send every
-reminder for every imported event, every hour, forever. A poll that changes nothing must
-change *nothing downstream*.
+### The key is the contract, the label is prose
 
-The key is `(calendar_connection_id, source_uid)` — the unique constraint the model already
-carries, created by the connection-model item for this purpose. The id is the one the
-**adapter** produced (`domain.dedup.ics_item_id`), not one re-derived from the raw UID, so
-an override of a recurring master's own instance lands on the master's row rather than
-beside it.
+- `test_an_unknown_chip_key_is_refused` — the offending key is **named** in
+  `details["chip_key"]`, so the caller can say which one it got wrong.
+- `test_a_label_is_not_a_key` — "Tech & meetups" is refused; the API takes keys.
 
-### The user's edit wins (D2)
+### The interests replace, they do not accumulate
 
-- `test_a_feed_change_overwrites_an_untouched_import` — the feed owns an untouched row, so
-  a difference is applied.
-- `test_a_feed_change_does_not_overwrite_a_user_edit` — the user owns an edited row, so
-  the feed's difference is not applied and the row is not counted as updated.
-- `test_a_user_edit_marks_the_row_user_modified` — the command sets the flag.
-- `test_a_user_created_event_is_never_flagged_user_modified` — there is no feed to
-  disagree with a user-created event, and the model's constraint says so.
-- `test_a_user_created_event_is_never_touched_by_a_sync` — the diff's scope is the
-  connection's imported rows, so a user-created event is out of reach by construction.
-- `test_a_deleted_imported_event_returns_on_the_next_sync` — the decided behaviour: the
-  mirror is the provider's agenda, and the provider still says the event exists.
+- `test_setting_interests_replaces_the_set` — three chips then one leaves one.
+- `test_zero_picks_is_valid_and_clears_the_set` — zero is how the step is skipped, and it
+  clears.
+- `test_a_duplicate_key_in_one_call_is_deduplicated` — a repeated key is deduplicated, not
+  refused: it is not a mistake worth a refusal.
 
-The flag is stored, not inferred. "Did the user edit it?" could be inferred by comparing
-the row with the feed, but that inference is exactly the case where the two disagree — and
-its answer would flip depending on which side you looked from.
+### The digest preference is validated by the shared validator
 
-### Every write goes through the shared command paths (D11)
+- `test_a_non_iana_timezone_is_refused` — the same validator personal events use.
+- `test_an_ambiguous_timezone_is_refused` — a fixed offset is not a zone an event can
+  happen in.
+- `test_the_zone_is_stored_canonically` — "Etc/UTC" is stored as "UTC".
+- `test_a_delivery_time_with_an_offset_is_refused` — a wall clock carries no offset.
+- `test_a_delivery_time_that_is_not_a_time_is_refused` — the service refuses a non-time
+  even though the API's schema already guarantees one: the service is a published
+  interface, and other callers reach it without the schema.
 
-The import calls `create_personal_event`, `update_personal_event` and
-`delete_personal_event` — the same commands the user's own edits use. The tests pin the
-consequences rather than the implementation:
+### The resume window is inclusive and the restart is written
 
-- `test_the_imported_event_gets_the_default_reminder_plan` — FR-20's 1d + 1hr, attached by
-  the same call a user-created event makes.
-- `test_an_update_does_not_replace_the_users_reminder_plan` — the default is a property of
-  *creation*; re-attaching it on an update would wipe a customised plan.
-- `test_an_imported_event_that_overlaps_records_a_conflict_pair` — the pair exists, and it
-  can only exist if the import went through the command that creates pairs.
-- `test_a_changed_uid_updates_its_row_and_bumps_the_version` — the version bump is the
-  command's, and AD-7's send key depends on it.
+- `test_a_user_is_resumed_at_the_same_step_within_the_window` — one second inside.
+- `test_a_user_at_the_window_boundary_is_still_resumed` — **at** exactly the window, the
+  step is kept.
+- `test_onboarding_restarts_at_step_one_after_the_window` — one second beyond, the flow
+  starts again.
+- `test_the_restart_is_written_not_recomputed` — two reads a second apart agree about the
+  step, because the restart is a row, not a calculation.
+- `test_a_write_against_an_expired_progress_row_restarts_it` — the write sees the same
+  expiry the read does, so a user who comes back after the window and *advances* starts
+  from step 1, not from the step they left weeks ago.
 
-### The failures (D6, D7, D15)
+### Completion is terminal
 
-- `test_a_revoked_fetch_marks_the_connection_and_keeps_the_events` — the status becomes
-  `needs_reconnect` and **the imported events stay**. The provider revoked the *address*,
-  not the *events*.
-- `test_a_transient_failure_leaves_the_status_alone` — a provider's bad afternoon never
-  asks the user to reconnect a working calendar.
-- `test_a_refused_fetch_is_never_a_revocation` — a refusal is *our* decision about the
-  address, not the provider's word about the credential.
-- `test_an_undecryptable_credential_is_recorded_but_is_not_a_revocation` — a wrong key is a
-  fault on our side; the user cannot fix it by pasting the address again.
-- `test_a_failed_fetch_writes_no_events` — no events, no plans, nothing.
-- `test_the_next_poll_is_scheduled_after_a_failure` and
-  `test_the_next_poll_is_scheduled_after_a_success` — the same schedule either way.
+- `test_a_completed_user_is_never_sent_back_into_onboarding`.
+- `test_a_completed_user_stays_complete_after_the_window_expires` — completion outranks
+  the resume rule; the window never reopens a finished flow.
+- `test_advancing_a_completed_onboarding_is_refused`,
+  `test_skipping_a_completed_onboarding_is_refused`,
+  `test_skipping_all_twice_is_refused` — the refusal is at the command, so the row is
+  untouched.
 
-### The conflicts (D3, D4)
+### Every step can be skipped with empty input
 
-- `test_an_imported_event_that_overlaps_records_a_conflict_pair` — the time rule applies
-  and the pair is `active`.
-- `test_an_imported_event_that_is_a_duplicate_of_a_user_event_records_no_pair` — the
-  duplicate rule does **not** apply between an import and a user-created event. The test
-  places the two a day apart, so the time rule cannot fire and the duplicate rule is the
-  only one that could.
-- `test_an_imported_event_that_overlaps_a_user_event_records_a_time_pair` — the same name
-  *and* the same hour still records a **time** pair: two things at once is a clash
-  whichever way round it is.
-- `test_two_imported_events_with_the_same_name_do_record_a_pair` — two imports *are*
-  compared: the user saved the same meeting to two calendars.
-- `test_a_resolved_conflict_is_not_re_prompted_on_the_next_sync` — AD-21: a closed pair
-  is immutable and never re-prompted.
-- `test_delete_new_is_refused_when_the_new_side_is_an_imported_event` and
-  `test_the_refusal_leaves_the_pair_active_and_the_event_alone` — D3. "Delete the new one"
-  would delete a row the *provider* owns, and the next poll would recreate it, so the
-  button would be a lie. The refusal happens **before** the pair is marked resolved, so a
-  refused attempt leaves the pair active and answerable with a choice that works.
-- `test_keep_both_is_offered_for_an_imported_event` and
-  `test_edit_new_is_offered_for_an_imported_event` — the two buttons that do work. The
-  API that presents the prompt (`pulse-preview-api-and-geo`) must offer a two-button
-  variant for an imported side; that dependency is recorded in the design doc.
+- `test_every_step_can_be_skipped_with_empty_input` — three skips, no input at all, and
+  the flow completes.
+- `test_skipping_the_digest_step_writes_the_default_preference` — the default is
+  **written**, not assumed, so `delivery` reads one row rather than branching on "was it
+  set?".
+- `test_skip_all_writes_the_default_digest_preference` and
+  `test_skip_all_clears_the_interests`.
 
-### The disconnect (D13)
+### The database is the backstop
 
-- `test_disconnecting_purges_exactly_that_connections_events` and
-  `test_disconnecting_leaves_the_users_own_events` — the scope.
-- `test_disconnecting_leaves_another_connections_events` — the two-connection test.
-- `test_disconnecting_removes_the_reminder_plans` — `delivery` owns `REMINDER_PLAN`, and
-  a disconnected calendar must not leave rows pointing at events that no longer exist.
-- `test_disconnecting_closes_the_conflict_pairs` — the pairs close as
-  `cleared_by_state_change`: nobody answered the prompt, the event went away.
-- `test_disconnecting_destroys_the_credential_first` — the ordering.
-- `test_a_disconnected_connection_is_not_polled_again` — the row leaves the due set.
+- `test_the_same_chip_cannot_be_held_twice` — written directly, bypassing the service, so
+  it pins the **constraint** rather than the command's replace semantics.
+- `test_a_user_has_one_progress_row`, `test_a_user_has_one_digest_preference`.
+- `test_the_step_must_be_inside_the_three_step_range` — steps 4 and 0 are refused by the
+  database; 1, 2 and 3 are accepted.
+- `test_an_interest_holds_the_user_by_value` — OQ-8: no relation to `User`, no
+  `GenericForeignKey`; `not Model._meta.related_objects`.
 
-### The polling (D8)
+## Acceptance Criteria Validation
 
-- `test_a_due_connection_is_claimed`, `test_a_connection_that_is_not_due_is_not_claimed`,
-  `test_a_connection_that_has_never_been_polled_is_due`.
-- `test_a_needs_reconnect_connection_is_not_claimed` — a revoked connection is not polled
-  until the user pastes a new address.
-- `test_a_disconnected_connection_is_not_claimed` — there is no credential to fetch with.
-- `test_the_claim_takes_the_row_atomically` — `SKIP LOCKED`, proved the same way
-  `ingestion`'s equivalent is: one thread holds two rows, the other claim takes the rest,
-  and the two claims are **disjoint**.
-- `test_an_expired_claim_becomes_claimable_again` — a lost job (a worker died).
-- `test_a_live_claim_is_not_claimable_again` and
-  `test_a_claimed_connection_is_not_claimed_again`.
-- `test_the_claim_is_bounded` and `test_the_claim_batch_size_is_configurable`.
-- `test_the_least_recently_polled_connection_is_claimed_first` — no connection starves.
-- `test_the_claim_writes_an_audit_row` and `test_releasing_a_claim_writes_no_audit_row` —
-  the claim is audited by the dispatcher; the release is not, because the sync's own audit
-  row closes it.
+| Criterion | Result | Where it is pinned |
+|-----------|--------|-------------------|
+| The ten interest chips exist in one place, keys and labels separate | ✅ | `test_onboarding_constants.py` (11 tests); the API projects the constant |
+| At most 3 picks; a fourth is refused, not dropped | ✅ | `test_more_than_three_picks_is_refused`, `test_exactly_three_picks_are_allowed` |
+| Interests **replace**, and zero is valid | ✅ | `test_setting_interests_replaces_the_set`, `test_zero_picks_is_valid_and_clears_the_set` |
+| An unknown key is refused and named | ✅ | `test_an_unknown_chip_key_is_refused`, `test_a_label_is_not_a_key` |
+| The digest zone is validated by the shared validator; the canonical name is stored | ✅ | `test_a_non_iana_timezone_is_refused`, `test_an_ambiguous_timezone_is_refused`, `test_the_zone_is_stored_canonically` |
+| The digest preference is one row per user | ✅ | `test_the_digest_preference_is_one_row_per_user`, `test_a_user_has_one_digest_preference` |
+| A user is resumed at the same step within 7 days; the window is inclusive | ✅ | `test_a_user_at_the_window_boundary_is_still_resumed`, `test_onboarding_restarts_at_step_one_after_the_window` |
+| The flow has at most 3 user-visible steps | ✅ | `test_the_step_count_is_derived_from_the_steps`; the DB check constraint; `test_advancing_past_the_last_step_completes_the_onboarding` |
+| Every step can be skipped, and no step requires any input | ✅ | `test_every_step_can_be_skipped_with_empty_input`, `test_skip_all_completes_the_onboarding` |
+| Completion is terminal | ✅ | the four terminal-state tests in `test_onboarding_commands.py` |
+| The onboarding endpoints live under `/api/personal/onboarding` and require a session | ✅ | `test_onboarding_api.py` — the 401 on every endpoint, the CSRF 403 |
+| `GET /api/auth/me` carries the onboarding status and nothing else | ✅ | `test_me_carries_the_onboarding_status_and_no_settings` |
+| The user is held by value (OQ-8) | ✅ | `test_an_interest_holds_the_user_by_value`, `test_a_progress_row_holds_the_user_by_value`, `test_a_digest_preference_holds_the_user_by_value` |
+| Every concrete model declares a retention category (AD-15) | ✅ | the three retention-category tests |
+| Writes are named commands with an audit row (AD-5) | ✅ | the commands take an explicit `Actor` and `now`, never `request` |
+| OpenAPI regenerates; the client regenerates with `make client` | ✅ | `make client` was re-run and committed; `tests/api/test_contract.py::test_committed_openapi_schema_matches_the_live_api` passes |
+| The import contracts pass | ✅ | `lint-imports`: 17 kept, 0 broken |
+| No migration drift | ✅ | `makemigrations --check --dry-run` → No changes detected |
 
-### The worker (D8)
+## Reverting Each Fix
 
-- `test_the_dispatcher_claims_the_due_connections_and_enqueues_one_job_each`.
-- `test_a_failed_enqueue_releases_that_claim_and_continues` — a broker failure frees the
-  claim so the next tick retries it, and the other connection is still enqueued.
-- `test_the_sync_job_releases_the_claim_after_a_successful_sync`,
-  `..._after_a_transient_failure` and `..._after_an_unexpected_error` — the claim is
-  released in a `finally`, so an unexpected error does not leave the connection claimed
-  until the TTL expires.
+Every rule was verified by **reverting it and watching the test fail**. A regression test
+that passes against the broken code is not a regression test.
 
-### The audit and the logs (D10, D17)
+| # | Rule | Reverted | Result |
+|---|------|----------|--------|
+| 1 | The window is inclusive | `>` → `>=` | `test_a_user_at_the_window_boundary_is_still_resumed` fails (`assert 1 == 3`) |
+| 2 | Completion is terminal | the raise removed | 5 tests fail; the API answers 200 instead of 409 |
+| 3 | The interests replace | the `delete()` removed | 4 tests fail (`At index 0 diff: 'tech_meetups' != 'family_kids'`) |
+| 4 | The IANA refusal | the raw name returned | 3 tests fail; the API answers 200 instead of 422 |
+| 5 | The 3-pick limit | compared against the chip count | 2 tests fail; the API answers 200 instead of 422 |
+| 6 | The unknown key | `continue` | 3 tests fail; the API answers 200 instead of 422 |
+| 7 | The default is written | the `elif` gutted | 1 test fails (`assert None == datetime.time(9, 0)`) |
+| 8 | The 3-step cap | `+ 1` | **15 tests** fail, including the step-count test |
 
-- `test_a_sync_writes_one_audit_row_with_counts` — **one** row per connection, not one per
-  event: a user's calendar can hold hundreds of events, and a per-event row would write
-  hundreds of rows per hour per connection.
-- `test_the_sync_audit_row_holds_no_event_content` — the details hold no title, no UID
-  and no URL.
-- `test_a_polled_sync_uses_a_system_actor` — the actor is `calendar_sync`, with no user
-  id: a poll at 3am has no user behind it.
-- `test_no_event_content_reaches_any_log_line_over_a_full_sync` — the acceptance
-  criterion, checked over a whole sync.
-- `test_the_sync_never_logs_the_credential` — the port is handed a `Credential`, whose own
-  `repr` is `Credential('[redacted]')`.
+All eight reverts were restored and the suite re-run green afterwards; `git diff --stat`
+confirmed no revert artifacts remained.
 
-### The 304 path
+### The review's reverts
 
-- `test_a_not_modified_feed_changes_nothing` — a 304 is a success, and the caller keeps
-  what it has.
-- `test_the_successful_poll_stores_the_cache_validators` — the validator is stored and
-  goes back on the next fetch, so an unchanged feed costs a 304 instead of a full
-  download. A stale validator is cleared rather than kept: a stale `ETag` would make the
-  provider answer 304 for a feed it has changed, and the user's events would silently
-  stop updating.
+The code review found five more defects, each reproduced with a failing test before it was
+fixed, and each verified by reverting it:
 
-## Coverage
+| Fix | Reverted | Result |
+|-----|----------|--------|
+| The read never writes | the write restored to `get_onboarding_state` | **4 tests fail**: `test_reading_the_state_does_not_write`, `test_the_me_endpoint_does_not_write`, `test_a_read_never_writes`, `test_a_command_restarts_the_expired_flow` |
+| The advisory lock | `pg_advisory_xact_lock` replaced by `return` | **7 of the 9** concurrency tests fail: the digest pair, the interest pair, and the three progress ones |
+| The advisory lock is sufficient | the row locks removed, advisory kept | 9 pass — the row locks were redundant, so they were removed rather than kept |
+
+The third row is a revert in the other direction: it established that the **simpler**
+implementation is the correct one.
+
+## Notes on the Implementation
+
+Two defects were found by the suite while this item was being built, and both are fixed
+and regression-tested:
+
+1. **`created_at` does not exist on `UUIDv7Model`.** The service ordered the interests and
+   the digest preference by `created_at`, which raised
+   `FieldError: Cannot resolve keyword 'created_at' into field`. This broke seven tests —
+   sign-in, sign-out, reset and the session-seam tests — because they all reach
+   `/api/auth/me`, and `me` now reads the onboarding state. **Fixed** by ordering by `id`:
+   a UUIDv7 is time-ordered, so the id *is* the creation time. The service's docstring now
+   says so, because the reason is not obvious.
+
+2. **A completed onboarding answered 400, not 409.** `OnboardingAlreadyCompleteError`
+   extended `DomainError`, which `config/errors.py` maps to 400. A completed onboarding is
+   a **conflict** — the request is well-formed but conflicts with the flow's state — and
+   the endpoint's own `response={409: ErrorOut}` declaration said 409. **Fixed** by making
+   the error extend `ConflictError`. The test
+   `test_advancing_a_completed_onboarding_is_refused` now pins the 409.
+
+## The Final Gate
 
 ```
-TOTAL                                             5816     63    99%
-151 files skipped due to complete coverage.
-Required test coverage of 80.0% reached. Total coverage: 98.92%
-```
+pytest tests/ -q --cov --cov-report=term-missing
+2819 passed in 73.37s
+TOTAL                                             6260     65    99%
+155 files skipped due to complete coverage.
+Required test coverage of 80.0% reached. Total coverage: 98.96%
 
-Every file this item touched is in the "skipped due to complete coverage" set:
-
-```
-apps/personalization/services/calendar_sync.py            100%
-apps/personalization/services/calendar_connections.py     100%
-apps/personalization/services/conflicts.py                100%
-apps/personalization/services/conflict_resolutions.py     100%
-apps/personalization/services/personal_events.py          100%
-apps/delivery/services/reminder_plans.py                  100%
-worker/tasks.py                                           100%
-```
-
-## Lint and Contracts
-
-```
 ruff check .
 All checks passed!
 
 ruff format --check .
-339 files already formatted
+350 files already formatted
 
 lint-imports
 Contracts: 17 kept, 0 broken.
@@ -280,108 +257,35 @@ System check identified no issues (1 silenced).
 
 manage.py makemigrations --check --dry-run
 No changes detected
+
+make client
+the committed schema and schema.ts match the regenerated ones
+
+pytest tests/api/test_contract.py -q
+1 passed
+
+pnpm --dir frontend test
+149 passed (16 files)
+
+frontend tsc --noEmit
+clean
 ```
 
-The 17 import contracts are unchanged, and that matters here: `calendar_connections.py` now
-calls `delivery`'s service and `personalization`'s own, and the `models-delivery` contract
-is what keeps `personalization` from writing `REMINDER_PLAN` itself. The purge asks
-`delivery` to delete the plans; it does not reach for the model.
+## What This Item Does Not Cover
 
-```
-AD-2 only apps.delivery imports apps.delivery.models (others call its services) KEPT
-AD-2 only apps.personalization imports apps.personalization.models (others call its
-services) KEPT
-```
+- The **frontend** onboarding flow — `frontend-onboarding-flow` owns the three steps, the
+  chip grid and the digest picker.
+- The **calendar connect API** — step 1's calendar connection belongs to
+  `calendar-connect-api`; this flow only records that the step was passed.
+- The **Pulse Digest** consuming the delivery time and the zone — the preference is
+  stored here; the delivery job reads it in `pulse-preview-api-and-geo`.
+- **Interests for ranking** — the picks are stored and served; nothing consumes them for
+  ranking yet.
+- A **Pro tier** — there is no subscription entity yet.
 
-## The Defects the Suite Found and the Fixes
+### Test Result
 
-Six gaps were found and closed while building this item. Each is now regression-tested.
-
-1. **The 304 path could never work.** `ports.calendar.CalendarFeed` carries `etag` and
-   `last_modified`, and `CalendarResult` returns new ones — but `CalendarConnection` had
-   nowhere to keep them, so the sync had nothing to send back and every poll was a full
-   download. Fixed by adding the two columns (migration `0004`) and storing the
-   validators on every successful poll; pinned by
-   `test_the_successful_poll_stores_the_cache_validators`.
-
-2. **`remove_plans_for_targets` had no target to name in its audit row.**
-   `PersonalizationAuditEntry.target_id` is a non-null `UUIDField`, so the first
-   implementation — one row for the whole batch — would have raised on write. Fixed by
-   writing **one row per deleted plan**, each carrying its target's id. AD-5 wants one row
-   per mutation, and a row that names no target cannot say what changed.
-
-3. **The duplicate rule could not be switched off on the command path.** D4 requires the
-   import to skip the duplicate rule, and the import reaches detection only through
-   `create_personal_event` / `update_personal_event`. The first implementation put the
-   rule behind a flag on `detect_conflicts` alone, which the import could not reach.
-   Fixed by adding `include_duplicate_conflicts` to both commands, defaulting to `True`
-   so every existing caller is unchanged.
-
-4. **A stale cache validator would have frozen the user's calendar.** The first version of
-   the validator storage kept the old value when the provider sent none. Fixed by clearing
-   it — a stale `ETag` would make the provider answer 304 for a feed it has changed.
-
-5. **The `_is_imported_personal_event` helper had two uncovered branches.** The kind check
-   and the missing-row check were separate statements, and neither was reachable from the
-   tests. Fixed by folding them into one expression and adding
-   `test_delete_new_on_a_saved_event_side_is_not_the_imported_refusal`.
-
-6. **The atomicity test could not see its own rows.** The first version of
-   `test_the_claim_takes_the_row_atomically` ran inside the test's transaction, so the
-   other thread's connection could not see the uncommitted rows and the assertion passed
-   vacuously. Fixed with `transaction=True`, the same marker `ingestion`'s equivalent
-   uses — and the test now genuinely proves the two claims are disjoint.
-
-## The Defects the Review Found and the Fixes
-
-The code review found **five** more, one of them a BLOCKER. All five are fixed and
-regression-tested, and each fix was verified by **reverting it and watching the test
-fail** — a regression test that passes against the broken code proves nothing.
-
-7. **A user's edit could be overwritten, and their ownership destroyed, by a poll that
-   raced them.** The reconcile decided ownership from a snapshot taken *before* the diff
-   began, so a user edit landing in between was invisible to it — and the write then
-   **cleared** the `user_modified` flag, because the import passed `False` and a boolean
-   cannot say "leave it alone". The user's edit was destroyed, and the *next* poll would
-   destroy it again, forever.
-
-   Fixed in two halves: the command's `user_modified` parameter gained a third value
-   (`None` — leave it as it stands), and the ownership decision is now made against
-   **committed state**, under a row lock, in the same transaction as the write. Pinned by
-   `test_a_user_edit_that_lands_mid_reconcile_is_not_overwritten`,
-   `test_a_user_edit_that_lands_mid_reconcile_keeps_the_ownership_flag` and
-   `test_an_event_deleted_mid_reconcile_is_not_resurrected`.
-
-8. **A failed calendar was re-fetched every 60 seconds, forever.** The four handled
-   failure modes each wrote the next poll time; an unhandled one skipped that, so the
-   poll time stayed in the past and the connection was re-claimed on the very next tick,
-   with nothing capping it. Each retry is a real HTTP fetch carrying the user's **secret
-   calendar address** — 1,440 a day against their provider. Fixed by recording the
-   unexpected failure on the connection, so it is retried at the poll cadence rather
-   than the tick cadence. Pinned by `test_a_failed_calendar_is_not_re_claimed_on_the_next_tick`.
-
-9. **A reconnected calendar was invisible to the dispatcher for up to 15 minutes.** Neither
-   `connect_calendar` nor `reconnect_calendar` cleared `sync_claimed_at`, so a claim left
-   behind by a dead worker kept the row out of the claim filter — and D9's promise of a
-   sync "within 60 seconds" was broken. Fixed by clearing the claim in both commands.
-   Pinned by `test_a_reconnected_calendar_is_claimed_on_the_next_tick`.
-
-10. **The module promised a guarantee it did not make.** The module docstring and the
-    `sync_calendar` docstring said the reconcile was "all-or-nothing", contradicting
-    `_reconcile`'s own docstring. D15's actual requirement — *a failed fetch* writes
-    nothing — does hold, and is tested; the reconcile is deliberately not atomic, and
-    one transaction for the whole diff would be worse. The docstrings now say what is
-    true.
-
-11. **A public, exported function purged the events without closing the pairs or the
-    plans.** `purge_connection_events` was a raw `DELETE` that closed no conflict pairs,
-    removed no reminder plans and wrote no audit rows, and it was the one a caller would
-    reach for by name. It is now **removed**; `disconnect_calendar` is the only way a
-    connection's events are purged. The three legacy assertions were migrated onto the
-    command path rather than deleted — the purge's scope is still pinned, against the
-    purge that actually runs.
-
-## Test Result
-
-**Passing.** 2648 passed, 0 failed, 98.92% coverage, ruff clean, 17/17 import contracts
-kept, no migration drift.
+**Passing.** 2819 passed, 0 failed, 98.96% coverage, 100% on the new service, ruff clean,
+format clean, 17/17 import contracts kept, no migration drift, the frontend suite green
+(149 tests), the frontend typecheck clean, and the committed OpenAPI schema matches the
+live API.

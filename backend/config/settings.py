@@ -141,6 +141,11 @@ CALENDAR_CREDENTIAL_KEY = env.calendar_credential_key
 # frontend is a different origin from this runtime.
 FRONTEND_BASE_URL = env.frontend_base_url
 
+# Whether the caller's IP may be read from `X-Forwarded-For`. Off by default: the header
+# is attacker-controlled unless a trusted edge overwrites it, and trusting it let any
+# caller mint a fresh throttle bucket per request. See `env.trust_forwarded_for`.
+TRUST_FORWARDED_FOR = env.trust_forwarded_for
+
 # AD-6: UTC is the storage truth; conversion happens at the presentation edge.
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
