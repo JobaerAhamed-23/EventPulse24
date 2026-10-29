@@ -265,8 +265,195 @@ intents:
           - frontend-personal-and-conflict-surfaces
         run_id: run-eventpulse24-019
         completed_at: 2026-10-29T05:31:56.212Z
+  - id: onboarding-and-account
+    title: Onboarding, Account & Calendar Connect
+    status: in_progress
+    created: 2026-10-29
+    work_items:
+      - id: account-auth-core
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-020
+        completed_at: 2026-10-29T07:45:51.037Z
+      - id: auth-api-and-session-seam
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-auth-core
+      - id: onboarding-state-and-interests
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - auth-api-and-session-seam
+      - id: calendar-connection-model
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-020
+        completed_at: 2026-10-29T09:04:48.182Z
+      - id: ics-calendar-adapter
+        status: in_progress
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: calendar-sync-and-polling
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - calendar-connection-model
+          - ics-calendar-adapter
+      - id: calendar-connect-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - auth-api-and-session-seam
+          - calendar-sync-and-polling
+      - id: event-fit
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: pulse-preview-api-and-geo
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - event-fit
+      - id: frontend-auth-surfaces
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - auth-api-and-session-seam
+      - id: frontend-onboarding-flow
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - onboarding-state-and-interests
+          - calendar-connect-api
+          - frontend-auth-surfaces
+      - id: frontend-pulse-preview
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - pulse-preview-api-and-geo
+          - frontend-auth-surfaces
+      - id: e2e-proof-and-contract-tests
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-onboarding-flow
+          - frontend-pulse-preview
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-020
+      scope: wide
+      work_items:
+        - id: account-auth-core
+          intent: onboarding-and-account
+          mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-29T07:45:51.037Z
+        - id: calendar-connection-model
+          intent: onboarding-and-account
+          mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-29T09:04:48.182Z
+        - id: ics-calendar-adapter
+          intent: onboarding-and-account
+          mode: validate
+          status: in_progress
+          current_phase: plan
+          checkpoint_state: none
+          current_checkpoint: plan
+        - id: calendar-sync-and-polling
+          intent: onboarding-and-account
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: auth-api-and-session-seam
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: onboarding-state-and-interests
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: calendar-connect-api
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: event-fit
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: pulse-preview-api-and-geo
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-auth-surfaces
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-onboarding-flow
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-pulse-preview
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: e2e-proof-and-contract-tests
+          intent: onboarding-and-account
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+      current_item: ics-calendar-adapter
+      started: 2026-10-29T06:25:40.374Z
   completed:
     - id: run-eventpulse24-001
       scope: single

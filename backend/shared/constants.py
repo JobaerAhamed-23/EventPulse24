@@ -116,3 +116,49 @@ DUPLICATE_START_WINDOW = timedelta(hours=24)
 
 # AD-7: joins send-key parts. ":" keeps each UUID a 36-char run, so keys survive log scrubbing.
 SEND_KEY_SEPARATOR = ":"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Accounts and auth (FR-4, AD-18, PRD §11.2)
+#
+# Stdlib only: `domain` imports this module, and the `domain-pure` import-linter
+# contract forbids `django` in `domain`. Nothing here may import Django.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# FR-4: "not prompted to re-authenticate within 7 days". The session's age, and the
+# cookie's, are this one constant.
+AUTH_SESSION_LIFETIME = timedelta(days=7)
+
+# A password-reset link is a bearer credential for the account. Its life is short on
+# purpose: it sits in a mailbox and in proxy logs for as long as it is valid. Django's
+# own default is three days, which is too long for a credential that resets a password.
+AUTH_RESET_TOKEN_LIFETIME = timedelta(minutes=30)
+
+# PRD §11.2: "Rate limiting on all public endpoints (per-IP and per-user)". The three
+# public auth operations are limited per IP *and* per account identifier, in the window
+# below. The per-account sign-up limit is the lowest of the three: sign-up is the
+# enumeration-prone one, so an attacker walking a list of addresses hits the wall
+# sooner.
+AUTH_THROTTLE_WINDOW_SECONDS = 3600
+AUTH_THROTTLE_SIGN_IN_IP = 10
+AUTH_THROTTLE_SIGN_IN_ACCOUNT = 5
+AUTH_THROTTLE_SIGN_UP_IP = 5
+AUTH_THROTTLE_SIGN_UP_ACCOUNT = 3
+AUTH_THROTTLE_RESET_IP = 5
+AUTH_THROTTLE_RESET_ACCOUNT = 3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Calendar connections (FR-50, AD-18)
+#
+# Stdlib only, like the section above.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# AD-18: "The poll interval is ours to choose, since we are the HTTP client". PROVISIONAL
+# (OQ-7): the number is ours, but it is not yet validated against a live Google secret
+# address, so it must not be mistaken for a measured value. Change this one line when OQ-7
+# closes; nothing else may hold an interval of its own.
+CALENDAR_POLL_INTERVAL = timedelta(hours=1)
+
+# FR-50: "Free tier: 1 connected provider. Pro tier: up to 3". Every user is Free in this
+# intent (there is no SUBSCRIPTION entity yet), so the cap is 1. The Pro cap of 3 is a
+# later intent and belongs here when it lands.
+FREE_TIER_CALENDAR_PROVIDER_CAP = 1

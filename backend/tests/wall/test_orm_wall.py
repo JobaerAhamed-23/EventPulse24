@@ -30,7 +30,7 @@ def test_subquery_inner_query_without_using_fails_relation_missing():
 
 
 def test_foreign_key_within_same_alias_saves():
-    user = get_user_model().objects.create(username="owner")
+    user = get_user_model().objects.create(email="owner@example.test")
 
     Note.objects.create(text="hello", owner=user)
 

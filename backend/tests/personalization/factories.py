@@ -9,6 +9,7 @@ import factory.random
 from factory.django import DjangoModelFactory
 
 from apps.personalization.models import (
+    CalendarConnection,
     ConflictPair,
     PersonalEvent,
     PersonalizationAuditEntry,
@@ -84,3 +85,28 @@ class PersonalizationAuditEntryFactory(PersonalFactory):
     action = "create_personal_event"
     target_type = "personal_event"
     target_id = factory.LazyFunction(uuid7)
+
+
+#: A secret-looking calendar address. The long opaque segment is what every provider puts
+#: in the path, and what the redaction patterns are tuned for.
+FAKE_CALENDAR_URL = (
+    "https://calendar.google.com/calendar/ical/ZmFrZXNlY3JldHNlY3JldHNlY3JldHNlY3JldA/basic.ics"
+)
+
+
+class CalendarConnectionFactory(PersonalFactory):
+    """A connected calendar.
+
+    The credential is written through the model, so the factory stores an **encrypted**
+    value — the factory never puts a plaintext credential into the column.
+    """
+
+    class Meta:
+        model = CalendarConnection
+
+    user_id = factory.LazyFunction(uuid7)
+    provider = CalendarConnection.Provider.GOOGLE
+    credential = FAKE_CALENDAR_URL
+    credential_fingerprint = factory.Sequence(lambda n: f"{n:064x}")
+    status = CalendarConnection.Status.ACTIVE
+    display_label = "Work"

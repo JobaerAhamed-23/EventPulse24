@@ -74,7 +74,7 @@ def _run_tick_inline(enqueued) -> None:
 def _signed_in(user=None):
     """A client whose session identifies `user`."""
     client = Client()
-    client.force_login(user or User.objects.create_user(username="sam", password="pw"))
+    client.force_login(user or User.objects.create_user(email="sam@example.test", password="pw"))
     return client
 
 
@@ -379,7 +379,7 @@ def test_the_duplicate_window_is_twenty_four_hours_and_no_more():
     assert inside.json()["details"]["conflicts"][0]["kind"] == "duplicate"
 
     # A second user, a second calendar: the only event to compare against is the original.
-    other = _signed_in(User.objects.create_user(username="sam2", password="pw"))
+    other = _signed_in(User.objects.create_user(email="sam2@example.test", password="pw"))
     base = _post(other, "/api/personal/events", _create_body("Designing for Calm"))
     assert base.status_code == 201
 

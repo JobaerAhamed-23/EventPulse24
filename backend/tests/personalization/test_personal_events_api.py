@@ -42,9 +42,9 @@ TZ = "America/Los_Angeles"
 User = get_user_model()
 
 
-def make_user(username="sam"):
+def make_user(email="sam@example.test"):
     """A real user with a real pk — the session resolves to this one."""
-    return User.objects.create_user(username=username, password="pw")
+    return User.objects.create_user(email=email, password="pw")
 
 
 def make_event(user, *, name="Coffee with Sam", start=START, hours=2, **extra):

@@ -5,6 +5,7 @@ from pathlib import Path
 from config.adapters import adapter_paths
 from config.databases import build_databases
 from config.env import env
+from shared.constants import AUTH_SESSION_LIFETIME
 from shared.db import CATALOG, PERSONAL
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -105,6 +106,40 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+# AD-12, D12: the session is Django's, with a 7-day lifetime (FR-4). The lifetime is one
+# named constant, so "how long does a sign-in last" has one answer.
+#
+# `SESSION_COOKIE_AGE` is a number of *seconds*, not a timedelta: Django's session backend
+# passes it straight to `timedelta(seconds=...)`. The named constant is a timedelta, so it
+# is converted here — the conversion happens in exactly one place.
+SESSION_COOKIE_AGE = int(AUTH_SESSION_LIFETIME.total_seconds())
+# The expiry is set at login, not slid on every request. A sliding session would mean a
+# stolen session that is actively used never expires — which is exactly the property "a
+# password reset ends the user's other sessions" relies on not being undermined.
+SESSION_SAVE_EVERY_REQUEST = False
+# The session outlives the browser, or the 7-day guarantee fails on every restart.
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+# JavaScript cannot read the session id.
+SESSION_COOKIE_HTTPONLY = True
+# Secure outside local. `Lax` allows the top-level GET navigation a user does when
+# clicking the link in a reset email, and blocks cross-site POSTs — the CSRF-relevant case.
+SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = "Lax"
+
+# AD-13, D13: the frontend's origin is trusted explicitly. `USE_X_FORWARDED_HOST` stays
+# False: it would make Django trust the `Host` header, which is what an attacker controls.
+CSRF_TRUSTED_ORIGINS = env.csrf_trusted_origins
+
+# AD-18: the application-level key the calendar credential is encrypted with. Separate
+# from SECRET_KEY on purpose, and validated at settings-load time (i.e. at startup): a
+# missing or malformed key aborts the boot rather than failing later, when a user
+# connects a calendar.
+CALENDAR_CREDENTIAL_KEY = env.calendar_credential_key
+
+# The frontend's base URL. The reset link points at the frontend's own route, because the
+# frontend is a different origin from this runtime.
+FRONTEND_BASE_URL = env.frontend_base_url
 
 # AD-6: UTC is the storage truth; conversion happens at the presentation edge.
 LANGUAGE_CODE = "en-us"

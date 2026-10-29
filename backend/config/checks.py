@@ -173,3 +173,39 @@ def find_fake_fetch_fixture_errors(adapters: dict[str, str], fixtures_dir) -> li
 @register()
 def check_fake_fetch_fixtures(app_configs=None, **kwargs):
     return find_fake_fetch_fixture_errors(settings.ADAPTERS, settings.SOURCE_FETCH["fixtures_dir"])
+
+
+def find_missing_credential_key_errors(keys: Iterable[str]) -> list[Error]:
+    """E007: the application-level credential key must be present and well-formed.
+
+    A pure function over an explicit input, like the other checks, so it is testable
+    without touching the process environment.
+
+    The key is what the calendar credential is encrypted with (AD-18). A missing or
+    malformed key means the app cannot read or write a credential, so it is reported here
+    as well as at settings-load time — `manage.py check` is a second, tool-visible gate.
+    """
+    from shared.credential_key import KEY_ENV_VAR, InvalidCredentialKey, parse_key
+
+    errors = []
+    for key in keys:
+        try:
+            parse_key(key)
+        except InvalidCredentialKey as exc:
+            errors.append(
+                Error(
+                    f"The application-level credential key is missing or malformed: {exc}",
+                    hint=(
+                        f"Set {KEY_ENV_VAR} to '<key_id>.<base64url-encoded 32-byte key>'. "
+                        f"It is separate from DJANGO_SECRET_KEY on purpose, and there is no "
+                        f"fallback (AD-18)."
+                    ),
+                    id="eventpulse.E007",
+                )
+            )
+    return errors
+
+
+@register()
+def check_credential_key(app_configs=None, **kwargs):
+    return find_missing_credential_key_errors([settings.CALENDAR_CREDENTIAL_KEY])

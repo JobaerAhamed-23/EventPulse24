@@ -103,6 +103,26 @@ VIOLATIONS = {
         {"http-client"},
     ),
     "worker imports requests": ({"worker/_planted.py": "import requests\n"}, {"http-client"}),
+    # AD-18: the cipher and the credential key handling belong to `apps.personalization`
+    # alone. A *direct* import from another module is the violation — the indirect reach
+    # through Django's model registry is the app's own code doing the encrypting.
+    "app imports the cryptography library": (
+        {"apps/catalog/_planted.py": "import cryptography\n"},
+        {"crypto-library"},
+    ),
+    "domain imports the cryptography library": (
+        {"domain/_planted.py": "from cryptography.hazmat.primitives.ciphers.aead import AESGCM\n"},
+        {"crypto-library"},
+    ),
+    "another app borrows the credential module": (
+        {"apps/catalog/_planted.py": "from apps.personalization import credentials\n"},
+        {"credential-key"},
+    ),
+    "shared borrows the credential module": (
+        {"shared/_planted.py": "from apps.personalization.credentials import encrypt\n"},
+        # `shared` must not import an app either, so the layers contract breaks as well.
+        {"credential-key", "layers"},
+    ),
 }
 
 
@@ -163,6 +183,15 @@ def test_every_adapter_is_covered_by_the_sdk_contracts():
         sources = set(CONTRACTS[contract_id]["source_modules"])
         assert {f"adapters.{a}" for a in adapters - {owner}} <= sources, contract_id
         assert f"adapters.{owner}" not in sources
+
+
+def test_only_the_throttle_adapter_and_the_health_check_talk_to_redis():
+    """The redis-sdk contract: the Redis client is reached from two places, by name."""
+    contract = CONTRACTS["redis-sdk"]
+
+    assert contract["forbidden_modules"] == ["redis"]
+    assert "adapters.throttle" not in contract["source_modules"]
+    assert "config" not in contract["source_modules"]
 
 
 def test_every_app_has_a_protected_models_contract():

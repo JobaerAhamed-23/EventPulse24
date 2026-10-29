@@ -15,6 +15,7 @@ dependencies = [
     "httpx==0.28.1",
     "icalendar==7.3.0",
     "defusedxml==0.7.1",
+    "cryptography==46.0.3",
 ]
 
 [dependency-groups]
@@ -176,6 +177,7 @@ source_modules = [
     "adapters.crawl",
     "adapters.email",
     "adapters.logging",
+    "adapters.throttle",
 ]
 forbidden_modules = [
     "anthropic",
@@ -202,6 +204,7 @@ source_modules = [
     "adapters.email",
     "adapters.llm",
     "adapters.logging",
+    "adapters.throttle",
 ]
 forbidden_modules = ["stripe"]
 allow_indirect_imports = true
@@ -222,9 +225,92 @@ source_modules = [
     "adapters.email",
     "adapters.llm",
     "adapters.logging",
+    "adapters.throttle",
 ]
 forbidden_modules = ["httpx", "httpcore", "requests", "urllib3"]
 # Wiring the adapter in (config -> adapters.crawl -> httpx) is the intended path.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "redis-sdk"
+name = "Only adapters.throttle and config.health talk to Redis"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "worker",
+    "shared",
+    "adapters.billing",
+    "adapters.calendar",
+    "adapters.crawl",
+    "adapters.email",
+    "adapters.llm",
+    "adapters.logging",
+]
+forbidden_modules = ["redis"]
+# config.health checks the broker, and adapters.throttle counts in it. Both are the
+# intended paths; nothing else may reach the Redis client.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "crypto-library"
+name = "AD-18 only apps.personalization imports the cryptography library"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps.catalog",
+    "apps.delivery",
+    "apps.editorial",
+    "apps.identity",
+    "apps.ingestion",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters",
+]
+forbidden_modules = ["cryptography"]
+# `apps.personalization` owns CALENDAR_CONNECTION and is therefore the only module that
+# encrypts a credential (AD-16). It is deliberately absent from source_modules.
+#
+# `allow_indirect_imports` is true because the *model layer* must encrypt: Django's
+# registry makes `config.api -> apps.personalization.api -> ... -> models -> fields ->
+# credentials` an unavoidable chain, and it is the same app's own code doing the
+# encrypting. What must never happen is another module reaching the cipher **directly**,
+# and that is what this forbids.
+#
+# The rule that actually protects the key is `credential-key`, below.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "credential-key"
+name = "AD-18 only apps.personalization reads the credential key"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps.catalog",
+    "apps.delivery",
+    "apps.editorial",
+    "apps.identity",
+    "apps.ingestion",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters",
+]
+forbidden_modules = ["apps.personalization.credentials"]
+# The key handling is the thing to protect: a second module that could parse
+# `CALENDAR_CREDENTIAL_KEY`, encrypt with it, or fingerprint with it would be a second
+# place where the credential key is in reach. `shared.credential_key` holds only the
+# *format* — it cannot encrypt — so `config` may validate a key with it without being
+# able to read a credential.
+#
+# `allow_indirect_imports` is true for the same reason as `crypto-library`: Django's
+# model registry makes `config.api -> ... -> models -> fields -> credentials` an
+# unavoidable chain, and it is the app's own code doing the encrypting. A *direct*
+# import from another module is the violation, and that is what this forbids.
 allow_indirect_imports = true
 
 [tool.pytest.ini_options]

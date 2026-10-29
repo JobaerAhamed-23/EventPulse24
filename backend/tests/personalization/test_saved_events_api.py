@@ -39,9 +39,9 @@ START = datetime(2026, 11, 6, 3, 30, tzinfo=UTC)
 HOUR = timedelta(hours=1)
 
 
-def make_user(username="sam"):
+def make_user(email="sam@example.test"):
     """A real user with a real pk — the session resolves to this one."""
-    return User.objects.create_user(username=username, password="pw")
+    return User.objects.create_user(email=email, password="pw")
 
 
 def signed_in(user=None):

@@ -9,6 +9,13 @@ from shared.db import CATALOG, PERSONAL
 
 DATABASES = build_databases(env, role="owner")
 
+# The test environment runs with `DEBUG` off, whatever the developer's `.env` says. Two
+# reasons: it is the state production runs in, and `SESSION_COOKIE_SECURE` is computed from
+# `DEBUG` at import time — so a developer's local `DJANGO_DEBUG=true` would otherwise
+# silently change the cookie's security flags in the test suite.
+DEBUG = False
+SESSION_COOKIE_SECURE = not DEBUG
+
 INSTALLED_APPS = [
     *BASE_INSTALLED_APPS,
     "tests.wall.catalog_probe",

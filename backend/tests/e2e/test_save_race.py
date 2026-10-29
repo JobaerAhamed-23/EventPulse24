@@ -64,7 +64,7 @@ def seeded(enqueued):
 def _signed_in():
     """A client whose session identifies a real user."""
     client = Client()
-    client.force_login(User.objects.create_user(username="sam", password="pw"))
+    client.force_login(User.objects.create_user(email="sam@example.test", password="pw"))
     return client
 
 

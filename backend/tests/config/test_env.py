@@ -21,6 +21,7 @@ ENV_KEYS = [
     "SOURCE_FETCH_ALLOWED_PORTS",
     "SOURCE_FETCH_MAX_REDIRECTS",
     "SOURCE_FETCH_MAX_BYTES",
+    "CALENDAR_CREDENTIAL_KEY",
 ]
 
 REQUIRED = {
@@ -29,6 +30,9 @@ REQUIRED = {
     "DATABASE_URL_CATALOG": "postgresql://catalog:pw@127.0.0.1:5440/db",
     "DATABASE_URL_PERSONAL": "postgresql://personal:pw@127.0.0.1:5440/db",
     "REDIS_URL": "redis://127.0.0.1:6380/0",
+    # AD-18: required, with no default and no fallback (a credential key must never be
+    # derived from DJANGO_SECRET_KEY). The value is a valid `<key_id>.<base64url-32-bytes>`.
+    "CALENDAR_CREDENTIAL_KEY": ("k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieXQ"),
 }
 
 

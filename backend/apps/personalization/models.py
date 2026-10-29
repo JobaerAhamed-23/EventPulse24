@@ -15,6 +15,7 @@ the save-race protocol) belongs to the commands.
 from django.db import models
 from django.utils import timezone
 
+from apps.personalization.fields import EncryptedTextField
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -35,7 +36,8 @@ class PersonalEvent(UUIDv7Model):
         """Where a personal event came from. FR-18 fixes the first value."""
 
         USER_CREATED = "user_created"
-        # AD-18's calendar import will add its own value when FR-50 lands.
+        # AD-18 / FR-50: an event imported from a connected calendar.
+        CALENDAR_IMPORT = "calendar_import"
 
     retention_category = RetentionCategory.ACCOUNT_CONTENT
 
@@ -51,6 +53,18 @@ class PersonalEvent(UUIDv7Model):
     location = models.CharField(max_length=300, null=True, blank=True)
     notes = models.TextField(null=True, blank=True)
     source = models.CharField(max_length=16, choices=Source.choices, default=Source.USER_CREATED)
+    # AD-18: the connection an imported event came from, **by value** — no foreign key.
+    # `CalendarConnection` is in the same schema (`personal`), so this does not cross the
+    # AD-3 wall, but the project holds every relation by value (OQ-8), and a foreign key
+    # would couple the purge of a connection to the purge of its events. Disconnect
+    # destroys the credential first and purges the events second (D7), which is two
+    # explicit steps rather than a cascade.
+    # Null for a user-created event; the check constraint below ties the two together.
+    calendar_connection_id = models.UUIDField(null=True, blank=True)
+    # The provider's own identifier for the event (the ICS UID). Null for a user-created
+    # event. Together with the connection id it makes a re-sync an upsert rather than a
+    # duplicate.
+    source_uid = models.CharField(max_length=255, null=True, blank=True)
     # Rises with every mutation. AD-7's send key uses it, so it only ever goes up; the
     # command layer owns the increment (the model cannot know which write is legitimate).
     version = models.PositiveIntegerField(default=1)
@@ -67,6 +81,27 @@ class PersonalEvent(UUIDv7Model):
             models.CheckConstraint(
                 condition=models.Q(version__gte=1), name="personal_event_version_positive_ck"
             ),
+            # AD-18: an imported event always names its connection, and a user-created
+            # event never does. The database holds this, so a bug in the import path
+            # cannot leave an imported event orphaned.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(source="calendar_import")
+                    & models.Q(calendar_connection_id__isnull=False)
+                )
+                | (
+                    ~models.Q(source="calendar_import")
+                    & models.Q(calendar_connection_id__isnull=True)
+                ),
+                name="personal_event_source_connection_ck",
+            ),
+            # AD-18 / FR-50: a re-sync upserts on (connection, uid) instead of duplicating.
+            # Postgres treats NULLs as distinct, so the many user-created rows with no
+            # source_uid do not collide.
+            models.UniqueConstraint(
+                fields=["calendar_connection_id", "source_uid"],
+                name="personal_event_connection_uid_uq",
+            ),
         ]
         indexes = [
             # The Timeline (FR-32) and the Pulse Digest (FR-19) both scan one user's
@@ -76,6 +111,110 @@ class PersonalEvent(UUIDv7Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class CalendarConnection(UUIDv7Model):
+    """One connected calendar and its encrypted credential (AD-18, FR-50).
+
+    The secret ICS/webcal address **is** the credential: Google classifies it as a secret
+    and offers a reset for it. So the stored value is ciphertext, produced by
+    `EncryptedTextField` (AD-18's application-level key, separate from `SECRET_KEY`).
+
+    The user is held **by value** (OQ-8): no relation to `User`, no `GenericForeignKey`.
+
+    The status is the connection's health, which is a fact about the last interaction with
+    the provider — not something derivable from the stored credential — so it is persisted
+    and a poll sets it. `disconnected` means the user disconnected it: the credential has
+    been destroyed (the column is `NULL`) and the row is waiting for the retention sweep.
+    It is never a row that still holds a live secret (D7).
+
+    `last_error_kind` holds a **slug**, never a message: an `httpx` exception message
+    contains the full request URL, which is the credential (AD-13).
+
+    Design: .specs-fire/intents/onboarding-and-account/work-items/
+    calendar-connection-model-design.md (decisions D7, D8).
+    """
+
+    class Provider(models.TextChoices):
+        """Which provider the address came from.
+
+        The MVP connects all three the same way — by pasting an ICS/webcal address
+        (Amendment A-9) — so the provider is a label on the connection, not a different
+        code path. OAuth and CalDAV arrive later behind the same port.
+        """
+
+        GOOGLE = "google"
+        APPLE = "apple"
+        OUTLOOK = "outlook"
+
+    class Status(models.TextChoices):
+        """The connection's state (D7)."""
+
+        ACTIVE = "active"
+        # The provider said the address is no longer valid (401/403/404/410), or the
+        # credential could not be read. The user is prompted to reconnect.
+        NEEDS_RECONNECT = "needs_reconnect"
+        # The user disconnected it. The credential is gone; the row awaits the sweep.
+        DISCONNECTED = "disconnected"
+
+    retention_category = RetentionCategory.ACCOUNT_IDENTITY
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    provider = models.CharField(max_length=16, choices=Provider.choices)
+    # The encrypted credential. `NULL` means it has been destroyed (D7). The field
+    # encrypts on write and decrypts on read; the column never holds plaintext.
+    credential = EncryptedTextField(null=True, blank=True)
+    # A keyed HMAC of the normalised address (D6). It makes "is this calendar already
+    # connected?" one indexed lookup instead of decrypting every row, and it cannot be
+    # computed by anyone without the application key.
+    credential_fingerprint = models.CharField(max_length=64)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.ACTIVE)
+    # When the last poll finished, and when the next one is due (AD-18: the poll interval
+    # is ours to choose — `shared.constants.CALENDAR_POLL_INTERVAL`).
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    next_poll_at = models.DateTimeField(null=True, blank=True)
+    # A slug such as "revoked" or "transient", never a message and never a URL.
+    last_error_kind = models.CharField(max_length=32, null=True, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    # A user-supplied *name* for the calendar ("Work", "Family") — not the URL, and not a
+    # secret. It is shown in the UI so two calendars can be told apart.
+    display_label = models.CharField(max_length=120, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # One calendar per user. The fingerprint is keyed, so this also means the same
+            # address cannot be connected twice (D6).
+            models.UniqueConstraint(
+                fields=["user_id", "credential_fingerprint"],
+                name="calendar_connection_user_credential_uq",
+            ),
+            # D7's state machine, held by the database: a connection that is not
+            # disconnected must have a credential, and a disconnected one must not.
+            models.CheckConstraint(
+                condition=(models.Q(status="disconnected") & models.Q(credential__isnull=True))
+                | (~models.Q(status="disconnected") & models.Q(credential__isnull=False)),
+                name="calendar_connection_status_credential_ck",
+            ),
+        ]
+        indexes = [
+            # The poll scan: one user's connections by status.
+            models.Index(fields=["user_id", "status"], name="calendar_conn_user_status_idx"),
+            # The due-time query: the connections whose next poll is due. Partial, because
+            # only an active connection is ever due.
+            models.Index(
+                fields=["next_poll_at"],
+                name="calendar_connection_due_idx",
+                condition=models.Q(status="active"),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # The provider and nothing else. Django's `Model.__repr__` uses `__str__`, so this
+        # is also what `repr(conn)` shows — and what the admin's list column shows (AD-13).
+        return f"{self.provider} calendar"
 
 
 class SavedEvent(UUIDv7Model):

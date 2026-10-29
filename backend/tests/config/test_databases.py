@@ -19,6 +19,8 @@ def make_env(**overrides) -> Settings:
         "django_secret_key": "test-secret",
         "redis_url": "redis://127.0.0.1:6380/0",
         "django_db_role": "runtime",
+        # AD-18: required, with no default and no fallback.
+        "calendar_credential_key": "k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieXQ",
         **URLS,
         **overrides,
     }

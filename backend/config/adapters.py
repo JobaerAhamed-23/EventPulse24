@@ -10,13 +10,20 @@ FAKE_ADAPTERS = {
     "billing": "adapters.billing.fake.FakeBillingAdapter",
     "calendar": "adapters.calendar.fake.FakeCalendarAdapter",
     "fetch": "adapters.crawl.fake.FakeFetchAdapter",
+    # The throttle fake counts in memory, so its window is controlled by the test's clock.
+    "throttle": "adapters.throttle.memory.InMemoryThrottleAdapter",
 }
 
 HTTP_FETCH_ADAPTER = "adapters.crawl.http.HttpFetchAdapter"
 FETCH_ADAPTERS = {"fake": FAKE_ADAPTERS["fetch"], "http": HTTP_FETCH_ADAPTER}
 
 # Filled in by the intents that build the real gateway, email provider, Stripe and ICS adapters.
-REAL_ADAPTERS: dict[str, str] = {"fetch": HTTP_FETCH_ADAPTER}
+REAL_ADAPTERS: dict[str, str] = {
+    "fetch": HTTP_FETCH_ADAPTER,
+    # Redis is already in the stack (the Celery broker), so the throttle has a real
+    # adapter from the start.
+    "throttle": "adapters.throttle.redis.RedisThrottleAdapter",
+}
 
 
 def adapter_paths(mode: str, fetch: str | None = None) -> dict[str, str]:

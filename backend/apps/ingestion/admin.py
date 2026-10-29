@@ -56,7 +56,7 @@ def _add_domain_error(form: forms.Form, exc: DomainError, field_map: dict[str, s
         form.add_error(field if field in form.fields else None, item["msg"])
 
 
-def _usernames(user_ids: Iterable[UUID]) -> dict[UUID, str]:
+def _actor_names(user_ids: Iterable[UUID]) -> dict[UUID, str]:
     # AD-3: the actor is stored by id only; the name is read from `personal` for display.
     user_model = get_user_model()
     rows = user_model.objects.using(PERSONAL).filter(pk__in=set(user_ids))
@@ -465,7 +465,7 @@ class IngestionAuditEntryAdmin(ReadOnlyAdmin):
     def get_changelist_instance(self, request):
         changelist = super().get_changelist_instance(request)
         entries = list(changelist.result_list)  # evaluates and caches the page's rows
-        names = _usernames(e.actor_id for e in entries if e.actor_id)
+        names = _actor_names(e.actor_id for e in entries if e.actor_id)
         for entry in entries:
             entry.actor_name = names.get(entry.actor_id)
         return changelist
@@ -475,5 +475,5 @@ class IngestionAuditEntryAdmin(ReadOnlyAdmin):
         if entry.actor_kind == ActorKind.SYSTEM:
             return f"{entry.actor_label} (system job)"
         if not hasattr(entry, "actor_name"):  # the detail page: one lookup
-            entry.actor_name = _usernames([entry.actor_id]).get(entry.actor_id)
+            entry.actor_name = _actor_names([entry.actor_id]).get(entry.actor_id)
         return entry.actor_name or f"unknown user {entry.actor_id}"

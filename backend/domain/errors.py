@@ -51,6 +51,39 @@ class PermissionDeniedError(DomainError):
     default_message = "You don't have access to this."
 
 
+class AuthenticationFailedError(ValidationError):
+    """The email and password did not match.
+
+    One error for both failures: a wrong password and an unknown email are
+    indistinguishable in result and in message (AD-18). The message must not say which
+    one it was.
+    """
+
+    code = "invalid_credentials"
+    default_message = "That email and password don't match."
+
+
+class InvalidResetTokenError(ValidationError):
+    """The reset token was unknown, used, revoked or expired.
+
+    One error for all four cases, so the response never says which one it was (AD-18).
+    """
+
+    code = "invalid_reset_token"
+    default_message = "That reset link isn't valid anymore. Ask for a new one."
+
+
+class ThrottledError(DomainError):
+    """Too many attempts.
+
+    The message never says whether the account exists: the throttle runs before the
+    account is looked up (AD-18).
+    """
+
+    code = "rate_limited"
+    default_message = "That's a lot of requests. Try again in a little while."
+
+
 class ConflictError(DomainError):
     code = "conflict"
     default_message = "This changed since you last looked. Refresh and try again."
@@ -68,3 +101,40 @@ class SchedulingConflictError(ConflictError):
 
     code = "scheduling_conflict"
     default_message = "That clashes with something else already on your calendar."
+
+
+class CredentialDecryptionError(DomainError):
+    """A stored credential could not be decrypted (AD-18).
+
+    The wrong key, a corrupted column, or a key that has been retired. This is **not**
+    "there is no credential": a cleared credential is a deliberate state (a disconnect
+    destroyed it), and collapsing the two would make a key fault look like a revoked
+    calendar address — and the poll would then tell the user to reconnect, which fixes
+    nothing.
+    """
+
+    code = "credential_unreadable"
+    default_message = "We couldn't read that calendar connection."
+
+
+class InvalidCalendarCredentialError(ValidationError):
+    """The calendar address failed the shape check.
+
+    Empty, no scheme, an unsupported scheme, or credentials embedded in the userinfo
+    component (`https://user:pass@host/...`). The address itself is never echoed back:
+    it is a secret, and this error can reach an HTTP response (AD-13).
+    """
+
+    code = "invalid_calendar_credential"
+    default_message = "That calendar address doesn't look right."
+
+
+class CalendarProviderCapReached(DomainError):
+    """The account already has as many connected calendars as its tier allows (FR-50).
+
+    The Free-tier cap is one provider. The user is shown a calm upgrade message, not a
+    modal; the API layer decides how, this error only says the cap was hit.
+    """
+
+    code = "calendar_cap_reached"
+    default_message = "You've connected the calendars your plan allows."

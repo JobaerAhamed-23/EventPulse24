@@ -55,7 +55,7 @@ def test_list_prints_the_feed_set_and_the_tos_notes(capsys):
     call_command("seed_local_stack", "--list")
 
     out = capsys.readouterr().out
-    assert "Operator: operator" in out
+    assert "Operator: operator@example.test" in out
     assert "fixture-jsonld" in out
     assert "fixture-rss" in out
     assert "fixture-ics" in out
@@ -121,7 +121,7 @@ def test_both_feed_sets_are_readable_and_name_a_method():
 
     for path in (FIXTURE_FEEDS_FILE, REAL_FEEDS_FILE):
         config = json.loads(path.read_text())
-        assert config["operator"]["username"] == "operator"
+        assert config["operator"]["email"] == "operator@example.test"
         assert config["venues"]
         assert config["feeds"]
         for feed in config["feeds"]:
