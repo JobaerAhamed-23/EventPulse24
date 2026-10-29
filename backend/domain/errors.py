@@ -54,3 +54,17 @@ class PermissionDeniedError(DomainError):
 class ConflictError(DomainError):
     code = "conflict"
     default_message = "This changed since you last looked. Refresh and try again."
+
+
+class SchedulingConflictError(ConflictError):
+    """A new event clashes with one the user already has, and the user must choose.
+
+    FR-58's forced choice: the flow cannot complete until the user picks one of the three
+    actions, so this is a 409 that carries the conflict and the actions in `details`.
+
+    `details` holds plain data — `{"event_id": ..., "conflicts": [...]}` — because
+    `domain` is pure stdlib and cannot import an app's schemas. The API layer builds it.
+    """
+
+    code = "scheduling_conflict"
+    default_message = "That clashes with something else already on your calendar."

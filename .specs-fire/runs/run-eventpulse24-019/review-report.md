@@ -904,3 +904,114 @@ belt-and-braces but was in fact the one read that could make the staleness check
 
 The auto-fixes were re-verified by the full suite (1969 passing) and the coverage gates
 (`domain/` 100%, `apps/personalization/services/` 100%, overall 99.21%).
+
+---
+
+## Work Item ⑥ — `personal-events-api`
+
+**Reviewed:** the personal-events HTTP surface — create, list, get, edit, delete, and answer
+a conflict prompt.
+
+### Summary
+
+| # | Finding | Severity | Disposition |
+|---|---|---|---|
+| 1 | The list endpoint used the *response* schema as its query model, so `?starts_after=…` was accepted and ignored | **High** | Fixed — dedicated `PersonalEventListQuery` |
+| 2 | The resolve endpoint passed a placeholder `new_side_id`, so `existing_side_id` was always null and `delete_new` would delete the wrong event | **High** | Fixed — `new_side_id` moved into the request body |
+| 3 | The create endpoint returned a bare value against `response={201: …}`, which Ninja answers with a 500 | **High** | Fixed — `ninja.Status(201, …)` |
+| 4 | The 409's conflict payload was typed as the generic `ErrorOut`, whose `details` is an untyped dict — invisible to a generated client | **High** | Fixed — `SchedulingConflictOut` narrows `details` |
+| 5 | `@router.delete(...)` was reported as a direct ORM write by the architecture checker | Medium | Fixed — decorator position excluded, both sides pinned by tests |
+| 6 | `api.py` imported `apps.personalization.models`, against the module's own stated rule | Medium | Fixed — the side-kind constants are published from the service layer |
+| 7 | The personal list has no pagination, while the catalog list does | Low | Left — the personal list is bounded by one user's own events; item ⑦ may revisit |
+
+### Files Reviewed
+
+| File | Verdict |
+|---|---|
+| `backend/apps/personalization/api.py` | Thin, as intended: resolves the user, parses the body, calls the service, projects plain data back. No ORM, no models import, no business rule. |
+| `backend/apps/personalization/schemas.py` | Pydantic shapes with `from_*` projections. The action set is a closed `Literal`, so a dismiss is inexpressible. |
+| `backend/apps/personalization/auth.py` | One function, so the onboarding intent replaces it in one place. |
+| `backend/domain/errors.py` | `SchedulingConflictError(ConflictError)` — 409 *and* carries `details`. |
+| `backend/config/api.py` | The personal router is registered with the opposite comment to the catalog's, because the two surfaces differ in exactly that way. |
+| `backend/apps/personalization/services/conflicts.py` | The published side-kind constants. |
+| `backend/tests/architecture/checkers.py` | The decorator exemption. |
+
+### Findings Considered and Rejected
+
+- **A `HttpError` for the 409.** It cannot carry `details`, and the shared handler flattens
+  it to `{code, message}` — the conflict payload would have been lost. A *domain* error
+  maps to 409 along the MRO *and* carries `details`. Rejected.
+- **Letting the API layer infer the new side from the pair row.** The row stores both sides
+  sorted, so it cannot say which side is newer. The client's request is the only place that
+  asymmetry exists, and it has to come back with the answer. Rejected.
+- **Inferring the new side by kind.** The pair could be personal↔saved, in which case the
+  new side is not necessarily the personal one. The body carries the id; the endpoint is
+  about personal events, so the kind is fixed by the endpoint. Rejected.
+- **A `PersonalEventListOut` that also carried the query fields.** One schema serving two
+  purposes would put `starts_after` in the *response* body too — the client would read a
+  field that is never meaningful there. Rejected.
+
+### Security
+
+- **The user id comes from the session, never from the payload.** No endpoint accepts one,
+  and `test_no_endpoint_accepts_a_user_id` posts one and proves the event still belongs to
+  the signed-in user.
+- **A cross-user attempt is 404, not 403.** A 403 confirms the record exists; a 404 does
+  not, so the endpoint cannot be used to probe for another user's ids. Pinned for get, edit,
+  delete and resolve.
+- **An anonymous request is 401 on all six endpoints**, with the project's calm message.
+- **The `delete_new` action cannot name a saved event.** The body carries an id, not a kind;
+  the endpoint resolves conflicts on personal events, so the side is fixed.
+
+### Architecture
+
+- **The layer is thin.** It never imports `apps.personalization.models` and never touches
+  the ORM. Both are proven by tests, not just stated.
+- **The conflict detection runs on write** (AD-21) — the create command detects, and the
+  endpoint only projects what the service found. There is no render-time detection anywhere
+  in the surface.
+- **The 409 does not complete the flow.** The pair is `active` with no resolution, and
+  `test_a_conflicting_create_leaves_the_pair_active` pins that there is no code path that
+  completes a conflicted creation without a `ConflictResolution`.
+- **The three actions come from the service's `RESOLUTIONS_BY_KIND`**, so the schema cannot
+  offer a dismiss. The OpenAPI enum is a closed set of four values, and the conflict
+  payload's `actions` list has exactly three entries.
+
+### Tooling
+
+- The architecture checker's blanket "any attribute call" rule was correct for `save` and
+  `bulk_create` but wrong for a route decorator. Narrowing it to exclude decorator position
+  keeps the check strict where it matters: `test_a_write_next_to_a_route_decorator_is_still_reported`
+  proves a real `obj.delete()` in the same function is still caught.
+
+### Verification
+
+| Check | Command | Result |
+|---|---|---|
+| Backend suite | `cd backend && uv run pytest -q --cov` | **2023 passed**, 99.28% total; `domain/` 100% |
+| New module coverage | `coverage report --include='apps/personalization/*,domain/errors.py'` | **100%** across all 16 files |
+| Python lint | `uv run ruff check .` | All checks passed |
+| Format | `uv run ruff format --check .` | 279 files already formatted |
+| Import contracts | `uv run lint-imports` | 13 kept, 0 broken |
+| Django checks | `uv run python manage.py check` | no issues (1 silenced) |
+| Migrations in sync | `uv run python manage.py makemigrations --check --dry-run` | No changes detected |
+| Frontend suite | `pnpm --dir frontend test` | 51 passed / 9 files |
+| Frontend lint | `pnpm --dir frontend lint` / `typecheck` / `format:check` | clean |
+| Contract | `make client` | `openapi.json` and `schema.ts` regenerated, committed |
+
+### Verdict
+
+**Approved.** The surface holds the two properties the personal data depends on: the user
+comes from the session and cannot be talked out of by a payload, and a conflict cannot
+complete without an explicit choice.
+
+Three things the review changed the shape of, and all three are worth naming. The first was
+the **list endpoint's query model** — a filter the client can send but the server ignores is
+a contract that lies, and the schema had been quietly accepting one. The second was the
+**409's payload**, which was reaching the client as an untyped dictionary: the frontend has
+to render the three actions (FR-58), and it could not read a single field of them. The third
+was the **architecture checker's decorator rule**, which had been quietly wrong about what a
+write is — a route decorator registers an endpoint; it does not delete a record.
+
+The auto-fixes were re-verified by the full suite (2023 passing) and the coverage gates
+(`domain/` 100%, `apps/personalization/` 100%, overall 99.28%).

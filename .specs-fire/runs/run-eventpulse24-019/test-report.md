@@ -719,3 +719,128 @@ stub that item ⑥ replaces.
 - [x] Coverage target met (80% overall, 100% for `domain/`)
 - [x] All acceptance criteria validated
 - [x] No critical issues open
+
+---
+
+## Work Item ⑥ — `personal-events-api`
+
+**Scope:** the personal-events HTTP surface: create, list, get, edit, delete, and answer a
+conflict prompt. Session-based by design (AD-12 applies to the *public* catalog only).
+
+### Test Results
+
+| Suite | Command | Result |
+|---|---|---|
+| Personal-events API | `pytest tests/personalization/test_personal_events_api.py` | **47 passed** |
+| Auth seam | `pytest tests/personalization/test_auth.py` | **5 passed** |
+| Architecture (decorator exemption) | `pytest tests/architecture/test_no_direct_writes.py` | **22 passed** |
+| Full backend | `pytest --cov` | **2023 passed**, 99.28% overall, **domain/ 100%** |
+| Import contracts | `lint-imports` | **13 kept, 0 broken** |
+| Lint | `ruff check .` / `ruff format --check .` | **All checks passed / 279 formatted** |
+| Django | `manage.py check` / `makemigrations --check --dry-run` | **no issues / no changes** |
+| Frontend | `pnpm --dir frontend test` | **51 passed** (9 files) |
+| Frontend | `lint` / `typecheck` / `format:check` | **clean** |
+
+### Tests Written
+
+| File | Tests | What they pin |
+|---|---|---|
+| `tests/personalization/test_personal_events_api.py` | 47 | The six endpoints, the wire shapes, the conflict round trip, the session scoping. |
+| `tests/personalization/test_auth.py` | 5 | The session seam: the user comes from the session, an anonymous request is refused. |
+| `tests/architecture/test_no_direct_writes.py` | +2 | A route decorator is not a write — the exemption cannot widen. |
+
+**Total: 54 new tests.**
+
+### Acceptance Criteria
+
+| Criterion | Evidence | Result |
+|---|---|---|
+| A create returns 201 with the event | `test_creating_an_event_answers_201_with_the_event` | Pass |
+| The IANA timezone is required | `test_creating_an_event_without_a_timezone_is_refused` (422) | Pass |
+| An unknown timezone is refused, not guessed | `test_creating_an_event_with_an_unknown_timezone_is_refused` (422) | Pass |
+| An end before its start is refused | `test_creating_an_event_with_an_end_before_its_start_is_refused` (422) | Pass |
+| A new event gets the default reminder plan | `test_a_created_event_gets_the_default_reminder_plan` | Pass |
+| A conflicting create answers 409 with the conflict and the three actions | `test_a_conflicting_create_answers_409_with_the_conflict_and_the_three_actions` | Pass |
+| The action list has exactly three entries and no dismiss | `test_the_conflict_payload_offers_no_dismiss` | Pass |
+| The schema cannot express a dismiss | `test_the_openapi_schema_cannot_express_a_dismiss` | Pass |
+| The conflicting event is written, and the pair stays `active` | `test_a_conflicting_create_still_writes_the_event`, `..._leaves_the_pair_active` | Pass |
+| Each of the three resolutions completes the flow | `test_keeping_both_...`, `test_deleting_the_new_one_...`, `test_editing_the_new_one_...` | Pass |
+| An illegal resolution is refused and the prompt stays open | `test_a_resolution_that_is_illegal_for_the_conflicts_kind_is_refused` (422, pair still `active`) | Pass |
+| Answering twice is refused | `test_answering_a_conflict_twice_is_refused` (422) | Pass |
+| An edit re-runs conflict detection | `test_editing_reruns_conflict_detection` | Pass |
+| The list is scoped to the signed-in user | `test_listing_returns_only_the_signed_in_users_events` | Pass |
+| The list honours its start-time bounds | `..._honours_the_start_time_bounds`, `..._upper_start_time_bound`, `..._both_bounds_...` | Pass |
+| A delete returns 204 and closes the pairs | `test_deleting_removes_the_event`, `test_deleting_closes_the_pairs_it_took_part_in` | Pass |
+| A cross-user access attempt is **404, not 403** | `test_getting_another_users_event_is_a_404_not_a_403` (+ edit, delete, resolve) | Pass |
+| An unauthenticated request is 401 on every endpoint | `test_an_anonymous_request_is_refused_with_a_401` (6 params) | Pass |
+| No endpoint accepts a user id | `test_no_endpoint_accepts_a_user_id` | Pass |
+| The OpenAPI schema carries the endpoints | `test_the_endpoints_are_in_the_openapi_schema` | Pass |
+| The 409 carries a **typed** conflict payload | `test_the_409_carries_a_typed_conflict_payload` | Pass |
+| The list query parameters are in the schema | `test_the_list_query_parameters_are_in_the_openapi_schema` | Pass |
+| The API layer does not import the models | `test_the_api_layer_does_not_import_the_models` | Pass |
+
+### Issues Found and Fixed
+
+1. **The list endpoint used the *response* schema as its query model.** `PersonalEventListOut`
+   has no `starts_after`/`starts_before`, so `?starts_after=…` was accepted and silently
+   ignored. Fixed by adding a dedicated `PersonalEventListQuery` schema. *The schema is the
+   contract (AD-19): a filter the client can send but the server ignores is a lie.*
+2. **The resolve endpoint passed a placeholder `new_side_id`.** The pair row is symmetric, so
+   the API layer cannot infer which side the user just created; `UUID(int=0)` meant
+   `existing_side_id` was always null and `delete_new` would have deleted the wrong event.
+   Fixed by putting `new_side_id` in the request body — the client knows which event it just
+   made, and the asymmetry comes back with the answer.
+3. **Ninja rejected the create endpoint.** `response={201: …}` with a handler that returned a
+   bare value made Ninja look for a 200 schema and raise `ConfigError` — a 500 on every
+   create. Fixed by returning `ninja.Status(201, …)` (and `Status(204, None)` for the
+   delete), which is also the non-deprecated form in Ninja 1.7.
+4. **The 409's conflict payload was invisible to a generated client.** The response was
+   declared as the generic `ErrorOut`, whose `details` is an untyped dictionary — the client
+   had to render the three actions (FR-58) and could not read a single field. Fixed by adding
+   `SchedulingConflictOut`, an `ErrorOut` whose `details` is narrowed to
+   `SchedulingConflictDetails`. The shape is now in the contract.
+5. **`@router.delete(...)` was reported as a direct ORM write.** The architecture checker
+   matched any attribute call named `delete`, so every `DELETE` endpoint a surface declares
+   would be flagged. Fixed by excluding decorator position — a decorator registers a route,
+   it does not delete a record. A genuine `obj.delete()` is still reported, and two tests pin
+   both sides of that exemption.
+6. **The API layer imported `apps.personalization.models`** (for `ConflictPair.SideKind`),
+   against the module's own stated rule. Fixed by publishing the side-kind constants from
+   `services/conflicts.py`, where the model is already imported.
+
+### Coverage
+
+| Module | Coverage | Notes |
+|---|---|---|
+| `apps/personalization/api.py` | 100% | All six endpoints, both conflict paths. |
+| `apps/personalization/schemas.py` | 100% | Every projection. |
+| `apps/personalization/auth.py` | 100% | Both branches. |
+| `apps/personalization/services/personal_events.py` | 100% | Including the `starts_before` bound. |
+| `domain/errors.py` | 100% | `SchedulingConflictError` included. |
+| **Overall** | **99.28%** | Gate: ≥80%. |
+| **`domain/`** | **100%** | Gate: 100%. |
+
+### Known Gaps
+
+- **No frontend for this surface.** The conflict prompt's three buttons and the personal-event
+  screens are item ⑧ (`frontend-personal-and-conflict-surfaces`).
+- **The saved-events half of the surface does not exist yet.** Item ⑦ adds it; the two share
+  the `auth.py` seam and the schema module.
+- **The `edit_new` button does not edit.** The endpoint records the resolution and returns
+  the new side's id; the client opens that event in edit mode. The edit itself is the `PATCH`
+  endpoint, which re-runs detection.
+- **`update_existing` is accepted by the schema but no endpoint acts on it.** It is a
+  duplicate prompt's button, and duplicates against a personal event are detected but the
+  *existing* side is a saved event — whose edit endpoint arrives with item ⑦. The service
+  refuses it for a time conflict, which the tests pin.
+- **The list endpoint has no pagination.** The personal list is bounded by the user's own
+  events; the catalog list is the one with a total and a page. Item ⑦ can revisit this.
+- **The reminder plan row is left behind by a delete.** `personalization` may not write
+  `REMINDER_PLAN` (AD-16) and deleting the plan is `delivery`'s call.
+
+### Ready for Completion
+
+- [x] All tests passing
+- [x] Coverage target met (99.28% overall, 100% for `domain/`)
+- [x] All acceptance criteria validated
+- [x] No critical issues open

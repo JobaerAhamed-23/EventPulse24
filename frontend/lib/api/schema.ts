@@ -61,6 +61,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's personal events
+         * @description The user's own personal events, soonest first. No one else's are listed.
+         */
+        get: operations["apps_personalization_api_list_events"];
+        put?: never;
+        /**
+         * Create a personal event
+         * @description Creates a personal event. The IANA timezone is required — a floating local time is refused rather than guessed. If the new event clashes with one already on the calendar, the response is 409 carrying the conflict and the three actions; the client then posts one of them to the resolve endpoint.
+         */
+        post: operations["apps_personalization_api_create_event"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/events/conflicts/{pair_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a conflict prompt
+         * @description Records the user's choice on a conflict prompt. Exactly one of the three actions the prompt offered is accepted; there is no dismiss. A resolution that is illegal for this conflict's kind is refused, and the prompt stays open.
+         */
+        post: operations["apps_personalization_api_resolve_event_conflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one personal event
+         * @description One of the signed-in user's personal events. An event that is not theirs reads as not found.
+         */
+        get: operations["apps_personalization_api_get_event"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a personal event
+         * @description Removes one of the signed-in user's personal events.
+         */
+        delete: operations["apps_personalization_api_remove_event"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a personal event
+         * @description Edits a personal event and re-runs conflict detection. A conflicting edit returns the same 409 payload a conflicting create does.
+         */
+        patch: operations["apps_personalization_api_edit_event"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -80,6 +152,97 @@ export interface components {
             catalog: components["schemas"]["ComponentOut"];
             personal: components["schemas"]["ComponentOut"];
             redis: components["schemas"]["ComponentOut"];
+        };
+        /**
+         * ConflictOut
+         * @description One conflict the user must answer.
+         *
+         *     `actions` is the closed set of three choices for this conflict's kind. `dismiss` is not
+         *     among them and cannot be expressed.
+         */
+        ConflictOut: {
+            /** Actions */
+            actions: string[];
+            /** Kind */
+            kind: string;
+            other: components["schemas"]["ConflictSideOut"];
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+        };
+        /**
+         * ConflictResolutionIn
+         * @description The body of a resolution: which of the three, and which event is the new one.
+         *
+         *     `new_side_id` is required because the pair row is **symmetric** — it stores both sides
+         *     sorted, so the row cannot say which side the user just created. The prompt's asymmetry
+         *     lives in the client (it knows which event it just made) and comes back here.
+         *
+         *     The body carries the id only, not the kind: this endpoint resolves conflicts *on
+         *     personal events*, so the new side is a personal event by definition. That keeps the
+         *     shape narrow — a client cannot name a saved event's id and have it deleted.
+         */
+        ConflictResolutionIn: {
+            /**
+             * New Side Id
+             * Format: uuid
+             */
+            new_side_id: string;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "keep_both" | "edit_new" | "update_existing" | "delete_new";
+        };
+        /**
+         * ConflictResolutionOut
+         * @description The outcome of a resolution.
+         *
+         *     `new_side_id` is the event the prompt called "new" — the client opens it in edit mode
+         *     for `edit_new`, or finds it already deleted for `delete_new`.
+         */
+        ConflictResolutionOut: {
+            /** Existing Side Id */
+            existing_side_id?: string | null;
+            /** Kind */
+            kind: string;
+            /** New Side Id */
+            new_side_id?: string | null;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Resolution */
+            resolution: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ConflictSideOut
+         * @description One side of a conflict: the event that clashes.
+         *
+         *     The times are UTC instants. The side does not carry a timezone of its own — the sides
+         *     are two records that may live in two different zones, and a conflict is about the
+         *     instants they occupy, not about how either is displayed.
+         */
+        ConflictSideOut: {
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
         };
         /**
          * ErrorOut
@@ -204,6 +367,142 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * PersonalEventCreateIn
+         * @description The body of a create.
+         *
+         *     The IANA timezone is **required**: a floating local time is refused rather than guessed,
+         *     because the user's wall clock and the event's zone are not the same thing.
+         */
+        PersonalEventCreateIn: {
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+        };
+        /**
+         * PersonalEventListOut
+         * @description The user's own personal events, soonest first.
+         */
+        PersonalEventListOut: {
+            /** Items */
+            items: components["schemas"]["PersonalEventOut"][];
+        };
+        /**
+         * PersonalEventListQuery
+         * @description The query parameters of the list endpoint.
+         *
+         *     This is a **separate** schema from `PersonalEventListOut`, and it has to be. A
+         *     schema-typed argument is a request *body* unless it is wrapped in `Query(...)`; and the
+         *     response schema has no bounds on it, so using it as the query model would silently
+         *     accept `?starts_after=…` and then ignore it.
+         *
+         *     The bounds are inclusive and apply to the start time. Both are optional: with neither,
+         *     the list is every event the user has.
+         */
+        PersonalEventListQuery: {
+            /** Starts After */
+            starts_after?: string | null;
+            /** Starts Before */
+            starts_before?: string | null;
+        };
+        /**
+         * PersonalEventOut
+         * @description One personal event.
+         *
+         *     `version` rises by one on every edit (AD-7's send key uses it, so it may only go up).
+         */
+        PersonalEventOut: {
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Location */
+            location?: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PersonalEventPatchIn
+         * @description The body of an edit. Every field is optional — an edit changes only what it names.
+         *
+         *     A field left out is unchanged. There is no way to *clear* `location` or `notes` through
+         *     this shape, because `None` and "not mentioned" are the same value here; that is a
+         *     deliberate limitation of a first-cut edit endpoint, not an oversight.
+         */
+        PersonalEventPatchIn: {
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Start Time Tz */
+            start_time_tz?: string | null;
+            /** Start Time Utc */
+            start_time_utc?: string | null;
+        };
+        /**
+         * SchedulingConflictDetails
+         * @description The `details` of a 409: which event was written, and what it clashes with.
+         */
+        SchedulingConflictDetails: {
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictOut"][];
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+        };
+        /**
+         * SchedulingConflictOut
+         * @description The 409 a conflicting create or edit answers with.
+         *
+         *     It is an `ErrorOut` — `{code, message, details?}` — with the `details` field
+         *     **narrowed** to the conflict payload. That narrowing is the point: the client has to
+         *     render the three actions (FR-58), so the shape of the conflict has to be in the
+         *     generated contract, not just in the prose of the description. With the plain `ErrorOut`
+         *     the `details` would be an untyped dictionary, and a client generated from the OpenAPI
+         *     document could not read a single field of it.
+         *
+         *     The message and code come from `domain.errors.SchedulingConflictError`; the API layer
+         *     builds the body, so the two stay in step through this schema.
+         */
+        SchedulingConflictOut: {
+            /** Code */
+            code: string;
+            details?: components["schemas"]["SchedulingConflictDetails"] | null;
+            /** Message */
+            message: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -295,6 +594,210 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthUnavailableOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_list_events: {
+        parameters: {
+            query?: {
+                starts_after?: string | null;
+                starts_before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalEventListOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_create_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalEventCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalEventOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingConflictOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_resolve_event_conflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictResolutionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictResolutionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_get_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalEventOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_remove_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_edit_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalEventPatchIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalEventOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingConflictOut"];
                 };
             };
         };

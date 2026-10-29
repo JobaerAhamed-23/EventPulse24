@@ -53,6 +53,156 @@
         "title": "ComponentsOut",
         "type": "object"
       },
+      "ConflictOut": {
+        "description": "One conflict the user must answer.\n\n`actions` is the closed set of three choices for this conflict's kind. `dismiss` is not\namong them and cannot be expressed.",
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "other": {
+            "$ref": "#/components/schemas/ConflictSideOut"
+          },
+          "pair_id": {
+            "format": "uuid",
+            "title": "Pair Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pair_id",
+          "kind",
+          "other",
+          "actions"
+        ],
+        "title": "ConflictOut",
+        "type": "object"
+      },
+      "ConflictResolutionIn": {
+        "description": "The body of a resolution: which of the three, and which event is the new one.\n\n`new_side_id` is required because the pair row is **symmetric** — it stores both sides\nsorted, so the row cannot say which side the user just created. The prompt's asymmetry\nlives in the client (it knows which event it just made) and comes back here.\n\nThe body carries the id only, not the kind: this endpoint resolves conflicts *on\npersonal events*, so the new side is a personal event by definition. That keeps the\nshape narrow — a client cannot name a saved event's id and have it deleted.",
+        "properties": {
+          "new_side_id": {
+            "format": "uuid",
+            "title": "New Side Id",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "keep_both",
+              "edit_new",
+              "update_existing",
+              "delete_new"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "new_side_id"
+        ],
+        "title": "ConflictResolutionIn",
+        "type": "object"
+      },
+      "ConflictResolutionOut": {
+        "description": "The outcome of a resolution.\n\n`new_side_id` is the event the prompt called \"new\" — the client opens it in edit mode\nfor `edit_new`, or finds it already deleted for `delete_new`.",
+        "properties": {
+          "existing_side_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Existing Side Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "new_side_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Side Id"
+          },
+          "pair_id": {
+            "format": "uuid",
+            "title": "Pair Id",
+            "type": "string"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pair_id",
+          "kind",
+          "resolution",
+          "status"
+        ],
+        "title": "ConflictResolutionOut",
+        "type": "object"
+      },
+      "ConflictSideOut": {
+        "description": "One side of a conflict: the event that clashes.\n\nThe times are UTC instants. The side does not carry a timezone of its own — the sides\nare two records that may live in two different zones, and a conflict is about the\ninstants they occupy, not about how either is displayed.",
+        "properties": {
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "start_time_utc"
+        ],
+        "title": "ConflictSideOut",
+        "type": "object"
+      },
       "ErrorOut": {
         "description": "`{code, message, details?}`. Validation errors use `details = {\"errors\": [ErrorItem]}`.",
         "properties": {
@@ -323,6 +473,312 @@
         ],
         "title": "HealthUnavailableOut",
         "type": "object"
+      },
+      "PersonalEventCreateIn": {
+        "description": "The body of a create.\n\nThe IANA timezone is **required**: a floating local time is refused rather than guessed,\nbecause the user's wall clock and the event's zone are not the same thing.",
+        "properties": {
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "start_time_utc",
+          "start_time_tz"
+        ],
+        "title": "PersonalEventCreateIn",
+        "type": "object"
+      },
+      "PersonalEventListOut": {
+        "description": "The user's own personal events, soonest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PersonalEventListOut",
+        "type": "object"
+      },
+      "PersonalEventListQuery": {
+        "description": "The query parameters of the list endpoint.\n\nThis is a **separate** schema from `PersonalEventListOut`, and it has to be. A\nschema-typed argument is a request *body* unless it is wrapped in `Query(...)`; and the\nresponse schema has no bounds on it, so using it as the query model would silently\naccept `?starts_after=…` and then ignore it.\n\nThe bounds are inclusive and apply to the start time. Both are optional: with neither,\nthe list is every event the user has.",
+        "properties": {
+          "starts_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts After"
+          },
+          "starts_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts Before"
+          }
+        },
+        "title": "PersonalEventListQuery",
+        "type": "object"
+      },
+      "PersonalEventOut": {
+        "description": "One personal event.\n\n`version` rises by one on every edit (AD-7's send key uses it, so it may only go up).",
+        "properties": {
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "start_time_utc",
+          "start_time_tz",
+          "version"
+        ],
+        "title": "PersonalEventOut",
+        "type": "object"
+      },
+      "PersonalEventPatchIn": {
+        "description": "The body of an edit. Every field is optional — an edit changes only what it names.\n\nA field left out is unchanged. There is no way to *clear* `location` or `notes` through\nthis shape, because `None` and \"not mentioned\" are the same value here; that is a\ndeliberate limitation of a first-cut edit endpoint, not an oversight.",
+        "properties": {
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "start_time_tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Tz"
+          },
+          "start_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Utc"
+          }
+        },
+        "title": "PersonalEventPatchIn",
+        "type": "object"
+      },
+      "SchedulingConflictDetails": {
+        "description": "The `details` of a 409: which event was written, and what it clashes with.",
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOut"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "conflicts"
+        ],
+        "title": "SchedulingConflictDetails",
+        "type": "object"
+      },
+      "SchedulingConflictOut": {
+        "description": "The 409 a conflicting create or edit answers with.\n\nIt is an `ErrorOut` — `{code, message, details?}` — with the `details` field\n**narrowed** to the conflict payload. That narrowing is the point: the client has to\nrender the three actions (FR-58), so the shape of the conflict has to be in the\ngenerated contract, not just in the prose of the description. With the plain `ErrorOut`\nthe `details` would be an untyped dictionary, and a client generated from the OpenAPI\ndocument could not read a single field of it.\n\nThe message and code come from `domain.errors.SchedulingConflictError`; the API layer\nbuilds the body, so the two stay in step through this schema.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchedulingConflictDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SchedulingConflictOut",
+        "type": "object"
       }
     }
   },
@@ -503,6 +959,310 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/personal/events": {
+      "get": {
+        "description": "The user's own personal events, soonest first. No one else's are listed.",
+        "operationId": "apps_personalization_api_list_events",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "starts_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "starts_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalEventListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List the signed-in user's personal events",
+        "tags": [
+          "personal"
+        ]
+      },
+      "post": {
+        "description": "Creates a personal event. The IANA timezone is required — a floating local time is refused rather than guessed. If the new event clashes with one already on the calendar, the response is 409 carrying the conflict and the three actions; the client then posts one of them to the resolve endpoint.",
+        "operationId": "apps_personalization_api_create_event",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalEventCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalEventOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulingConflictOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Create a personal event",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/events/conflicts/{pair_id}/resolve": {
+      "post": {
+        "description": "Records the user's choice on a conflict prompt. Exactly one of the three actions the prompt offered is accepted; there is no dismiss. A resolution that is illegal for this conflict's kind is refused, and the prompt stays open.",
+        "operationId": "apps_personalization_api_resolve_event_conflict",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictResolutionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictResolutionOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Answer a conflict prompt",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/events/{event_id}": {
+      "delete": {
+        "description": "Removes one of the signed-in user's personal events.",
+        "operationId": "apps_personalization_api_remove_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Delete a personal event",
+        "tags": [
+          "personal"
+        ]
+      },
+      "get": {
+        "description": "One of the signed-in user's personal events. An event that is not theirs reads as not found.",
+        "operationId": "apps_personalization_api_get_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalEventOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Get one personal event",
+        "tags": [
+          "personal"
+        ]
+      },
+      "patch": {
+        "description": "Edits a personal event and re-runs conflict detection. A conflicting edit returns the same 409 payload a conflicting create does.",
+        "operationId": "apps_personalization_api_edit_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalEventPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalEventOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulingConflictOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Edit a personal event",
+        "tags": [
+          "personal"
         ]
       }
     }

@@ -360,6 +360,42 @@ def delete_personal_event(
         )
 
 
+def list_personal_events(
+    *,
+    user_id: UUID,
+    starts_after: datetime | None = None,
+    starts_before: datetime | None = None,
+) -> list[PersonalEventSnapshot]:
+    """The user's own personal events, soonest first (FR-18).
+
+    The list is scoped to `user_id` and to nothing else. A personal event belongs to exactly
+    one user, so there is no visibility rule to apply beyond ownership — and no way to ask
+    for another user's events at all.
+
+    The bounds are inclusive and apply to the start time. They are optional: with no bounds
+    the list is every event the user has, which is what the endpoint's default asks for.
+    """
+    queryset = PersonalEvent.objects.using(PERSONAL).filter(user_id=user_id)
+    if starts_after is not None:
+        queryset = queryset.filter(start_utc__gte=starts_after)
+    if starts_before is not None:
+        queryset = queryset.filter(start_utc__lte=starts_before)
+    return [_snapshot(event) for event in queryset.order_by("start_utc", "id")]
+
+
+def get_personal_event(*, user_id: UUID, event_id: UUID) -> PersonalEventSnapshot:
+    """One of the user's own personal events, or `PersonalEventNotFoundError`.
+
+    An event belonging to another user reads as **not found**, not as forbidden: a 404 does
+    not confirm that the record exists, so the endpoint cannot be used to probe for another
+    user's ids.
+    """
+    event = PersonalEvent.objects.using(PERSONAL).filter(user_id=user_id, pk=event_id).first()
+    if event is None:
+        raise PersonalEventNotFoundError(details={"event_id": str(event_id)})
+    return _snapshot(event)
+
+
 __all__ = [
     "ConflictFound",
     "Created",
@@ -368,5 +404,7 @@ __all__ = [
     "PersonalEventSnapshot",
     "create_personal_event",
     "delete_personal_event",
+    "get_personal_event",
+    "list_personal_events",
     "update_personal_event",
 ]

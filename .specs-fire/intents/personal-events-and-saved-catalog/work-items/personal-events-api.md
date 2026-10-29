@@ -4,10 +4,12 @@ title: Personal Events API
 intent: personal-events-and-saved-catalog
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - personalization-write-services
 created: 2026-10-29
+run_id: run-eventpulse24-019
+completed_at: 2026-10-29T04:26:19.877Z
 ---
 
 # Work Item: Personal Events API

@@ -34,6 +34,15 @@ from shared.actor import Actor
 from shared.constants import CONFLICT_SCAN_WINDOW, DUPLICATE_START_WINDOW
 from shared.db import PERSONAL
 
+#: The two kinds of record a conflict side can name, published as plain strings.
+#:
+#: The values live on `ConflictPair.SideKind`, but the API layer must not import
+#: `apps.personalization.models` — it is the surface, and the surface reads the app's
+#: *published* interface, not its tables. So the constants are re-published here, where the
+#: model is already imported, and the API layer takes them from here.
+PERSONAL_EVENT_SIDE = ConflictPair.SideKind.PERSONAL_EVENT
+SAVED_EVENT_SIDE = ConflictPair.SideKind.SAVED_EVENT
+
 
 @dataclass(frozen=True)
 class ConflictSide:
@@ -351,6 +360,8 @@ __all__ = [
     "Candidate",
     "ConflictSide",
     "DetectedConflict",
+    "PERSONAL_EVENT_SIDE",
+    "SAVED_EVENT_SIDE",
     "close_pairs_for_side",
     "detect_conflicts",
     "pairs_for_side",

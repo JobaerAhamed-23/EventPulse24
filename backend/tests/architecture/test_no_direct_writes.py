@@ -39,6 +39,28 @@ def test_planted_write_in_context_reported(source):
     assert len(direct_write_calls(source)) == 1
 
 
+def test_a_route_decorator_is_not_a_write():
+    """`@router.delete(...)` registers a route; it does not delete a record."""
+    source = (
+        "@router.delete('/events/{event_id}', response={204: None})\n"
+        "def remove_event(request, event_id):\n"
+        "    return 204, None\n"
+    )
+
+    assert direct_write_calls(source) == []
+
+
+def test_a_write_next_to_a_route_decorator_is_still_reported():
+    source = (
+        "@router.delete('/events/{event_id}', response={204: None})\n"
+        "def remove_event(request, event_id):\n"
+        "    event.delete()\n"
+        "    return 204, None\n"
+    )
+
+    assert direct_write_calls(source) == ["3: .delete()"]
+
+
 @pytest.mark.parametrize(
     "source",
     [
