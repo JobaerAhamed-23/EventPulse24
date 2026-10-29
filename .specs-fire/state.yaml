@@ -179,6 +179,68 @@ intents:
           - public-catalog-read-api
         run_id: run-eventpulse24-018
         completed_at: 2026-10-28T16:59:11.153Z
+  - id: personal-events-and-saved-catalog
+    title: Personal Events, Saved Catalog & Conflict Detection
+    status: in_progress
+    created: 2026-10-29
+    work_items:
+      - id: repo-hygiene-cleanup
+        status: pending
+        complexity: low
+        mode: autopilot
+        depends_on: []
+      - id: conflict-domain-and-constants
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - repo-hygiene-cleanup
+      - id: personalization-models
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - repo-hygiene-cleanup
+      - id: delivery-reminder-plan-owner
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - repo-hygiene-cleanup
+      - id: personalization-write-services
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - conflict-domain-and-constants
+          - personalization-models
+          - delivery-reminder-plan-owner
+      - id: personal-events-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - personalization-write-services
+      - id: saved-events-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - personalization-write-services
+      - id: frontend-personal-and-conflict-surfaces
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - personalization-write-services
+      - id: e2e-proof-and-contract-tests
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - personal-events-api
+          - saved-events-api
+          - frontend-personal-and-conflict-surfaces
 runs:
   active: []
   completed:
