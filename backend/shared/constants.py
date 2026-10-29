@@ -103,6 +103,12 @@ REMINDER_PLAN_MAX_SLOTS = 4
 # AD-21 / FR-33: two UTC intervals conflict when they overlap by strictly more than this.
 CONFLICT_MIN_OVERLAP = timedelta(minutes=15)
 
+# FR-58: how far either side of a candidate's start the scan reaches for other events. This is
+# NOT the overlap threshold: the window decides which events to *look at*, while
+# CONFLICT_MIN_OVERLAP decides when two of them *clash*. The window belongs to the service
+# layer (which events to compare); the threshold belongs to `domain.conflict`.
+CONFLICT_SCAN_WINDOW = timedelta(minutes=30)
+
 # FR-58: a personal event is a likely duplicate of another when their names overlap by at least
 # TITLE_TOKEN_OVERLAP_MIN and their starts are within this distance. Absolute, not one-sided:
 # "starts within 24 hours" reads the same either way round.

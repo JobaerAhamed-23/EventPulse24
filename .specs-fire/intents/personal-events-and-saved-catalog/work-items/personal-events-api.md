@@ -4,8 +4,9 @@ title: Personal Events API
 intent: personal-events-and-saved-catalog
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [personalization-write-services]
+status: in_progress
+depends_on:
+  - personalization-write-services
 created: 2026-10-29
 ---
 

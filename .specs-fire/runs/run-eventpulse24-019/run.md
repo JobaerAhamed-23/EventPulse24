@@ -33,17 +33,17 @@ work_items:
   - id: personalization-write-services
     intent: personal-events-and-saved-catalog
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: personal-events-api
     intent: personal-events-and-saved-catalog
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: saved-events-api
     intent: personal-events-and-saved-catalog
     mode: confirm
@@ -65,7 +65,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: personalization-write-services
+current_item: personal-events-api
 status: in_progress
 started: 2026-10-29T02:04:32.027Z
 completed: null
@@ -81,15 +81,15 @@ wide (9 work items)
 2. **conflict-domain-and-constants** (confirm) — completed
 3. **personalization-models** (validate) — completed
 4. **delivery-reminder-plan-owner** (confirm) — completed
-5. **personalization-write-services** (validate) — in_progress
-6. **personal-events-api** (confirm) — pending
+5. **personalization-write-services** (validate) — completed
+6. **personal-events-api** (confirm) — in_progress
 7. **saved-events-api** (confirm) — pending
 8. **frontend-personal-and-conflict-surfaces** (confirm) — pending
 9. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-personalization-write-services (validate)
+personal-events-api (confirm)
 
 ## Files Created
 (none yet)

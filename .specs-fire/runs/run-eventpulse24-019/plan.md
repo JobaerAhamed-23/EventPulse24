@@ -496,3 +496,140 @@ cd frontend && pnpm vitest run
 no email adapter, no quiet-hours logic, and no API surface. It does not implement the
 per-event picker UI. It does not wire the plan into AD-7's send key — that belongs with
 `SCHEDULED_SEND`, which this item deliberately does not create.
+
+---
+
+## Work Item: personalization-write-services
+
+**Mode: validate.** Design doc: `.specs-fire/intents/personal-events-and-saved-catalog/work-items/personalization-write-services-design.md`
+(decisions D1–D47). Checkpoint 1 approved 2026-10-29.
+
+### Approach
+
+Six commands in `apps/personalization/services/`, each a plain function taking an explicit
+`Actor` and plain data, `now` passed explicitly, `transaction.atomic(using=PERSONAL)` around
+the write, and an audit row inside it. The `apps/ingestion/services/` convention, with
+`PERSONAL` where `ingestion` has `CATALOG`.
+
+The item writes **no new tables** — `PersonalEvent`, `SavedEvent`, `ConflictPair` and
+`PersonalizationAuditEntry` are exactly as item ③ shipped them, and **no migration is
+needed**. The complexity is in the protocols.
+
+### The three decisions that needed settling (the design doc's reasons)
+
+1. **The `personalization` ↔ `delivery` boundary** (D1–D5). `personalization` calls
+   `delivery`'s published `attach_default_plan` from **inside** its own `atomic(using=PERSONAL)`.
+   Django's nested atomic on one alias is a savepoint, so the event and its default plan
+   commit or roll back together. A plan failure rolls back the creation — FR-20's default is
+   part of what a created Personal Event *is*, not an optional extra. The plan's audit row is
+   written by `delivery`, with the user's actor; `personalization` writes no audit row for it.
+
+2. **The AD-21 save-race** (D27–D36). Open the `personal` transaction, read the catalog
+   version **inside it** (the read is on the `catalog` alias, so it is not part of the
+   transaction), write the snapshot → commit → read the version again (non-transactional) →
+   if it moved, report the snapshot as stale. Reading the version inside the transaction
+   narrows the window to the write itself. The staleness is *reported* (return value + audit
+   details), not silently accepted; the fixing service (`update_saved_event_snapshot`, the
+   "only if greater" rule) lands now, so the AD-17 propagation job is a thin caller when it
+   arrives.
+
+3. **The forced-choice state machine** (D21–D26). `create_personal_event` returns a
+   discriminated result — `Created` or `ConflictFound`. In the conflicted case the event row
+   **is** written (the pair references it by id), the pair is `active`, and the pair *is* the
+   pending prompt. Every prompt ends in a recorded resolution: the pair's status becomes
+   `resolved` with the chosen value, **whatever the button was** — `keep_both`, `edit_new`
+   (the caller edits and detection re-runs) or `delete_new` (the new event is deleted through
+   `delete_personal_event`). `cleared_by_state_change` is reserved for a pair that ended
+   because a side went away *without* the user answering, which is what the model's
+   `conflict_pair_status_ck` (a cleared pair carries a NULL resolution) enforces.
+
+### Key design decisions (the full set is D1–D47 in the design doc)
+
+| # | Decision |
+|---|---|
+| D1–D5 | The `delivery` seam: `attach_default_plan`, one `personal` transaction, failure rolls back, the plan's audit row is `delivery`'s, and the plan is attached **once at creation** (never re-attached on edit, which would reset a customised plan). |
+| D6–D8 | The command shape: keyword-only, explicit `Actor`, explicit `now`, plain data in and out. The audit writer is `apps/personalization/services/audit.py`, raising `AuditOutsidePersonalTransaction`. |
+| D9 | `update_personal_event` bumps `version` with `F("version") + 1`, atomically. |
+| D10–D13 | Edits re-evaluate the pairs that referenced the old time; deletes and unsaves close their pairs as `cleared_by_state_change`; a deleted event leaves its plan row (a gap — `personalization` may not write `REMINDER_PLAN`). |
+| D14 | Named audit actions: `personal_event.created/updated/deleted`, `saved_event.saved/unsaved`, `conflict.resolved`, `conflict.detected`. |
+| D15–D20 | Detection is a service, not a command: it gathers candidates, calls `domain/conflict.py`, and normalises the sides lexicographically on `(kind, id)`. A time conflict and a duplicate are different kinds; both firing at once records one `duplicate` pair. A closed pair is never re-opened — the `guard_conflict_pair` trigger would reject the write, so the command must not attempt it. |
+| D21–D26 | The forced-choice machine, the kind/resolution pairing check, the refusal to resolve a closed pair, and the fact that `resolve_conflict` may act on the choice (deleting the new side through `delete_personal_event`). |
+| D27–D36 | The save-race protocol, idempotent double-save, `update_saved_event_snapshot`, and the read through `ingestion`'s published interface (`PublicEvent`, plain data). |
+| D37–D43 | The IANA zone is required and validated with `domain.timezones.canonical_zone`; the start is an instant plus a zone; ownership is by `user_id` on every read; conflict detection stays in the request (AD-11); `beat_schedule` is untouched; no LLM call. |
+| D44–D45 | The model's status and version expectations, which the command layer must satisfy exactly. |
+| D46–D47 | A conflict whose sides have no id is skipped rather than written (the pair's id columns are `NOT NULL`, and `pk=None` in an `.exclude()` excludes nothing, which would put the candidate's own row back into its own scan); and a moved side's pairs are re-judged by the shared `reconcile_pairs_for_side` helper, used by both an edit and a propagation-driven re-stamp. |
+
+### Files to create
+
+| File | Purpose |
+|---|---|
+| `backend/apps/personalization/services/audit.py` | The `personal` audit writer (mirrors `apps/ingestion/services/audit.py`). |
+| `backend/apps/personalization/services/conflicts.py` | `ConflictSide`, `DetectedConflict`, candidate gathering, the `domain.conflict` call, side normalisation, `record_detected_conflicts`. |
+| `backend/apps/personalization/services/personal_events.py` | `create_personal_event`, `update_personal_event`, `delete_personal_event`. |
+| `backend/apps/personalization/services/saved_events.py` | `save_event`, `unsave_event`, `update_saved_event_snapshot`. |
+| `backend/apps/personalization/services/conflict_resolutions.py` | `resolve_conflict` and the forced-choice transitions. |
+| `backend/tests/personalization/test_personal_events.py` | The create / update / delete commands. |
+| `backend/tests/personalization/test_saved_events.py` | The save / unsave commands and the race protocol. |
+| `backend/tests/personalization/test_conflicts.py` | Detection, normalisation, the pair lifecycle. |
+| `backend/tests/personalization/test_conflict_resolutions.py` | The forced-choice machine. |
+| `backend/tests/personalization/test_audit.py` | The audit writer's guard. |
+| `backend/tests/personalization/test_ownership.py` | The AD-16 boundary, structurally. |
+
+### Files to modify
+
+| File | Purpose |
+|---|---|
+| `backend/shared/constants.py` | `CONFLICT_SCAN_WINDOW` — the FR-58 ±30-minute candidate scan. The only new constant. |
+
+### Tests
+
+| Test | What it proves |
+|---|---|
+| `create` with an explicit zone | The event is written with the zone the user meant. |
+| `create` refused without one | `InvalidTimezoneError` — a domain error, so `config/errors.py` maps it to 422 with `{code, message, details?}`. Not a raw `ValueError` leaking as a 500. |
+| `create` attaching the default plan | `delivery`'s service is called; the plan holds 1d + 1hr. |
+| `create` rolled back when the plan fails | The observable proof that the nested atomic is one transaction: no event, no plan. |
+| `create` producing a conflict | The result is `ConflictFound`, not `Created`. The pair is `active`. |
+| each of the three resolutions | `keep_both` → `resolved`; `edit_new` → the resolution is recorded and the new event stays; `delete_new` → the resolution is recorded on the pair **first** (so the pair is `resolved`, not cleared) and the new event is gone. |
+| a closed pair never re-prompted | `resolve_conflict` raises `ConflictAlreadyResolvedError`; the detector never re-opens a closed pair. |
+| a conflict against an unsaved candidate | Skipped, not written — a pair names both sides by id, and the column is `NOT NULL`. |
+| a moved side's pairs re-judged | `reconcile_pairs_for_side` closes the pairs that no longer overlap, as `cleared_by_state_change` with a NULL resolution. |
+| an illegal resolution/kind pairing | Refused with a domain error, before anything is written. |
+| `edit` re-running detection | A new overlap creates a pair; a vanished overlap closes one. |
+| `edit` bumping the version | `version` rises by exactly one. |
+| `delete` closing the pairs | The pairs are `cleared_by_state_change`, with a NULL resolution. |
+| `save` writing a correct snapshot | The snapshot holds the catalog's times and version. |
+| `save` racing a postponement | A version that moves between the first read and the commit is detected after it; the result says stale. |
+| double-save | One row, not two. |
+| `unsave` closing the pairs | The pairs are cleared. |
+| `update_saved_event_snapshot` with an older version | Refused — the "only if greater" rule. |
+| the audit writer outside a transaction | It raises. |
+| the ownership test | `apps/personalization/services/` imports neither `apps.delivery.models` nor `apps.ingestion.models`. |
+
+### Technical details
+
+- **Transaction scope**: every command opens `transaction.atomic(using=PERSONAL)`; the audit
+  row and the `delivery` call are inside it.
+- **The scan window vs the overlap threshold**: `CONFLICT_SCAN_WINDOW` (±30 min) decides which
+  events to *look at*; `CONFLICT_MIN_OVERLAP` (15 min) decides when two of them *clash*. They
+  are different quantities, in different modules, and are named for what they mean.
+- **The candidate query** is bounded by the windows and reads through
+  `personal_event_user_start_idx` (`user_id`, `start_utc`) — a range query, not a scan.
+- **`now`** is passed explicitly everywhere; no command reads the clock.
+- **Ownership** is by `user_id` on every read; a row the caller does not own reads as absent.
+
+### Gates to run before the item closes.
+
+```bash
+cd backend && uv run python manage.py makemigrations --check --dry-run
+cd backend && uv run python manage.py check
+cd backend && uv run pytest -q --no-header -p no:randomly
+cd backend && uv run ruff check && uv run ruff format --check
+make lint-imports
+cd frontend && pnpm vitest run
+```
+
+**What this item must not do.** It writes no table, needs no migration, and adds no API
+surface, no frontend, no Celery task and no beat entry. It does not implement the AD-17
+propagation job (it publishes the service the job will call), does not fix a stale snapshot
+(it reports one), does not delete a reminder plan row, and makes no LLM call.

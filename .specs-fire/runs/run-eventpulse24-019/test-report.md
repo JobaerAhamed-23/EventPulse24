@@ -554,3 +554,168 @@ was already there and that this item deliberately leaves alone (no API surface i
 - [x] Coverage target met (80% overall, 100% for `domain/`)
 - [x] All acceptance criteria validated
 - [x] No critical issues open
+
+## Work Item: personalization-write-services
+
+### Test Results
+
+| Check | Result |
+|-------|--------|
+| Backend (pytest, real Postgres, both schemas) | 1853 passed → **1969 passed** (+116) |
+| Overall coverage | 99.21% (gate: 80%) |
+| `domain/` coverage | 100% (gate: 100%) |
+| `apps/personalization/services/` coverage | **100%** on all four modules (only the 2-line `api.py` stub is uncovered) |
+| Frontend (Vitest) | 51 passed / 9 files |
+| Python lint | `ruff check` → All checks passed |
+| Format | `ruff format --check` → 276 files already formatted |
+| Import contracts | `make lint-imports` → 13 kept, 0 broken |
+| Django checks | `manage.py check` → no issues (1 silenced: `models.W045`, from item ④) |
+| Migrations in sync | `makemigrations --check --dry-run` → No changes detected |
+
+**No migration.** This item writes no new tables: every command writes rows item ③ already
+defined, in the schemas already in place.
+
+### Tests Written
+
+| File | Tests | What it covers |
+|------|-------|----------------|
+| `backend/tests/personalization/test_personal_events.py` | 27 | Create with an explicit zone; the missing-zone refusal; an unknown zone; an end before the start; a null end; zone canonicalisation; the default plan attached; the **rollback proof**; a conflict returning `ConflictFound`; the pair row existing `active`; three pairs for three overlapping events; the normalised sides; a duplicate by name and a near start; a non-overlapping event; the version bump; detection re-running on edit; a pair closing when the event moves away; ownership on update and delete; the plan **not** being reset on edit; delete removing the row; the delete audit row; delete closing the pairs; the plan row surviving the delete. |
+| `backend/tests/personalization/test_saved_events.py` | 17 | The snapshot; the audit row; double-save idempotency; a non-public event refused; an unknown event refused; **the race**; the stale audit row; a clean save not stale; a conflict detected on save; unsave removing the row; the unsave audit row; unsave closing the pairs; ownership; the snapshot update applying a newer version; refusing an older version; doing nothing for an unsaved event; the snapshot update re-evaluating the conflicts. |
+| `backend/tests/personalization/test_conflict_resolutions.py` | 18 | The three buttons and their consequences; the audit rows; the closed pair (never re-prompted); a cleared pair (never re-prompted); ownership; the two `RESOLUTIONS_BY_KIND` sets; a time conflict refusing `update_existing`; an unknown resolution refused; no `dismiss`; which side is "new", from either end of the sorted pair. |
+| `backend/tests/personalization/test_conflicts.py` | 24 | The candidate scan over both kinds of side; the candidate excluded from its own scan; the scan window; the side normalisation and its ordering; one row for `(A,B)` and `(B,A)`; a closed pair never re-opened; a conflict against an unsaved candidate skipped; closing a side; `pairs_for_side`; reconciling a moved side — still clashing, no longer clashing, other side gone; the other side of a pair read from the database. |
+| `backend/tests/personalization/test_audit.py` | 7 | The writer inside a transaction; the user actor and the system actor; the empty-details default; the guard when no transaction is open; the guard when only *another* alias has one; a row in a rolled-back transaction not surviving; positional arguments refused. |
+| `backend/tests/personalization/test_ownership.py` | 12 | The structural proof: no service imports another app's models; `personal_events.py` calls `delivery`'s published `attach_default_plan` and never `ReminderPlan`; `saved_events.py` reads the catalog through `ingestion`'s `get_public_event` and never `apps.ingestion.models`. |
+
+**Total new: 116**, all in `backend/tests/personalization/`.
+
+### Acceptance Criteria Validated
+
+| # | Criterion | How it is proven |
+|---|-----------|------------------|
+| 1 | `create_personal_event` validates the zone, the interval and the required fields before writing | `test_creating_an_event_refuses_a_missing_timezone` (code `missing_timezone`), `test_creating_an_event_refuses_an_unknown_timezone`, `test_creating_an_event_refuses_an_end_before_the_start` — each asserts no row survives. |
+| 2 | The default reminder plan is attached at creation, and a plan failure rolls the event back | `test_the_default_plan_is_attached` asserts the slots are `["1d", "1hr"]`; `test_a_plan_failure_rolls_the_creation_back` monkeypatches `attach_default_plan` to raise and asserts neither the event nor the plan survives. |
+| 3 | Conflict detection runs on write, never at render | `detect_conflicts` is called from `create_personal_event`, `update_personal_event` and `update_saved_event_snapshot`; nothing in the read path calls it. The detection service's own tests pin that a re-detection does not create a second row. |
+| 4 | The creation flow cannot complete without an explicit choice | `create_personal_event` returns `ConflictFound` (not `Created`) when a conflict is detected, and the pair row is `active` with a NULL resolution — the pending prompt. `resolve_conflict` is the only way to close it. |
+| 5 | Exactly three buttons, and no dismiss | `RESOLUTIONS_BY_KIND` has one frozenset per kind; `test_a_time_conflict_offers_exactly_three_resolutions`, `test_a_duplicate_offers_exactly_three_resolutions`, `test_a_time_conflict_refuses_the_duplicate_resolution`, `test_an_unknown_resolution_is_refused`, `test_there_is_no_dismiss_resolution`. |
+| 6 | Every answered prompt records its resolution | The pair is written as `status=resolved` + the resolution **before** the action it names, so "delete the new one" records `delete_new` on a pair whose event is gone. `test_deleting_the_new_one_records_the_resolution_and_removes_the_event` asserts both. |
+| 7 | A resolved pair is immutable and never re-prompted | `test_a_resolved_pair_is_never_re_prompted` (`ConflictAlreadyResolvedError`); `test_a_cleared_pair_is_never_re_prompted`; `test_a_closed_pair_is_never_re_opened` in the detection service. |
+| 8 | The save re-reads the Event's version after commit and reports staleness | `test_a_save_that_races_a_postponement_reports_a_stale_snapshot` — the first read is inside the transaction, the check is after the commit; the snapshot keeps version 1 and the result says `stale`. `test_a_stale_save_records_the_fact_in_the_audit_log`. |
+| 9 | A snapshot update applies only a strictly newer version | `test_the_snapshot_update_applies_a_newer_version`, `test_the_snapshot_update_refuses_an_older_version`, `test_the_snapshot_update_of_an_unsaved_event_does_nothing`. |
+| 10 | Every mutation writes an audit row in the same transaction | Each command's test asserts its row; `test_audit.py` proves the writer refuses to run outside a `personal` transaction and that a rolled-back transaction takes its row with it. |
+| 11 | No command crosses the AD-3 wall | `saved_events.py` reads the catalog through `ingestion`'s `get_public_event`, which hands over plain data; `test_ownership.py` proves structurally that no service imports another app's models. The 13 import contracts hold. |
+| 12 | `personalization` writes only `personal` | Every command opens one `transaction.atomic(using=PERSONAL)`; the `delivery` call is a nested atomic on the same alias, so it is a savepoint and the two commit together. |
+
+### Issues Found and Fixed
+
+#### 1. [Blocking] A candidate with no id was compared against itself, and the pair row was written with a NULL side
+
+`Candidate.id` is `None` before the row exists. The scan did `.exclude(pk=candidate.id)`
+unconditionally — but `pk=None` excludes **nothing**, so the candidate's own row came back
+into the scan and was compared against itself. The pair row was then written with
+`right_id=NULL`, and the database refused it:
+
+```
+IntegrityError: null value in column "right_id" of relation
+"personalization_conflictpair" violates not-null constraint
+```
+
+Two fixes, both in `apps/personalization/services/conflicts.py`:
+
+- The exclusion is now applied **only when the candidate has an id** — there is nothing to
+  exclude before the row exists.
+- `record_detected_conflicts` now **skips** a conflict whose sides have no id, rather than
+  writing a row it cannot fill. A pair names both sides by id; a conflict found against an
+  unsaved candidate has nothing to point at. The commands call the recorder *after* the row
+  is written, so in practice every recorded conflict has two real ids — the skip is the
+  safety net for a caller that breaks that order.
+
+#### 2. [Blocking] `delete_new` cleared the pair instead of resolving it, contradicting the AC
+
+The first implementation ran the deletion first, and `delete_personal_event` → 
+`close_pairs_for_side` closed the pair as `cleared_by_state_change` with a **NULL**
+resolution. The acceptance criterion says the opposite: "The `ConflictResolution` value is
+recorded for **every** prompt, including those resolved by editing or deleting."
+
+The model's `conflict_pair_status_ck` settles it: a `cleared_by_state_change` pair must carry
+a NULL resolution, so a pair the user answered can never be a cleared one. The resolution is
+now recorded **first**, as `status=resolved` + the resolution, for every answered prompt
+whatever the button; the deletion then goes through `delete_personal_event` as before.
+`cleared_by_state_change` is reserved for a pair that ended because a side went away
+*without* the user answering — an unrelated delete, an unsave, a propagation-driven close.
+
+#### 3. [Blocking] `update_saved_event_snapshot` detected new conflicts but never closed the stale ones
+
+The propagation-driven snapshot update re-ran detection, so a *new* overlap was recorded —
+but the pair that the moved event no longer clashed with stayed `active`. The `/conflicts`
+list would then claim a clash that was not there.
+
+The fix is a new shared helper, `reconcile_pairs_for_side`, in `conflicts.py`: it re-judges
+the active pairs naming one side and closes the ones that no longer overlap, as
+`cleared_by_state_change` with a NULL resolution. Both call sites use it — the snapshot
+update, and `personal_events._reconcile_pairs` for a user's edit.
+
+#### 4. `unsave_event` wrote a NULL `target_id`
+
+The audit row read `saved.id` *after* `saved.delete()`, and the id was gone:
+
+```
+IntegrityError: null value in column "target_id" of relation
+"personalization_auditentry" violates not-null constraint
+```
+
+The id is now captured before the delete.
+
+#### 5. `MissingTimezoneError` inherited `InvalidIntervalError`
+
+Wrong base class: it must be a `ValidationError` so `config/errors.py` maps it to a 422
+rather than a 500. The base was corrected and the import updated.
+
+#### 6. A redundant third catalog read in `save_event`
+
+The first implementation read the catalog's version *before* opening the transaction and
+again after the commit. The pre-transaction read was not merely redundant — it was wrong. A
+version read before the transaction opened could be older than the one the snapshot records,
+which would make the post-commit check meaningless. The protocol is now the two-read shape
+the design doc specifies: the read that stamps the snapshot is **inside** the transaction,
+and the check is a separate, non-transactional read after the commit. The module docstring,
+the design doc (D27/D28 and the sequence diagram) and `plan.md` were all updated to match.
+
+### Coverage Details
+
+Every module in `apps/personalization/services/` is at **100%**:
+
+| Module | Coverage | Notes |
+|--------|----------|-------|
+| `services/audit.py` | 100% | Including the guard's two refusal branches. |
+| `services/conflicts.py` | 100% | Including the normalisation swap, both scan directions, and every `_other_side_of` branch. |
+| `services/conflict_resolutions.py` | 100% | Including both sides of the sorted pair and the "not in the pair" case. |
+| `services/personal_events.py` | 100% | Including the null-end branch. |
+| `services/saved_events.py` | 100% | Including the race path. |
+
+The only uncovered file in the app is `apps/personalization/api.py` — the 2-line `Router()`
+stub that item ⑥ replaces.
+
+### Known Gaps
+
+- **No API surface.** The commands exist and are tested; the HTTP layer that calls them is
+  work item ⑥ (`personal-events-api`) and ⑦ (`saved-events-api`).
+- **No frontend.** The conflict prompt and the personal-event surfaces are item ⑧.
+- **The AD-17 propagation job does not exist yet.** `update_saved_event_snapshot` is the
+  service it will call — it lands now so the job is a thin caller, and the race protocol is
+  already proven.
+- **The FR-9 picker UI does not exist.** `delivery`'s `set_plan_slots`/`remove_all_reminders`
+  commands are in place; the screen is frontend work.
+- **A deleted event leaves its reminder plan row behind.** `personalization` may not write
+  `REMINDER_PLAN` (AD-16), and deleting the plan is `delivery`'s call — it has no such
+  command yet. The leftover row is inert, and
+  `test_deleting_an_event_leaves_the_reminder_plan_row` pins that it stays.
+- **The "edit the new one" button does not edit.** `resolve_conflict` records the resolution
+  and returns the new side's id; the caller opens that event in edit mode. Editing is
+  `update_personal_event`, which re-runs detection on write.
+
+### Ready for Completion
+
+- [x] All tests passing
+- [x] Coverage target met (80% overall, 100% for `domain/`)
+- [x] All acceptance criteria validated
+- [x] No critical issues open

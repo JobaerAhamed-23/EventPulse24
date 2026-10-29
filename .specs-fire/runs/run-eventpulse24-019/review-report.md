@@ -649,3 +649,258 @@ verification, so the rule is proved where it is enforced rather than where it is
 
 The three auto-fixes were re-verified by the full suite (1853 passing) and the coverage gates
 (`domain/` 100%, `apps/delivery/services/` 100%, overall 99.14%).
+
+## Work Item: personalization-write-services
+
+### Summary
+
+| Category | Auto-Fixed | Applied | Skipped |
+|----------|------------|---------|---------|
+| Code Quality | 2 | 0 | 0 |
+| Security | 0 | 0 | 0 |
+| Architecture | 3 | 0 | 0 |
+| Testing | 1 | 0 | 0 |
+| **Total** | **6** | **0** | **0** |
+
+**Tests Status**: Passing — 1969/1969 backend, 0 failed, 0 skipped. `domain/` coverage 100%,
+`apps/personalization/services/` coverage 100%.
+
+### Files Reviewed
+
+- `backend/apps/personalization/services/audit.py` (created) — the `personal` audit writer
+- `backend/apps/personalization/services/conflicts.py` (created) — detection on write, the side
+  normalisation, the pair lifecycle
+- `backend/apps/personalization/services/conflict_resolutions.py` (created) — the forced choice
+- `backend/apps/personalization/services/personal_events.py` (created) — create / update / delete
+- `backend/apps/personalization/services/saved_events.py` (created) — save / unsave / re-stamp
+- `backend/shared/constants.py` (modified) — `CONFLICT_SCAN_WINDOW`
+- `backend/tests/personalization/test_personal_events.py` (created) — 27 tests
+- `backend/tests/personalization/test_saved_events.py` (created) — 17 tests
+- `backend/tests/personalization/test_conflict_resolutions.py` (created) — 18 tests
+- `backend/tests/personalization/test_conflicts.py` (created) — 24 tests
+- `backend/tests/personalization/test_audit.py` (created) — 7 tests
+- `backend/tests/personalization/test_ownership.py` (created) — 12 tests
+
+### Auto-Fixed Issues
+
+#### 1. [Blocking, found in testing] A candidate with no id was compared against itself, and the pair row was written with a NULL side
+
+`Candidate.id` is `None` before the row exists. The scan did `.exclude(pk=candidate.id)`
+unconditionally — but `pk=None` excludes **nothing**, so the candidate's own row came back
+into the scan and was compared against itself. The pair row was then written with
+`right_id=NULL`, and the database refused it:
+
+```
+IntegrityError: null value in column "right_id" of relation
+"personalization_conflictpair" violates not-null constraint
+```
+
+Two fixes, both in `conflicts.py`:
+
+- The exclusion is now applied **only when the candidate has an id** — there is nothing to
+  exclude before the row exists.
+- `record_detected_conflicts` now **skips** a conflict whose sides have no id, rather than
+  writing a row it cannot fill. A pair names both sides by id; a conflict found against an
+  unsaved candidate has nothing to point at. The commands call the recorder *after* the row
+  is written, so every recorded conflict has two real ids in practice — the skip is the
+  safety net for a caller that breaks that order.
+
+`test_a_conflict_found_against_an_unsaved_candidate_is_not_written` pins it.
+
+#### 2. [Blocking, found in testing] `delete_new` cleared the pair instead of resolving it
+
+The first implementation ran the deletion first, and `delete_personal_event` →
+`close_pairs_for_side` closed the pair as `cleared_by_state_change` with a **NULL**
+resolution. The acceptance criterion says the opposite: "The `ConflictResolution` value is
+recorded for **every** prompt, including those resolved by editing or deleting."
+
+The model's `conflict_pair_status_ck` settles the question: a `cleared_by_state_change` pair
+must carry a NULL resolution, so a pair the user answered can never be a cleared one. The
+resolution is now recorded **first**, as `status=resolved` + the resolution, for every
+answered prompt whatever the button; the deletion then goes through `delete_personal_event`
+as before, so there is still one path to delete an event and one audit trail for it.
+
+`cleared_by_state_change` is reserved for a pair that ended because a side went away
+*without* the user answering — an unrelated delete, an unsave, a propagation-driven close.
+This is the distinction the whole status column exists to record, so it is worth stating
+plainly: **answered** and **ended** are different facts, and only one of them is a
+resolution.
+
+#### 3. [Blocking, found in testing] `update_saved_event_snapshot` detected new conflicts but never closed the stale ones
+
+The propagation-driven snapshot update re-ran detection, so a *new* overlap was recorded —
+but the pair that the moved event no longer clashed with stayed `active`. The `/conflicts`
+list would then claim a clash that was not there.
+
+The fix is a new shared helper, `reconcile_pairs_for_side`, in `conflicts.py`: it re-judges
+the active pairs naming one side and closes the ones that no longer overlap, as
+`cleared_by_state_change` with a NULL resolution. Both call sites use it — the snapshot
+update, and `personal_events._reconcile_pairs` for a user's edit.
+
+#### 4. [Code Quality] A redundant third catalog read in `save_event` — and the wrong one
+
+The first implementation read the catalog's version *before* opening the transaction and
+again after the commit. The pre-transaction read was not merely redundant — it was wrong. A
+version read before the transaction opened could be older than the one the snapshot records,
+which would make the post-commit check meaningless. AD-21's protocol is the two-read shape:
+
+```
+t0   transaction.atomic(using=PERSONAL)
+       read catalog_event.version   (inside the tx, on the catalog alias)
+       write SavedEvent(start_utc, end_utc, version)
+       write ConflictPair rows; write_audit
+t1   commit
+t2   read catalog_event.version    (non-transactional)
+t3   if t2.version > t0.version: → the snapshot is stale
+```
+
+The read that stamps the snapshot is **inside** the transaction, which narrows the race
+window to the write itself. The module docstring, the design doc (D27/D28 and the sequence
+diagram) and `plan.md` were all updated to match the code.
+
+#### 5. [Code Quality] `MissingTimezoneError` inherited `InvalidIntervalError`
+
+Wrong base class: it must be a `ValidationError` so `config/errors.py` maps it to a 422
+rather than a 500. The base was corrected and the import updated.
+
+#### 6. [Testing] `unsave_event` wrote a NULL `target_id`
+
+The audit row read `saved.id` *after* `saved.delete()`, and the id was gone:
+
+```
+IntegrityError: null value in column "target_id" of relation
+"personalization_auditentry" violates not-null constraint
+```
+
+The id is now captured before the delete.
+
+### Findings Considered and Rejected
+
+- **A `dismiss` resolution.** Rejected, and it is more than a preference: FR-58 says "There
+  is no 'dismiss' resolution — the user must make an explicit choice", and the AC says the
+  `ConflictResolution` value is recorded for **every** prompt. A dismissable prompt would
+  produce a closed pair with a NULL resolution and no recorded answer — exactly the shape
+  that `cleared_by_state_change` already means, so it would make the status column
+  ambiguous. `test_there_is_no_dismiss_resolution` pins that the enum has no such member.
+- **Recording the resolution *after* the action.** Rejected. If the action fails, the pair
+  would still be `active` and the user would be prompted again for a choice they had
+  already made; and if the action succeeds but the recording fails, the choice would be lost
+  while its effect persisted. Recording first means the audit trail shows what the user
+  chose even if the follow-up edit lands later.
+- **Calling `delivery`'s plan attach outside the `personal` transaction.** Rejected: a plan
+  failure would then leave an event with no plan — a state FR-20 says does not exist. The
+  nested `atomic` on the same alias is a savepoint, so the two commit or roll back together.
+  `test_a_plan_failure_rolls_the_creation_back` monkeypatches `attach_default_plan` to raise
+  and asserts that neither the event nor the plan survives.
+- **Attaching the default plan on every edit.** Rejected: FR-20's default is a property of
+  *creation*, and re-attaching on edit would reset a plan the user had customised through
+  FR-9's picker. `test_updating_an_event_does_not_reset_the_plan` pins that the slots stay
+  as the user left them.
+- **Deleting the reminder plan row when the event is deleted.** Rejected: AD-16 gives
+  `REMINDER_PLAN` to `delivery`, and `personalization` may not write it. Deleting the plan is
+  `delivery`'s call, and it has no such command yet. The leftover row is inert, and
+  `test_deleting_an_event_leaves_the_reminder_plan_row` pins that it stays.
+- **Joining `catalog` to render the Timeline or the conflicts list.** Rejected: AD-21 says
+  the personal side holds its own snapshot and never joins `catalog`. The saved event's
+  snapshot carries the catalog's `event_version`, so staleness is detectable without a join.
+- **Repairing a stale snapshot inside `save_event`.** Rejected: the repair is a separate
+  command (`update_saved_event_snapshot`) with an explicit version rule, and AD-21 says the
+  save *requests* re-propagation rather than doing it. The save reports `stale` and writes
+  an audit row saying so; the repairing service lands in this item so the AD-17 job is a
+  thin caller later.
+- **Closing a pair as `cleared_by_state_change` when the user deletes the new event.** This
+  was the first implementation and it was wrong — see auto-fix 2.
+
+### Security
+
+- **No user input reaches an interpreter.** The zone goes through `canonical_zone`, the
+  interval through the model's own check, and the resolution through the `ConflictPair.
+  Resolution` enum. Anything outside the three the prompt offers is refused with a
+  `ValidationError` before it reaches the database.
+- **Ownership is checked on every command.** A pair that is not the caller's raises
+  `ConflictPairNotFoundError`; a personal event that is not the caller's raises
+  `PersonalEventNotFoundError`; a save that is not the caller's raises
+  `SavedEventNotFoundError`. None of them leak whether another user's record exists — the
+  message is the same either way.
+- **A floating local time is refused, not guessed.** `MissingTimezoneError` demands an
+  explicit IANA zone, because the user's wall clock and the event's zone are not the same
+  thing and guessing one from the other is how an event lands an hour out on the wrong side
+  of a DST boundary.
+- **The audit row carries no free text.** `details` is a JSON mapping of ids, kinds, versions
+  and ISO instants — never a name the user typed. `actor_label` holds a system job name, and
+  a user actor is stored by id only.
+
+### Architecture
+
+- **AD-16 (write ownership) is enforced by a contract and proven by a test.** The
+  `models-delivery` contract holds (13 kept, 0 broken), and `test_ownership.py` reads the
+  services' own source: `personal_events.py` imports exactly `attach_default_plan` from
+  `delivery` and never `ReminderPlan`; `saved_events.py` imports exactly `get_public_event`
+  from `ingestion` and never `apps.ingestion.models`.
+- **AD-3 (the wall) holds.** The catalog is read through `ingestion`'s published read
+  interface, which hands over plain data (`PublicEvent`). `personalization` never imports the
+  catalog's models, so the wall holds without either side knowing the other's models.
+- **AD-21 (detection on write, never at render).** Every command that changes a time calls
+  `detect_conflicts`; nothing in a read path does. The Pulse Card, the Timeline and
+  `/conflicts` all read the same `CONFLICT_PAIR` rows, so the indicator is symmetric by
+  construction.
+- **AD-21 (the save race).** The protocol is the two-read shape above, and the staleness is
+  **reported** — in the return value and in an audit row — rather than silently accepted or
+  silently repaired.
+- **AD-21 (immutability).** A closed pair is never re-opened: `record_detected_conflicts`
+  skips a closed pair, and `resolve_conflict` refuses one with
+  `ConflictAlreadyResolvedError`. The check comes before the write, so the user never sees
+  a raw `RestrictViolation` from the database's trigger.
+- **AD-5 (audit).** Every command writes its audit row in the same transaction as its
+  mutation, and `write_audit` refuses to run outside a `personal` transaction —
+  `test_a_row_written_in_a_rolled_back_transaction_does_not_survive` proves the row goes
+  with the mutation.
+- **AD-7 (the version only rises).** `update_personal_event` increments with `F("version") + 1`
+  so the bump is atomic against a concurrent write.
+- **One overlap function.** The rules live in `domain/conflict.py`; the service layer decides
+  *which* events to compare and *what* to write, and never re-implements a rule. `domain/` is
+  at 100% coverage.
+
+### Project Tooling Used
+
+- **ruff**: `backend/pyproject.toml` (`ruff check`, `ruff format --check`)
+- **import-linter**: `backend/pyproject.toml` (`make lint-imports`)
+- **pytest / pytest-django**: `backend/pyproject.toml` (full suite + coverage gates)
+- **Django system checks**: `python manage.py check`, `makemigrations --check --dry-run`
+- **Vitest**: `frontend/package.json` (regression check — no frontend source touched)
+
+### Standards Referenced
+
+- `.specs-fire/standards/coding-standards.md`
+- `.specs-fire/standards/testing-standards.md`
+- `.specs-fire/standards/constitution.md`
+- `.specs-fire/standards/tech-stack.md`
+- `.specs-fire/standards/system-architecture.md`
+
+### Verification Performed
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Backend suite | `cd backend && uv run pytest -q -p no:randomly` | 1969 passed, 0 failed, 0 skipped |
+| Backend coverage | `cd backend && uv run pytest -q --cov --cov-report=term` | 99.21% total; `domain/` 100%; `apps/personalization/services/` 100%; 80% gate met |
+| Frontend suite | `cd frontend && pnpm vitest run` | 51 passed / 9 files |
+| Python lint | `cd backend && uv run ruff check` | All checks passed |
+| Format | `cd backend && uv run ruff format --check` | 276 files already formatted |
+| Import contracts | `make lint-imports` | 13 kept, 0 broken |
+| Django checks | `uv run python manage.py check` | no issues (1 silenced: `models.W045`) |
+| Migrations in sync | `uv run python manage.py makemigrations --check --dry-run` | No changes detected |
+
+### Verdict
+
+**Approved.** The write services hold the boundaries the architecture depends on — one owner
+per table, one transaction per mutation, one audit row per change — and each boundary is
+proven by a test rather than asserted in a docstring.
+
+Two things the review changed the shape of, and both are worth naming. The first was the
+**status column's meaning**: a pair the user answered and a pair that ended because the
+world moved are different facts, and the first implementation let the second overwrite the
+first. The second was the **save race**, where an extra catalog read looked like harmless
+belt-and-braces but was in fact the one read that could make the staleness check meaningless.
+
+The auto-fixes were re-verified by the full suite (1969 passing) and the coverage gates
+(`domain/` 100%, `apps/personalization/services/` 100%, overall 99.21%).
