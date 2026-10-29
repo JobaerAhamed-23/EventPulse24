@@ -155,6 +155,10 @@ def create_personal_event(
     start_time_tz: str | None,
     location: str | None = None,
     notes: str | None = None,
+    source: str = PersonalEvent.Source.USER_CREATED,
+    calendar_connection_id: UUID | None = None,
+    source_uid: str | None = None,
+    include_duplicate_conflicts: bool = True,
     actor: Actor,
     now: datetime,
 ) -> Created | ConflictFound:
@@ -168,6 +172,23 @@ def create_personal_event(
     A conflict does not fail the command and does not silently complete it either: the result
     is a `ConflictFound`, and the pair row — `active`, with no resolution — is the pending
     prompt.
+
+    **The import path (D2, D11).** A calendar import creates its events through *this*
+    command, so an imported event gets the same reminder default, the same conflict
+    detection and the same audit row as a user-created one. The three extra parameters are
+    how the import says "this row came from a feed": `source`, `calendar_connection_id` and
+    `source_uid`.
+
+    Their defaults are the user-created shape, so every existing caller is unchanged.
+
+    A new import is never `user_modified` — the user has not touched it yet, so the feed
+    owns it. The flag is set later, by `update_personal_event`, when the *user* edits it.
+
+    **`include_duplicate_conflicts=False`** drops the duplicate rule and keeps the time rule
+    (D4 of the calendar-sync design). The import path uses it: a user-created "Dinner" and a
+    calendar "Dinner" at 7pm are very often the *same* dinner, and the user typed theirs
+    deliberately — so flagging them would be a prompt with no useful answer. The time rule
+    still applies, because two things at once is a clash whichever way round it is.
     """
     zone = _validated_zone(start_time_tz)
     start, end = _validated_interval(start_utc, end_utc)
@@ -181,6 +202,10 @@ def create_personal_event(
             start_time_tz=zone,
             location=location,
             notes=notes,
+            source=source,
+            calendar_connection_id=calendar_connection_id,
+            source_uid=source_uid,
+            user_modified=False,
         )
         # AD-16: `delivery` owns `REMINDER_PLAN`. This is the published seam, and it is the
         # only way this module touches a plan. The nested atomic is a savepoint on the same
@@ -199,7 +224,11 @@ def create_personal_event(
             start_utc=event.start_utc,
             end_utc=event.end_utc,
         )
-        detected = detect_conflicts(user_id=user_id, candidate=candidate)
+        detected = detect_conflicts(
+            user_id=user_id,
+            candidate=candidate,
+            include_duplicates=include_duplicate_conflicts,
+        )
         conflicts = tuple(
             record_detected_conflicts(user_id=user_id, detected=detected, actor=actor, now=now)
         )
@@ -232,6 +261,8 @@ def update_personal_event(
     start_time_tz: str | None = None,
     location: str | None = None,
     notes: str | None = None,
+    user_modified: bool | None = True,
+    include_duplicate_conflicts: bool = True,
     actor: Actor,
     now: datetime,
 ) -> Created | ConflictFound:
@@ -246,6 +277,37 @@ def update_personal_event(
 
     The reminder plan is **not** touched. FR-20's default is a property of creation, and
     re-attaching it here would reset a plan the user had customised through FR-9's picker.
+
+    **Who made the edit (D2).** `user_modified` says who owns the row, and it has three
+    values — not two:
+
+    - `True` — **the user** is making this change. The user owns the row; a later feed
+      change is not applied over it.
+    - `False` — **the feed** owns the row. A feed change is applied.
+    - `None` — **leave the ownership as it stands.** The caller does not know, or does not
+      want to say.
+
+    It defaults to `True`, because the ordinary caller is the user.
+
+    The calendar import is the other caller, and it is the reason the third value exists.
+    An imported event is a mirror of somebody else's agenda, and the user may disagree
+    with it. The flag decides who owns a row when the feed and the row disagree — so the
+    import must never *decide* ownership on the user's behalf. It passes `None`, and the
+    stored flag survives untouched.
+
+    Why `None` and not `False`: a boolean cannot say "don't change it". Passing `False`
+    would *reset* the flag, and that is the difference between two states that look alike
+    and mean opposite things. If the user edited an imported event and the import then
+    wrote the row again, `False` would hand the row back to the feed — and the user's edit
+    would be overwritten on the next poll, silently and permanently. `None` says "leave
+    the ownership alone", which is the only thing the import is entitled to say.
+
+    A user-created event is never `user_modified` (the model's constraint says so): there
+    is no feed to disagree with it.
+
+    **`include_duplicate_conflicts=False`** drops the duplicate rule and keeps the time rule
+    (D4) — the import path passes it, so an import never re-flags a user-created event as a
+    duplicate of one of the user's own events.
     """
     with transaction.atomic(using=PERSONAL):
         event = PersonalEvent.objects.using(PERSONAL).filter(user_id=user_id, pk=event_id).first()
@@ -264,6 +326,18 @@ def update_personal_event(
             start_time_tz=zone,
             location=event.location if location is None else location,
             notes=event.notes if notes is None else notes,
+            # D2. `None` means "leave the ownership as it stands" — the import path says
+            # so, and the stored flag survives untouched. `True` means the user owns the
+            # row; `False` means the feed owns it.
+            #
+            # A user-created event can never be flagged: there is no feed to disagree
+            # with it, and the model's constraint refuses the combination. So `True` only
+            # takes effect on an imported row.
+            user_modified=(
+                event.user_modified
+                if user_modified is None
+                else (user_modified and event.source == PersonalEvent.Source.CALENDAR_IMPORT)
+            ),
             version=F("version") + 1,
         )
         event.refresh_from_db()
@@ -280,7 +354,11 @@ def update_personal_event(
             start_utc=event.start_utc,
             end_utc=event.end_utc,
         )
-        detected = detect_conflicts(user_id=user_id, candidate=candidate)
+        detected = detect_conflicts(
+            user_id=user_id,
+            candidate=candidate,
+            include_duplicates=include_duplicate_conflicts,
+        )
         conflicts = tuple(
             record_detected_conflicts(user_id=user_id, detected=detected, actor=actor, now=now)
         )

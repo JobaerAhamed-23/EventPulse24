@@ -26,17 +26,17 @@ work_items:
   - id: calendar-sync-and-polling
     intent: onboarding-and-account
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: auth-api-and-session-seam
     intent: onboarding-and-account
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: onboarding-state-and-interests
     intent: onboarding-and-account
     mode: confirm
@@ -93,7 +93,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: calendar-sync-and-polling
+current_item: auth-api-and-session-seam
 status: in_progress
 started: 2026-10-29T06:25:40.374Z
 completed: null
@@ -108,8 +108,8 @@ wide (13 work items)
 1. **account-auth-core** (validate) — completed
 2. **calendar-connection-model** (validate) — completed
 3. **ics-calendar-adapter** (validate) — completed
-4. **calendar-sync-and-polling** (validate) — in_progress
-5. **auth-api-and-session-seam** (confirm) — pending
+4. **calendar-sync-and-polling** (validate) — completed
+5. **auth-api-and-session-seam** (confirm) — in_progress
 6. **onboarding-state-and-interests** (confirm) — pending
 7. **calendar-connect-api** (confirm) — pending
 8. **event-fit** (confirm) — pending
@@ -121,7 +121,7 @@ wide (13 work items)
 
 
 ## Current Item
-calendar-sync-and-polling (validate)
+auth-api-and-session-seam (confirm)
 
 ## Files Created
 (none yet)

@@ -33,7 +33,7 @@ from uuid import UUID
 
 from django.db import transaction
 
-from apps.personalization.models import ConflictPair
+from apps.personalization.models import ConflictPair, PersonalEvent
 from apps.personalization.services.audit import write_audit
 from apps.personalization.services.personal_events import delete_personal_event
 from domain.errors import NotFoundError, ValidationError
@@ -59,6 +59,22 @@ class IllegalResolutionError(ValidationError):
 
     code = "illegal_resolution"
     default_message = "That isn't one of the choices for this conflict."
+
+
+class ImportedEventNotDeletableError(ValidationError):
+    """The "new" side is an imported event, and imported events cannot be deleted (D3).
+
+    Deleting an imported event would delete a row the **provider** owns: the next poll
+    would see the entry still in the feed and recreate it. So the user picks "Delete", the
+    event disappears for an hour, and then it comes back — which is a lie the button tells.
+
+    So the button is not offered for an imported side, and the service refuses it if a
+    caller asks for it anyway. The imported event's user is the provider; only the
+    provider can remove it.
+    """
+
+    code = "imported_event_not_deletable"
+    default_message = "That event comes from your calendar, so we can't delete it here."
 
 
 #: Which resolutions each kind of conflict offers. FR-58's two prompts have different button
@@ -142,6 +158,15 @@ def resolve_conflict(
         if value not in allowed:
             raise IllegalResolutionError(details={"resolution": value, "kind": pair.kind})
 
+        # D3: an imported event cannot be deleted by the user — the provider owns it, and
+        # the next poll would recreate the row anyway. The refusal happens **before** the
+        # pair is marked resolved, so a refused attempt leaves the pair active and still
+        # answerable with a choice that works.
+        if value == ConflictPair.Resolution.DELETE_NEW and _is_imported_personal_event(
+            kind=new_side_kind, event_id=new_side_id
+        ):
+            raise ImportedEventNotDeletableError(details={"new_side_id": str(new_side_id)})
+
         other_kind, other_id = _other_side(pair, new_side_kind, new_side_id)
 
         # The user's choice is recorded on the pair *first*, and it is recorded as a
@@ -200,10 +225,26 @@ def _other_side(
     return None, None
 
 
+def _is_imported_personal_event(*, kind: str, event_id: UUID) -> bool:
+    """Whether this side is a personal event that came from a connected calendar (D3).
+
+    Only a personal event can be imported — a saved event is the user's own save of a
+    public event — so the kind check comes first and the lookup is a single indexed read.
+
+    A side that is gone counts as **not** imported: there is nothing left to delete, and
+    the caller's delete would be a no-op either way.
+    """
+    if kind != ConflictPair.SideKind.PERSONAL_EVENT:
+        return False
+    event = PersonalEvent.objects.using(PERSONAL).filter(pk=event_id).first()
+    return event is not None and event.source == PersonalEvent.Source.CALENDAR_IMPORT
+
+
 __all__ = [
     "ConflictAlreadyResolvedError",
     "ConflictPairNotFoundError",
     "IllegalResolutionError",
+    "ImportedEventNotDeletableError",
     "RESOLUTIONS_BY_KIND",
     "Resolution",
     "resolve_conflict",

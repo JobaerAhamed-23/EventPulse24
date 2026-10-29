@@ -65,6 +65,18 @@ class PersonalEvent(UUIDv7Model):
     # event. Together with the connection id it makes a re-sync an upsert rather than a
     # duplicate.
     source_uid = models.CharField(max_length=255, null=True, blank=True)
+    # Whether the **user** has edited this row (D2 of the calendar-sync design).
+    #
+    # An imported event is a mirror of somebody else's agenda, and the user may disagree
+    # with it. This flag decides who owns a row when the feed and the row disagree: the
+    # feed owns an untouched import, the user owns an edited one.
+    #
+    # It is a stored flag rather than a heuristic ("does the row differ from the feed?"),
+    # because that heuristic's answer depends on which side you look from — and because a
+    # user's edit must survive the feed disagreeing with it.
+    #
+    # Always False for a user-created event (the user made it; there is no feed).
+    user_modified = models.BooleanField(default=False)
     # Rises with every mutation. AD-7's send key uses it, so it only ever goes up; the
     # command layer owns the increment (the model cannot know which write is legitimate).
     version = models.PositiveIntegerField(default=1)
@@ -94,6 +106,16 @@ class PersonalEvent(UUIDv7Model):
                     & models.Q(calendar_connection_id__isnull=True)
                 ),
                 name="personal_event_source_connection_ck",
+            ),
+            # D2: only an imported event can be "user-modified". A user-created event has
+            # no feed to disagree with, so the flag would be meaningless on it — and a
+            # stray True would tell the sync that the user owns a row the sync never
+            # touches. The database holds this, so the flag cannot drift onto the wrong
+            # kind of row.
+            models.CheckConstraint(
+                condition=(~models.Q(source="calendar_import") & ~models.Q(user_modified=True))
+                | models.Q(source="calendar_import"),
+                name="personal_event_user_modified_import_only_ck",
             ),
             # AD-18 / FR-50: a re-sync upserts on (connection, uid) instead of duplicating.
             # Postgres treats NULLs as distinct, so the many user-created rows with no
@@ -174,6 +196,21 @@ class CalendarConnection(UUIDv7Model):
     # is ours to choose — `shared.constants.CALENDAR_POLL_INTERVAL`).
     last_polled_at = models.DateTimeField(null=True, blank=True)
     next_poll_at = models.DateTimeField(null=True, blank=True)
+    # AD-7 scheduling: when the dispatcher claimed this connection for a sync. A claim
+    # older than `CALENDAR_CLAIM_TTL` is a lost job (a worker died) and the connection
+    # becomes claimable again. Null means "not claimed".
+    #
+    # The claim is what stops two overlapping ticks syncing the same connection twice.
+    sync_claimed_at = models.DateTimeField(null=True, blank=True)
+    # The provider's opaque cache validators (AD-18). They are sent back as conditional
+    # headers on the next fetch, so an unchanged feed costs one 304 instead of a full
+    # download.
+    #
+    # They are per-connection state and are not secrets — but they are never logged
+    # either, on the same principle as the address: they identify the connection to
+    # whoever holds the provider's log.
+    etag = models.CharField(max_length=255, null=True, blank=True)
+    last_modified = models.CharField(max_length=255, null=True, blank=True)
     # A slug such as "revoked" or "transient", never a message and never a URL.
     last_error_kind = models.CharField(max_length=32, null=True, blank=True)
     last_error_at = models.DateTimeField(null=True, blank=True)

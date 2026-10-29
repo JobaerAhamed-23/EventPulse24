@@ -18,6 +18,7 @@ from apps.delivery.services.reminder_plans import (
     attach_default_plan,
     get_plan,
     remove_all_reminders,
+    remove_plans_for_targets,
     set_plan_slots,
     slot_offsets,
 )
@@ -453,3 +454,73 @@ def test_slot_offsets_leaves_out_a_custom_slot():
     offsets = slot_offsets(start_utc=start, slots=("1d", "custom:mine"))
 
     assert offsets == (datetime(2026, 11, 5, 3, 30, tzinfo=UTC),)
+
+
+# --- Removing the plans of several targets (D13) ----------------------------------------------
+
+
+def test_removing_the_plans_of_several_targets_deletes_them():
+    first, second = uuid7(), uuid7()
+    for target in (first, second):
+        ReminderPlanFactory(user_id=USER, target_id=target, slots=["1d"])
+
+    removed = remove_plans_for_targets(
+        user_id=USER,
+        target_kind="personal_event",
+        target_ids=(first, second),
+        actor=Actor.system("calendar_sync"),
+        now=NOW,
+    )
+
+    assert removed == 2
+    assert ReminderPlan.objects.using(PERSONAL).filter(target_id__in=[first, second]).count() == 0
+
+
+def test_removing_the_plans_of_no_targets_removes_nothing():
+    assert (
+        remove_plans_for_targets(
+            user_id=USER,
+            target_kind="personal_event",
+            target_ids=(),
+            actor=Actor.system("calendar_sync"),
+            now=NOW,
+        )
+        == 0
+    )
+
+
+def test_removing_the_plans_leaves_another_users_plans_alone():
+    mine, theirs = uuid7(), uuid7()
+    ReminderPlanFactory(user_id=USER, target_id=mine, slots=["1d"])
+    ReminderPlanFactory(user_id=uuid7(), target_id=theirs, slots=["1d"])
+
+    remove_plans_for_targets(
+        user_id=USER,
+        target_kind="personal_event",
+        target_ids=(mine, theirs),
+        actor=Actor.system("calendar_sync"),
+        now=NOW,
+    )
+
+    assert ReminderPlan.objects.using(PERSONAL).filter(target_id=theirs).count() == 1
+
+
+def test_removing_the_plans_writes_one_audit_row_per_plan():
+    first, second = uuid7(), uuid7()
+    for target in (first, second):
+        ReminderPlanFactory(user_id=USER, target_id=target, slots=["1d"])
+
+    remove_plans_for_targets(
+        user_id=USER,
+        target_kind="personal_event",
+        target_ids=(first, second),
+        actor=Actor.system("calendar_sync"),
+        now=NOW,
+    )
+
+    # AD-5: one row per mutation, and each row names the plan it removed.
+    rows = DeliveryAuditEntry.objects.using(PERSONAL).filter(
+        action="reminder_plan.removed_for_target"
+    )
+    assert rows.count() == 2
+    assert {row.target_id for row in rows} == {first, second}

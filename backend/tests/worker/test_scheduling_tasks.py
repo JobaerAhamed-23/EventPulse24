@@ -24,10 +24,24 @@ def _at(monkeypatch, when: datetime) -> None:
 @pytest.mark.parametrize(
     ("minute", "jobs"),
     [
-        (0, ["worker.tasks.schedule_sources", "worker.tasks.reconcile_outbox"]),
-        (5, ["worker.tasks.schedule_sources", "worker.tasks.reconcile_outbox"]),
-        (1, ["worker.tasks.schedule_sources"]),
-        (4, ["worker.tasks.schedule_sources"]),
+        (
+            0,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+            ],
+        ),
+        (
+            5,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+            ],
+        ),
+        (1, ["worker.tasks.schedule_sources", "worker.tasks.schedule_calendars"]),
+        (4, ["worker.tasks.schedule_sources", "worker.tasks.schedule_calendars"]),
     ],
 )
 def test_tick_enqueues_scheduling_every_time_and_the_reconciler_every_5_minutes(

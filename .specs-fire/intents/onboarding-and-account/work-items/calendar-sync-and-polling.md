@@ -4,11 +4,13 @@ title: Calendar Sync Services & Polling
 intent: onboarding-and-account
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on:
   - calendar-connection-model
   - ics-calendar-adapter
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-29T12:19:19.508Z
 ---
 
 # Work Item: Calendar Sync Services & Polling

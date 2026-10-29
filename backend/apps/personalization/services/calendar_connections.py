@@ -18,9 +18,11 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from apps.delivery.services.reminder_plans import remove_plans_for_targets
 from apps.personalization.credentials import fingerprint
-from apps.personalization.models import CalendarConnection, PersonalEvent
+from apps.personalization.models import CalendarConnection, ConflictPair, PersonalEvent
 from apps.personalization.services.audit import write_audit
+from apps.personalization.services.personal_events import delete_personal_event
 from domain.errors import (
     CalendarProviderCapReached,
     CredentialDecryptionError,
@@ -137,6 +139,13 @@ def connect_calendar(
     provider revoked the old secret, so the address the user pastes now is a *new* one,
     and the row waiting for it is the one to reuse.
 
+    **It requests a sync; it does not perform one (D9).** `next_poll_at` is set to the
+    moment, so the connection is due immediately and the tick's dispatcher picks it up
+    within 60 seconds. The command itself never fetches: AD-11 forbids long work in a
+    request, and a fetch can take 30 seconds and download megabytes. Setting the due time
+    is the durable expression of "please sync this soon", and it is the same pattern
+    `ingestion`'s `register_source` uses.
+
     The address itself is never written to an audit row, and never appears in the returned
     object's `repr`.
     """
@@ -195,7 +204,18 @@ def connect_calendar(
             connection.last_error_kind = None
             connection.last_error_at = None
             connection.last_polled_at = None
-            connection.next_poll_at = None
+            # D9: due immediately, so the dispatcher syncs it within a tick.
+            connection.next_poll_at = moment
+            # A claim left behind by a worker that died is cleared. The row is active and
+            # due now, and a live claim would keep the dispatcher from picking it up until
+            # the claim expired — so the user's first sync after reconnecting would wait
+            # up to `CALENDAR_CLAIM_TTL` for no reason.
+            connection.sync_claimed_at = None
+            # The old validators belong to the old credential's feed. Keeping them would
+            # make the provider answer 304 for a feed it has never seen this address's
+            # events in.
+            connection.etag = None
+            connection.last_modified = None
             connection.save(
                 using=PERSONAL,
                 update_fields=[
@@ -208,6 +228,9 @@ def connect_calendar(
                     "last_error_at",
                     "last_polled_at",
                     "next_poll_at",
+                    "sync_claimed_at",
+                    "etag",
+                    "last_modified",
                     "updated_at",
                 ],
             )
@@ -220,6 +243,8 @@ def connect_calendar(
                 credential_fingerprint=digest,
                 status=CalendarConnection.Status.ACTIVE,
                 display_label=display_label,
+                # D9: due immediately, so the dispatcher syncs it within a tick.
+                next_poll_at=moment,
             )
             action = "calendar.connected"
 
@@ -236,8 +261,91 @@ def connect_calendar(
     return connection
 
 
+def reconnect_calendar(
+    *,
+    connection: CalendarConnection,
+    url: str,
+    display_label: str = "",
+    actor: Actor,
+    now=None,
+) -> CalendarConnection:
+    """Replace a revoked calendar's credential and bring it back to life (AD-18, FR-50).
+
+    A revoked connection keeps the events it imported (D6) and waits for the user to paste
+    a new address. This command is that paste: the credential is replaced, the status
+    returns to `active`, the error fields are cleared, and the connection is due
+    immediately so the dispatcher syncs it within a tick (D9).
+
+    **The imported events are kept.** The provider revoked the *address*, not the events
+    (D6), and the user is reconnecting the very same calendar — throwing away their
+    agenda because a secret expired would be destructive and irreversible.
+
+    The new address is validated exactly as a connect validates one, and it is fingerprinted
+    the same way, so the "one calendar per address" constraint holds across a reconnect.
+
+    A connection that is already `active` is refused: there is nothing to reconnect, and
+    silently replacing a working credential would make the user's calendar change
+    identity without them asking.
+    """
+    moment = now or timezone.now()
+    address = _validated_url(url)
+    key = _key()
+    digest = fingerprint(address, key)
+
+    if connection.status == CalendarConnection.Status.DISCONNECTED:
+        # A disconnected connection has no credential and no poll schedule. Reconnecting
+        # one would resurrect a row the user deliberately gave up.
+        raise InvalidCalendarCredentialError(details={"field": "url"})
+    if connection.status == CalendarConnection.Status.ACTIVE:
+        raise InvalidCalendarCredentialError(details={"field": "url"})
+
+    with transaction.atomic(using=PERSONAL):
+        connection.credential = address
+        connection.credential_fingerprint = digest
+        connection.status = CalendarConnection.Status.ACTIVE
+        if display_label:
+            connection.display_label = display_label
+        connection.last_error_kind = None
+        connection.last_error_at = None
+        # D9: due immediately.
+        connection.next_poll_at = moment
+        # A claim left behind by a worker that died is cleared. The row is active and due
+        # now, and a live claim would keep the dispatcher from picking it up until the
+        # claim expired — so the user's first sync after reconnecting would wait up to
+        # `CALENDAR_CLAIM_TTL` for no reason.
+        connection.sync_claimed_at = None
+        # The old validators belong to the old credential's feed.
+        connection.etag = None
+        connection.last_modified = None
+        connection.save(
+            using=PERSONAL,
+            update_fields=[
+                "credential",
+                "credential_fingerprint",
+                "status",
+                "display_label",
+                "last_error_kind",
+                "last_error_at",
+                "next_poll_at",
+                "sync_claimed_at",
+                "etag",
+                "last_modified",
+                "updated_at",
+            ],
+        )
+        write_audit(
+            actor=actor,
+            action="calendar.reconnected",
+            target_type="calendar_connection",
+            target_id=connection.pk,
+            details={"provider": connection.provider, "at": moment.isoformat()},
+        )
+
+    return connection
+
+
 def disconnect_calendar(*, connection: CalendarConnection, actor: Actor, now=None) -> None:
-    """Disconnect a calendar: destroy its credential, then purge its events (D7).
+    """Disconnect a calendar: destroy its credential, then purge its events (D7, D13).
 
     The order matters, and it is the safe one. The credential is destroyed **first**, in
     this transaction, so the user's revocation never depends on a purge job succeeding: if
@@ -246,6 +354,18 @@ def disconnect_calendar(*, connection: CalendarConnection, actor: Actor, now=Non
     The row is **not** deleted here. It becomes `disconnected` with a `NULL` credential, and
     the retention sweep removes it later (AD-15). A row that lingered with a live
     credential would keep a secret alive after the user asked for it to be revoked.
+
+    **The purge (D13).** FR-50: "disconnecting purges exactly that connection's events". The
+    purge touches three tables, each through **its owner's interface**:
+
+    | Step | Owner | How |
+    |---|---|---|
+    | the conflict pairs | `personalization` | `delete_personal_event` closes them |
+    | the events | `personalization` | `delete_personal_event` |
+    | the reminder plans | **`delivery`** | `remove_plans_for_targets` (AD-16) |
+
+    The purge is scoped by `calendar_connection_id = connection.pk`, which is exact by
+    construction: another connection's events and the user's own events are untouched.
 
     The audit row is written in the same transaction, so "the user disconnected this" and
     "the credential is gone" commit together (AD-5).
@@ -259,6 +379,9 @@ def disconnect_calendar(*, connection: CalendarConnection, actor: Actor, now=Non
             last_error_kind=None,
             last_error_at=None,
             next_poll_at=None,
+            sync_claimed_at=None,
+            etag=None,
+            last_modified=None,
         )
         write_audit(
             actor=actor,
@@ -268,18 +391,49 @@ def disconnect_calendar(*, connection: CalendarConnection, actor: Actor, now=Non
             details={"provider": connection.provider, "at": moment.isoformat()},
         )
 
+    _purge_connection_events(connection=connection, actor=actor, now=moment)
 
-def purge_connection_events(*, connection: CalendarConnection) -> int:
-    """Delete exactly the events this connection imported, and return how many.
 
-    The connection is held by value, so the purge is one equality filter — exact by
-    construction, and the same query for one connection or for all of them (AD-18: "a
-    disconnect purges exactly that connection's events").
+def _purge_connection_events(*, connection: CalendarConnection, actor: Actor, now) -> int:
+    """Delete exactly this connection's imported events, their pairs and their plans (D13).
+
+    Each step goes through its owner's interface:
+
+    1. The events are deleted with `delete_personal_event` — the same command the user's
+       own delete uses, so the conflict pairs naming them close as
+       `cleared_by_state_change` and each deletion writes its audit row.
+    2. The reminder plans are deleted with `delivery`'s `remove_plans_for_targets`, because
+       `delivery` owns `REMINDER_PLAN` and `personalization` may not write it (AD-16).
+
+    The plans are deleted rather than left behind: a disconnected calendar's plans would
+    be a growing pile of rows pointing at events that no longer exist.
+
+    The credential is already gone by the time this runs, so a failure here leaves the
+    user's revocation intact — the secret is destroyed either way.
     """
-    deleted, _ = (
-        PersonalEvent.objects.using(PERSONAL).filter(calendar_connection_id=connection.pk).delete()
+    imported = list(
+        PersonalEvent.objects.using(PERSONAL)
+        .filter(calendar_connection_id=connection.pk)
+        .values_list("id", flat=True)
     )
-    return deleted
+    if not imported:
+        return 0
+
+    for event_id in imported:
+        delete_personal_event(
+            user_id=connection.user_id,
+            event_id=event_id,
+            actor=actor,
+            now=now,
+        )
+    remove_plans_for_targets(
+        user_id=connection.user_id,
+        target_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        target_ids=tuple(imported),
+        actor=actor,
+        now=now,
+    )
+    return len(imported)
 
 
 def reveal_credential(*, connection: CalendarConnection) -> Credential:
@@ -303,6 +457,6 @@ __all__ = [
     "ALLOWED_SCHEMES",
     "connect_calendar",
     "disconnect_calendar",
-    "purge_connection_events",
+    "reconnect_calendar",
     "reveal_credential",
 ]

@@ -25,7 +25,6 @@ from apps.personalization.models import CalendarConnection, PersonalEvent
 from apps.personalization.services.calendar_connections import (
     connect_calendar,
     disconnect_calendar,
-    purge_connection_events,
     reveal_credential,
 )
 from domain.errors import (
@@ -635,9 +634,12 @@ def test_the_purge_removes_exactly_that_connections_events():
     )
     user_created = PersonalEventFactory()
 
-    deleted = purge_connection_events(connection=connection)
+    disconnect_calendar(
+        connection=connection,
+        actor=Actor.user(connection.user_id),
+        now=datetime(2026, 11, 6, 12, 0, tzinfo=UTC),
+    )
 
-    assert deleted == 1
     assert not PersonalEvent.objects.using(PERSONAL).filter(pk=mine.pk).exists()
     assert PersonalEvent.objects.using(PERSONAL).filter(pk=theirs.pk).exists()
     assert PersonalEvent.objects.using(PERSONAL).filter(pk=user_created.pk).exists()
@@ -647,13 +649,28 @@ def test_the_purge_leaves_a_user_created_event_alone():
     """A user-created event has no connection, so no purge can reach it."""
     event = PersonalEventFactory()
 
-    purge_connection_events(connection=CalendarConnectionFactory())
+    disconnect_calendar(
+        connection=CalendarConnectionFactory(),
+        actor=Actor.user(uuid7()),
+        now=datetime(2026, 11, 6, 12, 0, tzinfo=UTC),
+    )
 
     assert PersonalEvent.objects.using(PERSONAL).filter(pk=event.pk).exists()
 
 
 def test_the_purge_of_an_empty_connection_is_zero():
-    assert purge_connection_events(connection=CalendarConnectionFactory()) == 0
+    connection = CalendarConnectionFactory()
+
+    disconnect_calendar(
+        connection=connection,
+        actor=Actor.user(connection.user_id),
+        now=datetime(2026, 11, 6, 12, 0, tzinfo=UTC),
+    )
+
+    assert (
+        PersonalEvent.objects.using(PERSONAL).filter(calendar_connection_id=connection.pk).count()
+        == 0
+    )
 
 
 # ─── reveal ───────────────────────────────────────────────────────────────────

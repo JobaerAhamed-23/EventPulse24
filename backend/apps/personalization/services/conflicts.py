@@ -157,7 +157,12 @@ def _candidate_saved_events(user_id: UUID, candidate: Candidate) -> QuerySet:
     return queryset
 
 
-def detect_conflicts(*, user_id: UUID, candidate: Candidate) -> list[DetectedConflict]:
+def detect_conflicts(
+    *,
+    user_id: UUID,
+    candidate: Candidate,
+    include_duplicates: bool = True,
+) -> list[DetectedConflict]:
     """The conflicts the candidate has with the user's other events.
 
     A time conflict is two intervals overlapping by more than 15 minutes. A duplicate is two
@@ -166,18 +171,30 @@ def detect_conflicts(*, user_id: UUID, candidate: Candidate) -> list[DetectedCon
     A pair that satisfies both rules is recorded once, as a **duplicate**: the duplicate claim
     is the stronger one (it asserts these are the same event), and `update_existing` is the
     resolution that acts on it.
+
+    **`include_duplicates=False` drops the duplicate rule and keeps the time rule** (D12 of
+    the calendar-sync design). A background import uses it: the user typed "Dinner" and
+    their work calendar also has a "Dinner" is not a clash worth a prompt — it is two
+    different events that happen to share a word. The time rule still applies, because an
+    imported meeting that overlaps a saved one genuinely is a clash the user needs to know
+    about.
     """
     found: list[DetectedConflict] = []
     for event in _candidate_personal_events(user_id, candidate):
         side = _personal_side(event)
-        found.extend(_compare(candidate.side, side))
+        found.extend(_compare(candidate.side, side, include_duplicates=include_duplicates))
     for event in _candidate_saved_events(user_id, candidate):
         side = _saved_side(event)
-        found.extend(_compare(candidate.side, side))
+        found.extend(_compare(candidate.side, side, include_duplicates=include_duplicates))
     return found
 
 
-def _compare(new_side: ConflictSide, other: ConflictSide) -> list[DetectedConflict]:
+def _compare(
+    new_side: ConflictSide,
+    other: ConflictSide,
+    *,
+    include_duplicates: bool = True,
+) -> list[DetectedConflict]:
     """The conflicts between two sides, if any. The candidate is always the new side."""
     if intervals_conflict(
         new_side.start_utc,
@@ -186,7 +203,9 @@ def _compare(new_side: ConflictSide, other: ConflictSide) -> list[DetectedConfli
         other.end_utc,
     ):
         return [DetectedConflict(kind="time", new_side=new_side, other_side=other, pair_id=None)]
-    if is_duplicate(new_side.name, new_side.start_utc, other.name, other.start_utc):
+    if include_duplicates and is_duplicate(
+        new_side.name, new_side.start_utc, other.name, other.start_utc
+    ):
         return [
             DetectedConflict(kind="duplicate", new_side=new_side, other_side=other, pair_id=None)
         ]

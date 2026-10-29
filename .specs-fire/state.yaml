@@ -278,7 +278,7 @@ intents:
         run_id: run-eventpulse24-020
         completed_at: 2026-10-29T07:45:51.037Z
       - id: auth-api-and-session-seam
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -304,12 +304,14 @@ intents:
         run_id: run-eventpulse24-020
         completed_at: 2026-10-29T10:49:13.086Z
       - id: calendar-sync-and-polling
-        status: in_progress
+        status: completed
         complexity: high
         mode: validate
         depends_on:
           - calendar-connection-model
           - ics-calendar-adapter
+        run_id: run-eventpulse24-020
+        completed_at: 2026-10-29T12:19:19.508Z
       - id: calendar-connect-api
         status: pending
         complexity: medium
@@ -388,17 +390,18 @@ runs:
         - id: calendar-sync-and-polling
           intent: onboarding-and-account
           mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-29T12:19:19.508Z
+        - id: auth-api-and-session-seam
+          intent: onboarding-and-account
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: auth-api-and-session-seam
-          intent: onboarding-and-account
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: onboarding-state-and-interests
           intent: onboarding-and-account
           mode: confirm
@@ -455,7 +458,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: calendar-sync-and-polling
+      current_item: auth-api-and-session-seam
       started: 2026-10-29T06:25:40.374Z
   completed:
     - id: run-eventpulse24-001

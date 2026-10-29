@@ -18,6 +18,8 @@ from apps.ingestion.services.source_registry import (
     SourceNotFoundError,
     SourcePausedError,
 )
+from apps.personalization.services import calendar_sync
+from ports.registry import get_calendar_port
 from shared.constants import OUTBOX_RECONCILE_EVERY_MINUTES
 
 logger = logging.getLogger(__name__)
@@ -36,10 +38,12 @@ def tick() -> None:
     """The periodic tick (AD-7): the only beat entry. It enqueues and never touches the
     database, so a slow query can't delay the next tick.
 
-    Every tick: `schedule_sources`. When the UTC minute is a multiple of 5: `reconcile_outbox`
-    (the tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent).
+    Every tick: `schedule_sources` and `schedule_calendars`. When the UTC minute is a multiple of 5:
+    `reconcile_outbox` (the tick keeps no state, so the 5-minute cadence is approximate; both jobs
+    are idempotent).
     """
     _enqueue(schedule_sources)
+    _enqueue(schedule_calendars)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
     logger.info("Tick", extra={"job": "tick"})
@@ -91,6 +95,72 @@ def propagate_state_change(state_change_id: str) -> None:
     it until that consumer arrives.
     """
     logger.debug("State change not propagated yet", extra={"state_change_id": state_change_id})
+
+
+@shared_task(name="worker.tasks.schedule_calendars")
+def schedule_calendars() -> None:
+    """Claim the due calendar connections and enqueue one sync job per claim (D8).
+
+    This mirrors `schedule_sources` exactly: the tick enqueues the dispatcher, the
+    dispatcher claims what is due, and each claim becomes one job. The claim is atomic
+    (`FOR UPDATE SKIP LOCKED`), so two overlapping ticks never sync the same connection
+    twice, and a claim older than `CALENDAR_CLAIM_TTL` is a lost job and becomes claimable
+    again.
+
+    A connection that could not be enqueued has its claim released, so the next tick
+    retries it rather than leaving it claimed until the TTL expires.
+    """
+    now = _now()
+    claimed = calendar_sync.claim_due_connections(now=now)
+    enqueued = 0
+    for connection_id in claimed:
+        try:
+            _enqueue(sync_calendar, str(connection_id))
+            enqueued += 1
+        except Exception as exc:  # broker down: free the claim so the next tick retries
+            calendar_sync.release_claim(connection_id)
+            logger.warning(
+                "Calendar sync not enqueued",
+                extra={"connection_id": str(connection_id), "error_type": type(exc).__name__},
+            )
+    logger.info("Calendars scheduled", extra={"job": "schedule_calendars", "count": enqueued})
+
+
+@shared_task(name="worker.tasks.sync_calendar")
+def sync_calendar(connection_id: str) -> None:
+    """Sync one connected calendar and release its claim, whatever happens (D8).
+
+    The sync's own failures are recorded on the connection — a revoked credential marks the
+    connection `needs_reconnect` and keeps the imported events (D6) — so they do not reach
+    Celery as a retry. A revoked credential will not become valid by trying again.
+
+    **An unexpected failure is recorded too.** The four failures the sync handles each
+    write the next poll time. An error it does not handle would skip that, and the
+    connection would be due again on the very next 60-second tick — and on every tick
+    after that, forever, fetching the user's calendar 1,440 times a day. So the error is
+    recorded on the row before the claim is released, and the connection is retried at the
+    poll cadence rather than the tick cadence.
+    """
+    identifier = UUID(connection_id)
+    try:
+        calendar_sync.sync_calendar(
+            connection_id=identifier,
+            port=get_calendar_port(),
+            now=_now(),
+        )
+    except Exception as exc:
+        calendar_sync.record_unexpected_failure(
+            connection_id=identifier,
+            error_kind=f"unexpected:{type(exc).__name__}",
+            now=_now(),
+        )
+        logger.warning(
+            "Calendar sync failed unexpectedly",
+            extra={"connection_id": str(identifier), "error_type": type(exc).__name__},
+        )
+        raise
+    finally:
+        calendar_sync.release_claim(identifier)
 
 
 @shared_task(name="worker.tasks.reconcile_outbox")

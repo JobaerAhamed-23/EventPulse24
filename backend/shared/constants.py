@@ -162,3 +162,18 @@ CALENDAR_POLL_INTERVAL = timedelta(hours=1)
 # intent (there is no SUBSCRIPTION entity yet), so the cap is 1. The Pro cap of 3 is a
 # later intent and belongs here when it lands.
 FREE_TIER_CALENDAR_PROVIDER_CAP = 1
+
+# AD-7 scheduling: at most this many calendar connections are claimed per dispatcher run.
+# The same shape as SCHEDULE_BATCH, and deliberately a separate constant — the two
+# schedulers pace different work, and one number must not silently govern both.
+CALENDAR_SYNC_BATCH = 100
+
+# AD-7 scheduling: a calendar claim older than this is a lost job (a worker died), so the
+# connection becomes claimable again.
+#
+# It is NOT `INGEST_CLAIM_TTL` reused by name. A calendar fetch takes at most 30 s
+# (TOTAL_TIMEOUT) plus a body download, while an ingestion run can take much longer — so
+# the two jobs have different durations and must not share a number. 15 minutes is
+# comfortably longer than a fetch's worst case and comfortably shorter than the 1-hour
+# poll interval, so a lost claim is recovered well before the next scheduled poll.
+CALENDAR_CLAIM_TTL = timedelta(minutes=15)

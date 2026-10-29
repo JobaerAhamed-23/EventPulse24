@@ -1347,3 +1347,256 @@ credential.
 | The `formats` package becomes a dumping ground | The `single-ics-parser` contract and the "no Django" test. |
 | The port's break (`list[CalendarEntry]` → `CalendarResult`) breaks a caller | There is no caller yet but the fake; both are updated in the same change. |
 
+
+---
+
+## Work Item: calendar-sync-and-polling
+
+**Design doc**: `.specs-fire/intents/onboarding-and-account/work-items/calendar-sync-and-polling-design.md`
+(approved 2026-10-29 — decisions D1–D17)
+
+### Approach
+
+The write side of calendar import, as **services** — no HTTP endpoints. Four commands
+(`connect`, `sync`, `reconnect`, `disconnect`) plus the polling dispatcher.
+
+The shape of the work is dictated by three facts already in the codebase:
+
+- **A feed is a snapshot, not a delta.** So the sync is a *three-way diff* keyed on
+  `(connection, uid)` — the unique constraint `personal_event_connection_uid_uq` already
+  carries, created by the connection-model item for exactly this purpose (D1).
+- **Every mutation goes through the existing command paths** (the work item's
+  requirement), so the sync calls `create_personal_event` / `update_personal_event` /
+  `delete_personal_event` rather than writing rows. That means those commands gain
+  parameters — and the gain is where D2 and D11 live (D11).
+- **A background sync has no user to prompt**, so FR-58's forced three-way prompt cannot
+  run at import time. The pair is recorded; the prompt is presented later from
+  `/conflicts` (D3).
+
+The polling path **mirrors `ingestion`'s scheduling exactly**: the 60s tick enqueues a
+dispatcher, the dispatcher claims due connections with `FOR UPDATE SKIP LOCKED` and a TTL,
+and enqueues one sync per claim. `beat_schedule` stays exactly one tick (D8).
+
+### The decisions that shape the code
+
+| # | Decision | Where it lands |
+|---|---|---|
+| D1 | Three-way diff on `(connection, uid)`; identical → nothing | `calendar_sync.py` |
+| D2 | User edit wins over the feed; `user_modified` flag | `PersonalEvent.user_modified` |
+| D3 | Pair recorded, prompt deferred; "delete new" not offered for an import | `calendar_sync.py`, `conflict_resolutions.py` |
+| D4 | Duplicate rule not applied vs. a user-created event | `detect_conflicts(..., include_duplicates=False)` |
+| D5 | FR-20 default on import; attached on **create only** | `calendar_sync.py` |
+| D6 | Revoked → `needs_reconnect`, **events kept** | `calendar_sync.py` |
+| D7 | Transient → status alone, retry at the next due time | `calendar_sync.py` |
+| D8 | Tick → dispatcher → atomic claim with a TTL | `calendar_sync.py`, `worker/tasks.py` |
+| D9 | Connect **requests** a sync (`next_poll_at`), never fetches | `calendar_connections.py` |
+| D10 | One `calendar.synced` audit row per sync, system actor, counts only | `calendar_sync.py` |
+| D11 | The sync calls the existing commands; they gain import parameters | `personal_events.py` |
+| D12 | A time change re-judges the pairs; the plan's slots are relative | inherited from the commands |
+| D13 | Disconnect purges events + pairs + **plans** (via `delivery`) | `calendar_connections.py`, `reminder_plans.py` |
+| D14 | The entry's own zone is the event's zone | `calendar_sync.py` |
+| D15 | A failed fetch writes nothing | `calendar_sync.py` |
+| D16 | The code layout | below |
+| D17 | The log line carries counts only | `calendar_sync.py` |
+
+### Files to create
+
+| File | Purpose |
+|---|---|
+| `backend/apps/personalization/services/calendar_sync.py` | `sync_calendar`, the reconcile diff, `claim_due_connections`, `release_claim`. |
+| `backend/apps/personalization/migrations/0003_…` | `PersonalEvent.user_modified`, `CalendarConnection.sync_claimed_at`. |
+| `backend/tests/personalization/test_calendar_sync.py` | The sync: the three branches, idempotence, revoked/transient, the conflicts, the audit. |
+| `backend/tests/personalization/test_calendar_polling.py` | The due-claim: atomicity, the TTL, the batch, the ordering. |
+| `backend/tests/worker/test_calendar_tasks.py` | The dispatcher and the sync task. |
+
+### Files to modify
+
+| File | Change |
+|---|---|
+| `backend/apps/personalization/models.py` | `PersonalEvent.user_modified`; `CalendarConnection.sync_claimed_at`. |
+| `backend/apps/personalization/services/calendar_connections.py` | `connect_calendar` sets `next_poll_at`; `disconnect_calendar` purges; `reconnect_calendar` added. |
+| `backend/apps/personalization/services/personal_events.py` | `create_personal_event` / `update_personal_event` gain the import parameters and `user_modified`. |
+| `backend/apps/personalization/services/conflicts.py` | `detect_conflicts(..., include_duplicates=False)`. |
+| `backend/apps/personalization/services/conflict_resolutions.py` | "delete the new one" refused for an imported side (D3). |
+| `backend/apps/delivery/services/reminder_plans.py` | `remove_plans_for_targets` (D13's step 4). |
+| `backend/worker/tasks.py` | `schedule_calendars`, `sync_calendar`. |
+| `backend/shared/constants.py` | `CALENDAR_SYNC_BATCH`, `CALENDAR_CLAIM_TTL`. |
+| `backend/apps/personalization/admin.py` | The new columns, if listed. |
+
+### Steps
+
+1. **`shared/constants.py`** — `CALENDAR_SYNC_BATCH = 100`, `CALENDAR_CLAIM_TTL = 15 min`.
+   *Gate: the constants exist and are used by nothing yet (ruff passes).*
+2. **The models + migration** — `PersonalEvent.user_modified` (Boolean, default `False`),
+   `CalendarConnection.sync_claimed_at` (nullable DateTime). `makemigrations` generates
+   `0003`. *Gate: `manage.py check` and `makemigrations --check` pass; the existing
+   personalization tests still pass.*
+3. **`personal_events.py`** — the import parameters:
+   - `create_personal_event(..., source=…, calendar_connection_id=…, source_uid=…,
+     user_modified=False)`. The defaults keep every existing caller byte-for-byte
+     unchanged.
+   - `update_personal_event(..., user_modified=True)`.
+   *Gate: the existing personal-event tests pass unchanged.*
+4. **`conflicts.py`** — `detect_conflicts(..., include_duplicates: bool = True)`. The
+   default keeps every existing caller unchanged; the import path passes `False`.
+   *Gate: the existing conflict tests pass unchanged.*
+5. **`reminder_plans.py`** — `remove_plans_for_targets(*, user_id, target_kind,
+   target_ids) -> int`. *Gate: `delivery`'s tests pass unchanged.*
+6. **`calendar_sync.py`** — the core. `sync_calendar(*, connection, actor, now)`:
+   - fetch through `CalendarPort` (the port is injected, resolved from the registry);
+   - classify the outcome (D6, D7);
+   - diff the entries against the connection's rows (D1);
+   - create / update / delete through the commands (D11);
+   - write one audit row with the counts (D10);
+   - schedule the next poll (D7, D9).
+   Plus `claim_due_connections(*, now, limit)` and `release_claim(connection_id)` (D8).
+7. **`calendar_connections.py`** — `connect_calendar` sets `next_poll_at = now` (D9);
+   `disconnect_calendar` gains the purge (D13); `reconnect_calendar` is added (D9).
+8. **`conflict_resolutions.py`** — refuse `delete_new` when the new side is an imported
+   event (D3). *Gate: the existing resolution tests pass unchanged.*
+9. **`worker/tasks.py`** — `schedule_calendars` and `sync_calendar` (D8). The tick gains
+   one `_enqueue(schedule_calendars)` line. *Gate: `tests/worker/test_tick.py` passes
+   **unchanged** — the acceptance criterion.*
+10. **The tests** — the three new files.
+11. **The full suite + lint + contracts.**
+
+### The gates
+
+| Gate | Command | Must hold |
+|---|---|---|
+| The suite | `pytest tests/ -q` | Everything passes; nothing broken |
+| The tick | `pytest tests/worker/test_tick.py -q` | **Unchanged** — one 60s tick |
+| Coverage | `pytest --cov` | ≥ the project's floor; the new module at 100% |
+| Lint | `ruff check . && ruff format --check .` | Clean |
+| Contracts | `lint-imports` | 17 kept, 0 broken |
+| Django | `manage.py check` | No errors |
+| Migrations | `makemigrations --check` | No drift |
+
+### The risks
+
+| Risk | If it happens |
+|---|---|
+| The sync writes rows directly and the two paths drift | Step 6 goes through the commands only; a test asserts the conflict pair exists after an import, which only happens via the command path |
+| `user_modified` is set by the import's own update, freezing the mirror | The flag is an explicit parameter; the import passes `False` for an untouched row and preserves `True` for an edited one; a test covers both |
+| The claim is not atomic and two ticks sync one connection twice | `select_for_update(skip_locked=True)` + the TTL; a test claims from two "ticks" and asserts one row |
+| The disconnect leaves reminder plans behind | `remove_plans_for_targets` in `delivery`; a test asserts the plans are gone |
+| A revoked fetch deletes the user's events | D6 keeps them; a test asserts the events survive |
+| The duplicate rule fires between an import and a user event | `include_duplicates=False` on the import path; a test asserts no pair |
+| A title or UID reaches a log line | D17; a test captures the logs over a full sync and asserts no title |
+
+---
+
+### What the implementation actually did (the deltas from the plan above)
+
+The plan's eleven steps were followed in order. Four things came out differently from how
+the plan wrote them, and each is recorded here because the plan is the record of what was
+decided, not only what was predicted.
+
+1. **Step 3 grew a second parameter.** The plan put `user_modified` on the two commands.
+   The *duplicate* rule (D4) also had to be switchable on them, because the import's
+   detection must skip it — and the import reaches detection only through the commands.
+   So both commands gained `include_duplicate_conflicts: bool = True` alongside
+   `user_modified`. The default keeps every existing caller unchanged.
+
+2. **A second migration was needed.** The plan's step 2 named `0003` with the two fields.
+   The port's `CalendarFeed` carries `etag` and `last_modified`, and `CalendarResult`
+   returns new ones — but `CalendarConnection` had nowhere to keep them, so the 304 path
+   could never work and every poll was a full download. `0004` adds `etag` and
+   `last_modified` to the connection. A stale validator is cleared rather than kept: a
+   stale `ETag` would make the provider answer 304 for a feed it has changed.
+
+3. **`remove_plans_for_targets` writes one audit row per plan, not one for the batch.**
+   The plan said "a command that deletes the plans for a set of targets". AD-5 says one row
+   per mutation, and an audit row names a target — a single row for a bulk delete would
+   have to name no target, and a row that names no target cannot say what changed. So each
+   deleted plan gets its own row, carrying its target's id.
+
+4. **The tick's enqueue list changed, in `test_scheduling_tasks.py`.** The acceptance
+   criterion names `tests/worker/test_tick.py` — and that file is indeed unchanged. But
+   `tests/worker/test_scheduling_tasks.py` pins the tick's enqueued job list, and the tick
+   now enqueues `schedule_calendars` as well as `schedule_sources`. That file's
+   expectation was updated to include the new dispatcher; the tick's *shape* (one 60s beat
+   entry, enqueue-only, never touching the database) is unchanged.
+
+### The module the plan named, and what is in it
+
+`apps/personalization/services/calendar_sync.py` — the service, not the task. The task is
+the trigger; the service is the work, and the service is testable without Celery.
+
+| Function | What it does |
+|---|---|
+| `sync_calendar(*, connection_id, port, now)` | Fetch, classify, reconcile, audit, schedule (D1, D6, D7, D10, D15) |
+| `claim_due_connections(*, now, limit)` | The atomic due-claim (D8) |
+| `release_claim(connection_id)` | End a claim, however the job ended (D8) |
+| `_reconcile(*, connection, result, now)` | The three-way diff (D1) |
+
+**The reconcile is all-or-nothing.** A failed fetch writes no event row, no conflict pair
+and no reminder plan — only the connection's own status and error fields, which are not
+part of the reconcile (D15). A partial sync would delete half the user's imported events
+because the feed happened to be truncated.
+
+**The connection's row is not locked for the whole reconcile.** The claim that stops two
+ticks syncing one connection is the dispatcher's (`sync_claimed_at`); holding a row lock
+across a network fetch would hold a database connection open for the length of the fetch.
+
+**Each write is its own transaction.** The commands are individually atomic, which is
+their own guarantee. One transaction for the whole diff would roll back a correct update
+because an unrelated event failed to write.
+
+### The commands the import goes through
+
+The import calls the same three commands the user's own edits use (D11), so an imported
+event is indistinguishable from a user-created one except for its `source` and the
+connection it names:
+
+| The diff says | The command called | What the command brings |
+|---|---|---|
+| new uid | `create_personal_event` | the FR-20 default plan, the conflict detection, the audit row |
+| changed uid | `update_personal_event` | the pair reconciliation, the version bump, the audit row |
+| vanished uid | `delete_personal_event` | the pair closure, the audit row |
+
+The two flags that make the import's calls different from the user's:
+
+- `user_modified=None` — "leave the ownership as it stands". The import is applying the
+  **feed's** value, not the user's, so it must not decide who owns the row. (The plan
+  above said `False`; the code review found that `False` *resets* the flag, which hands
+  the row back to the feed and lets the next poll overwrite the user's edit. A boolean
+  cannot say "don't change it", so the parameter now has a third value — see the review's
+  delta below.)
+- `include_duplicate_conflicts=False` — an import is never a duplicate of a user-created
+  event (D4). The time rule still applies.
+
+### What the code review changed (the deltas from the plan above)
+
+The review found five defects in the implementation this plan produced. Each is fixed,
+regression-tested, and verified by reverting the fix and watching the test fail.
+
+1. **`update_personal_event`'s `user_modified` gained a third value.** It is now
+   `bool | None`: `True` (the user owns the row), `False` (the feed owns it) and `None`
+   (leave it as it stands). The import passes `None`. The plan's `False` was a real
+   defect — it *reset* the flag, so a user's edit could be overwritten by the next poll.
+
+2. **The reconcile's ownership decision moved under a row lock.** It is now made against
+   committed state, in the same transaction as the write, rather than against the
+   snapshot the diff started with. A user edit landing mid-reconcile is protected.
+   `_apply_updated` now returns whether it applied, so the counts are right too.
+
+3. **The worker records an unexpected failure.** `calendar_sync.record_unexpected_failure`
+   writes the next poll time and the error kind on the connection, so a failed calendar
+   is retried at the poll cadence rather than the tick cadence. Without it, a failed
+   calendar was re-fetched every 60 seconds, forever, each fetch carrying the user's
+   secret address.
+
+4. **`connect_calendar` and `reconnect_calendar` clear `sync_claimed_at`.** A claim left
+   behind by a dead worker kept a reconnected calendar out of the claim filter, so D9's
+   "synced within 60 seconds" was broken for up to the claim TTL.
+
+5. **`purge_connection_events` was removed.** It was a raw `DELETE` that closed no
+   conflict pairs, removed no reminder plans and wrote no audit rows, and it was the one
+   a caller would reach for by name. `disconnect_calendar` is now the only way a
+   connection's events are purged.
+
+Two docstrings were also corrected: they said the reconcile was "all-or-nothing", which
+contradicted `_reconcile`'s own docstring. D15's actual requirement — a failed *fetch*
+writes nothing — holds and is tested; the reconcile is deliberately not atomic.
+

@@ -217,6 +217,58 @@ def remove_all_reminders(
     )
 
 
+def remove_plans_for_targets(
+    *,
+    user_id: UUID,
+    target_kind: ReminderPlan.TargetKind | str,
+    target_ids: tuple[UUID, ...],
+    actor: Actor,
+    now: datetime,
+) -> int:
+    """Delete the plans of several targets at once, and return how many were removed.
+
+    A calendar disconnect purges the connection's imported events, and every one of them
+    carried a plan. `personalization` may not write `REMINDER_PLAN` (AD-16) — it calls this,
+    the owner, to do it.
+
+    The plans are **deleted**, not emptied: unlike `remove_all_reminders` — where the user
+    chose "no reminders" and the row is the record of that choice — here the target itself is
+    gone, so a row holding no slots would be a plan for an event that no longer exists.
+
+    The delete is a single statement, so it is one database round trip for any number of
+    targets. A target with no plan is simply not counted; `target_ids` may name events that
+    were never given one.
+
+    **One audit row per removed plan** (AD-5: one row per mutation). A bulk command that
+    wrote one row would have to name no target, and a row that names no target cannot say
+    *what* changed — the audit log's whole job. So each deleted plan gets its own row,
+    carrying its target's id. The cost is one row per event on a disconnect, which is the
+    same cost the event deletions themselves incur.
+    """
+    kind = _target_kind_value(target_kind)
+    if not target_ids:
+        return 0
+    with transaction.atomic(using=PERSONAL):
+        plans = list(
+            ReminderPlan.objects.using(PERSONAL).filter(
+                user_id=user_id, target_kind=kind, target_id__in=target_ids
+            )
+        )
+        if not plans:
+            return 0
+        target_ids_removed = [plan.target_id for plan in plans]
+        ReminderPlan.objects.using(PERSONAL).filter(pk__in=[plan.pk for plan in plans]).delete()
+        for target_id in target_ids_removed:
+            write_audit(
+                actor=actor,
+                action="reminder_plan.removed_for_target",
+                target_type=kind,
+                target_id=target_id,
+                details={"at": now.isoformat()},
+            )
+    return len(target_ids_removed)
+
+
 def get_plan(
     *,
     user_id: UUID,
@@ -263,6 +315,7 @@ __all__ = [
     "attach_default_plan",
     "get_plan",
     "remove_all_reminders",
+    "remove_plans_for_targets",
     "set_plan_slots",
     "slot_offsets",
 ]
