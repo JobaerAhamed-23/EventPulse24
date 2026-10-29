@@ -99,8 +99,9 @@ intents:
         completed_at: 2026-10-28T04:32:34.607Z
   - id: event-catalog-ingestion
     title: Event Catalog & Structured Ingestion
-    status: in_progress
+    status: completed
     created: 2026-10-28
+    completed_at: 2026-10-28T16:59:11.161Z
     work_items:
       - id: catalog-data-model
         status: completed
@@ -185,8 +186,9 @@ intents:
         completed_at: 2026-10-28T16:59:11.153Z
   - id: personal-events-and-saved-catalog
     title: Personal Events, Saved Catalog & Conflict Detection
-    status: in_progress
+    status: completed
     created: 2026-10-29
+    completed_at: 2026-10-29T05:31:24.902Z
     work_items:
       - id: repo-hygiene-cleanup
         status: completed
