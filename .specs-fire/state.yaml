@@ -6,7 +6,11 @@ workspace:
   type: greenfield
   structure: monolith
   autonomy_bias: balanced
-  run_scope_preference: null
+  run_scope_preference: wide
+  run_scope_history:
+    - choice: wide
+      items_count: 9
+      timestamp: 2026-10-29T00:00:00Z
   planning_sources:
     prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/
     ux: _bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/
@@ -242,7 +246,76 @@ intents:
           - saved-events-api
           - frontend-personal-and-conflict-surfaces
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-019
+      scope: wide
+      work_items:
+        - id: repo-hygiene-cleanup
+          intent: personal-events-and-saved-catalog
+          mode: autopilot
+          status: completed
+          current_phase: review
+          checkpoint_state: none
+          current_checkpoint: null
+          completed_at: 2026-10-29T02:20:28.744Z
+        - id: conflict-domain-and-constants
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+          status: in_progress
+          current_phase: plan
+          checkpoint_state: none
+          current_checkpoint: plan
+        - id: personalization-models
+          intent: personal-events-and-saved-catalog
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: delivery-reminder-plan-owner
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: personalization-write-services
+          intent: personal-events-and-saved-catalog
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: personal-events-api
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: saved-events-api
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-personal-and-conflict-surfaces
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: e2e-proof-and-contract-tests
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+      current_item: conflict-domain-and-constants
+      started: 2026-10-29T02:04:32.027Z
   completed:
     - id: run-eventpulse24-001
       scope: single
