@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:ev="http://purl.org/rss/1.0/modules/event/">
+  <channel>
+    <title>Community Calendar</title>
+    <link>https://community.example.test/</link>
+    <description>Neighbourhood events</description>
+    <item>
+      <title>Board Game Meetup</title>
+      <link>https://community.example.test/events/1</link>
+      <guid isPermaLink="false">community-1</guid>
+      <ev:startdate>2026-11-06T18:30:00-05:00</ev:startdate>
+      <ev:enddate>2026-11-06T21:00:00-05:00</ev:enddate>
+      <ev:location>Park Slope Library</ev:location>
+      <description><![CDATA[<p>Bring a game!<script>alert('x')</script></p>]]></description>
+    </item>
+    <item>
+      <title>Choir Rehearsal</title>
+      <link>/events/2</link>
+      <ev:startdate>2026-11-09T19:00:00</ev:startdate>
+      <ev:location>St. Mary's Hall</ev:location>
+    </item>
+    <item>
+      <title>Mystery Time Event</title>
+      <guid>community-3</guid>
+      <ev:startdate>2026-11-10T12:00:00</ev:startdate>
+    </item>
+    <item>
+      <title>Blog Post, Not An Event</title>
+      <guid>community-4</guid>
+      <pubDate>Wed, 04 Nov 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Bad Date</title>
+      <guid>community-5</guid>
+      <ev:startdate>next Tuesday</ev:startdate>
+    </item>
+  </channel>
+</rss>

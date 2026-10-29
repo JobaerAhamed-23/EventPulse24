@@ -5,16 +5,30 @@ import subprocess
 import sys
 from datetime import timedelta
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
+import pytest
+
+from domain.confidence import Gate, tz_gate
 from shared.constants import (
     CONFLICT_MIN_OVERLAP,
     DEFAULT_REMINDER_PLAN,
     EXTRACTION_CONFIDENCE_PUBLISH,
     EXTRACTION_CONFIDENCE_REJECT,
+    POSTPONEMENT_WINDOW,
     REMINDER_SLOT_OFFSET,
     SEND_KEY_SEPARATOR,
+    SERIES_ID_NAMESPACE,
+    TITLE_JACCARD_MIN,
+    TZ_CAP_DST_FOLD,
+    TZ_CAP_DST_GAP,
+    TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH,
     TZ_INFERENCE_CONFIDENCE_DIGEST,
+    TZ_SCORE_CONFLICT,
+    TZ_SCORE_EXPLICIT,
+    TZ_SCORE_FIXED_ZONE,
+    TZ_SCORE_VENUE_REGISTRY,
     ReminderSlot,
 )
 
@@ -25,6 +39,11 @@ def test_confidence_gates_match_spine():
     assert EXTRACTION_CONFIDENCE_REJECT == Decimal("0.5")
     assert EXTRACTION_CONFIDENCE_PUBLISH == Decimal("0.7")
     assert TZ_INFERENCE_CONFIDENCE_DIGEST == Decimal("0.7")
+    assert TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH == Decimal("0.9")
+
+
+def test_series_id_namespace_is_pinned():
+    assert str(SERIES_ID_NAMESPACE) == "cbd88e48-d511-4f1b-a595-2f31c0067ad4"
 
 
 def test_default_reminder_plan_is_one_day_plus_one_hour():
@@ -64,3 +83,24 @@ def test_constants_and_ids_import_without_django():
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_identity_thresholds_match_the_prd():
+    assert TITLE_JACCARD_MIN == Fraction(4, 5)
+    assert POSTPONEMENT_WINDOW == timedelta(days=30)
+
+
+@pytest.mark.parametrize(
+    ("score", "gate"),
+    [
+        (TZ_SCORE_EXPLICIT, Gate.PUBLISH),
+        (TZ_SCORE_VENUE_REGISTRY, Gate.PUBLISH),
+        (TZ_SCORE_FIXED_ZONE, Gate.PUBLISH_FLAGGED),
+        (TZ_CAP_DST_FOLD, Gate.PUBLISH_FLAGGED),
+        (TZ_CAP_DST_GAP, Gate.IN_REVIEW),
+        (TZ_SCORE_CONFLICT, Gate.IN_REVIEW),
+    ],
+)
+def test_each_tz_score_and_cap_lands_in_its_intended_gate(score, gate):
+    assert type(score) is Decimal
+    assert tz_gate(score) is gate

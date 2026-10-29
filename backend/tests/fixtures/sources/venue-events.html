@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Brooklyn Bowl — Upcoming</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "MusicEvent",
+      "@id": "https://venue.example.test/e/101",
+      "name": "Japanese Breakfast",
+      "url": "https://venue.example.test/e/101",
+      "startDate": "2026-11-05T19:30:00-05:00",
+      "endDate": "2026-11-05T23:00:00-05:00",
+      "eventStatus": "https://schema.org/EventScheduled",
+      "location": {
+        "@type": "Place",
+        "name": "Brooklyn Bowl",
+        "address": {"@type": "PostalAddress", "addressLocality": "Brooklyn", "addressCountry": "US"}
+      },
+      "offers": [{"@type": "Offer", "availability": "https://schema.org/SoldOut"}],
+      "description": "<p>With <b>special guests</b> &amp; friends.</p>"
+    },
+    {
+      "@type": "Event",
+      "name": "Late Night Jazz",
+      "url": "/e/102",
+      "startDate": "2026-11-12T22:00:00",
+      "endDate": "2026-11-12T02:00:00",
+      "location": {"@type": "Place", "name": "Brooklyn Bowl", "address": "Brooklyn, NY"}
+    },
+    {
+      "@type": ["Event", "TheaterEvent"],
+      "@id": "https://venue.example.test/e/103",
+      "name": "Cancelled Play",
+      "startDate": "2026-11-15T19:00:00-05:00",
+      "eventStatus": "http://schema.org/EventCancelled",
+      "location": "Brooklyn Bowl"
+    },
+    {
+      "@type": "Festival",
+      "@id": "https://venue.example.test/e/104",
+      "name": "Weekend Fest",
+      "startDate": "2026-11-20",
+      "endDate": "2026-11-22",
+      "location": {"@type": "Place", "name": "Prospect Park", "address": {"addressLocality": "Brooklyn", "addressCountry": {"@type": "Country", "name": "US"}}}
+    },
+    {
+      "@type": "Event",
+      "@id": "https://venue.example.test/e/105",
+      "name": "Online Talk",
+      "startDate": "2026-11-25T18:00:00",
+      "location": {"@type": "VirtualLocation", "url": "https://stream.example.test/"}
+    },
+    {
+      "@type": "EventSeries",
+      "@id": "https://venue.example.test/series/trivia",
+      "name": "Trivia Night",
+      "subEvent": [
+        {"@type": "SocialEvent", "@id": "https://venue.example.test/e/201", "name": "Trivia Night", "startDate": "2026-11-04T20:00:00-05:00", "location": "Brooklyn Bowl"},
+        {"@type": "SocialEvent", "@id": "https://venue.example.test/e/202", "name": "Trivia Night", "startDate": "2026-11-11T20:00:00-05:00", "location": "Brooklyn Bowl"}
+      ]
+    },
+    {"@type": "Organization", "name": "Not an event"}
+  ]
+}
+</script>
+<script type="application/ld+json">{ this is not json </script>
+<script type="text/javascript">var data = {"@type": "Event", "name": "Not JSON-LD", "startDate": "2026-12-01"};</script>
+</head>
+<body><h1>Upcoming</h1></body>
+</html>

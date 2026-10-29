@@ -33,3 +33,22 @@ def test_real_mode_fails_and_names_every_missing_adapter():
 
 def test_settings_use_the_fake_table_by_default(settings):
     assert settings.ADAPTERS == FAKE_ADAPTERS
+
+
+def test_fake_mode_fetches_from_fixtures_by_default():
+    assert adapter_paths("fake")["fetch"] == "adapters.crawl.fake.FakeFetchAdapter"
+
+
+def test_source_fetch_http_swaps_only_the_fetch_adapter():
+    paths = adapter_paths("fake", "http")
+
+    assert paths["fetch"] == "adapters.crawl.http.HttpFetchAdapter"
+    assert {k: v for k, v in paths.items() if k != "fetch"} == {
+        k: v for k, v in FAKE_ADAPTERS.items() if k != "fetch"
+    }
+
+
+def test_real_mode_has_the_http_fetch_adapter():
+    from config.adapters import REAL_ADAPTERS
+
+    assert REAL_ADAPTERS["fetch"] == "adapters.crawl.http.HttpFetchAdapter"

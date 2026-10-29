@@ -14,7 +14,7 @@ Tests prove the architecture's invariants, not just behaviour. The algorithmic c
 | Type | Tool | Location | When to Use |
 |------|------|----------|-------------|
 | Domain unit | pytest (no Django) | `backend/tests/domain/` | Every function in `domain/`: dedup identity, conflict, quiet hours, ranking, confidence |
-| App / service | pytest-django, real Postgres | `backend/tests/apps/<module>/` | Named commands, ownership, schema routing, idempotency |
+| App / service | pytest-django, real Postgres | `backend/tests/<module>/` (e.g. `tests/ingestion/`, `tests/identity/`) | Named commands, ownership, schema routing, idempotency |
 | API contract | pytest-django + Ninja TestClient | `backend/tests/api/` | Endpoint shapes, error mapping `{code, message}`, auth at edge |
 | Worker | pytest-django | `backend/tests/worker/` | Sweep claim (`SKIP LOCKED`), propagation outbox, retention sweep |
 | Architecture | import-linter, `manage.py check` | `.importlinter`, system checks | AD-2 contracts, AD-15 retention declarations |
@@ -77,7 +77,8 @@ def test_conflicts_overlap_exactly_15min_returns_false():
 - Tests that need to observe a **commit** (e.g. per-schema transaction behavior) need `transaction=True`. Otherwise pytest-django wraps every alias in an outer atomic and nothing is ever committed.
 - Pass `using=PERSONAL` / `using=CATALOG` explicitly, as in production code.
 - Both aliases share one test DB built from `eventpulse24_test_template`; `tests/conftest.py` always sets up both aliases and refuses to migrate unless both point at the test DB. Never bypass it.
-- Tests run as the owner role (`config.settings_test`). To test runtime-role privileges, open a raw `psycopg` connection with the runtime URL retargeted at the test DB, inside `with`, and roll back.
+- Tests run as the owner role (`config.settings_test`). To test runtime-role privileges, use `tests/roles.py`: `run_as(role_url, *statements)` runs statements as the role in one rolled-back transaction (with `lock_timeout`) and names the failing statement; `expect_denied(role_url, *setup, denied=sql)` passes only on **exactly** `InsufficientPrivilege`, so a trigger error can't mask a missing REVOKE. That connection can't see a test's uncommitted rows: create them with factories under `transaction=True`, then reference them by id.
+- **Trigger tests** use raw SQL through `connections[CATALOG].cursor()` inside a `transaction.atomic(using=CATALOG)` savepoint, so the Python guards are never in the path, and assert the psycopg cause (`RestrictViolation`) and message. **Constraint tests** assert `excinfo.value.__cause__.diag.constraint_name`.
 
 ## Log Assertions (AD-13)
 
@@ -102,6 +103,7 @@ def test_conflicts_overlap_exactly_15min_returns_false():
 
 **Guidelines**:
 - Factories create rows via the owning app's commands where invariants matter
+- Catalog factories subclass `CatalogFactory` (`Meta.database = CATALOG`, `skip_postgeneration_save = True`); seed Faker; build `start_time_local` from the UTC instant and IANA tz without microseconds. Superseded Events come only from `make_superseded_pair()` (the insert guard forbids inserting one).
 - Never use real user data or PII. Use synthetic emails on a reserved domain (`example.test`).
 - Include DST-boundary and non-UTC timezone cases for any time logic
 - LLM extraction fixtures are captured, sanitized JSON. Never live calls.

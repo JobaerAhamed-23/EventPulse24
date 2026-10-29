@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:xcal="urn:ietf:params:xml:ns:xcal">
+  <title>Tech Meetups</title>
+  <id>urn:uuid:feed-1</id>
+  <updated>2026-11-01T00:00:00Z</updated>
+  <entry>
+    <title>Python Night</title>
+    <id>urn:uuid:meetup-1</id>
+    <link rel="alternate" href="https://meetups.example.test/python-night"/>
+    <updated>2026-11-01T00:00:00Z</updated>
+    <summary type="html">&lt;b&gt;Talks&lt;/b&gt; and pizza</summary>
+    <xcal:dtstart>2026-11-18T23:30:00Z</xcal:dtstart>
+    <xcal:dtend>2026-11-19T02:00:00Z</xcal:dtend>
+    <xcal:location>Civic Hall</xcal:location>
+  </entry>
+  <entry>
+    <title>Undated Announcement</title>
+    <id>urn:uuid:meetup-2</id>
+    <updated>2026-11-02T00:00:00Z</updated>
+  </entry>
+</feed>

@@ -93,6 +93,92 @@ intents:
           - health-round-trip
         run_id: run-eventpulse24-009
         completed_at: 2026-10-28T04:32:34.607Z
+  - id: event-catalog-ingestion
+    title: Event Catalog & Structured Ingestion
+    status: in_progress
+    created: 2026-10-28
+    work_items:
+      - id: catalog-data-model
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        design_doc: catalog-data-model-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-10-28T06:53:33Z
+        run_id: run-eventpulse24-010
+        completed_at: 2026-10-28T08:06:49.432Z
+      - id: event-identity-and-tz-domain
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-011
+        completed_at: 2026-10-28T09:14:37.195Z
+      - id: source-fetch-port
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-012
+        completed_at: 2026-10-28T10:07:28.726Z
+      - id: structured-parsers
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - event-identity-and-tz-domain
+        run_id: run-eventpulse24-013
+        completed_at: 2026-10-28T10:41:48.650Z
+      - id: source-registry-commands-admin
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - catalog-data-model
+        run_id: run-eventpulse24-014
+        completed_at: 2026-10-28T11:47:26.363Z
+      - id: ingest-pipeline-and-lifecycle
+        status: completed
+        complexity: high
+        mode: validate
+        design_doc: ingest-pipeline-and-lifecycle-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-10-28T12:00:04Z
+        depends_on:
+          - catalog-data-model
+          - event-identity-and-tz-domain
+          - source-fetch-port
+          - structured-parsers
+          - source-registry-commands-admin
+        run_id: run-eventpulse24-015
+        completed_at: 2026-10-28T12:28:01.669Z
+      - id: ingestion-scheduling
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - ingest-pipeline-and-lifecycle
+        run_id: run-eventpulse24-016
+        completed_at: 2026-10-28T12:43:25.919Z
+      - id: public-catalog-read-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - catalog-data-model
+        run_id: run-eventpulse24-017
+        completed_at: 2026-10-28T15:12:38.004Z
+      - id: real-feeds-and-e2e-proof
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - source-registry-commands-admin
+          - ingestion-scheduling
+          - public-catalog-read-api
+        run_id: run-eventpulse24-018
+        completed_at: 2026-10-28T16:59:11.153Z
 runs:
   active: []
   completed:
@@ -168,3 +254,75 @@ runs:
           mode: confirm
       started: 2026-10-28T03:50:44.007Z
       completed: 2026-10-28T04:32:34.607Z
+    - id: run-eventpulse24-010
+      scope: single
+      work_items:
+        - id: catalog-data-model
+          intent: event-catalog-ingestion
+          mode: validate
+      started: 2026-10-28T07:03:24.721Z
+      completed: 2026-10-28T08:06:49.432Z
+    - id: run-eventpulse24-011
+      scope: single
+      work_items:
+        - id: event-identity-and-tz-domain
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T08:13:45.603Z
+      completed: 2026-10-28T09:14:37.195Z
+    - id: run-eventpulse24-012
+      scope: single
+      work_items:
+        - id: source-fetch-port
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T09:17:01.732Z
+      completed: 2026-10-28T10:07:28.726Z
+    - id: run-eventpulse24-013
+      scope: single
+      work_items:
+        - id: structured-parsers
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T10:14:25.622Z
+      completed: 2026-10-28T10:41:48.650Z
+    - id: run-eventpulse24-014
+      scope: single
+      work_items:
+        - id: source-registry-commands-admin
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T10:52:10.609Z
+      completed: 2026-10-28T11:47:26.363Z
+    - id: run-eventpulse24-015
+      scope: single
+      work_items:
+        - id: ingest-pipeline-and-lifecycle
+          intent: event-catalog-ingestion
+          mode: validate
+      started: 2026-10-28T12:00:14.861Z
+      completed: 2026-10-28T12:28:01.669Z
+    - id: run-eventpulse24-016
+      scope: single
+      work_items:
+        - id: ingestion-scheduling
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T12:32:06.978Z
+      completed: 2026-10-28T12:43:25.919Z
+    - id: run-eventpulse24-017
+      scope: single
+      work_items:
+        - id: public-catalog-read-api
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T12:49:03.166Z
+      completed: 2026-10-28T15:12:38.004Z
+    - id: run-eventpulse24-018
+      scope: single
+      work_items:
+        - id: real-feeds-and-e2e-proof
+          intent: event-catalog-ingestion
+          mode: confirm
+      started: 2026-10-28T15:37:15.026Z
+      completed: 2026-10-28T16:59:11.153Z

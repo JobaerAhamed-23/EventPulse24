@@ -8,7 +8,7 @@ import uuid
 import pytest
 
 from shared import ids
-from shared.ids import uuid7
+from shared.ids import series_id, uuid7
 
 
 @pytest.fixture
@@ -95,3 +95,30 @@ def test_uuid7_child_forked_while_lock_held_can_still_mint():
 
     _, status = os.waitpid(pid, 0)
     assert os.waitstatus_to_exitcode(status) == 0
+
+
+SOURCE_ID = uuid.UUID("00000000-0000-7000-8000-000000000001")
+
+
+def test_series_id_golden_value():
+    # Pinned: a change here silently splits every stored series (AD-4).
+    assert series_id(SOURCE_ID, "weekly-meetup") == uuid.UUID(
+        "302f9869-0498-5947-966b-7a5d36a5b755"
+    )
+
+
+def test_series_id_same_inputs_same_id_and_version_5():
+    assert series_id(SOURCE_ID, "weekly-meetup") == series_id(SOURCE_ID, "weekly-meetup")
+    assert series_id(SOURCE_ID, "weekly-meetup").version == 5
+
+
+def test_series_id_differs_by_key_and_by_source():
+    other_source = uuid.UUID("00000000-0000-7000-8000-000000000002")
+
+    assert series_id(SOURCE_ID, "weekly-meetup") != series_id(SOURCE_ID, "monthly-meetup")
+    assert series_id(SOURCE_ID, "weekly-meetup") != series_id(other_source, "weekly-meetup")
+
+
+def test_series_id_empty_key_raises():
+    with pytest.raises(ValueError):
+        series_id(SOURCE_ID, "")

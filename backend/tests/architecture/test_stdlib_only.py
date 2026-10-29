@@ -5,7 +5,12 @@ This is the allowlist half; import-linter's "domain is pure" contract is the gra
 
 import pytest
 
-from tests.architecture.checkers import BACKEND_DIR, STDLIB_ONLY_FILES, non_stdlib_imports
+from tests.architecture.checkers import (
+    BACKEND_DIR,
+    SHARED_STDLIB_ONLY_FILES,
+    STDLIB_ONLY_FILES,
+    non_stdlib_imports,
+)
 
 CHECKED_FILES = sorted((BACKEND_DIR / "domain").rglob("*.py")) + [
     BACKEND_DIR / path for path in STDLIB_ONLY_FILES
@@ -15,6 +20,19 @@ CHECKED_FILES = sorted((BACKEND_DIR / "domain").rglob("*.py")) + [
 @pytest.mark.parametrize("path", CHECKED_FILES, ids=lambda p: str(p.relative_to(BACKEND_DIR)))
 def test_file_imports_stdlib_and_allowed_modules_only(path):
     assert non_stdlib_imports(path) == []
+
+
+@pytest.mark.parametrize("path", SHARED_STDLIB_ONLY_FILES)
+def test_shared_stdlib_only_file_imports_no_project_module(path):
+    assert non_stdlib_imports(BACKEND_DIR / path, allowed=()) == []
+
+
+def test_shared_stdlib_only_check_reports_a_project_import(tmp_path):
+    path = tmp_path / "shared" / "_planted.py"
+    path.parent.mkdir()
+    path.write_text("from shared.constants import SEND_KEY_SEPARATOR\n")
+
+    assert len(non_stdlib_imports(path, root=tmp_path, allowed=())) == 1
 
 
 @pytest.fixture

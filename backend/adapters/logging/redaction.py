@@ -21,6 +21,7 @@ ALLOWED_FIELDS = frozenset(
         "send_id",
         "idempotency_key",
         "count",
+        "byte_count",
         "duration_ms",
         "attempt",
         "model",
@@ -35,6 +36,14 @@ ALLOWED_FIELDS = frozenset(
         "error_type",
         "job",
         "component",  # health check component slug: personal | catalog | redis
+        # ingest_source run summary (pipeline design D17): a fixed slug and integer counts.
+        "outcome",
+        "new_count",
+        "updated_count",
+        "unchanged_count",
+        "rejected_count",
+        "ambiguous_count",
+        "failed_count",
     }
 )
 

@@ -1,0 +1,80 @@
+{
+  "operator": {
+    "username": "operator",
+    "password": "operator-local-password",
+    "email": "operator@example.test"
+  },
+  "venues": [
+    {
+      "name": "Proof Fixture Venue",
+      "city": "Fixtureville",
+      "country_code": "US",
+      "tz": "America/New_York"
+    },
+    {
+      "name": "Park Slope Library",
+      "city": "Fixtureville",
+      "country_code": "US",
+      "tz": "America/New_York"
+    },
+    {
+      "name": "St. Mary's Hall",
+      "city": "Fixtureville",
+      "country_code": "US",
+      "tz": "America/New_York"
+    },
+    {
+      "name": "Central Library",
+      "city": "Fixtureville",
+      "country_code": "US",
+      "tz": "America/New_York"
+    }
+  ],
+  "feeds": [
+    {
+      "key": "fixture-jsonld",
+      "name": "Fixture JSON-LD events",
+      "url": "https://fixtures.example.test/events.jsonld.html",
+      "acquisition_method": "jsonld",
+      "source_type": "venue",
+      "city": "Fixtureville",
+      "tz_coverage": "full",
+      "ingestion_cadence": "PT4H",
+      "tos": {
+        "decision": "approved",
+        "evidence_url": "https://fixtures.example.test/terms",
+        "notes": "A recorded fixture served by the fake fetch adapter. No network call is made."
+      }
+    },
+    {
+      "key": "fixture-rss",
+      "name": "Fixture community calendar (RSS)",
+      "url": "https://fixtures.example.test/events.rss",
+      "acquisition_method": "rss",
+      "source_type": "community",
+      "city": "Fixtureville",
+      "tz_coverage": "partial",
+      "ingestion_cadence": "PT4H",
+      "tos": {
+        "decision": "approved",
+        "evidence_url": "https://fixtures.example.test/terms",
+        "notes": "A recorded fixture served by the fake fetch adapter. No network call is made."
+      }
+    },
+    {
+      "key": "fixture-ics",
+      "name": "Fixture calendar (ICS)",
+      "url": "https://fixtures.example.test/calendar.ics",
+      "acquisition_method": "ics",
+      "source_type": "community",
+      "city": "Fixtureville",
+      "tz_coverage": "partial",
+      "ingestion_cadence": "PT4H",
+      "tos": {
+        "decision": "approved",
+        "evidence_url": "https://fixtures.example.test/terms",
+        "notes": "A recorded fixture served by the fake fetch adapter. No network call is made."
+      }
+    }
+  ]
+}

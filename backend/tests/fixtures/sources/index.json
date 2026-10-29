@@ -1,0 +1,56 @@
+{
+  "https://fixtures.example.test/sample.rss": {
+    "file": "sample.rss",
+    "content_type": "application/rss+xml",
+    "etag": "\"sample-v1\"",
+    "last_modified": "Wed, 04 Nov 2026 10:00:00 GMT"
+  },
+  "https://fixtures.example.test/down": {
+    "content_type": "text/plain",
+    "simulate": {
+      "status": 503
+    }
+  },
+  "https://fixtures.example.test/slow": {
+    "content_type": "text/plain",
+    "simulate": "timeout"
+  },
+  "https://fixtures.example.test/venue-events.html": {
+    "file": "venue-events.html",
+    "content_type": "text/html; charset=utf-8",
+    "etag": "\"venue-v1\""
+  },
+  "https://fixtures.example.test/events.jsonld.html": {
+    "file": "events.jsonld.html",
+    "content_type": "text/html; charset=utf-8"
+  },
+  "https://fixtures.example.test/events.rss": {
+    "file": "events.rss",
+    "content_type": "application/rss+xml"
+  },
+  "https://fixtures.example.test/events.atom": {
+    "file": "events.atom",
+    "content_type": "application/atom+xml"
+  },
+  "https://fixtures.example.test/calendar.ics": {
+    "file": "calendar.ics",
+    "content_type": "text/calendar",
+    "last_modified": "Wed, 04 Nov 2026 10:00:00 GMT"
+  },
+  "https://fixtures.example.test/broken-jsonld.html": {
+    "file": "broken-jsonld.html",
+    "content_type": "text/html"
+  },
+  "https://fixtures.example.test/broken.rss": {
+    "file": "broken.rss",
+    "content_type": "application/rss+xml"
+  },
+  "https://fixtures.example.test/broken.ics": {
+    "file": "broken.ics",
+    "content_type": "text/calendar"
+  },
+  "https://fixtures.example.test/hostile.html": {
+    "file": "hostile.html",
+    "content_type": "text/html"
+  }
+}

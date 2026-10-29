@@ -73,7 +73,12 @@ VIOLATIONS = {
     "apps imports adapters": ({"apps/catalog/_planted.py": "import adapters.email\n"}, {"layers"}),
     "adapters import apps": ({"adapters/email/_planted.py": "import apps.identity\n"}, {"layers"}),
     "config imports worker": ({"config/_planted.py": "import worker\n"}, {"layers"}),
-    "worker imports config.api": ({"worker/_planted.py": "import config.api\n"}, {"layers"}),
+    # config.api assembles the app routers, so reaching it reaches the API surface too:
+    # both the layers contract (worker is below config) and worker-not-api break.
+    "worker imports config.api": (
+        {"worker/_planted.py": "import config.api\n"},
+        {"layers", "worker-not-api"},
+    ),
     "worker imports an app's API router": (
         {"worker/_planted.py": "import apps.catalog.api\n"},
         {"worker-not-api"},
@@ -92,6 +97,12 @@ VIOLATIONS = {
         {"adapters/billing/_planted.py": "import openai\n"},
         {"llm-sdk"},
     ),
+    "app imports httpx": ({"apps/ingestion/_planted.py": "import httpx\n"}, {"http-client"}),
+    "email adapter imports httpcore": (
+        {"adapters/email/_planted.py": "import httpcore\n"},
+        {"http-client"},
+    ),
+    "worker imports requests": ({"worker/_planted.py": "import requests\n"}, {"http-client"}),
 }
 
 
@@ -116,6 +127,8 @@ ALLOWED = {
     },
     "llm adapter imports its SDK": {"adapters/llm/_planted.py": "import anthropic\n"},
     "billing adapter imports stripe": {"adapters/billing/_planted.py": "import stripe\n"},
+    "crawl adapter imports httpx": {"adapters/crawl/_planted.py": "import httpx\n"},
+    "config wires in the crawl adapter": {"config/_planted.py": "import adapters.crawl.http\n"},
     "worker wires in the llm adapter": {
         "adapters/llm/_planted.py": "import anthropic\n",
         "worker/_planted.py": "import adapters.llm._planted\n",
@@ -142,7 +155,11 @@ def test_every_backend_package_is_a_root_package():
 
 def test_every_adapter_is_covered_by_the_sdk_contracts():
     adapters = _packages(BACKEND_DIR / "adapters")
-    for contract_id, owner in (("llm-sdk", "llm"), ("stripe-sdk", "billing")):
+    for contract_id, owner in (
+        ("llm-sdk", "llm"),
+        ("stripe-sdk", "billing"),
+        ("http-client", "crawl"),
+    ):
         sources = set(CONTRACTS[contract_id]["source_modules"])
         assert {f"adapters.{a}" for a in adapters - {owner}} <= sources, contract_id
         assert f"adapters.{owner}" not in sources
