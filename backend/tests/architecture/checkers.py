@@ -126,13 +126,27 @@ def direct_write_calls(source: str) -> list[str]:
     """`.save()`, `.create()` and the other ORM write calls in `source`, by line.
 
     Syntactic, so any receiver counts (a `dict.update()` too): surface modules avoid those names.
+
+    **A decorator is not a write.** `@router.delete("/events/{id}")` registers a route; it
+    does not delete a record. The route decorators are named after HTTP verbs, so a blanket
+    "any attribute call" rule would flag every `DELETE` endpoint a surface declares. A
+    decorator is therefore excluded — a genuine `obj.delete()` in an expression is still
+    reported.
     """
+    tree = ast.parse(source)
+    decorator_lines = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Call):
+                    decorator_lines.add(decorator.lineno)
     return [
         f"{node.lineno}: .{node.func.attr}()"
-        for node in ast.walk(ast.parse(source))
+        for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr in WRITE_CALLS
+        and node.lineno not in decorator_lines
     ]
 
 

@@ -243,6 +243,15 @@ def test_get_event_for_a_superseded_event_is_not_found():
     assert response.status_code == 404
 
 
+def test_get_event_for_an_event_that_has_already_started_is_not_found():
+    """The detail shows the same set the list does: published, not superseded, not started."""
+    event = EventFactory(start_time_utc=timezone.now() - HOUR)
+
+    response = get_event(event.id)
+
+    assert response.status_code == 404
+
+
 def test_anonymous_request_succeeds_without_signing_in():
     event = EventFactory(start_time_utc=BASE + HOUR)
 

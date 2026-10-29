@@ -229,6 +229,23 @@ def test_get_public_event_raises_not_found_for_an_unknown_id():
         get_public_event(event_id=uuid4())
 
 
+def test_get_public_event_raises_not_found_for_an_event_that_has_started():
+    """The `now` bound is the module's own documented rule: only *upcoming* events are visible."""
+    event = EventFactory(start_time_utc=NOW - HOUR)
+
+    with pytest.raises(EventNotFoundError):
+        get_public_event(event_id=event.id, now=NOW)
+
+
+def test_get_public_event_without_a_now_bound_returns_a_started_event():
+    """A record of something already saved stays readable after the event has begun."""
+    event = EventFactory(start_time_utc=NOW - HOUR)
+
+    found = get_public_event(event_id=event.id)
+
+    assert found.id == event.id
+
+
 def test_public_event_carries_no_raw_source_payload():
     event = EventFactory(start_time_utc=NOW + HOUR, description="Stripped source text")
 

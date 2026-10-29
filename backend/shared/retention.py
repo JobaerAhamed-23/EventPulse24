@@ -13,7 +13,8 @@ from django.apps import apps
 class RetentionCategory(StrEnum):
     """PRD §10.2 retention categories, plus one explicit exemption."""
 
-    # Personal events + saved events: while the account is active; purged ≤30 days after deletion.
+    # Personal events + saved events + the conflicts between them: while the account is
+    # active; purged ≤30 days after deletion.
     ACCOUNT_CONTENT = "account_content"
     # Personal email addresses and calendar credentials: while active; encrypted at rest;
     # purged on disconnect or account deletion.

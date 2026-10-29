@@ -173,6 +173,32 @@ function updateWorkItemMarkdown(rootPath, intentId, workItemId, status, runId, c
 }
 
 /**
+ * Sync a work item's status into state.intents[].work_items[].
+ *
+ * The run record in state.runs.active[] and the intent record in state.intents[]
+ * are two views of the same progress. updateIntentMarkdown() derives the brief's
+ * status from state.intents[].work_items[], so that array has to stay accurate
+ * after every item completes — otherwise the brief is computed from a stale
+ * snapshot and reports the wrong status for the whole intent.
+ */
+function syncIntentWorkItemState(state, intentId, workItemId, status, runId, completedAt) {
+  const intent = state.intents?.find(i => i.id === intentId);
+  if (!intent || !Array.isArray(intent.work_items)) {
+    return false;
+  }
+  const wi = intent.work_items.find(w => w.id === workItemId);
+  if (!wi) {
+    return false;
+  }
+  wi.status = status;
+  if (runId) wi.run_id = runId;
+  if (completedAt && status === 'completed') {
+    wi.completed_at = completedAt;
+  }
+  return true;
+}
+
+/**
  * Update intent brief.md frontmatter based on work item statuses.
  */
 function updateIntentMarkdown(rootPath, intentId, state) {
@@ -487,6 +513,16 @@ function completeCurrentItem(rootPath, runId, params = {}, options = {}) {
   // Sync markdown frontmatter for completed work item
   const completedWorkItem = workItems.find(wi => wi.id === currentItemId);
   if (completedWorkItem) {
+    // Keep state.intents[].work_items[] in step with the run record before the
+    // brief's status is derived from it.
+    syncIntentWorkItemState(
+      state,
+      completedWorkItem.intent,
+      currentItemId,
+      'completed',
+      runId,
+      completedTime
+    );
     updateWorkItemMarkdown(
       rootPath,
       completedWorkItem.intent,
@@ -501,6 +537,14 @@ function completeCurrentItem(rootPath, runId, params = {}, options = {}) {
 
   // Also update next item's markdown to in_progress
   if (nextItem) {
+    syncIntentWorkItemState(
+      state,
+      nextItem.intent,
+      nextItem.id,
+      'in_progress',
+      null,
+      null
+    );
     updateWorkItemMarkdown(rootPath, nextItem.intent, nextItem.id, 'in_progress', null, null);
   }
 

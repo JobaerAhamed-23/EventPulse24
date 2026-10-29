@@ -31,8 +31,11 @@ TZ_SCORE_CONFLICT = Decimal("0.60")  # two explicit claims disagree: a human dec
 TZ_CAP_DST_FOLD = Decimal("0.80")  # naive time occurs twice; the first is taken
 TZ_CAP_DST_GAP = Decimal("0.65")  # naive time doesn't exist in that zone
 
-# AD-4 / FR-15: rule (b) title-fingerprint Jaccard threshold, exact (no float boundary).
-TITLE_JACCARD_MIN = Fraction(4, 5)
+# AD-4 / FR-15 / FR-58: the ≥80% title token-overlap threshold, exact (no float boundary).
+# One threshold, two rules: catalog identity (rule b) and the personal-event duplicate
+# prompt both mean "≥80% Jaccard overlap on tokens" (PRD §3, FR-58). A float 0.8 is not
+# exactly 4/5, and a boundary test on a float would be a lie.
+TITLE_TOKEN_OVERLAP_MIN = Fraction(4, 5)
 
 # AD-4: a move within this distance of the original start keeps the event_id (inclusive).
 POSTPONEMENT_WINDOW = timedelta(days=30)
@@ -88,8 +91,28 @@ REMINDER_SLOT_OFFSET = {
 # AD-16: FR-9 and FR-20 share this one default; never a second literal.
 DEFAULT_REMINDER_PLAN = (ReminderSlot.ONE_DAY, ReminderSlot.ONE_HOUR)
 
+# FR-9 allows "one custom slot" alongside the four named tiers, and AD-7's send key names it
+# by its own id. A custom slot is therefore stored as a string id, and the prefix marks it as
+# one so it can never be mistaken for a named tier (`5d`, `2d`, `1d`, `1hr`).
+CUSTOM_SLOT_PREFIX = "custom:"
+
+# FR-9: at most this many slots in one plan (the four named tiers, or the named tiers plus
+# one custom slot).
+REMINDER_PLAN_MAX_SLOTS = 4
+
 # AD-21 / FR-33: two UTC intervals conflict when they overlap by strictly more than this.
 CONFLICT_MIN_OVERLAP = timedelta(minutes=15)
+
+# FR-58: how far either side of a candidate's start the scan reaches for other events. This is
+# NOT the overlap threshold: the window decides which events to *look at*, while
+# CONFLICT_MIN_OVERLAP decides when two of them *clash*. The window belongs to the service
+# layer (which events to compare); the threshold belongs to `domain.conflict`.
+CONFLICT_SCAN_WINDOW = timedelta(minutes=30)
+
+# FR-58: a personal event is a likely duplicate of another when their names overlap by at least
+# TITLE_TOKEN_OVERLAP_MIN and their starts are within this distance. Absolute, not one-sided:
+# "starts within 24 hours" reads the same either way round.
+DUPLICATE_START_WINDOW = timedelta(hours=24)
 
 # AD-7: joins send-key parts. ":" keeps each UUID a 36-char run, so keys survive log scrubbing.
 SEND_KEY_SEPARATOR = ":"
