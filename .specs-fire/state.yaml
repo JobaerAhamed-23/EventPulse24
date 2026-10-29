@@ -194,7 +194,7 @@ intents:
         mode: autopilot
         depends_on: []
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T02:20:28.744Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: conflict-domain-and-constants
         status: completed
         complexity: medium
@@ -202,7 +202,7 @@ intents:
         depends_on:
           - repo-hygiene-cleanup
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T02:41:44.723Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: personalization-models
         status: completed
         complexity: high
@@ -210,7 +210,7 @@ intents:
         depends_on:
           - repo-hygiene-cleanup
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T03:03:09.953Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: delivery-reminder-plan-owner
         status: completed
         complexity: medium
@@ -218,7 +218,7 @@ intents:
         depends_on:
           - repo-hygiene-cleanup
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T03:28:59.656Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: personalization-write-services
         status: completed
         complexity: high
@@ -228,7 +228,7 @@ intents:
           - personalization-models
           - delivery-reminder-plan-owner
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T03:58:32.237Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: personal-events-api
         status: completed
         complexity: medium
@@ -236,7 +236,7 @@ intents:
         depends_on:
           - personalization-write-services
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T04:26:19.877Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: saved-events-api
         status: completed
         complexity: medium
@@ -244,7 +244,7 @@ intents:
         depends_on:
           - personalization-write-services
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T04:52:05.374Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: frontend-personal-and-conflict-surfaces
         status: completed
         complexity: medium
@@ -252,7 +252,7 @@ intents:
         depends_on:
           - personalization-write-services
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T05:14:06.298Z
+        completed_at: 2026-10-29T05:31:56.212Z
       - id: e2e-proof-and-contract-tests
         status: completed
         complexity: medium
@@ -262,86 +262,9 @@ intents:
           - saved-events-api
           - frontend-personal-and-conflict-surfaces
         run_id: run-eventpulse24-019
-        completed_at: 2026-10-29T05:31:24.897Z
+        completed_at: 2026-10-29T05:31:56.212Z
 runs:
-  active:
-    - id: run-eventpulse24-019
-      scope: wide
-      work_items:
-        - id: repo-hygiene-cleanup
-          intent: personal-events-and-saved-catalog
-          mode: autopilot
-          status: completed
-          current_phase: review
-          checkpoint_state: none
-          current_checkpoint: null
-          completed_at: 2026-10-29T02:20:28.744Z
-        - id: conflict-domain-and-constants
-          intent: personal-events-and-saved-catalog
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T02:41:44.723Z
-        - id: personalization-models
-          intent: personal-events-and-saved-catalog
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T03:03:09.953Z
-        - id: delivery-reminder-plan-owner
-          intent: personal-events-and-saved-catalog
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T03:28:59.656Z
-        - id: personalization-write-services
-          intent: personal-events-and-saved-catalog
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T03:58:32.237Z
-        - id: personal-events-api
-          intent: personal-events-and-saved-catalog
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T04:26:19.877Z
-        - id: saved-events-api
-          intent: personal-events-and-saved-catalog
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T04:52:05.374Z
-        - id: frontend-personal-and-conflict-surfaces
-          intent: personal-events-and-saved-catalog
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T05:14:06.298Z
-        - id: e2e-proof-and-contract-tests
-          intent: personal-events-and-saved-catalog
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T05:31:24.897Z
-      current_item: null
-      started: 2026-10-29T02:04:32.027Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -487,3 +410,35 @@ runs:
           mode: confirm
       started: 2026-10-28T15:37:15.026Z
       completed: 2026-10-28T16:59:11.153Z
+    - id: run-eventpulse24-019
+      scope: wide
+      work_items:
+        - id: repo-hygiene-cleanup
+          intent: personal-events-and-saved-catalog
+          mode: autopilot
+        - id: conflict-domain-and-constants
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+        - id: personalization-models
+          intent: personal-events-and-saved-catalog
+          mode: validate
+        - id: delivery-reminder-plan-owner
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+        - id: personalization-write-services
+          intent: personal-events-and-saved-catalog
+          mode: validate
+        - id: personal-events-api
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+        - id: saved-events-api
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+        - id: frontend-personal-and-conflict-surfaces
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: personal-events-and-saved-catalog
+          mode: confirm
+      started: 2026-10-29T02:04:32.027Z
+      completed: 2026-10-29T05:31:56.212Z
