@@ -31,4 +31,13 @@ describe("HomePage", () => {
 
     expect(screen.getByText("Personal events section")).toBeInTheDocument();
   });
+
+  it("is rendered per request, so the build never reads the user's events", async () => {
+    // The page shows the signed-in user's own events, which is per-session state. A
+    // statically prerendered page would be wrong for every user, and rendering it at
+    // build time would need a live Django. So the route is dynamic.
+    const page = await import("@/app/page");
+
+    expect(page.dynamic).toBe("force-dynamic");
+  });
 });

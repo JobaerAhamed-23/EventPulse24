@@ -1304,3 +1304,150 @@ route. No state library.
 
 **Ready.** All acceptance criteria are met, the four defects found are fixed and pinned
 by tests, and the gaps above are stated rather than papered over.
+
+---
+
+## ⑨ `e2e-proof-and-contract-tests` — review
+
+The proof item. The review question is not "are the tests green" — it is "do the tests
+prove what they claim, and did the proof find anything?"
+
+### The acceptance criteria, one by one
+
+| Criterion | Verdict | Evidence |
+|---|---|---|
+| A recorded end-to-end scenario runs against the local stack and passes | **Met** | `test_the_whole_personal_event_and_save_flow_holds_together` — eight numbered steps through the real HTTP surface, real services, real models, real schemas. Only the fetch adapter and the worker are substituted, both named. |
+| Register a source, ingest a real event, so `catalog` has data | **Met** | `seed_local_stack` + the tick + the inline ingest. The scenario then selects a **published, not-superseded, upcoming** event by `publication_status` and `status` — the two fields were conflated in the first draft and the test caught it. |
+| Create a personal event with an explicit timezone; it persists in `personal` and is returned by the list | **Met** | 201, the row is in `personal`, `start_time_tz` is the named zone, `start_utc` is the instant, and the list returns it. The instant and the zone are proved to agree (AD-6). |
+| A second overlapping event answers 409 with exactly three actions and does not complete silently | **Met** | 409, one conflict, `kind == "time"`, actions exactly `{keep_both, edit_new, delete_new}`, and the event **was written** — the pair is active and awaiting an answer. |
+| "Keep both" is persisted with a `keep_both` resolution, and the pair is never re-prompted | **Met** | The pair is `resolved`/`keep_both` with `resolved_at` set; the re-clash produces **no second pair** and the pair stays resolved; replaying the answer is refused with **422 `conflict_already_resolved`**. |
+| Re-create the same conflicting pair → no prompt appears | **Met, by edit rather than re-create** | See below — the work item's wording is impossible to satisfy literally, and the edit is the faithful proof. |
+| The `SAVED_EVENT` row exists with a snapshot of `start_utc`, `end_utc` and `event_version` | **Met** | All three asserted against the catalog row. |
+| A personal event overlapping the save answers 409 with the three actions | **Met** | 409, three actions, and the conflict's other side is the **saved event's own id**. |
+| "Delete the new one" removes the event, but the resolution is still recorded and the status is resolved-not-cleared | **Met** | The event is gone; the pair is `resolved` with `resolution == delete_new` and `resolved_at` set — explicitly not the NULL-resolution `cleared_by_state_change` shape. |
+| The save-race is proven, not asserted, with a deterministic interleaving | **Met** | The catalog read is patched so the first read sees version N and the second N+1. A **control case** (steady version → not stale) is included, without which the positive case would only prove the endpoint has a `stale` field. |
+| "Exactly 15 minutes is not a conflict" — 15 min → no conflict, 15 min + 1 s → conflict | **Met** | 201, then 409 with `kind == "time"`. |
+| The 80% threshold is pinned at exactly 80% and just below; the 24-hour window at its boundary | **Met** | `Fraction(4, 5)` and `Fraction(3, 4)`, compared as **rationals**. 23 hours → duplicate; 25 hours → not. |
+| A resolved `CONFLICT_PAIR` is immutable and is not re-prompted | **Met** | The 422 replay, plus the pair-count check, plus the pair's unchanged status. |
+| A `SAVED_EVENT` snapshot survives a catalog postponement unchanged — the snapshot's `event_version` is behind the catalog's | **Met** | The catalog is moved forward; the snapshot's `event_version` and `start_utc` are asserted to be **behind** it, and the pre-propagation state is named as correct. |
+| AD-3 (schema separation) is verified | **Met** | `information_schema` for the table placement; the cross-schema foreign-key query returns empty; the three new models declare no relation field; `SavedEvent.event_id` and the pair's two side ids have no `remote_field`. |
+| AD-16 (write ownership) is verified | **Met** | Owning app read from model metadata; no module outside `personalization` imports its models; `personalization` reaches the plan through `delivery`'s service (the source names the service, not the models); the service leaks no model. |
+| AD-21 (snapshot semantics): both sides of a pair carry the indicator | **Met** | A real pair is written and the real `pairs_for_side` finds it from **both** sides — the same row id — and nothing for a side that is not in the pair. |
+| `make lint-imports` passes, with `models-personalization` and `models-delivery` green | **Met** | 13 contracts kept, 0 broken. |
+| `manage.py check` passes, including the AD-15 retention check for every new model | **Met** | No issues. Every new model declares `ACCOUNT_CONTENT` or `AUDIT_LOG`. |
+| CI is green, including the coverage gates | **Met** | Every gate that CI runs was run locally: 2082 backend, 149 frontend, 99.29% coverage, `domain/` at 100%, lint, typecheck, format, import-lint, `manage.py check`, `makemigrations --check`, `next build`, and `make client` producing a byte-identical contract. |
+| The backend and frontend suites pass with no skipped or quarantined tests | **Met** | `-rs` reports none. |
+| `beat_schedule` is still exactly one 60s tick; `test_tick.py` passes untouched | **Met** | 5 passed; the file was not modified. |
+| A test report records the scenario, the boundaries, the invariants, the coverage and the omitted behaviour | **Met** | The item ⑨ section of `test-report.md`. |
+
+### What the review turned up
+
+**The frontend build was broken, and the proof item's build gate is what found it.**
+`next build` failed with `ERR_INVALID_URL` on `/api/personal/events`.
+
+The first draft of this item ran the backend gates, the frontend tests and the lint — and
+all of them were green. The build was not among them. It was run because the CI workflow
+has a `Production build` step and the acceptance criteria say "CI is green"; running the
+build locally is what turned a green-looking item red.
+
+Three defects sat behind the one symptom, and each is a separate mistake:
+
+1. **The page was statically prerendered.** The page shows the signed-in user's own
+   events — per-session state. A static page is wrong for every user, and rendering it at
+   build time needs a live Django. The first attempt put `export const dynamic =
+   "force-dynamic"` on the **section component**, which changed nothing: Next reads route
+   segment config from the **page** and layout files, so a nested component's export is
+   invisible to the router. The build then still marked `/` as `○ (Static)`. Moving the
+   export to `app/page.tsx` is what actually made `/` `ƒ (Dynamic)`.
+2. **The read did not fail quietly, despite saying it did.** The component's docstring
+   promised "The read is allowed to fail quietly: a signed-out visitor sees an empty list
+   rather than an error page" — and had no `try`/`catch`. A docstring that describes a
+   guarantee the code does not make is worse than no docstring: it makes a reader stop
+   looking. The fix is a `catch` that returns the empty list.
+3. **The read was attempted with no base URL to reach.** With no `API_BASE_URL` set — the
+   build environment has none — `apiBaseUrl()` returns `undefined` and the client's base
+   URL is empty. Issuing the request anyway is a request that cannot be made. Fixed by
+   returning the empty list when there is no base URL.
+
+The defect belongs to item ⑧, which owns the frontend surfaces, and it was fixed there
+rather than absorbed into this item's scope — the ownership map still describes reality.
+
+**The scenario's step 4 had to change shape.** The work item says "Re-create the same
+conflicting pair. No prompt appears." Taken literally, that is not provable: a re-created
+event has a **new id**, so it is a **new** pair, and the prompt that does not appear is
+about a different pair. A delete-and-recreate proves nothing about immutability. The
+faithful proof is to **edit the second event back into the first one's time**, which
+re-detects the very same `pair_id`, and then to show that the pair is still resolved, that
+the pair count for those two sides is still 1, and that replaying the answer is refused.
+The test does that, and says why in a comment.
+
+**Two assertions were wrong about the world, and the tests corrected them.** The first
+draft filtered the catalog for `status="published"` and found nothing: `status` is the
+**lifecycle** (`scheduled`/`postponed`/`cancelled`/`superseded`) and `publication_status`
+is the **public** flag. And the 80% boundary was written with five-word titles and came
+out at 2/3, because `title_fingerprint` drops stop words (`for`, `and`, `the`) and the
+fingerprints held three content tokens each — exactly 4/5 needs a union of five over an
+intersection of four, which means one title with four content tokens against one with
+five. Neither was a bug in the code; both were bugs in the test's model of the code.
+
+**One assertion was float-naive.** `Fraction(4, 5) == 0.8` is **False** — 0.8 is not
+exactly 4/5 in binary floating point. The threshold is a rational precisely so that the
+boundary is decidable; the test now compares against `Fraction(4, 5)` and against
+`shared.constants.TITLE_TOKEN_OVERLAP_MIN`, never against a float.
+
+**The duplicate-window test needed two users.** With one user, the "outside" case at 25
+hours is still inside the 24-hour window of the "inside" case at 23 hours — so it
+conflicts, and for the wrong reason. The test now gives each case its own calendar.
+
+### The decisions worth defending
+
+- **The scenario is one test, not eight.** The point of a proof is that the steps
+  compose: the second event clashes *because of* the first, the re-clash is not
+  re-prompted *because* the first pair was resolved, and the delete resolves *because*
+  the pair was answered. Splitting it into independent assertions would test the parts
+  and lose the proof.
+
+- **The race is forced, not raced.** A probabilistic race test is a flaky test, and a
+  flaky test in CI is worse than no test. Patching the catalog read so the first call
+  returns N and the second N+1 reproduces the interleaving exactly — same order, same
+  reads, same observable result — and it does it every time.
+
+- **The patch is at the service's namespace, not the catalog module's.** `save_event`
+  does `from …catalog_read import get_public_event`, so the name it calls is bound in
+  `apps.personalization.services.saved_events`. Patching the catalog module instead
+  would not be seen by the service, and the test would silently patch nothing — a test
+  that proves nothing while looking like it proves something.
+
+- **A control case for the race.** "Stale is True" alone would only show the endpoint
+  has a `stale` field. The steady-version case shows the flag means something.
+
+- **The architecture invariants are *extended*, not duplicated.** The cross-schema
+  foreign-key check and the delivery-ownership checks already existed from earlier
+  intents. This file adds what is new — this intent's models, the reminder-plan
+  attachment, the indicator's symmetry — rather than writing a second copy of the same
+  assertion.
+
+- **The symmetry is proved behaviourally.** The first draft mocked the manager to
+  capture the query filter, which would have proved that a mock was called. The final
+  version writes a real pair and reads it through the real `pairs_for_side` from both
+  sides — the same row id — which is the property that actually matters.
+
+- **The `SAVED_EVENT` snapshot's staleness is asserted, not repaired.** The work item
+  says the test should assert the snapshot's `event_version` is behind the catalog's.
+  Repairing it is AD-17's job, a later intent. The test says so in a comment, so the
+  pre-propagation state cannot be mistaken for a bug by the next reader.
+
+### The scope held
+
+No production code was changed for the backend — this item added tests only. The one
+production fix (the frontend build) was made in the item that owns that code. No Pulse
+Card, no timeline, no `/conflicts` list endpoint, no free-tier save quota, no AD-17
+propagation. The FR-48 quota is recorded as a known gap for the Pro tier intent, so a
+silent omission here does not read as "done" later.
+
+### Verdict
+
+**Ready.** Every acceptance criterion is met. One real defect was found and fixed — the
+frontend build, which the backend and frontend test suites could not see — and three
+further errors in the tests themselves were corrected against the code as it actually
+behaves. The gaps are stated rather than papered over.

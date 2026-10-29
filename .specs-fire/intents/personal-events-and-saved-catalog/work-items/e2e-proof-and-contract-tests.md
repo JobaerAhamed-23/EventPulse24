@@ -4,7 +4,7 @@ title: End-to-End Proof & Contract Tests
 intent: personal-events-and-saved-catalog
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - personal-events-api
   - saved-events-api

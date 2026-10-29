@@ -1160,3 +1160,194 @@ opens.
 - [x] Lint, typecheck, format and import-lint gates clean
 - [x] No new colour tokens, no new hex values, no new CSS variables
 - [x] No Tailwind motion class; the API reached only through `lib/backend-client.ts`
+
+---
+
+## ⑨ `e2e-proof-and-contract-tests` — the proof
+
+The final item. It proves the intent works end to end, that the architectural invariants
+still hold after this intent's code landed, and that the edge cases are pinned.
+
+Three files, **22 new backend tests** and **3 new frontend tests**.
+
+### The recorded scenario, end to end
+
+`backend/tests/e2e/test_personal_events_and_saved_catalog.py::test_the_whole_personal_event_and_save_flow_holds_together`
+drives the **real HTTP surface** — the same endpoints the browser drives — through one
+recorded scenario. It is one test, not a sequence of independent assertions, because the
+point of a proof is that the *steps compose*.
+
+| # | Step | What it proves |
+|---|---|---|
+| 1 | Create a personal event with an explicit timezone | It persists in `personal`, keeps `start_time_utc` and `start_time_tz`, and comes back from the list. The stored instant and the named zone agree (AD-6): 19:30 in Los Angeles is 03:30 UTC. |
+| 2 | A second event overlapping the first | **409** with `details.event_id`, one conflict, `kind == "time"`, and **exactly three actions** — `{keep_both, edit_new, delete_new}`. The event **was written**: a 409 is a pending prompt, not a failed write. |
+| 3 | Answer "Keep both — I'll manage" | The pair is `resolved` with `resolution == keep_both` and `resolved_at` set. |
+| 4 | Make the **same two events** clash again | The pair is **not re-prompted**. The pair count for those two sides is still 1, the pair is still `resolved`/`keep_both`, and replaying the resolution answers **422 `conflict_already_resolved`** — a resolved pair is immutable (AD-21). |
+| 5 | Save a public event from the ingested catalog | The `SAVED_EVENT` row carries a snapshot of the event's `start_utc`, `end_utc` and `event_version`. |
+| 6 | A personal event overlapping the save | **409** with three actions, and the conflict's other side is the saved event's own id. |
+| 7 | Answer "Delete the new one" | The new event is gone, but the resolution **is still recorded** on the pair, and the pair's status is `resolved` — **resolved-not-cleared**, not the NULL-resolution `cleared_by_state_change` shape. |
+| 8 | Read the state back | The list shows the first event and not the deleted one; the saves list shows exactly the one save. |
+
+Only two things are substituted, both deliberately and both named in the file's docstring:
+the catalog fetch is served by the fake adapter from recorded fixtures, and the worker is
+run inline.
+
+**Why step 4 edits rather than recreates.** The work item asks for "re-create the same
+conflicting pair → no prompt". A *re-created* event has a new id, so it is a **new** pair
+and the assertion would prove nothing. The test instead **edits the second event back
+into the first one's time**, which re-detects the very same `pair_id` — and then proves
+that pair is not re-prompted. The immutability half is proved separately, by the 422
+replay.
+
+### The save-race, proven deterministically
+
+`backend/tests/e2e/test_save_race.py`. AD-21: "A save re-reads the Event's version after
+commit and requests re-propagation for that user if it moved meanwhile, so a save racing a
+postponement cannot keep a stale snapshot."
+
+**The interleaving is forced, not hoped for.** A probabilistic race test is a flaky test,
+and a flaky test in CI is worse than no test. So the *catalog read* the save service makes
+is patched: the **first** read — inside the transaction, the one that stamps the snapshot —
+returns version N; the **second** read — after the commit, the one that checks — returns
+version N+1. That is the postponement-lands-mid-save interleaving, reproduced every time.
+
+| Test | What it proves |
+|---|---|
+| `test_a_save_that_races_a_postponement_reports_itself_stale` | The save answers `stale: true` with `current_version == event_version + 1`; the snapshot keeps the version it was **stamped** with (repairing it is AD-17's job, a later intent); the catalog was read exactly twice. |
+| `test_a_save_that_does_not_race_is_not_stale` | The **control case**. Without it, "stale is True" would only prove the endpoint has a `stale` field. |
+| `test_a_snapshot_survives_a_catalog_postponement_unchanged` | A postponed event's snapshot is **not** repaired by a later read. The snapshot's `event_version` is behind the catalog's and its `start_utc` is behind the catalog's — the correct pre-propagation state, stated explicitly so it cannot be mistaken for a bug. The display fields (`title`) *do* come from the catalog, so an editorial correction shows up immediately. |
+| `test_a_save_is_idempotent_and_one_row` | Saving the same event twice is one row: 201 then 200, the same id. |
+| `test_a_save_of_an_unpublished_event_is_not_found` | A hidden event cannot be saved — the public catalog is one truth. |
+
+The patch is at the **service's** namespace (`apps.personalization.services.saved_events`),
+not the catalog module's: `save_event` does `from …catalog_read import get_public_event`,
+so the name it calls is bound in the service module. Patching the catalog module instead
+would not be seen by the service — and a test that silently patches nothing proves nothing.
+
+### The boundary cases, pinned
+
+| Boundary | At the edge | Just past it |
+|---|---|---|
+| **15-minute overlap** (AD-21: *strictly more than*) | Exactly 15 minutes → **201**, no conflict. | 15 minutes and one second → **409**, `kind == "time"`. |
+| **80% token overlap** (`Fraction(4, 5)`) | Exactly `Fraction(4, 5)` → duplicate. | `Fraction(3, 4)` → not a duplicate. |
+| **24-hour duplicate window** | 23 hours earlier → **409** duplicate. | 25 hours earlier → **201**, no conflict. |
+
+Two things worth recording about the 80% boundary:
+
+- **The threshold is `Fraction(4, 5)`, and the test compares against `Fraction(4, 5)`,
+  not `0.8`.** `Fraction(4, 5) == 0.8` is **False** — 0.8 is not exactly 4/5 in binary
+  floating point. The threshold is a rational precisely so that this boundary is decidable
+  without a float comparison anywhere.
+- **The tokenisation drops stop words.** `domain.dedup.title_fingerprint` splits a title
+  into *content* tokens and *stop* tokens (`and`, `for`, `the`, …), and Jaccard compares
+  the **content** sets. So exactly 4/5 needs a union of five over an intersection of four —
+  one title with four content tokens against one with five. The first draft of this test
+  used five-word titles and got 2/3, because "for" and "and" are stop words and the
+  fingerprints held three content tokens each.
+
+The duplicate-window test gives each case its **own user**. With one user, the "outside"
+case at 25 hours would still be inside the window of the "inside" case at 23 hours — the
+conflict would be real, and for the wrong reason.
+
+### The architecture invariants, re-verified
+
+`backend/tests/architecture/test_personal_events_invariants.py` — 13 tests, alongside the
+contract tests from `project-scaffold`. Structural assertions about the codebase, not
+scenario tests.
+
+| Invariant | How it is proved |
+|---|---|
+| **AD-3** schema separation | The personal tables live in `personal` and the catalog's in `catalog`, verified through `information_schema` rather than assumed from the router; **no foreign key crosses from `personal` to `catalog`** (queried, not assumed); the three new models declare **no relation field at all**; `SavedEvent.event_id` and `ConflictPair.left_id`/`right_id` are plain `UUIDField`s with no `remote_field`. |
+| **AD-16** write ownership | The owning app of each table is read from the model metadata: `personalization` owns `PERSONAL_EVENT`, `SAVED_EVENT` and `CONFLICT_PAIR`; `delivery` owns `REMINDER_PLAN`. **No module outside `personalization` imports `apps.personalization.models`.** `personalization` reaches the reminder plan through `delivery`'s published service — the source names `apps.delivery.services.reminder_plans` and **not** `apps.delivery.models` — and the service hands over plain data, not a model instance. |
+| **AD-21** snapshot semantics | The conflict indicator is symmetric **by construction**: a real pair is written, and the real `pairs_for_side` service finds it from **both** sides — the same row id from either position, and nothing for a side that is not in the pair. The pair stores both sides, so there is one fact and one reader, not two facts that can drift. |
+
+Where an earlier item already wrote a test for an invariant, this file **extends** it
+rather than duplicating it: the cross-schema foreign-key check and the delivery-ownership
+checks already existed, so what is added here is the part that is *new* — this intent's
+models, the reminder-plan attachment, and the indicator's symmetry.
+
+### The gates
+
+| Gate | Result |
+|---|---|
+| Backend suite | **2082 passed**, 0 skipped, 0 quarantined, 0 xfailed |
+| Coverage | **99.29%** overall (gate: ≥80%); **`domain/` at 100%** (gate: 100%) |
+| `ruff check` / `ruff format --check` | Clean |
+| `make lint-imports` | **13 contracts kept, 0 broken** — including `models-personalization` and `models-delivery` |
+| `manage.py check` | No issues (this includes the AD-15 retention check; every new model declares `ACCOUNT_CONTENT` or `AUDIT_LOG`) |
+| `makemigrations --check --dry-run` | No changes detected |
+| `backend/tests/worker/test_tick.py` | **5 passed, untouched** — `beat_schedule` is still exactly one 60s tick |
+| Frontend suite | **149 passed** (16 files) |
+| Frontend lint / typecheck / format | Clean |
+| `next build` | Succeeds; `/` is `ƒ (Dynamic) — server-rendered on demand` |
+| `make client` | The regenerated `frontend/lib/api/` is **byte-identical** — no contract drift |
+
+### The defect this item found
+
+**The frontend build was broken.** `next build` failed with
+`TypeError: Invalid URL … ERR_INVALID_URL` on `/api/personal/events`.
+
+The cause: `PersonalEventsSection` is an **async server component**, so `next build`
+rendered it to produce the page's static output — and that render reached for the API.
+With no `API_BASE_URL` set in the build environment, `apiBaseUrl()` returns `undefined`,
+so the client had a relative base URL and `openapi-fetch` rejected the path outright. A
+build that needs a live Django is a build that cannot run in CI.
+
+Three defects were behind the one symptom:
+
+1. **The page was statically prerendered.** The page shows the signed-in user's own
+   personal events, which is per-session state — a static page is wrong for every user.
+   Fixed by `export const dynamic = "force-dynamic"` on the **page**. (The export has to
+   be on the page or layout: Next reads route segment config from those files, not from a
+   nested component, so putting it on the section had no effect on the route.)
+2. **The read did not fail quietly, despite the docstring promising it.** The component
+   said "The read is allowed to fail quietly" and then had no `try`/`catch`. Fixed by
+   catching the failure — a down API is an empty list, not an error page.
+3. **The read was attempted with no base URL to reach.** Fixed by returning the empty
+   list when there is no base URL, rather than issuing a request that cannot be made.
+
+The section's test grew three cases: a rejected request, a missing base URL, and the
+page's `force-dynamic` declaration. The build now succeeds and `/` is dynamic.
+
+This defect belongs to item ⑧ (`frontend-personal-and-conflict-surfaces`), which owns the
+frontend surfaces. It was found here, by the proof item's build gate, and fixed in the
+owning place rather than expanded into this item's scope — the ownership map still
+describes reality.
+
+### Known Gaps / Deliberate Omissions
+
+- **FR-48, the free-tier save quota, is not implemented.** FR-48 caps free-tier saves at
+  1 per 24 hours. That needs the `identity` subscription model, which does not exist yet,
+  and it belongs to the Pro tier intent. The endpoint work item deliberately skips it. It
+  is recorded here so a later reader does not mistake the omission for "done".
+- **There is no `/conflicts` list endpoint yet.** AD-21's symmetry claim is about the
+  Pulse Card, the Timeline and `/conflicts` reading the same `CONFLICT_PAIR` rows. The
+  Pulse Card and the Timeline do not exist yet, and `/conflicts` is not in this intent's
+  scope. What **is** proved is the property that makes them agree when they arrive: one
+  row, two sides, read by either side.
+- **The save-race is proven against a patched read, not a real postponement.** A real
+  postponement would need a second writer racing the save in two transactions, which is
+  the flaky test the work item warns against. The patched read reproduces the
+  interleaving exactly — same order, same reads, same result — and the assertion is on
+  the observable behaviour (`stale`, `current_version`), not on the mechanism.
+- **No `next build` gate existed in the local `make` targets** before this item; the
+  build is run in CI's `frontend` job. It is worth adding `next build` to `make lint-web`
+  or a local `make build-web` target, since a build break is invisible to lint and
+  typecheck.
+
+### Ready for Completion
+
+- [x] The recorded end-to-end scenario runs and passes through the real HTTP surface
+- [x] The save-race is proven deterministically, with a control case
+- [x] The 15-minute boundary is pinned at the edge and just past it
+- [x] The 80% threshold and the 24-hour window are pinned at their boundaries
+- [x] A resolved `CONFLICT_PAIR` is immutable and is never re-prompted
+- [x] A `SAVED_EVENT` snapshot survives a catalog postponement unchanged
+- [x] AD-3, AD-16 and AD-21 are re-verified after this intent's code landed
+- [x] `make lint-imports` passes with `models-personalization` and `models-delivery` green
+- [x] `manage.py check` passes, including the AD-15 retention check for every new model
+- [x] All gates green: 2082 backend, 149 frontend, 99.29% coverage, `domain/` 100%
+- [x] `beat_schedule` is still exactly one 60s tick; `test_tick.py` passes untouched
+- [x] No skipped or quarantined tests introduced by this intent
+- [x] A test report records the scenario, the boundaries, the invariants, the coverage
+      and the deliberately-omitted behaviour
