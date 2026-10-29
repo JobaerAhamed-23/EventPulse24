@@ -4,8 +4,11 @@ title: End-to-End Proof & Contract Tests
 intent: personal-events-and-saved-catalog
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [personal-events-api, saved-events-api, frontend-personal-and-conflict-surfaces]
+status: in_progress
+depends_on:
+  - personal-events-api
+  - saved-events-api
+  - frontend-personal-and-conflict-surfaces
 created: 2026-10-29
 ---
 

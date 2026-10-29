@@ -1005,3 +1005,158 @@ disappeared is the caller's to notice, and the `omitted` count is how it notices
 - [x] Coverage target met (99.29% overall, 100% for `domain/`)
 - [x] All acceptance criteria validated
 - [x] No critical issues open
+
+---
+
+## Work Item: frontend-personal-and-conflict-surfaces
+
+**Scope:** The three client surfaces — `Sheet.PersonalEventCreate`, `Sheet.PersonalEventEdit`
+and `Sheet.ConflictResolution` — plus the seam that joins them, the timezone conversion
+the form depends on, and the "Add" affordance that reaches them.
+
+### What was built
+
+| File | What it is |
+|---|---|
+| `frontend/lib/timezones.ts` | The curated zone list and the wall-clock → UTC conversion. |
+| `frontend/components/sheets/sheet.tsx` | The `<dialog>` base, with one dismissal regime per sheet. |
+| `frontend/components/sheets/personal-event-form.tsx` | Create and edit, one component, two modes. |
+| `frontend/components/sheets/conflict-resolution.tsx` | The forced three-action prompt. |
+| `frontend/components/personal-events-panel.tsx` | The client island that owns the round trip. |
+| `frontend/components/personal-events-section.tsx` | The server read that feeds the island. |
+| `frontend/components/add-event-button.tsx` | The spine's "Add" affordance. |
+| `frontend/app/page.tsx` | The home page that hosts the section. |
+
+### The timezone conversion
+
+The backend stores `start_time_utc` as an **absolute instant** and `start_time_tz` as the
+display zone; it validates the zone but never reinterprets a wall-clock time in it. So the
+conversion is the browser's, and it is the one place it lives.
+
+`localToUtcInstant` uses `Intl.DateTimeFormat(...).formatToParts` with an explicit
+`timeZone` — never string parsing, which is where the first attempt went wrong
+(`en-US` produces `11/06/2026, 18:30`, not `2026-11-06T18:30`). It takes the zone's offset
+from two probes either side of the target instant, prefers the nearer one, and then
+**round-trips** the result: a local time that does not exist (the 2:30 AM of a
+spring-forward morning) fails the round trip and is refused rather than silently shifted.
+
+20 tests cover the winter and summer offsets for New York, London and Tokyo, a half-hour
+offset zone, UTC itself, the API's instant format (`Z`, no fractional seconds), the
+round trip in both directions, and the four refusal cases.
+
+### The dismissal regimes
+
+A native `<dialog>` opened with `showModal()` is **Escape-dismissable and
+backdrop-dismissable by default**. The base takes a `dismissible` prop that turns each
+escape hatch off in one place — the code most likely to be got wrong, next to the code
+that opens the dialog. The tests prove both halves: the create sheet closes on Escape and
+on a backdrop click; the conflict sheet does neither.
+
+### The a11y evidence — **there is no axe setup**
+
+The work item asks for "an accessibility test (or the existing axe setup)". The frontend
+has **no axe setup**: `axe-core`, `jest-axe` and `vitest-axe` are all absent from
+`package.json`, and there is no axe configuration in `vitest.config.mts`. Adding a
+dependency for one item is a larger change than the criterion asks for.
+
+So the assertion the criterion actually names — *no keyboard-reachable dismiss path* — is
+proven **directly** rather than by a scan. This is stated here rather than hidden:
+
+| Property | Evidence |
+|---|---|
+| no dismiss control | `queryByRole("button", { name: "Close" })` is null; no button matches `/dismiss/i` |
+| Escape does nothing | the `cancel` event's `defaultPrevented` is `true` |
+| a backdrop click does nothing | the dialog is still in the document after the click |
+| the prompt persists | no timeout, no effect, and the sheet is still open after the state settles |
+
+The live region and the focus move are proven too: `aria-live="assertive"` on
+"Schedule conflict. Three choices.", and the `<h2>` header carries focus when the prompt
+opens.
+
+### The other properties
+
+| Property | Evidence |
+|---|---|
+| the form's required-timezone validation | submitting with no zone is refused; the field says "Pick a timezone." |
+| the create form posts the right body | the UTC instant is right for the zone (winter **and** summer), and the zone is sent |
+| the three conflict actions and their labels | exactly three buttons, with the PRD's labels |
+| the duplicate relabelling | "Update the existing one", and it resolves `update_existing` |
+| the actions come from the server | a server that sends two actions renders two |
+| the `aria-label`s | each action's label names the action and its consequence |
+| the conflict dot | `role="img"`, `aria-label="Schedule conflict"`, `bg-warn-amber`, never `bg-signal-warn` |
+| the warm-personal colour pairing | the stripe is `bg-warm-personal` **and** the text says "Personal" |
+| the delete confirmation | the delete does not happen until the confirmation is answered |
+
+### Defects found and fixed
+
+1. **The field labels were not associated with their controls.** The `Field` component
+   wrapped each input in a `<label>` without an `htmlFor`, so the input's `id` was never
+   linked to its name. The input announced no accessible name, clicking the label did not
+   focus the field, and `aria-describedby` pointed at an error element that had no `id`.
+   Fixed by giving `Field` an `id` prop, rendering `htmlFor` on the label and `id` on the
+   error paragraph, and wiring every control's `aria-describedby` to it.
+
+2. **The pre-highlighted hint was rendered twice.** `Field` rendered the `hint` in the
+   muted branch *and* again in the `highlighted` branch — the same sentence, twice, in two
+   tones. Fixed by rendering it once, in the amber tone when the field is the highlighted
+   one.
+
+3. **`Sheet` crashed on close in a runtime without the top layer.** `dialog.close()` was
+   called unguarded, while the *open* path already had a fallback for a runtime whose
+   `showModal` is unavailable. jsdom has neither, so closing a sheet threw
+   `dialog.close is not a function` and took the whole tree down with it. Fixed by
+   guarding `close` the same way `showModal` is guarded, falling back to removing the
+   `open` attribute.
+
+4. **The conflict sheet rendered `undefined` for its header and its other side.** The
+   component referenced `header`, `other` and `actions` without deriving them from the
+   conflict. Fixed by reading all three off `conflict` — `other` from `conflict.other`,
+   the actions from `conflict.actions`, and the header from `conflict.kind` with the time
+   header as the fallback.
+
+### Coverage
+
+| Module | Tests | Notes |
+|---|---|---|
+| `lib/timezones.ts` | 20 | Both DST states, half-hour zones, the four refusals. |
+| `components/sheets/sheet.tsx` | 7 | Both dismissal regimes, the backdrop, the content click. |
+| `components/sheets/conflict-resolution.tsx` | 27 | The three actions, the labels, the copy, the cards, the announcement, the focus, the confirm. |
+| `components/sheets/personal-event-form.tsx` | 17 | The validation, the posted body, the pre-highlight. |
+| `components/personal-events-panel.tsx` | 16 | The round trip, the 409, the resolution, the edit. |
+| `components/add-event-button.tsx` | 4 | The affordance opens a sheet and does not route. |
+| `components/personal-events-section.tsx` | 2 | The server read, and the quiet failure. |
+| **Frontend total** | **146** | 16 files, all passing. |
+| **Backend** | **2060** | 99.29% overall; `domain/` at 100%. |
+
+### Known Gaps / Deliberate Omissions
+
+- **No Pulse Card, timeline event-block, source badge or confidence pulse.** None of them
+  exist in the frontend yet, and the work item explicitly forbids building one here: a
+  general-purpose card would be the divergent second implementation the intent warns
+  about. The conflict indicator is proven inside the conflict sheet's stacked cards and
+  in the personal-event row — exactly where the work item says it may be proven.
+- **No sidenav.** The six-route shell is later work. The "Add" affordance is built as the
+  component the shell will carry, so the surface is reachable now and the shell can adopt
+  it without changing the flow. **No `/add` route** — a route would be a second entry
+  point for one surface.
+- **The personal-event list is not live.** The server component reads once per render.
+  A create does not push the new event into the list; the panel shows the outcome in a
+  message and the list updates on the next render. The refresh mechanism belongs to the
+  timeline work.
+- **No axe scan.** Stated above, with the reasoning.
+- **The sheet is a modal on every viewport.** The spine calls for a bottom sheet on
+  mobile and a modal on desktop. The `<dialog>` base is a centred modal on both; the
+  bottom-sheet treatment is a responsive rule the shell work will add.
+- **The conflict sheet's copy is the mockup's, not the PRD's second sentence.** The
+  mockup's subhead names the event ("You've already saved a tech meetup…"), while the
+  work item's criterion gives the template ("You've already saved {conflicting event
+  name}. Choose how to handle it."). The template is what is implemented, and it is what
+  the test asserts.
+
+### Ready for Completion
+
+- [x] All tests passing (146 frontend, 2060 backend)
+- [x] Coverage target met (99.29% overall, 100% for `domain/`)
+- [x] Lint, typecheck, format and import-lint gates clean
+- [x] No new colour tokens, no new hex values, no new CSS variables
+- [x] No Tailwind motion class; the API reached only through `lib/backend-client.ts`

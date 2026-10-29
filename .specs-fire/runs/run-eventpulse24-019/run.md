@@ -54,18 +54,18 @@ work_items:
   - id: frontend-personal-and-conflict-surfaces
     intent: personal-events-and-saved-catalog
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: personal-events-and-saved-catalog
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
-current_item: frontend-personal-and-conflict-surfaces
+    current_checkpoint: plan
+current_item: e2e-proof-and-contract-tests
 status: in_progress
 started: 2026-10-29T02:04:32.027Z
 completed: null
@@ -84,12 +84,12 @@ wide (9 work items)
 5. **personalization-write-services** (validate) — completed
 6. **personal-events-api** (confirm) — completed
 7. **saved-events-api** (confirm) — completed
-8. **frontend-personal-and-conflict-surfaces** (confirm) — in_progress
-9. **e2e-proof-and-contract-tests** (confirm) — pending
+8. **frontend-personal-and-conflict-surfaces** (confirm) — completed
+9. **e2e-proof-and-contract-tests** (confirm) — in_progress
 
 
 ## Current Item
-frontend-personal-and-conflict-surfaces (confirm)
+e2e-proof-and-contract-tests (confirm)
 
 ## Files Created
 (none yet)

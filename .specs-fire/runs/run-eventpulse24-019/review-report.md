@@ -1200,3 +1200,107 @@ will land), and **AD-17's propagation job is not implemented** (the protocol is 
 and audited; the job that acts on it is later work). Neither is a defect in this item —
 both are named in the work item's own boundaries — but the Pro tier intent needs the first
 one to know where to put it.
+
+---
+
+## Work Item: frontend-personal-and-conflict-surfaces
+
+**Reviewer:** the FIRE builder's review pass over the item ⑧ diff.
+
+### What was reviewed
+
+The three client surfaces, the timezone conversion, the panel that joins them, the server
+read that feeds the panel, and the "Add" affordance that reaches them — against the work
+item's acceptance criteria, the UX spine's `Sheet.ConflictResolution` section, the four
+mockups, and the project's frontend conventions.
+
+### The acceptance criteria, one by one
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| `Sheet.PersonalEventCreate` is a `<dialog>` sheet with an explicit timezone selector | met | The zone is a `<select>` of curated IANA zones, required, and refused when empty. |
+| The timezone is a first-class required field, not an inferred browser default | met | The browser's zone is the *default selection*, but the field is required and an empty zone refuses the submit. |
+| `Sheet.PersonalEventEdit` reuses the vocabulary and supports the pre-highlighted state | met | One component, two modes; `highlightStartTime` is a prop, set only by the conflict flow. |
+| Exactly three actions with the PRD's labels | met | Rendered from the server's `actions[]`, so the count follows the server. |
+| No dismiss button, no X, no backdrop-click close | met | The base refuses all three; the tests prove each. |
+| The user cannot complete the flow without choosing | met | The prompt is modal and forced; the create sheet closes when the 409 arrives and the conflict sheet takes over. |
+| A duplicate relabels the second action and opens the *existing* event | met | "Update the existing one" → `update_existing` → `conflict.other.id`. |
+| The copy is the spine's, verbatim; the voice is calm | met | Headers, subhead, live region and footer match. No exclamation marks in the prose, no alarm words. |
+| Two stacked cards, each with the amber dot, the new one marked NEW | met | Matches the mockup's markup. |
+| The dot is a filled circle in `--color-warn-amber`, 8–10px, top-right, labelled | met | `h-2.5 w-2.5` (10px), `rounded-full`, `bg-warn-amber`, `role="img"`, `aria-label="Schedule conflict"`. |
+| Never red, never `--color-signal-warn` | met | Asserted directly against the class list. |
+| Colour is never the sole carrier of meaning | met | The stripe is paired with the visible word "Personal"; the dot carries its label. |
+| The single overlay level | met | The native `<dialog>` is in the top layer; no `z-index` token was invented. |
+| The live region announces "Schedule conflict. Three choices." assertively | met | `aria-live="assertive"`. |
+| Focus moves to the header | met | The `<h2>` is focused on open. |
+| Each action's `aria-label` names the action and its consequence | met | All three, in the PRD's words. |
+| The prompt persists | met | No timeout, no auto-dismiss, no effect that could close it. |
+| Delete requires a confirmation | met | The confirmation is a step inside the same sheet, not a second overlay. |
+| Personal events use `--color-warm-personal` | met | The stripe, in the token layer's light and dark values. |
+| No component library, no animation library, vanilla over the token layer, `<dialog>`, one 240ms opacity transition only | met | `FORBIDDEN_PACKAGES` passes; no Tailwind motion class appears in any `.tsx`; `.fade-in` is the only transition and it already collapses under `prefers-reduced-motion`. |
+| No new colour tokens, no new hex values, no new CSS variables | met | `tokens.test.ts` still asserts the exact set of 20. Every colour used was already there. |
+| The API is reached only through `lib/backend-client.ts` | met | `openapi-fetch` is imported in one file; the lint rule and its test both pass. |
+| Vitest covers the six named properties | met | See the test report's table. |
+| An accessibility test confirms no keyboard-reachable dismiss path | met, **without axe** | Stated rather than hidden: the frontend has no axe setup, so the criterion's actual assertion is proven directly. |
+
+### What the review turned up
+
+Four defects, all found by the tests rather than by reading, and all fixed before the item
+closed:
+
+1. **The field labels were not associated with their controls.** `<label>` wrapped the
+   input without an `htmlFor`, so the input had no accessible name and the error's
+   `aria-describedby` pointed at nothing. This is the kind of bug a scan finds but a
+   reading misses — the label *looked* right.
+
+2. **The pre-highlighted hint was rendered twice**, in two tones. A small thing, but a
+   sentence said twice is a sentence said twice.
+
+3. **`Sheet` crashed on close** in a runtime without the top layer. The open path had a
+   fallback; the close path did not. In jsdom this took down the whole tree, which is why
+   the panel's round-trip tests failed at the first `await`.
+
+4. **The conflict sheet referenced three values it never derived** — `header`, `other` and
+   `actions` — and would have rendered `undefined` for all of them.
+
+### The decisions worth defending
+
+- **One `<dialog>` base with a `dismissible` prop**, rather than two sheet components. The
+  dismissal rules are the part most likely to be got wrong, and a native modal is
+  Escape-dismissable *by default*. One base puts the rule that suppresses Escape next to
+  the code that opens the dialog. The tests prove both halves of the pair, so a future
+  change that breaks one regime breaks a test.
+
+- **The browser converts local time to UTC; the backend does not.** The backend stores the
+  instant and never reinterprets a wall-clock time in the zone, so the conversion had to
+  live on one side. It lives in `lib/timezones.ts`, once, and the form's test asserts the
+  winter *and* summer offsets — the two-probe-with-round-trip approach is what makes the
+  DST case correct rather than approximately correct.
+
+- **The delete confirmation is a step inside the sheet**, not a second `<dialog>`. Two
+  stacked overlays would need their own focus management and would put two layers of
+  chrome between the user and the answer. One sheet, one step, one overlay level.
+
+- **The three actions are rendered from the server's `actions[]`.** The sheet cannot offer
+  a resolution the pair's kind does not allow, because it never decides what the choices
+  are — it maps the server's names to labels and drops the one it has no label for.
+
+- **No Pulse Card.** The work item's warning is precise: a general-purpose card built
+  here would be the divergent second implementation the intent defers FR-19 over. The
+  indicator is proven where the item says it may be.
+
+- **The "Add" affordance, not an `/add` route.** The spine is explicit that the Add slot
+  opens the creation surface in place. The sidenav does not exist yet, so the affordance
+  is built as the component the shell will carry — the surface is reachable now, and the
+  shell can adopt it without changing the flow.
+
+### The scope held
+
+No Pulse Card, no timeline event-block, no source badge, no confidence pulse. No colour
+token, no hex value, no CSS variable. No Tailwind motion class. No `fetch`. No `/add`
+route. No state library.
+
+### Verdict
+
+**Ready.** All acceptance criteria are met, the four defects found are fixed and pinned
+by tests, and the gaps above are stated rather than papered over.

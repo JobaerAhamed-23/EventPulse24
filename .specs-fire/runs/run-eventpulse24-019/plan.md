@@ -874,3 +874,231 @@ cd frontend && pnpm vitest run
 skipping the quota is the smaller sin. That gap goes in the test report so the Pro tier
 intent knows to add it. It must not implement AD-17's propagation job (it exposes the
 protocol; the job that calls it is later). It must not hand-edit the generated client.
+
+---
+
+## Work Item: frontend-personal-and-conflict-surfaces
+
+**Intent:** `personal-events-and-saved-catalog` · **Work item:** `frontend-personal-and-conflict-surfaces` ·
+**Complexity:** medium · **Mode:** confirm · **Depends on:** `personalization-write-services`
+
+### What this item builds
+
+Three client components, plus the seam that joins them:
+
+| File | What it is |
+|---|---|
+| `frontend/components/sheets/sheet.tsx` | The `<dialog>` base — one overlay level, one open/close protocol. |
+| `frontend/components/sheets/personal-event-form.tsx` | `Sheet.PersonalEventCreate` and `Sheet.PersonalEventEdit`. |
+| `frontend/components/sheets/conflict-resolution.tsx` | `Sheet.ConflictResolution` — the forced three-action prompt. |
+| `frontend/components/personal-events-panel.tsx` | The client island that owns the flow: create → 409 → conflict → resolve. |
+
+**The mockups are the visual source of truth and already exist**
+(`personal-event-create-desktop.html`, `personal-event-edit-desktop.html`,
+`conflict-prompt-desktop.html`, `conflict-indicator-card-state-desktop.html`). This item
+**implements the existing design**; it does not design a new one.
+
+### D60 — One `<dialog>` base, and the conflict sheet turns off every escape hatch
+
+The create sheet and the conflict sheet are both `<dialog>`-based sheets, but they have
+opposite dismissal rules. The create sheet is an ordinary modal: an X, the Escape key,
+and a backdrop click all close it. The conflict sheet is a **forced choice**: none of them
+may (FR-58 — "no dismiss button, no X, no escape-key close, no outside-click close").
+
+So the base `<dialog>` component takes a `dismissible` prop, and when it is false:
+
+- the `cancel` event (the Escape key) is `preventDefault()`ed;
+- a click on the backdrop is ignored — only a click whose target is the `<dialog>` element
+  itself counts as a backdrop click, and a forced sheet refuses even that;
+- no X button is rendered at all.
+
+The native `<dialog>` is in the **top layer**, which is what gives the sheet the single
+overlay level the UX spine asks for — above the bottom-tab nav on mobile and above the
+sidenav on desktop — with no z-index token and no `z-index` value invented for it. The
+backdrop is `::backdrop`, styled from the existing surface tokens.
+
+**Why one component rather than two.** The dismissal rules are the part most likely to be
+got wrong, and a native `<dialog>` opened with `showModal()` is Escape-dismissable *by
+default*. One base means the rule that suppresses Escape lives in one place, next to the
+code that opens the dialog — and the tests prove both halves: the create sheet closes on
+Escape, the conflict sheet does not.
+
+### D61 — The browser converts local time to UTC; the backend does not
+
+The create API takes `start_time_utc` (an absolute instant) **and** `start_time_tz` (the
+IANA zone the event is displayed in). The backend validates the zone and stores it, but it
+does **not** reinterpret a wall-clock time in that zone — the instant is the instant.
+
+So the form collects a **local** date and time plus a zone, and the browser converts that
+to the UTC instant the API expects. The conversion is the browser's `Intl.DateTimeFormat`
+with an explicit `timeZone`, which is exact and needs no timezone database in the bundle.
+
+The zone selector offers a **curated list of common IANA zones**, each with a city label
+(`America/New_York — New York`), and defaults to the browser's own zone when it is one of
+them. Every entry is a zone the backend accepts. The full IANA list would be ~400
+unlabelled entries — complete, and unpleasant to use.
+
+**The zone is a first-class required field.** It is not inferred from the browser and it
+is not silently defaulted: the form refuses to submit without it, because a floating local
+time is a time the backend would have to guess at (AD-6).
+
+### D62 — The delete confirmation is a step inside the sheet, not a second overlay
+
+FR-58: "A confirmation step is required before deletion completes." Choosing "Delete the
+new one" replaces the sheet's action area with a short confirmation — "Delete
+{event name}? This can't be undone." — with **Delete it** and **Keep it**.
+
+The alternative, a second `<dialog>` stacked on the conflict sheet, would put two
+overlays on top of the user and need its own focus management. One sheet, one step, one
+overlay level. "Keep it" returns to the three choices; the prompt is still open, because
+the conflict has not been answered.
+
+### D63 — The three actions are rendered from the server's closed set
+
+The 409 carries `actions: string[]` — the server's own closed set of three for that
+conflict's kind. The sheet renders **from `actions[]`**, not from a hardcoded list, so the
+contract and the server are the single source of truth and the sheet cannot offer a
+resolution the pair's kind does not allow.
+
+The labels are the PRD's, and the second one depends on the kind:
+
+| `kind` | Second action's label | Resolution |
+|---|---|---|
+| `time` | "Edit the new one" | `edit_new` |
+| `duplicate` | "Update the existing one" | `update_existing` |
+
+For a duplicate, "Update the existing one" opens the **existing** event in edit mode, not
+the new one — the server's `other.id` is the existing side.
+
+### D64 — The conflict sheet's copy is the UX spine's, verbatim
+
+| Slot | Copy |
+|---|---|
+| Header (time conflict) | "This overlaps with another event." |
+| Header (saved-public-event case) | "These overlap." |
+| Subhead | "You've already saved {conflicting event name}. Choose how to handle it." |
+| Live region | "Schedule conflict. Three choices." |
+| Footer | "No dismiss button — conflict must be resolved before continuing." |
+
+Calm voice: no exclamation marks, no alarm words. The header glyph is the amber circle —
+**never red**.
+
+### The conflict indicator
+
+The amber conflict dot is a **filled circle** in `--color-warn-amber`, 10px, top-right of
+each card, with `aria-label="Schedule conflict"`. It is **not** `--color-signal-warn` —
+that is a different token with a different job, and this indicator is a *conflict* mark,
+not a warning signal.
+
+**Colour is never the sole carrier of meaning.** The warm-personal stripe is always
+paired with the visible text label "Personal"; the conflict dot always carries its
+`aria-label`; distinctness from the Source Badge and the Confidence Pulse is by **shape
+and position**, not colour.
+
+**There is no Pulse Card here, and none is built.** The digest card, the timeline
+event-block, the source badge and the confidence pulse do not exist in the frontend yet —
+they are later work. This item proves the indicator **inside the conflict sheet's stacked
+cards**, exactly as the work item says. A general-purpose Pulse Card built here would be
+the divergent second implementation the work item warns against.
+
+### The conflict sheet's two cards
+
+Small stacked cards, each with the amber conflict dot. The **new** event is marked "NEW"
+in a terracotta pill above its card — one of the sanctioned terracotta uses.
+
+The conflicting side's data comes from `ConflictSideOut`, which carries `id`, `name`,
+`start_time_utc` and `end_time_utc` — and **no location**. The card renders the name and
+the time; it does not render a location it was not given.
+
+### The flow the panel owns
+
+The conflict sheet is not opened by the user — it is opened by the **server's 409**. The
+panel therefore owns the whole round trip:
+
+1. The form posts `POST /api/personal/events`.
+2. A 201 means no conflict: the panel closes the form.
+3. A **409** means the event was written and the pair is `active`: the panel opens the
+   conflict sheet with the 409's `details`.
+4. The user picks one of the three. The panel posts to
+   `POST /api/personal/events/conflicts/{pair_id}/resolve` with the resolution and
+   `new_side_id` — the id the 409's `details.event_id` carried.
+5. `edit_new` opens the **new** event in the edit sheet; `update_existing` opens the
+   **existing** event (the 409's `conflicts[0].other.id`) in the edit sheet; `delete_new`
+   asks for confirmation and then resolves; `keep_both` resolves and closes.
+
+**The event already exists when the 409 arrives.** The backend writes the event and then
+detects the conflict — the pair is the pending prompt, not a failed write. So the form
+does not re-post; the prompt resolves the event that was written.
+
+### The edit sheet's "conflicting time pre-highlighted" state
+
+`Sheet.PersonalEventEdit` reuses the create sheet's field vocabulary. It opens pre-filled,
+and when it was opened **from the conflict prompt** it marks the start-time field as the
+one to change — the pre-highlighted state. The form does not guess: the pre-highlight is
+a prop, set only by the conflict flow.
+
+### The form's fields
+
+| Field | Required | Notes |
+|---|---|---|
+| Name | yes | |
+| Date | yes | local date |
+| Start time | yes | local time |
+| Timezone | yes | a curated IANA list; refused when empty |
+| End time | no | local; may be on another day |
+| Location | no | |
+| Notes | no | |
+
+The mockup shows a **Duration** field and a **Reminders** chip grid. Neither is in the
+API: the end time is an absolute instant, and the reminder plan is the server's (FR-20's
+1d + 1hr default, attached by `delivery` under AD-16). The form therefore asks for an
+**end time** and does not render reminders — a control that cannot change anything is a
+control that lies.
+
+### The tests to write
+
+| Property | Evidence |
+|---|---|
+| the form's required-timezone validation | submitting with no zone is refused, and the field says so |
+| the create form posts the right body | the UTC instant is right for the zone, and the zone is sent |
+| the three conflict actions and their labels | exactly three, with the PRD's labels |
+| the duplicate relabelling | "Update the existing one", and it targets the existing side |
+| the absence of a dismiss affordance | no X, no dismiss button, Escape does nothing, a backdrop click does nothing |
+| the `aria-label`s | each action's label names the action and its consequence; the dot says "Schedule conflict" |
+| the warm-personal colour pairing | the stripe is `--color-warm-personal` **and** the text says "Personal" |
+| the live region and the focus move | "Schedule conflict. Three choices." is announced, and focus is on the header |
+| the delete confirmation | the delete does not happen until the confirmation is answered |
+
+### The a11y test
+
+There is **no axe setup** in the frontend, and the work item says "an accessibility test
+(or the existing axe setup)". Adding `axe-core` would be a new dependency for one item;
+the assertion the criterion actually asks for — *no keyboard-reachable dismiss path* — is
+better proven directly: the sheet renders no dismiss control, the `cancel` event is
+prevented, and a backdrop click does nothing.
+
+So the a11y evidence is a **plain Testing Library assertion** on the conflict sheet's
+dismiss paths, not an axe scan. This is stated in the test report rather than hidden.
+
+### Gates to run before the item closes.
+
+```bash
+cd frontend && pnpm vitest run
+cd frontend && pnpm lint
+cd frontend && pnpm typecheck
+cd frontend && pnpm format:check
+cd backend && uv run pytest -q --cov --cov-report=term
+cd backend && uv run coverage report --include='domain/*' --fail-under=100
+cd backend && uv run ruff check && uv run ruff format --check
+cd backend && uv run lint-imports
+```
+
+**What this item must not do.** It must not build a Pulse Card, a timeline event-block, a
+source badge or a confidence pulse — none of them exist yet, and building one here would
+be the divergent second implementation the work item warns against. It must not add a
+colour token, a hex value or a CSS variable: `tokens.test.ts` asserts the exact set, and
+every colour used is already in `tokens.css`. It must not use a Tailwind motion class —
+motion goes through `.fade-in` only. It must not reach the backend with `fetch`; the API
+is reached only through `api` from `@/lib/backend-client` (AD-19). It must not add an
+`/add` route: the sheets are reached from a nav item, and a route would be a second entry
+point for the same surface.
