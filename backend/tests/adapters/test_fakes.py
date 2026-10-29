@@ -75,12 +75,12 @@ def test_fake_billing_returns_local_urls():
 
 
 def test_fake_calendar_entries_are_aware_utc_and_ordered():
-    entries = FakeCalendarAdapter().fetch_entries(
+    result = FakeCalendarAdapter().fetch_entries(
         CalendarFeed(url=Credential("webcal://example.test/private-abc123/basic.ics"))
     )
 
-    assert entries
-    for entry in entries:
+    assert result.entries
+    for entry in result.entries:
         assert entry.starts_at.tzinfo is UTC
         assert entry.starts_at < entry.ends_at
 
@@ -97,6 +97,7 @@ def test_credential_never_shows_its_value():
 
 
 def test_calendar_entry_repr_hides_the_title():
-    [entry, *_] = FakeCalendarAdapter().fetch_entries(CalendarFeed(url=Credential("x")))
+    result = FakeCalendarAdapter().fetch_entries(CalendarFeed(url=Credential("x")))
+    [entry, *_] = result.entries
 
     assert entry.title not in repr(entry)

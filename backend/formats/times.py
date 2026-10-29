@@ -5,6 +5,10 @@
 - Overnight: an end earlier than its start ("22:00-02:00") rolls forward one day; if it's still
   earlier, the end is dropped.
 Nothing here converts to UTC: `domain.timezones.resolve_tz` does that.
+
+**This module is format-agnostic.** RSS, JSON-LD and iCalendar all carry an all-day span
+and an overnight end, and all three normalise them the same way — so the rules live here,
+once, rather than in each format's own module.
 """
 
 from datetime import date, datetime, time, timedelta

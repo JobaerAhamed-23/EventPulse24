@@ -4,9 +4,11 @@ title: ICS/Webcal Calendar Adapter
 intent: onboarding-and-account
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-29T10:49:13.086Z
 ---
 
 # Work Item: ICS/Webcal Calendar Adapter

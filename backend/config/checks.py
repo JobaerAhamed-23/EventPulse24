@@ -17,7 +17,9 @@ from shared.models import UUIDv7Model
 from shared.retention import FRAMEWORK_RETENTION, RetentionCategory, retention_category_of
 
 # Our top-level packages; models elsewhere (Django, third-party, test probes) aren't ours.
-PROJECT_PACKAGES = frozenset({"apps", "adapters", "config", "domain", "ports", "shared", "worker"})
+PROJECT_PACKAGES = frozenset(
+    {"apps", "adapters", "config", "domain", "formats", "ports", "shared", "worker"}
+)
 
 
 def _alias_for(app_label: str, routing: dict[str, set[str]]) -> str | None:

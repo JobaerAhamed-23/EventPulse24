@@ -8,6 +8,9 @@ httpx frames HTTP and follows redirects; this module owns everything else:
   can't bypass it; TLS still verifies the original hostname (httpcore passes it as SNI).
 - Ports: only `allowed_ports`, checked on the URL, on every hop, and again in `connect_tcp`.
 - Redirects: same host only (a leading `www.` ignored); FR-17's ToS review covers one host.
+  A caller may ask for cross-host redirects (`allow_cross_host_redirect`) — a calendar
+  provider serves the feed from a CDN host. The relaxation is about the *host* only:
+  the address policy still applies at connect time on every hop.
 - Time: one `Deadline` covers DNS, connect, TLS, header bytes, body and every hop; each network
   operation gets min(its own timeout, the time remaining).
 - Size: the body is read raw and decompressed here with an output budget, so neither a gzip
@@ -24,7 +27,7 @@ import threading
 import time
 import zlib
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from uuid import UUID
 
@@ -46,6 +49,7 @@ from ports.fetch import (
     FetchTooLargeError,
     SourceFetchPort,
 )
+from ports.fetch import FetchLimits as _PortFetchLimits
 
 logger = logging.getLogger(__name__)
 
@@ -58,16 +62,13 @@ AddressPolicy = Callable[[IPv4Address | IPv6Address], bool]
 
 
 @dataclass(frozen=True)
-class FetchLimits:
-    user_agent: str
-    max_bytes: int = 10 * 1024 * 1024
-    dns_timeout: float = 3.0
-    connect_timeout: float = 5.0
-    read_timeout: float = 15.0
-    write_timeout: float = 5.0
-    total_timeout: float = 30.0
-    max_redirects: int = 5
-    allowed_ports: frozenset[int] = field(default_factory=lambda: frozenset({80, 443}))
+class FetchLimits(_PortFetchLimits):
+    """The source fetch's own limits, read from the deployment's settings.
+
+    The *shape* lives in `ports.fetch`, so a caller whose content is a different shape
+    (a calendar feed) can hand the adapter its own bounds. Only the *reading* of the
+    settings is here, because `ports` never imports Django.
+    """
 
     @classmethod
     def from_settings(cls) -> "FetchLimits":
@@ -334,11 +335,15 @@ class HttpFetchAdapter(SourceFetchPort):
         etag: str | None = None,
         last_modified: str | None = None,
         source_id: UUID | None = None,
+        allow_cross_host_redirect: bool = False,
+        limits: FetchLimits | None = None,
     ) -> FetchResult:
         started = time.monotonic()
         status, size, error_code = None, 0, None
         try:
-            result = self._fetch(url, etag, last_modified)
+            result = self._fetch(
+                url, etag, last_modified, allow_cross_host_redirect, limits or self._limits
+            )
             status, size = result.status, len(result.body)
             return result
         except _MAPPED as exc:
@@ -361,52 +366,70 @@ class HttpFetchAdapter(SourceFetchPort):
                 },
             )
 
-    def _check_target(self, target: httpx.URL, origin_host: str | None = None) -> None:
+    def _check_target(
+        self,
+        target: httpx.URL,
+        origin_host: str | None = None,
+        allow_cross_host_redirect: bool = False,
+        limits: FetchLimits | None = None,
+    ) -> None:
+        bounds = limits or self._limits
         if target.scheme not in DEFAULT_PORTS:
             raise FetchBlockedError("scheme")
         if target.userinfo:
             raise FetchBlockedError("userinfo")
-        if (target.port or DEFAULT_PORTS[target.scheme]) not in self._limits.allowed_ports:
+        if (target.port or DEFAULT_PORTS[target.scheme]) not in bounds.allowed_ports:
             raise FetchBlockedError("port")
-        if origin_host is not None and not _same_host(target.host, origin_host):
+        if (
+            origin_host is not None
+            and not allow_cross_host_redirect
+            and not _same_host(target.host, origin_host)
+        ):
             raise FetchBlockedError("cross_host_redirect")
 
-    def _fetch(self, url: str, etag: str | None, last_modified: str | None) -> FetchResult:
+    def _fetch(
+        self,
+        url: str,
+        etag: str | None,
+        last_modified: str | None,
+        allow_cross_host_redirect: bool = False,
+        limits: FetchLimits | None = None,
+    ) -> FetchResult:
+        bounds = limits or self._limits
         target = httpx.URL(url)
-        self._check_target(target)
+        self._check_target(target, limits=bounds)
         origin_host = target.host
 
         def check_hop(request: httpx.Request) -> None:
-            self._check_target(request.url, origin_host)
+            self._check_target(request.url, origin_host, allow_cross_host_redirect, bounds)
             # No cookies, ever: a cookie-policy jar doesn't work here (httpx copies the jar into
             # a default-policy one), so drop the header on every hop before it's sent.
             request.headers.pop("Cookie", None)
 
-        deadline = Deadline(self._limits.total_timeout, self._clock)
+        deadline = Deadline(bounds.total_timeout, self._clock)
         backend = GuardedBackend(
-            self._limits,
+            bounds,
             deadline,
             getaddrinfo=self._getaddrinfo,
             connector=self._connector,
             deny=self._deny,
         )
-        headers = {"User-Agent": self._limits.user_agent, "Accept-Encoding": "gzip, deflate"}
+        headers = {"User-Agent": bounds.user_agent, "Accept-Encoding": "gzip, deflate"}
         if etag:
             headers["If-None-Match"] = etag
         if last_modified:
             headers["If-Modified-Since"] = last_modified
-        limits = self._limits
         with (
             httpx.Client(
                 transport=GuardedTransport(backend),
                 follow_redirects=True,
-                max_redirects=limits.max_redirects,
+                max_redirects=bounds.max_redirects,
                 trust_env=False,
                 timeout=httpx.Timeout(
-                    connect=limits.connect_timeout,
-                    read=limits.read_timeout,
-                    write=limits.write_timeout,
-                    pool=limits.connect_timeout,
+                    connect=bounds.connect_timeout,
+                    read=bounds.read_timeout,
+                    write=bounds.write_timeout,
+                    pool=bounds.connect_timeout,
                 ),
                 event_hooks={"request": [check_hop]},
             ) as client,
@@ -426,7 +449,7 @@ class HttpFetchAdapter(SourceFetchPort):
                 )
             if response.status_code not in SUCCESS_STATUSES:
                 raise FetchHTTPError(response.status_code)
-            body = self._read_body(response)
+            body = self._read_body(response, bounds)
             return FetchResult(
                 status=response.status_code,
                 final_url=final_url,
@@ -436,8 +459,8 @@ class HttpFetchAdapter(SourceFetchPort):
                 last_modified=response.headers.get("last-modified"),
             )
 
-    def _read_body(self, response: httpx.Response) -> bytes:
-        limit = self._limits.max_bytes
+    def _read_body(self, response: httpx.Response, limits: FetchLimits | None = None) -> bytes:
+        limit = (limits or self._limits).max_bytes
         declared = response.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > limit:
             raise FetchTooLargeError("content_length")

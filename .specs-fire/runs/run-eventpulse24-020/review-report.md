@@ -2,9 +2,9 @@
 
 **Run**: run-eventpulse24-020
 **Intent**: onboarding-and-account
-**Work item**: account-auth-core
+**Work item**: ics-calendar-adapter
 **Reviewed**: 2026-10-29
-**Files Reviewed**: 40
+**Files Reviewed**: 24
 
 ---
 
@@ -12,17 +12,20 @@
 
 | Category | Auto-Fixed | Applied | Skipped |
 |----------|------------|---------|---------|
-| Code Quality | 3 | 0 | 0 |
-| Security | 3 | 0 | 0 |
-| Architecture | 1 | 0 | 0 |
-| Testing | 4 | 0 | 0 |
-| **Total** | **11** | **0** | **0** |
+| Correctness | 2 | 0 | 0 |
+| Contract / Architecture | 2 | 0 | 0 |
+| Security | 1 | 0 | 0 |
+| Observability | 1 | 0 | 0 |
+| Code Quality | 0 | 0 | 0 |
+| Documentation | 1 | 0 | 0 |
+| **Total** | **7** | **0** | **0** |
 
-**Tests Status**: Passing — 2202 passed, 0 failed; 98.77% coverage; 14/14 import contracts kept.
+**Tests Status**: Passing — 2536 passed, 0 failed; 98.87% coverage; 17/17 import contracts kept.
 
 Every finding was a **defect**, not a style preference, and every one was fixed in the same
-pass rather than deferred. No finding was left as a suggestion requiring approval: each was
-either a clear correctness bug with a definite fix, or a documented acceptance.
+pass rather than deferred. Each was verified by reading the code and reproducing the
+failure before being acted on — a review finding is a claim, not a fact, and a finding
+that cannot be reproduced is a finding that cannot be fixed.
 
 ---
 
@@ -30,450 +33,373 @@ either a clear correctness bug with a definite fix, or a documented acceptance.
 
 ### Created
 
-- `backend/ports/throttle.py` (new)
-- `backend/adapters/throttle/__init__.py` (new)
-- `backend/adapters/throttle/memory.py` (new)
-- `backend/adapters/throttle/redis.py` (new)
-- `backend/apps/identity/managers.py` (new)
-- `backend/apps/identity/services/audit.py` (new)
-- `backend/apps/identity/services/authenticate.py` (new)
-- `backend/apps/identity/services/emails.py` (new)
-- `backend/apps/identity/services/password_reset.py` (new)
-- `backend/apps/identity/services/session.py` (new)
-- `backend/apps/identity/services/sign_up.py` (new)
-- `backend/apps/identity/services/throttle.py` (new)
-- `backend/apps/identity/templates/identity/password_reset.txt` (new)
-- `backend/apps/identity/migrations/0002_identityauditentry_passwordresettoken_and_more.py` (new)
-- `backend/tests/identity/conftest.py` (new)
-- `backend/tests/identity/factories.py` (new)
-- `backend/tests/identity/test_audit.py` (new)
-- `backend/tests/identity/test_authenticate.py` (new)
-- `backend/tests/identity/test_log_redaction.py` (new)
-- `backend/tests/identity/test_models.py` (new)
-- `backend/tests/identity/test_password_reset.py` (new)
-- `backend/tests/identity/test_password_reset_concurrency.py` (new)
-- `backend/tests/identity/test_session.py` (new)
-- `backend/tests/identity/test_session_settings.py` (new)
-- `backend/tests/identity/test_sign_up.py` (new)
-- `backend/tests/identity/test_throttle.py` (new)
+- `backend/formats/__init__.py` (new)
+- `backend/formats/ics/__init__.py` (new)
+- `backend/formats/ics/events.py` (new)
+- `backend/formats/ics/parser.py` (new)
+- `backend/formats/text.py` (new)
+- `backend/formats/times.py` (new)
+- `backend/adapters/calendar/ics.py` (new)
+- `backend/tests/adapters/calendar_fakes.py` (new)
+- `backend/tests/adapters/test_calendar_fetch.py` (new)
+- `backend/tests/adapters/test_calendar_ics.py` (new)
+- `backend/tests/architecture/test_formats_pure.py` (new)
+- `backend/tests/formats/__init__.py` (new)
+- `backend/tests/formats/ics/__init__.py` (new)
 
 ### Modified
 
-- `backend/apps/identity/models.py`
-- `backend/apps/identity/admin.py`
-- `backend/apps/identity/services/__init__.py`
-- `backend/apps/ingestion/admin.py`
-- `backend/config/adapters.py`
-- `backend/config/env.py`
-- `backend/config/management/commands/seed_local_stack.py`
-- `backend/config/settings.py`
-- `backend/config/settings_test.py`
-- `backend/domain/errors.py`
-- `backend/ports/registry.py`
-- `backend/pyproject.toml`
-- `backend/shared/constants.py`
-- `backend/tests/architecture/test_import_contracts.py`
-- `backend/tests/identity/test_user.py`
-- `backend/tests/ingestion/test_admin.py`
-- `backend/tests/ingestion/test_seed_local_stack.py`
-- `backend/tests/personalization/test_auth.py`
-- `backend/tests/personalization/test_personal_events_api.py`
-- `backend/tests/personalization/test_saved_events_api.py`
-- `backend/tests/wall/test_orm_wall.py`
-- `backend/tests/wall/test_transactions.py`
-- `backend/tests/e2e/test_end_to_end.py`
-- `backend/tests/e2e/test_personal_events_and_saved_catalog.py`
-- `backend/tests/e2e/test_save_race.py`
+- `backend/ports/calendar.py` — the port: the three typed outcomes, the entry, the feed
+- `backend/ports/fetch.py` — `FetchLimits` moved here; the refusal vocabulary
+- `backend/adapters/crawl/http.py` — per-call limits threaded through
+- `backend/adapters/crawl/fake.py`
+- `backend/adapters/calendar/fake.py`
+- `backend/adapters/logging/formatter.py` — the project-logger roots
+- `backend/adapters/logging/redaction.py` — the allowlist
+- `backend/apps/ingestion/parsers/ics.py` — the catalog's ICS parser
+- `backend/apps/ingestion/parsers/types.py`
+- `backend/apps/ingestion/parsers/text.py`, `feeds.py`, `jsonld.py` — the moved helpers
+- `backend/apps/personalization/services/calendar_connections.py`
+- `backend/config/adapters.py`, `backend/config/checks.py`
+- `backend/pyproject.toml` — the `formats` layer's coverage config
+- `backend/tests/architecture/checkers.py`, `test_import_contracts.py`
+- `backend/tests/adapters/test_fakes.py`, `test_logging.py`
+- `backend/tests/config/test_adapters.py`
+- `backend/tests/personalization/test_calendar_connection_commands.py`
+- `backend/tests/ingestion/pipeline_support.py`
 
 ---
 
-## Applied Fixes
+## Findings and Fixes
 
-### 1. [Security] `sign_up` swallowed *any* `IntegrityError` and misreported it as a duplicate
+### B1 — A floating-time `RRULE` master was silently dropped from the catalog
 
-- **File**: `backend/apps/identity/services/sign_up.py:77-104`
-- **Description**: The `except IntegrityError` wrapped the whole `transaction.atomic` block,
-  including the audit write. An infrastructure failure — the audit table's own constraints,
-  a disk error — rolled the account back, returned `SignUpOutcome(accepted=True)` to the
-  caller, and sent the holder a "someone tried to sign up with your email" notice for an
-  account that did not exist. A real failure was indistinguishable from a duplicate.
-- **Rationale**: The outcome shape is the enumeration-safety mechanism (D15). Swallowing a
-  non-duplicate failure into that shape tells the caller their account exists when none was
-  created — the same leak, arrived at from the other direction.
-- **Risk Level**: High — it changes the transaction structure.
-- **Diff**:
+**Severity**: BLOCKER · **Category**: Correctness · **Status**: Fixed
 
-```diff
--    try:
--        with transaction.atomic(using=PERSONAL):
--            user = User.objects.create_user(email=normalised, password=password)
--            audit_service.write_audit(...)
--    except IntegrityError:
--        _notify_existing_holder(normalised)
--        return SignUpOutcome()
-+    with transaction.atomic(using=PERSONAL):
-+        try:
-+            with transaction.atomic(using=PERSONAL):
-+                user = User.objects.create_user(email=normalised, password=password)
-+        except IntegrityError:
-+            _notify_existing_holder(normalised)
-+            return SignUpOutcome()
-+        audit_service.write_audit(...)
+The catalog parser's `_instance_utc` assumed a `datetime` and reached for
+`value.astimezone(UTC)`. The shared parser hands a floating master over with
+`start_instant = None` — a floating time names no moment — so the catalog fell back to
+`event.start`, which is a *naive* datetime.
+
+The naive value was read as UTC in the shared parser. In the catalog's copy, the fallback
+path raised, the event was counted as `unreadable_event`, and **no candidate was produced
+at all**. A floating recurring event simply vanished from the catalog: no import, no
+warning that the user could act on.
+
+This was a silent regression introduced by the move — the parser module's own docstring
+claimed "behaviour is unchanged", and it was not.
+
+**Reproduced** before fixing: a floating `RRULE` master parsed to zero candidates.
+
+**Fix** — `backend/apps/ingestion/parsers/ics.py`:
+
+```python
+def _instance_utc(value) -> datetime:
+    """The UTC instant identifying a recurrence instance (floating/date read as UTC, id only)."""
+    if isinstance(value, datetime):
+        return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if isinstance(value, date):
+        return at_midnight(value).replace(tzinfo=UTC)
+    raise TypeError("a recurrence instance needs a date or a datetime")
 ```
 
-The nested `atomic` is a savepoint: the insert's `IntegrityError` is caught at the point of
-the insert, while the account and the audit row stay in **one** transaction (AD-5).
+and in `_candidate`, the instance key falls back to the wall clock read as UTC — exactly
+the reading a floating `RECURRENCE-ID` gets:
 
-### 2. [Security] The reset token was not single-use under concurrency
-
-- **File**: `backend/apps/identity/services/password_reset.py:124-183`
-- **Description**: `_find_outstanding_token` read the outstanding rows with no lock. Two
-  concurrent `reset_password` calls could both read `used_at IS NULL`, both pass the
-  check, and both change the password — so the token was usable twice, which breaks the
-  acceptance criterion outright.
-- **Rationale**: "Single-use" is the property the work item names. A sequential test cannot
-  see a race.
-- **Risk Level**: High — it changes the locking behaviour of the write path.
-- **Diff**:
-
-```diff
--    candidates = PasswordResetToken.objects.using(PERSONAL).filter(
--        used_at__isnull=True, revoked_at__isnull=True
--    )
-+    candidates = (
-+        PasswordResetToken.objects.using(PERSONAL)
-+        .select_for_update()
-+        .filter(used_at__isnull=True, revoked_at__isnull=True)
-+    )
-...
--        row.used_at = moment
--        row.save(using=PERSONAL, update_fields=["used_at"])
-+        consumed = PasswordResetToken.objects.using(PERSONAL).filter(
-+            pk=row.pk, used_at__isnull=True
-+        ).update(used_at=moment)
-+        if consumed == 0:
-+            raise InvalidResetTokenError()
+```python
+instance = recurrence_id if recurrence_id is not None else event.start_instant
+if instance is None:
+    instance = event.start
+source_item = ics_item_id(uid, _instance_utc(instance))
 ```
 
-The conditional update makes the **database** the arbiter of single-use, so the row lock is
-belt and braces rather than the only defence.
+**Tests added** — `backend/tests/ingestion/parsers/test_ics.py`:
 
-### 3. [Security] Sign-in and sign-out were not audited
-
-- **File**: `backend/apps/identity/services/authenticate.py`, `backend/apps/identity/services/session.py`
-- **Description**: The design doc (D14) requires sign-in, sign-up, sign-out and password
-  reset all to be audited. Only sign-up and password reset were. AD-5 requires one audit
-  row per mutation, and a sign-in is the security event most worth recording.
-- **Rationale**: An unimplemented design decision is a gap, not a preference.
-- **Risk Level**: High — it adds a write to the sign-in path.
-- **Diff**:
-
-```diff
-+# in authenticate(), after the password check
-+    with transaction.atomic(using=PERSONAL):
-+        audit_service.write_audit(
-+            actor=Actor.user(user.pk),
-+            action="sign_in",
-+            target_type="User",
-+            target_id=user.pk,
-+            details={"method": "password"},
-+        )
-```
-
-`sign_out` was changed from `sign_out(request)` to `sign_out(*, user, request)`, matching
-the design doc's signature, so the audit row's actor is explicit rather than read off the
-request.
-
-### 4. [Testing] A reset ended the session it was made from
-
-- **File**: `backend/apps/identity/services/password_reset.py`, `backend/tests/identity/test_password_reset.py`
-- **Description**: `reset_password` called `end_other_sessions(user)` with no
-  `keep_session_key`, so the session the user reset *from* was destroyed too. The design
-  doc (D12) says the current session is rotated, not deleted.
-- **Rationale**: The user is logged out of the browser they just used.
-- **Risk Level**: Medium — it changes which sessions survive.
-- **Diff**:
-
-```diff
--def reset_password(*, token: str, new_password: str, now=None) -> User:
-+def reset_password(
-+    *, token: str, new_password: str, now=None, keep_session_key: str | None = None
-+) -> User:
-...
--    end_other_sessions(user)
-+    end_other_sessions(user, keep_session_key=keep_session_key)
-```
-
-The old test called `end_other_sessions` **directly**, so it pinned the helper rather than
-the command — and the command was wrong. The test now calls `reset_password`.
-
-### 5. [Testing] The tests that should have caught the above did not exist
-
-- **File**: `backend/tests/identity/test_sign_up.py`, `test_authenticate.py`, `test_password_reset.py`, `test_password_reset_concurrency.py` (new), `test_session.py` (new)
-- **Description**: 13 tests were added, one per fixed defect. Each was verified to **fail
-  without its fix** — the fix was reverted in the working tree and the test re-run.
-- **Rationale**: A test that cannot fail is worse than no test. The concurrency test
-  produced `['ok', 'ok']` instead of `['ok', 'refused']` when the lock was removed.
-- **Risk Level**: Low — tests only.
-- **Diff**: new files and new test functions; no production code touched.
-
-### 6. [Architecture] An expired token row shadowed a valid one
-
-- **File**: `backend/apps/identity/services/password_reset.py:166-196`
-- **Description**: `_find_outstanding_token` returned `None` on the first digest match if it
-  was expired, without continuing the scan — so an expired row could make a later valid row
-  unreachable.
-- **Rationale**: The state machine should not conflate "expired" with "unknown" mid-scan.
-  Astronomically unlikely with 256-bit tokens, but a logic error nonetheless.
-- **Risk Level**: Low — it only ever made a valid token *less* reachable, never more.
-- **Diff**:
-
-```diff
-         if row.expires_at <= now:
--            return None
-+            continue
-```
-
-### 7. [Code Quality] `reset_password_stream()` was dead code
-
-- **File**: `backend/apps/identity/services/emails.py`, `backend/apps/identity/services/password_reset.py`
-- **Description**: The helper existed but was never called; the call site spelled
-  `Stream.TRANSACTIONAL` directly.
-- **Rationale**: Either delete it or use it. Using it puts the AD-20 stream choice in one
-  place, so a future second auth mail cannot drift onto the wrong stream.
-- **Risk Level**: Low — mechanical.
-- **Diff**:
-
-```diff
--        stream=Stream.TRANSACTIONAL,
-+        stream=reset_password_stream(),
-```
-
-### 8-11. [Code Quality] Lint and format
-
-- **Files**: `backend/apps/identity/admin.py`, `backend/apps/identity/services/__init__.py`,
-  `backend/tests/identity/conftest.py`, `backend/tests/identity/test_password_reset.py`,
-  `backend/apps/identity/migrations/0002_*.py`
-- **Description**: An over-long line in the admin's `fieldsets`, three unsorted import
-  blocks, and two unused locals.
-- **Rationale**: Mechanical, non-semantic — the auto-fix category.
-- **Risk Level**: None.
-- **Fix**: `ruff check --fix` and `ruff format`. The line was wrapped by hand rather than
-  left for the formatter, because the `fieldsets` list is more readable expanded.
+- `test_a_floating_series_master_is_read_and_keyed_as_utc` — the master is imported, its
+  id is the wall clock read as UTC, and it is not counted as skipped.
+- `test_a_recurrence_instance_that_names_no_day_is_refused` — the guard raises rather
+  than producing a wrong id.
 
 ---
 
-## Accepted Without a Change
+### B2 — The calendar's own limits were dead constants
 
-These were raised by the review and deliberately not changed. Each is recorded so the
-decision is visible rather than silent.
+**Severity**: BLOCKER · **Category**: Contract / Architecture · **Status**: Fixed
 
-| Finding | Why accepted |
-|---------|-------------|
-| `_find_outstanding_token` scans every outstanding row in the table | The digest depends on a per-row salt, so no index can be looked up without knowing the salt. The scan is bounded by the number of *outstanding* tokens, which are short-lived and revoked on the next request. A cleanup job for expired rows belongs to a later item. |
-| `request_password_reset` sends the email after the row commits | The standard transactional-email trade-off. A send failure leaves a row the user never received a link for; the next request revokes it and issues a new one. Sending inside the transaction would instead roll the row back on a transient SMTP failure, which is worse. |
-| The duplicate sign-up path is a timing oracle | Measured at roughly 17 ms against 346 ms, both dominated by password hashing. The design (D15) accepts the email as the only observable difference. |
-| `_user_sessions` decodes every session row | Django's session model keeps the user id inside an encoded payload, not in a column, so there is no database-level lookup. An account has a handful of sessions. |
-| `DUMMY_PASSWORD_HASH` is not in `shared/constants.py` | The design doc asked for it there, but that module is stdlib-only and `make_password` needs Django — **the design doc is wrong, the code is right**. The code's placement is correct and documented in the module. This is a design-doc amendment, not a code change. |
-| `TOKEN_BYTES` / `SALT_BYTES` are not in `shared/constants.py` | Local implementation detail of the token module; no other module needs them. |
+The design decision D7 requires the calendar to hand *its own* bounds to the shared
+hardened client — a 5 MB decoded budget instead of the source's 10 MB, a 5 s connect
+timeout instead of the source's, a 30 s total deadline. The adapter declared all six as
+named constants, and **none of them was ever used**: `SourceFetchPort.fetch` had no
+`limits` parameter, so `MAX_ICS_BYTES` and the five timeouts were decoration, and the
+calendar silently fetched with the *source's* budget.
+
+The six constants were the most visible part of the adapter and did nothing.
+
+**Fix** — the *shape* of the limits moved into the port, so a caller whose content is a
+different shape can hand the adapter its own bounds, and `ports` still never imports
+Django. `backend/ports/fetch.py`:
+
+```python
+@dataclass(frozen=True)
+class FetchLimits:
+    user_agent: str
+    max_bytes: int = 10 * 1024 * 1024
+    dns_timeout: float = 3.0
+    connect_timeout: float = 5.0
+    read_timeout: float = 15.0
+    write_timeout: float = 5.0
+    total_timeout: float = 30.0
+    max_redirects: int = 5
+    allowed_ports: frozenset[int] = field(default_factory=lambda: frozenset({80, 443}))
+```
+
+`backend/adapters/crawl/http.py` keeps a thin subclass whose only job is *reading the
+settings*, and `fetch()` gained a `limits` parameter that is threaded through the
+deadline, the backend, the headers, the target check, the redirect cap, the httpx timeout
+and `_read_body`.
+
+**Tests added** — `backend/tests/adapters/test_calendar_fetch.py` and
+`backend/tests/adapters/test_calendar_ics.py`:
+
+- `test_a_per_call_limit_is_the_one_that_applies` — a per-call budget is honoured.
+- `test_the_default_limit_still_applies_when_no_limit_is_given` — a source fetch without
+  a limit keeps the source budget.
+- `test_the_fetch_carries_the_calendar_s_own_limits` — the adapter hands its own bounds.
+- `test_the_calendar_limits_are_tighter_than_the_source_limits` — the 5 MB budget is
+  actually tighter.
 
 ---
 
-## Project Tooling Used
+### B3 — The connect endpoint and the adapter disagreed about `http://`
 
-- **ruff**: `backend/pyproject.toml` — `ruff check .` and `ruff format --check .`, both clean
-- **import-linter**: `backend/pyproject.toml` — 14 contracts, 0 broken
-- **pytest + pytest-django**: `backend/pyproject.toml` — 2202 passed, 0 failed
-- **coverage**: `backend/pyproject.toml` — 98.77% overall, 100% for `domain/`
-- **Django system checks**: `manage.py check` — no issues
-- **Migration drift**: `manage.py makemigrations --check --dry-run` — no changes detected
+**Severity**: BLOCKER · **Category**: Contract · **Status**: Fixed
 
-## Standards Referenced
+`apps.personalization.services.calendar_connections` accepted `http://` when a user
+pasted a calendar address; `adapters/calendar/ics.py` refused it. The user was told
+their address was accepted, the connection was stored, and the first poll failed — with
+the credential on the wire in cleartext in the meantime.
 
-- `docs/ARCHITECTURE-SPINE.md` — AD-1, AD-2, AD-3, AD-5, AD-8, AD-9, AD-13, AD-16, AD-18, AD-20, AD-21
-- `.specs-fire/intents/onboarding-and-account/work-items/account-auth-core-design.md` — D1–D20
-- `.specs-fire/runs/run-eventpulse24-020/plan.md` — the approved implementation plan
-- `.specs-fire/runs/run-eventpulse24-020/test-report.md` — the test evidence for every fix
+The secret ICS URL *is* the credential, so `http://` is not a downgrade to be silently
+upgraded to `https://` — it is a credential sent in the clear on every poll, forever.
+
+**Fix** — the service's shape check now refuses `http://` at *write* time, so the user
+hears about it while they are still typing rather than at the first poll with a stored
+connection they cannot use:
+
+```python
+ALLOWED_SCHEMES = frozenset({"https", "webcal", "webcals"})
+```
+
+`webcal://` and `webcals://` are the iCloud spelling; the adapter normalises them to
+`https://` at fetch time.
+
+**Tests changed** — `backend/tests/personalization/test_calendar_connection_commands.py`:
+
+- `test_the_three_schemes_are_accepted` — https, webcal, webcals.
+- `test_a_plain_http_address_is_refused` — http is refused at write time.
 
 ---
-*Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-020*
+
+### B4 — The new `formats` layer would have bypassed the project-logger redaction
+
+**Severity**: BLOCKER · **Category**: Security · **Status**: Fixed
+
+`adapters/logging/formatter.py` keeps a list of the project's own logger roots. A logger
+under one of those roots never interpolates its arguments — they are rendered as
+`[redacted]`, because a project logger may be handed a title, a uid or a URL.
+
+The new `formats` layer was not on that list, so a logger in `formats/` — ours, with the
+same exposure — would have interpolated its arguments and written a user-visible value
+into a log line. The list was maintained by hand and the new layer was not added to it.
+
+**Fix** — `backend/adapters/logging/formatter.py`:
+
+```python
+PROJECT_LOGGER_ROOTS = ("apps", "domain", "adapters", "config", "worker", "shared", "formats")
+```
+
+**Test added** — `backend/tests/adapters/test_logging.py`:
+`test_every_own_package_is_a_project_logger` — parametrizes over every root, including
+`formats` and `formats.ics`, and asserts the args are redacted and the title never
+appears in the line.
 
 ---
 
-# Code Review: Calendar Connection Model (AD-18, FR-50)
+### B5 — The refusal vocabulary was a hand-copied fiction
 
-**Work item**: `calendar-connection-model` — the second of thirteen in
-`run-eventpulse24-020`.
-**Reviewer**: the FIRE Builder's code-review pass, over the diff for this item.
-**Outcome**: two defects found and fixed; one mechanical cleanup applied; two findings
-accepted with a recorded reason; one gap in the *tests* found and closed.
+**Severity**: BLOCKER · **Category**: Contract · **Status**: Fixed
 
-## What Was Reviewed
+The adapter decided "was this refusal ours?" from a hand-copied frozenset of reason
+strings:
 
-| File | Change |
-|------|--------|
-| `shared/credential_key.py` | **New.** The credential key's *format*: parse, validate, encode, decode. Stdlib-only. |
-| `apps/personalization/credentials.py` | **New.** The cipher: the envelope, encrypt, decrypt, the keyed fingerprint. |
-| `apps/personalization/fields.py` | **New.** `EncryptedTextField` — the model field whose stored value is ciphertext. |
-| `apps/personalization/models.py` | `CalendarConnection`; `PersonalEvent` gains `calendar_connection_id`, `source_uid`, and the `CALENDAR_IMPORT` source. |
-| `apps/personalization/services/calendar_connections.py` | **New.** connect, disconnect, purge, reveal. |
-| `apps/personalization/admin.py` | The credential is **excluded**, not made readonly. |
-| `config/env.py`, `config/checks.py` | The key is validated at startup (D5). |
-| `backend/pyproject.toml` | Two import contracts: `crypto-library`, `credential-key`. |
+```python
+_REFUSED_REASONS = frozenset({"scheme", "userinfo", "port", "address", "oversized"})
+```
 
-The review's question is narrow and specific: **can a plaintext calendar address reach
-a place it should not, or be lost in a way the user cannot see?**
+Two copies of one vocabulary drift, and this one had already drifted: the set contained
+`oversized`, which the transport never produces as a *blocked* error (an oversized body
+is a `FetchTooLargeError`, a different class), and it **omitted** `cross_host_redirect`,
+which the transport does produce. The accompanying test asserted a reason the transport
+never raises — so it proved nothing about the real behaviour.
 
-## Findings
+**Fix** — the transport became the single authority. `backend/ports/fetch.py`:
 
-### DEFECT 1 — `decrypt` leaked two exception types it promised never to leak
+```python
+class FetchBlockedError(FetchError):
+    code = "fetch_blocked"
 
-**Severity**: high. **Status**: **fixed**.
+    POLICY_REFUSAL_REASONS = frozenset(
+        {"scheme", "userinfo", "port", "address", "cross_host_redirect"}
+    )
 
-`apps/personalization/credentials.py` documents one promise: *"Every failure mode — a
-malformed envelope, the wrong key, a tampered ciphertext — is the same error."* The
-module's docstring says the caller "cannot tell them apart, and neither can an
-attacker: the error never says whether the envelope was well-formed."
+    @property
+    def is_policy_refusal(self) -> bool:
+        """Whether this refusal was ours — so a caller must not blame the provider."""
+        return self.reason in self.POLICY_REFUSAL_REASONS
+```
 
-Two paths broke that promise:
+The adapter now asks the transport rather than keeping its own list:
 
-1. **A structurally impossible envelope.** `AESGCM.decrypt` raises a bare `ValueError`
-   when the nonce is not 12 bytes or the ciphertext is shorter than GCM's 16-byte tag.
-   That `ValueError` escaped the module. A caller written against the documented
-   contract — `except CredentialDecryptionError` — would not catch it, and a corrupt row
-   would surface as an unhandled 500 instead of a credential fault.
-2. **A non-text plaintext.** The credential is a URL, so the plaintext is text. A column
-   holding bytes that are not text is a corrupt row, but `plaintext.decode("utf-8")`
-   raised `UnicodeDecodeError`, which is not a `ValueError` and not a
-   `CredentialDecryptionError`.
+```python
+except FetchBlockedError as exc:
+    reason = exc.reason
+    if exc.is_policy_refusal:
+        raise CalendarRefusedError(details={"reason": reason}) from None
+    raise CalendarTransientError(details={"reason": reason}) from None
+```
 
-Both are now caught and re-raised as `CredentialDecryptionError`. The `ValueError` branch
-carries a comment saying why the raw exception must not escape: *"a raw `ValueError`
-escaping this module would break the promise that every failure is a
-`CredentialDecryptionError` — the caller would have to know which of cryptography's
-exceptions to expect."*
+**Test changed** — `backend/tests/adapters/test_calendar_ics.py`:
+`test_the_refusal_reasons_are_the_transport_s_own` — asserts the adapter's notion of a
+policy refusal is the transport's, not a copy.
 
-**Tests**: `test_a_structurally_impossible_envelope_fails_loudly`,
-`test_a_short_ciphertext_fails_loudly`,
-`test_a_non_text_plaintext_fails_loudly`.
+---
 
-**Verified load-bearing**: with both `except` clauses reverted to a bare `raise`, the
-suite was re-run and **2 failed** — `test_a_structurally_impossible_envelope_fails_loudly`
-and `test_a_non_text_plaintext_fails_loudly` — each failing with the leaked exception
-type (`ValueError` and `UnicodeDecodeError` respectively). The fix was then restored and
-the suite re-run green.
+### B6 — The calendar's log fields were unreadable in production
 
-### DEFECT 2 — the field encrypted an already-encrypted value a second time
+**Severity**: BLOCKER · **Category**: Observability · **Status**: Fixed
 
-**Severity**: high. **Status**: **fixed**.
+The adapter logs `entry_count`, `skipped_count` and `skipped`. The redaction allowlist in
+`adapters/logging/redaction.py` did not include them, so in production **every one of
+those fields was `[redacted]`** — the log line said nothing. The test that covered this
+read the raw `LogRecord` instead of the formatted line, so it passed against the
+unformatted record while production saw nothing.
 
-`EncryptedTextField.get_prep_value` encrypts every write. It had no check for a value
-that was *already* an envelope, so:
+A reason-slug → count map is safe to log: a slug is one of our own names
+(`no_event_start`, `floating_time`, `unplaceable_time`) — never a title, a uid, a URL or
+a zone. That distinction is exactly what the allowlist is for, so it belongs there.
 
-- a `loaddata` fixture, which writes the serialised ciphertext straight into the column,
-- a copy of an existing row,
-- any future code path that round-trips a credential through the model
+**Fix** — `backend/adapters/logging/redaction.py`:
 
-would each be stored as **ciphertext-of-ciphertext**. Reading the row back decrypts
-*once*, and hands the caller an `EPENC1.…` string where the provider's address should be.
-That is silently wrong, and it is visible only at fetch time — when the adapter tries to
-fetch a calendar whose address is a base64 blob.
+```python
+"entry_count",
+"skipped_count",
+"skipped",
+```
 
-The fix is one guard: a value that `is_envelope(value)` is stored as it is.
+**Test changed** — the log assertion now reads the *formatted* line, which is what
+production sees, and asserts the slugs are present and a title is not.
 
-This is the same class of defect as the ones the tests were written to catch, and it is
-the reason the fix has a dedicated test rather than a comment.
+---
 
-**Tests**: `test_an_already_encrypted_value_is_not_encrypted_again`,
-`test_a_dumped_connection_reloads_as_the_same_credential`.
+### C1 — `normalise_url` returned the URL unstripped for `https://`
 
-**Verified load-bearing**: with the guard replaced by an unconditional
-`encrypt(value, _current_key())`, the suite was re-run and **2 failed**. The failure
-message is the defect itself: `assert 'EPENC1.k1.dOgBQrWSB5…' == 'https://calendar.google.com/calendar/ical/…/basic.ics'` — the address replaced by an envelope, exactly as described above. The fix was then restored and the suite re-run green.
+**Severity**: CONFIRM · **Category**: Code Quality · **Status**: Fixed
 
-### CLEANUP 1 — `from django.conf import settings` inside a function
+`url.strip()` was applied to the `webcal://` branch but not the `https://` branch, so a
+trailing space in a pasted address reached the transport as part of the URL. The
+transport's URL parser tolerates it, but the two branches of one function should behave
+the same way.
 
-**Severity**: none. **Status**: **applied**.
+**Fix** — the `https://` branch returns `url.strip()` too.
 
-`_key()` in `services/calendar_connections.py` imported `settings` inside the function
-body. Every other module in the codebase imports it at the top. This was a mechanical,
-non-semantic change with no behavioural effect; the tests were re-run after it.
+---
 
-### CLEANUP 2 — an unused `moment` in the two commands
+### N3 / N4 — The moved helpers claimed a generality they did not have
 
-**Severity**: none. **Status**: **applied**.
+**Severity**: NIT · **Category**: Documentation · **Status**: Fixed
 
-`moment` was assigned in `connect_calendar` and `disconnect_calendar` and never used —
-ruff caught it. Rather than delete the value, the commands now stamp it into the audit
-row (`details={"provider": …, "at": moment.isoformat()}`), matching
-`apps/personalization/services/personal_events.py`. The audit row should say *when* the
-thing happened; a moment that is computed and thrown away is a moment nobody recorded.
+`formats/text.py` and `formats/times.py` were moved out of `formats/ics/` because they are
+format-agnostic — RSS, JSON-LD and iCalendar all carry a title, a description, a venue
+name, an all-day span and an overnight end. Their docstrings still said "the ICS
+format's", which contradicted the move and would have led the next reader to think the
+modules were ICS-specific after all.
 
-Two tests that asserted the audit row's exact `details` were updated to match.
+**Fix** — both docstrings now open with "**This module is format-agnostic.**" and name
+the formats that share the shape.
 
-### GAP 3 — `fields.py` sat at 73% coverage, below the project gate
+---
 
-**Severity**: medium. **Status**: **fixed**.
+### N5 — The `_uid` docstring described the rule inaccurately
 
-The file that decides what lands in the credential column — the one file whose whole job
-is the write path — was at **73%**, under the project's 80% floor. The uncovered lines
-were not incidental: they were the missing-key branch, the malformed-key branch, the
-non-string write, the empty-string write, the whole of `to_python`, and both branches
-of `value_to_string`.
+**Severity**: NIT · **Category**: Documentation · **Status**: Fixed
 
-A security-relevant file that is three-quarters untested is a file whose *rejection*
-paths are unknown. The gap is closed by a new file,
-`tests/personalization/test_calendar_credential_field.py` (18 tests), which covers each
-branch of the field on its own — away from the model that uses it.
+The `_uid` docstring said an `RRULE` master "carries the instance instant, so the
+override of a master's *own* instance gets the **same** id as that master" — true — but
+omitted that a plain event keeps its bare UID and that an override of a *later* instance
+gets its own id. All three branches are in the code; the docstring named one.
 
-**Result**: `apps/personalization/` and `shared/credential_key.py` are now at **100% —
-every line and every branch**.
+**Fix** — the docstring now states all three branches.
 
-## Accepted Without a Change
+---
 
-| Finding | Why accepted |
-|---------|-------------|
-| `value_to_string` encrypts the plaintext attribute into a **fresh** envelope, so the serialised payload is not byte-identical to the stored ciphertext | This is correct, and it is a consequence of the fresh nonce. The property that matters is that the payload is *one* layer of encryption and decrypts to the address — which is what the test now asserts. (An earlier draft of that test asserted byte-identity and was wrong; the test was corrected, not the code.) |
-| `connect_calendar` matches a reconnecting row by **status**, not by fingerprint | The provider revokes the old secret, so the address the user pastes now is a *new* one with a *new* fingerprint. Matching by fingerprint would create a second row and consume a second slot. |
-| `OCCUPYING_STATUSES` counts a `needs_reconnect` row against the cap | The user has not given the calendar up. Freeing the slot would let a user connect past the cap by waiting for a failure. |
-| `reveal_credential` returns the plaintext wrapped in `ports.calendar.Credential`, whose `repr`/`str` are redacted | There is exactly one function in the codebase that returns the plaintext, and the wrapper makes printing it by accident a no-op. |
-| The Free-tier cap is enforced in the service, not the API | The API is one caller. A cap that only one caller enforces is a cap another caller walks past. |
-| `.env.example` holds a working example key (`k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieWQ`) | It decodes to `eventpulse24-local-credkey-32byt` and follows the repo's established `DJANGO_SECRET_KEY=…-not-for-production` convention. `.env` is gitignored; the file is a template, not a secret. |
+### N8 — `CROSS_HOST_REDIRECT_NOTE` was a constant that was never used
 
-## A Note on the Base64 Fix
+**Severity**: NIT · **Category**: Code Quality · **Status**: Fixed
 
-Found during the earlier test pass, and recorded here because it is the most instructive
-defect of the item.
+`ports/fetch.py` carried a module-level `CROSS_HOST_REDIRECT_NOTE` string that nothing
+imported or read. It was documentation wearing a constant's clothes.
 
-Python's `base64.urlsafe_b64decode` **silently discards** characters outside the
-alphabet. A 32-byte key with one stray `$` in it would decode to *different* 32 bytes,
-pass the length check, and be accepted — so the key in use would not be the key the
-operator wrote, and every credential written under it would be unreadable by the key they
-thought they had. The key's format now checks the alphabet before decoding and decodes
-strictly (`validate=True`).
+**Fix** — converted to a plain comment block attached to the parameter that actually
+means it.
 
-The defect was found through a **coverage gap**, not by inspection: the uncovered branch
-in `b64decode` led directly to it. That is the argument for treating a coverage gap in a
-security-critical module as a finding rather than a nuisance.
+---
 
-## The Gates, After Everything
+## Architecture Verification
 
-| Gate | Command | Result |
-|------|---------|--------|
-| Tests | `pytest -q --cov` | **2363 passed**, 0 failed |
-| Coverage | `pytest --cov` | **98.80%** overall (floor 80%) |
-| Coverage, this item's code | `pytest --cov=apps.personalization --cov=shared.credential_key` | **100%** — every line, every branch |
-| Coverage, `domain/` | `pytest --cov=domain` | **100%** (floor 100%) |
-| Lint | `ruff check .` | clean |
-| Format | `ruff format --check .` | 318 files already formatted |
-| Architecture | `lint-imports` | **16 kept, 0 broken** |
-| Django | `manage.py check` | no issues |
-| Migrations | `manage.py makemigrations --check --dry-run` | no changes detected |
+The layering conflict at the centre of this item — *the catalog parses ICS in `apps`, the
+calendar adapter parses ICS in `adapters`, and `adapters` may not import `apps`* — is
+resolved by the new `formats` layer, and the fork is prevented **structurally**:
 
-## Standards Referenced
+```
+AD-2 only formats.ics parses iCalendar files KEPT (1 ignored import)
+```
 
-- `docs/ARCHITECTURE-SPINE.md` — AD-3 (the schema wall), AD-5 (the audit row), AD-13 (no PII in logs), AD-15 (retention), AD-16 (write ownership), AD-18 (the calendar credential)
-- `.specs-fire/intents/onboarding-and-account/work-items/calendar-connection-model-design.md` — D1–D13
-- `.specs-fire/runs/run-eventpulse24-020/plan.md` — the approved implementation plan
-- `.specs-fire/runs/run-eventpulse24-020/test-report.md` — the test evidence for every fix
+The one ignored import is the catalog parser calling into `formats.ics` — the only
+direction allowed. The calendar adapter calls the same module. Neither importer can grow
+its own ICS parser without breaking the contract.
 
+The `formats` layer is also proved to be a **leaf** by an AST-level allowlist
+(`backend/tests/architecture/test_formats_pure.py`): a format module may import the
+stdlib, `icalendar` (the format's own grammar) and its own siblings — and nothing else.
+No socket, no database, no Django, no `httpx`. The same parser therefore behaves
+identically in the API process, the worker process and a test with no database at all.
+
+**One SSRF implementation remains.** The calendar adapter resolves `SourceFetchPort` from
+the registry and never imports `httpx`, `httpcore` or `adapters.crawl`; the address
+policy, the deadline, the size cap and the decompression budget are all the *same code*
+as the source fetch's, with only the numbers differing.
+
+---
+
+## Security Verification
+
+- **The credential never leaks.** The secret ICS URL *is* the credential (AD-18). Every
+  exception leaving `adapters/calendar/ics.py` is a `CalendarError` carrying a reason
+  slug — never the URL, the host or the path — and each is raised `from None`, so no
+  traceback can carry it either.
+- **The fetch logs no URL.** The hardened client's log line carries ids and counts only.
+- **The adapter's own log line carries counts and slugs**, never a title, a uid, a URL or
+  a zone.
+- **`http://` is refused at write time**, so the credential is never put on the wire in
+  cleartext.
+- **The SSRF policy is not relaxed by the calendar.** The one relaxation — cross-host
+  redirects — is about the *host* only; the address policy still runs at connect time on
+  every hop, so a redirect to a private address is refused, and a host that resolves to a
+  private address is refused too (DNS rebinding).
+
+---
+
+## Test Result
+
+**Passing.** 2536 passed, 0 failed, 98.87% coverage (148 files at 100%), ruff clean,
+17/17 import contracts kept.

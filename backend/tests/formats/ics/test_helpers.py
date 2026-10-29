@@ -10,10 +10,10 @@ import pytest
 
 from apps.ingestion.parsers import PARSERS, parse
 from apps.ingestion.parsers.text import absolute_iri, derived_id, http_url, item_id, plain_text
-from apps.ingestion.parsers.times import all_day_span, parse_iso, roll_overnight
 from apps.ingestion.parsers.types import SourceContext
-from apps.ingestion.parsers.windows_zones import WINDOWS_ZONES, map_zone
 from domain.timezones import canonical_zone
+from formats.ics.windows_zones import WINDOWS_ZONES, map_zone
+from formats.times import all_day_span, parse_iso, roll_overnight
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "sources"
 CONTEXT = SourceContext(UUID(int=7), "https://source.example.test/")

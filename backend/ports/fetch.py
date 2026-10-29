@@ -5,15 +5,47 @@ Adapters return bytes and metadata and never interpret them. Every failure is on
 a reason slug (and an HTTP status), never a host, IP or URL (AD-13).
 
 Separate from `CalendarPort`, which handles credential-bearing personal ICS (AD-18).
+
+**`allow_cross_host_redirect` is the one policy a caller may ask for.** It defaults to
+`False`, so every source fetch keeps same-host-only redirects. See the note below for who
+asks, and why the address policy is unaffected.
+
+**`limits` is the second.** It defaults to `None` — the adapter's own configured limits —
+so every source fetch keeps the source budget. A caller whose content is a different
+shape (a calendar feed) passes its own `FetchLimits`; the size, time and port bounds are
+then the caller's, and the *address policy* is still the adapter's.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from domain.errors import DomainError
 
 NOT_MODIFIED = 304
+
+
+@dataclass(frozen=True)
+class FetchLimits:
+    """The bounds of one fetch: size, time and ports.
+
+    This lives in the **port**, not in the adapter, because a caller may ask for its own
+    limits: a calendar feed is a different shape from an RSS page, and the calendar
+    adapter has its own named constants (a 5 MB decoded budget, a 5 s connect timeout).
+
+    The dataclass is plain Python — `ports` never imports Django — so the adapter builds
+    one from settings, and a caller builds one from its own constants.
+    """
+
+    user_agent: str
+    max_bytes: int = 10 * 1024 * 1024
+    dns_timeout: float = 3.0
+    connect_timeout: float = 5.0
+    read_timeout: float = 15.0
+    write_timeout: float = 5.0
+    total_timeout: float = 30.0
+    max_redirects: int = 5
+    allowed_ports: frozenset[int] = field(default_factory=lambda: frozenset({80, 443}))
 
 
 @dataclass(frozen=True)
@@ -48,9 +80,24 @@ class FetchTooLargeError(FetchError):
 
 
 class FetchBlockedError(FetchError):
-    """We refused the target: scheme, port, userinfo, address, or a cross-host redirect."""
+    """We refused the target: scheme, port, userinfo, address, or a cross-host redirect.
+
+    Every reason here is a **policy refusal** — our own decision, not the provider's.
+    `POLICY_REFUSAL_REASONS` is that list, so a caller can tell "we would not go there"
+    from "the fetch failed" without string-matching the reasons itself.
+    """
 
     code = "fetch_blocked"
+
+    #: The reasons this error is raised with — the transport's own vocabulary.
+    POLICY_REFUSAL_REASONS = frozenset(
+        {"scheme", "userinfo", "port", "address", "cross_host_redirect"}
+    )
+
+    @property
+    def is_policy_refusal(self) -> bool:
+        """Whether this refusal was ours — so a caller must not blame the provider."""
+        return self.reason in self.POLICY_REFUSAL_REASONS
 
 
 class FetchHTTPError(FetchError):
@@ -84,4 +131,23 @@ class SourceFetchPort(ABC):
         etag: str | None = None,
         last_modified: str | None = None,
         source_id: UUID | None = None,
+        allow_cross_host_redirect: bool = False,
+        limits: FetchLimits | None = None,
     ) -> FetchResult: ...
+
+
+# Why a caller may ask for a cross-host redirect.
+#
+# A *source* fetch follows same-host redirects only: the URL was configured by an
+# operator, and a redirect to another host is a surprise worth refusing.
+#
+# A *calendar* fetch is different, and the difference is the caller's, not the
+# transport's. All three providers redirect the address the user pasted: Apple's
+# `webcal://p01-calendars.icloud.com` answers 302 with an `icloud.com` CDN host, and
+# Google's private ICS address answers 302 with `googleusercontent.com`. The address is
+# the user's own credential and they are pointing it at a provider; the provider is
+# entitled to move the file.
+#
+# **This relaxes the host, never the address.** The address policy still applies at
+# connect time on every hop, so a redirect to `http://169.254.169.254/` is refused
+# whatever host it came from.

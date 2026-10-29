@@ -13,7 +13,6 @@ from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import fromstring
 
 from apps.ingestion.parsers.text import derived_id, http_url, item_id, plain_text
-from apps.ingestion.parsers.times import all_day_span, parse_iso, roll_overnight
 from apps.ingestion.parsers.types import (
     MAX_DESCRIPTION,
     MAX_TITLE,
@@ -22,6 +21,7 @@ from apps.ingestion.parsers.types import (
     ParseResult,
     SourceContext,
 )
+from formats.times import all_day_span, parse_iso, roll_overnight
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 EVENT_NS = "{http://purl.org/rss/1.0/modules/event/}"

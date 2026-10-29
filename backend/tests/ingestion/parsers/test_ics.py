@@ -1,4 +1,17 @@
-"""ICS parser: times as written, Windows zones, all-day, series keyed by ics_item_id."""
+"""The catalog's view of an ICS file: `ParsedCandidate`s.
+
+These are the tests for `apps.ingestion.parsers.ics`. The **format's** view of the same
+file — the times as written, the zones, the all-day spans — is pinned separately in
+`tests/formats/ics/test_parser.py`, so the two paths are proven independently and
+neither can drift.
+
+The properties pinned here are the ones the *catalog* adds on top of the format:
+
+- the identity decision: a UID keyed as-is, a series instance keyed by `ics_item_id`;
+- the URL resolved against the source's base;
+- the status hint, the venue name, the series id;
+- the shared parser's skip counts reported under the catalog's own reasons.
+"""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -85,6 +98,10 @@ def test_cancelled_status(parsed):
     assert parsed[1]["Cancelled Concert"].status is StatusHint.CANCELLED
 
 
+def test_an_ordinary_status_is_scheduled(parsed):
+    assert parsed[1]["Library Book Club"].status is StatusHint.SCHEDULED
+
+
 def test_series_overrides_share_a_series_and_key_instances_by_utc_start(parsed):
     result, by_title = parsed
     series = [c for c in result.candidates if c.title.startswith("Weekly Run Club")]
@@ -99,6 +116,37 @@ def test_series_overrides_share_a_series_and_key_instances_by_utc_start(parsed):
     )
     assert moved.source_event_id == ics_item_id(UID_WEEKLY, datetime(2026, 11, 11, tzinfo=UTC))
     assert moved.start == wall("2026-11-10T20:00")  # the moved time, as written
+
+
+def test_a_plain_event_has_no_series_id(parsed):
+    assert parsed[1]["Library Book Club"].series_id is None
+
+
+def test_a_floating_series_master_is_read_and_keyed_as_utc():
+    """A floating time names no moment, but the master still needs an id.
+
+    The instance key falls back to the wall clock read as UTC — the same reading a
+    floating RECURRENCE-ID gets — so the event is imported rather than dropped.
+    """
+    result = parse_ics(
+        calendar(
+            "UID:f@x\r\nSUMMARY:Floating series\r\nDTSTART:20261103T190000\r\nRRULE:FREQ=WEEKLY"
+        ),
+        CONTEXT,
+    )
+
+    [candidate] = result.candidates
+    assert candidate.source_event_id == ics_item_id("f@x", datetime(2026, 11, 3, 19, tzinfo=UTC))
+    assert candidate.series_id is not None
+    assert dict(result.skipped) == {}
+
+
+def test_a_recurrence_instance_that_names_no_day_is_refused():
+    """The instance key needs a date or a datetime; anything else is a broken event."""
+    from apps.ingestion.parsers.ics import _instance_utc
+
+    with pytest.raises(TypeError):
+        _instance_utc("not a time")
 
 
 @pytest.mark.parametrize("override_first", [True, False])
@@ -131,6 +179,24 @@ def test_reused_uid_without_recurrence_keeps_the_first_and_counts_the_rest():
 
 def test_event_without_uid_gets_a_derived_id(parsed):
     assert parsed[1]["No UID Here"].source_event_id.startswith("derived:")
+
+
+def test_a_relative_url_is_resolved_against_the_source_url():
+    result = parse_ics(
+        calendar("UID:u@x\r\nSUMMARY:U\r\nURL:/relative\r\nDTSTART:20261114T220000Z"),
+        CONTEXT,
+    )
+
+    assert result.candidates[0].canonical_url == "https://calendar.example.test/relative"
+
+
+def test_a_non_http_url_is_dropped():
+    result = parse_ics(
+        calendar("UID:u@x\r\nSUMMARY:U\r\nURL:javascript:alert(1)\r\nDTSTART:20261114T220000Z"),
+        CONTEXT,
+    )
+
+    assert result.candidates[0].canonical_url == ""
 
 
 @pytest.mark.parametrize(
@@ -193,19 +259,26 @@ def test_event_without_summary_is_counted():
     assert dict(result.skipped) == {"no_title": 1}
 
 
+def test_an_event_without_a_start_is_counted():
+    result = parse_ics(calendar("UID:t@x\r\nSUMMARY:T"), CONTEXT)
+
+    assert dict(result.skipped) == {"no_event_start": 1}
+
+
 def test_one_unreadable_event_doesnt_stop_the_rest(monkeypatch):
+    """One candidate the catalog cannot build is counted, and the rest of the file is read."""
     from apps.ingestion.parsers import ics
 
-    real = ics._event
+    real = ics._candidate
     calls = iter([RuntimeError("boom"), None])
 
-    def flaky(event, context, result):
+    def flaky(event, context):
         outcome = next(calls)
         if outcome:
             raise outcome
-        real(event, context, result)
+        return real(event, context)
 
-    monkeypatch.setattr(ics, "_event", flaky)
+    monkeypatch.setattr(ics, "_candidate", flaky)
     result = parse_ics(
         calendar(
             "UID:1@x\r\nSUMMARY:A\r\nDTSTART:20261114T220000Z",

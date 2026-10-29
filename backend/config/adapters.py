@@ -17,9 +17,14 @@ FAKE_ADAPTERS = {
 HTTP_FETCH_ADAPTER = "adapters.crawl.http.HttpFetchAdapter"
 FETCH_ADAPTERS = {"fake": FAKE_ADAPTERS["fetch"], "http": HTTP_FETCH_ADAPTER}
 
+CALENDAR_ADAPTER = "adapters.calendar.ics.IcsCalendarAdapter"
+
 # Filled in by the intents that build the real gateway, email provider, Stripe and ICS adapters.
 REAL_ADAPTERS: dict[str, str] = {
     "fetch": HTTP_FETCH_ADAPTER,
+    # The ICS adapter serves Google, Apple and Outlook alike: they all publish
+    # iCalendar, so there is one adapter, not three.
+    "calendar": CALENDAR_ADAPTER,
     # Redis is already in the stack (the Celery broker), so the throttle has a real
     # adapter from the start.
     "throttle": "adapters.throttle.redis.RedisThrottleAdapter",

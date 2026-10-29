@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from apps.ingestion.models import Source
-from ports.fetch import FetchError, FetchResult, SourceFetchPort
+from ports.fetch import FetchError, FetchLimits, FetchResult, SourceFetchPort
 from tests.ingestion.factories import SourceFactory
 
 
@@ -25,7 +25,16 @@ class ScriptedFetchPort(SourceFetchPort):
         self.responses = [ok(r) if isinstance(r, bytes | str) else r for r in responses]
         return self
 
-    def fetch(self, url, *, etag=None, last_modified=None, source_id=None) -> FetchResult:
+    def fetch(
+        self,
+        url,
+        *,
+        etag=None,
+        last_modified=None,
+        source_id=None,
+        allow_cross_host_redirect=False,
+        limits: FetchLimits | None = None,
+    ) -> FetchResult:
         self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
         response = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         if isinstance(response, FetchError):

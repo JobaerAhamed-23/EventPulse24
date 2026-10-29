@@ -46,7 +46,16 @@ select = ["E", "F", "I", "B", "UP", "S", "DTZ", "G", "LOG", "TID"]
 "os.getenvb".msg = "Read configuration through config.env (pydantic-settings), not os.getenvb."
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "domain", "apps", "ports", "adapters", "worker", "shared"]
+known-first-party = [
+    "config",
+    "domain",
+    "apps",
+    "ports",
+    "adapters",
+    "worker",
+    "shared",
+    "formats",
+]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use fake secrets in fixtures, run subprocesses with fixed, trusted arguments,
@@ -70,6 +79,7 @@ root_packages = [
     "config",
     "worker",
     "shared",
+    "formats",
 ]
 include_external_packages = true
 
@@ -80,6 +90,7 @@ type = "layers"
 layers = [
     "config | worker",
     "apps | adapters",
+    "formats",
     "ports",
     "domain",
     "shared",
@@ -220,6 +231,7 @@ source_modules = [
     "config",
     "worker",
     "shared",
+    "formats",
     "adapters.billing",
     "adapters.calendar",
     "adapters.email",
@@ -269,6 +281,7 @@ source_modules = [
     "worker",
     "shared",
     "adapters",
+    "formats",
 ]
 forbidden_modules = ["cryptography"]
 # `apps.personalization` owns CALENDAR_CONNECTION and is therefore the only module that
@@ -313,6 +326,39 @@ forbidden_modules = ["apps.personalization.credentials"]
 # import from another module is the violation, and that is what this forbids.
 allow_indirect_imports = true
 
+[[tool.importlinter.contracts]]
+id = "single-ics-parser"
+name = "AD-2 only formats.ics parses iCalendar files"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters",
+    "formats",
+]
+forbidden_modules = ["icalendar"]
+# The catalog pipeline parses ICS sources and the calendar adapter parses a user's
+# ICS calendar. Two implementations would be two places for the same bug, and they
+# would drift — so there is one, in `formats.ics`, and this contract makes the fork
+# structurally impossible rather than merely discouraged.
+#
+# `formats` is the source *package*, so every module in it is covered — including
+# `formats.ics.events`, which is a plain dataclass and must never reach for the
+# library. The one exception is spelled out below.
+ignore_imports = ["formats.ics.parser -> icalendar"]
+# The one module allowed to reach for `icalendar` is the shared parser itself. The
+# exception is an *import expression*, not a module: it names the parser's own import
+# and nothing else, so a second module in `formats` importing the library still
+# breaks this contract.
+unmatched_ignore_imports_alerting = "none"
+# Indirect imports are allowed: the point is that only the parser *directly* imports
+# the library, not that only the parser's callers may depend on it.
+allow_indirect_imports = true
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings_test"
 testpaths = ["tests"]
@@ -321,7 +367,7 @@ python_files = ["test_*.py"]
 # Coverage of the application code only (not the tests). `make coverage-backend` and CI apply
 # two gates: this overall floor, then 100% for domain/ (testing-standards).
 [tool.coverage.run]
-source = ["domain", "apps", "ports", "adapters", "config", "worker", "shared"]
+source = ["domain", "apps", "ports", "adapters", "config", "worker", "shared", "formats"]
 
 [tool.coverage.report]
 fail_under = 80

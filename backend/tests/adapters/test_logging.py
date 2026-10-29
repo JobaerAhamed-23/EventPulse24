@@ -150,6 +150,32 @@ def test_project_logger_never_interpolates_args():
     assert TITLE not in json.dumps(line)
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "apps.probe",
+        "domain.probe",
+        "adapters.probe",
+        "config.probe",
+        "worker.probe",
+        "shared.probe",
+        "formats.probe",
+        "formats.ics.probe",
+    ],
+)
+def test_every_own_package_is_a_project_logger(name):
+    """A logger in our own code never interpolates — the layer is in the list, not forgotten.
+
+    The `formats` layer is ours too: a logger there is a *project* logger, so its args
+    are redacted rather than rendered.
+    """
+    line = emit(name=name, msg="Saved %s", args=(TITLE,))
+
+    assert line["message"] == "Saved %s"
+    assert line["args"] == "[redacted]"
+    assert TITLE not in json.dumps(line)
+
+
 def test_project_logger_template_still_scrubbed():
     assert emit(msg=f"oops {EMAIL}")["message"] == "oops [email]"
 

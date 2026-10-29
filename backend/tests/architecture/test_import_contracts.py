@@ -123,6 +123,25 @@ VIOLATIONS = {
         # `shared` must not import an app either, so the layers contract breaks as well.
         {"credential-key", "layers"},
     ),
+    # AD-2: there is one ICS parser, in `formats.ics`. A second module that reaches for
+    # `icalendar` is a fork — two places for the same bug, and they would drift.
+    "an app forks the ICS parser": (
+        {"apps/catalog/_planted.py": "import icalendar\n"},
+        {"single-ics-parser"},
+    ),
+    "the catalog's ICS parser forks the shared one": (
+        {"apps/ingestion/_planted.py": "from icalendar import Calendar\n"},
+        {"single-ics-parser"},
+    ),
+    "the calendar adapter forks the ICS parser": (
+        {"adapters/calendar/_planted.py": "from icalendar import Calendar\n"},
+        {"single-ics-parser"},
+    ),
+    # A module *beside* the parser, in the same package, is still a fork.
+    "a sibling format module forks the ICS parser": (
+        {"formats/ics/_planted.py": "from icalendar import Calendar\n"},
+        {"single-ics-parser"},
+    ),
 }
 
 
@@ -171,6 +190,20 @@ def _packages(directory: Path) -> set[str]:
 
 def test_every_backend_package_is_a_root_package():
     assert _packages(BACKEND_DIR) - {"tests"} == set(CONFIG["root_packages"])
+
+
+def test_the_ics_parser_exception_is_narrow():
+    """`single-ics-parser` allows exactly one import: the shared parser's own.
+
+    The exception is an *import expression*, not a module, so a sibling module in
+    `formats` importing `icalendar` still breaks the contract — the plant above proves
+    it. This test pins the other half: the exception names the parser, and nothing else.
+    """
+    contract = CONTRACTS["single-ics-parser"]
+
+    assert contract["forbidden_modules"] == ["icalendar"]
+    assert contract["ignore_imports"] == ["formats.ics.parser -> icalendar"]
+    assert "formats" in contract["source_modules"]
 
 
 def test_every_adapter_is_covered_by_the_sdk_contracts():

@@ -11,9 +11,22 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-MAX_TITLE = 500  # Event.title
-MAX_DESCRIPTION = 10_000
-MAX_VENUE_NAME = 200  # Venue.name
+from formats.text import MAX_DESCRIPTION, MAX_TITLE, MAX_VENUE_NAME
+
+__all__ = [
+    "MAX_CITY",
+    "MAX_DESCRIPTION",
+    "MAX_ITEMS",
+    "MAX_SOURCE_EVENT_ID",
+    "MAX_TITLE",
+    "MAX_URL",
+    "MAX_VENUE_NAME",
+    "ParseResult",
+    "ParsedCandidate",
+    "SourceContext",
+    "StatusHint",
+]
+
 MAX_CITY = 100  # Venue.city
 MAX_URL = 2048  # Event.canonical_url
 MAX_SOURCE_EVENT_ID = 512  # Event/ExtractedRecord.source_event_id

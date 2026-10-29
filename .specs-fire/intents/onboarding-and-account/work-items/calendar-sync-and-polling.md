@@ -4,7 +4,7 @@ title: Calendar Sync Services & Polling
 intent: onboarding-and-account
 complexity: high
 mode: validate
-status: pending
+status: in_progress
 depends_on:
   - calendar-connection-model
   - ics-calendar-adapter

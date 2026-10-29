@@ -325,13 +325,12 @@ def test_the_refusal_never_echoes_the_address():
 @pytest.mark.parametrize(
     "url",
     [
-        "http://calendar.example.com/feed.ics",
         "https://calendar.example.com/feed.ics",
         "webcal://calendar.example.com/feed.ics",
         "webcals://calendar.example.com/feed.ics",
     ],
 )
-def test_the_four_schemes_are_accepted(url):
+def test_the_three_schemes_are_accepted(url):
     connection = connect_calendar(
         user_id=uuid7(),
         provider="google",
@@ -340,6 +339,23 @@ def test_the_four_schemes_are_accepted(url):
     )
 
     assert connection.pk is not None
+
+
+def test_a_plain_http_address_is_refused():
+    """The secret ICS URL *is* the credential, and `http://` would carry it in cleartext.
+
+    The adapter refuses it too — but refusing it here means the user hears about it
+    while they are still typing, not at the first poll with a connection they cannot use.
+    """
+    with pytest.raises(InvalidCalendarCredentialError) as excinfo:
+        connect_calendar(
+            user_id=uuid7(),
+            provider="google",
+            url="http://calendar.example.com/feed.ics",
+            actor=_actor(),
+        )
+
+    assert excinfo.value.details == {"field": "url"}
 
 
 def test_the_address_is_stored_as_the_user_typed_it():
@@ -660,6 +676,24 @@ def test_the_revealed_credential_cannot_be_printed():
     assert FAKE_CALENDAR_URL not in repr(credential)
     assert FAKE_CALENDAR_URL not in str(credential)
     assert "redacted" in repr(credential)
+
+
+def test_two_credentials_with_the_same_address_are_the_same_credential():
+    """Equality and hashing are by the address, so a feed can be compared and keyed."""
+    one = Credential(FAKE_CALENDAR_URL)
+    other = Credential(FAKE_CALENDAR_URL)
+
+    assert one == other
+    assert hash(one) == hash(other)
+    assert len({one, other}) == 1
+
+
+def test_credentials_with_different_addresses_are_different():
+    one = Credential("https://calendar.example.test/a.ics")
+    other = Credential("https://calendar.example.test/b.ics")
+
+    assert one != other
+    assert len({one, other}) == 2
 
 
 def test_revealing_a_cleared_credential_is_refused():

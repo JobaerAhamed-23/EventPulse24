@@ -793,3 +793,557 @@ it — see `test-report.md`.
 - `next_poll_at` is reset to `NULL` on connect and disconnect; the polling item sets it.
 - The `CalendarConnection.Status.NEEDS_RECONNECT` transition is set by the poll item; the
   connect command only consumes it.
+
+---
+
+# Work Item: ics-calendar-adapter — Implementation Plan
+
+**Design**: `.specs-fire/intents/onboarding-and-account/work-items/ics-calendar-adapter-design.md`
+(approved). This plan implements it.
+
+**Mode**: validate — Checkpoint 2 of 2 is this document.
+
+---
+
+## 0. The shape of the change
+
+Twelve files move, and the interesting part is what does **not** move.
+
+```
+formats/ics/                  NEW — the one ICS implementation
+  __init__.py
+  events.py                   the shared intermediate: IcsEvent
+  parser.py                   bytes -> list[IcsEvent]  (moved from apps/ingestion)
+  text.py                     plain_text + the caps     (moved, format-only)
+  times.py                    all_day_span, roll_overnight, at_midnight (moved)
+  windows_zones.py            Windows TZID -> IANA      (moved)
+
+ports/calendar.py             the typed outcomes, the validators, CalendarResult
+ports/fetch.py                fetch() gains allow_cross_host_redirect
+adapters/crawl/http.py        honours allow_cross_host_redirect
+adapters/calendar/ics.py      NEW — the adapter
+apps/ingestion/parsers/       rewritten to consume formats.ics
+config/adapters.py            registers the real calendar adapter
+pyproject.toml                the layers amendment + the single-ics-parser contract
+```
+
+---
+
+## 1. Step 1 — `formats/ics`: the one ICS implementation
+
+### 1.1 What moves, and what stays behind
+
+| From | To | Why it moves |
+|---|---|---|
+| `apps/ingestion/parsers/ics.py` | `formats/ics/parser.py` | Both callers need it |
+| `apps/ingestion/parsers/times.py` | `formats/ics/times.py` | Pure format concern |
+| `apps/ingestion/parsers/windows_zones.py` | `formats/ics/windows_zones.py` | Pure format concern |
+| `apps/ingestion/parsers/text.py` → `plain_text` | `formats/ics/text.py` | Pure format concern |
+
+**What stays in `apps/ingestion/parsers/`**: `types.py` (the *catalog* shape),
+`feeds.py`, `jsonld.py`, and `text.py`'s catalog helpers (`item_id`, `derived_id`,
+`http_url`, `absolute_iri`).
+
+### 1.2 The shared intermediate: `IcsEvent`
+
+**The key decision in the whole item.** The parser produces `IcsEvent`s — a *format*
+shape, with no identity policy and no instant.
+
+```python
+@dataclass(frozen=True)
+class IcsEvent:
+    uid: str                       # the UID exactly as written ("" when absent)
+    title: str
+    start: datetime | None         # as written: naive wall clock, or aware
+    end: datetime | None           # as written, in the start's representation
+    start_zone: str | None         # IANA name (Windows mapped), or None
+    end_zone: str | None
+    all_day: bool
+    status: str                    # "CANCELLED" or ""
+    location: str
+    description: str
+    url: str
+    recurrence_id: datetime | None # the RECURRENCE-ID instant, when this is an override
+    has_rrule: bool
+    raw: dict[str, str]            # the as-written fields, for the catalog's payload
+```
+
+**Why not reuse `ParsedCandidate`.** `ParsedCandidate` is the *catalog* shape: it has
+`source_event_id` (an identity decision), `canonical_url` (resolved against a source
+base), `venue_name` (a catalog concept), and `status` as a `StatusHint`. The calendar
+needs none of those, and needs two things `ParsedCandidate` has no room for: the
+`RECURRENCE-ID` and the `has_rrule` flag. So the shared shape is the **intersection**:
+what both need, which is what the format actually says.
+
+### 1.3 The parser's contract
+
+```python
+def parse_ics(content: bytes) -> IcsParseResult
+```
+
+where
+
+```python
+@dataclass
+class IcsParseResult:
+    events: list[IcsEvent] = field(default_factory=list)
+    skipped: Counter = field(default_factory=Counter)
+    error: str | None = None        # the whole document was unreadable
+```
+
+**The differences from the catalog's `parse_ics(content, context)`:**
+
+1. **No `SourceContext`.** The context carries `source_id` and `source_url` — the
+   catalog's identity inputs. The calendar has neither. A URL in the ICS is resolved
+   against nothing, so `IcsEvent.url` keeps it *as written* and the catalog mapper
+   resolves it.
+2. **The return is `IcsParseResult`, not `ParseResult`.** `ParseResult` is the catalog's
+   type, with `ParsedCandidate`s in it.
+3. **`IcsEvent` keeps the `RECURRENCE-ID` and the `has_rrule` flag**, which the catalog's
+   candidate does not (the catalog folds both into `source_event_id` and `series_id`).
+
+**The behaviour is unchanged otherwise.** Same handling of: all-day spans, overnight
+rolls, Windows zone mapping, malformed VEVENT isolation (one bad event never stops the
+rest), the `MAX_ITEMS` cap, and the "never raises" promise.
+
+**One decision: the `MAX_ITEMS` cap.** The catalog's is `MAX_ITEMS = 5_000`. A calendar
+feed is a *single user's* calendar — it is small. But the cap protects the parser from a
+hostile 500 MB file, and the byte limit already bounds the file. So: **the shared parser
+keeps a cap**, at `MAX_EVENTS = 5_000`, the same value. One number, one place.
+
+### 1.4 The two mappers
+
+**The catalog mapper** — `apps/ingestion/parsers/ics.py` becomes a thin translation:
+
+```python
+def parse_ics(content: bytes, context: SourceContext) -> ParseResult:
+    """The catalog's view of an ICS file: candidates, times as written, identity decided."""
+```
+
+It calls `formats.ics.parser.parse_ics`, then for each `IcsEvent` produces the same
+`ParsedCandidate` the old code produced — **byte-for-byte the same output**, so the 21
+existing tests in `tests/ingestion/parsers/test_ics.py` still pass unchanged.
+
+**The calendar mapper** — in `adapters/calendar/ics.py`:
+
+```python
+def to_calendar_entry(event: IcsEvent) -> CalendarEntry | None
+```
+
+### 1.5 The identity rule (D10)
+
+Both mappers use `domain.dedup.ics_item_id`, so the same event gets the same identity
+string in both paths.
+
+| The event | The catalog's `source_event_id` | The calendar's `uid` |
+|---|---|---|
+| A plain event | `uid` | `uid` |
+| An `RRULE` master | `ics_item_id(uid, dtstart_utc)` | the same |
+| A `RECURRENCE-ID` override | `ics_item_id(uid, recurrence_utc)` | the same |
+
+**The catalog's existing behaviour for a plain event with no UID** is
+`derived_id(url, title, raw_dtstart)`. The calendar has no `derived_id` — it has no
+source URL to derive from and no catalog identity policy. So: **an event with no UID is
+skipped by the calendar adapter**, counted as `no_uid`. A `CalendarEntry.uid` must be
+non-empty and stable across imports, and a derived id from a title and a date is neither
+stable nor meaningful in the personal calendar's namespace.
+
+**The master's `uid` carries its instance suffix** — the same as the catalog. This is
+what keeps a master and its override from colliding on the `(connection, uid)` unique
+constraint.
+
+---
+
+## 2. Step 2 — `ports/`: the calendar's typed outcomes and validators
+
+### 2.1 `ports/calendar.py`
+
+```python
+class CalendarError(DomainError):
+    """Base for every calendar failure. Never carries the URL (AD-13)."""
+
+class CalendarRevokedError(CalendarError):
+    """The provider says the credential is no longer valid: the user must reconnect."""
+
+class CalendarTransientError(CalendarError):
+    """A temporary failure: 5xx, a timeout, a network error, a malformed response."""
+
+class CalendarRefusedError(CalendarError):
+    """We refused to fetch: a blocked scheme, a blocked address, an oversized body."""
+```
+
+Each carries a **reason slug** in `details`, never a URL, a host, or a path — the
+`FetchError` convention exactly.
+
+**`CalendarFeed`** gains `etag` and `last_modified`.
+**`CalendarResult`** is new: `entries`, `etag`, `last_modified`, `not_modified`.
+**`CalendarPort.fetch_entries`** returns `CalendarResult`.
+
+### 2.2 `ports/fetch.py`
+
+`fetch()` gains one keyword:
+
+```python
+allow_cross_host_redirect: bool = False
+```
+
+**The default is `False`, so every existing caller and every existing test is
+unaffected.** The port's docstring says why it exists.
+
+`FakeFetchAdapter.fetch` accepts and ignores it (it has no redirects). Its signature
+must match the port's, or the registry's `issubclass` check is fine but the call would
+break — so it takes the parameter and ignores it, with a comment.
+
+---
+
+## 3. Step 3 — `adapters/crawl/http.py`: honouring the cross-host redirect
+
+**One change.** `_check_target` takes the flag:
+
+```python
+def _check_target(self, target, origin_host=None, *, allow_cross_host=False):
+    ...
+    if origin_host is not None and not allow_cross_host and not _same_host(target.host, origin_host):
+        raise FetchBlockedError("cross_host_redirect")
+```
+
+**What does NOT change**, and this is the security-critical part:
+
+- `GuardedBackend.connect_tcp` still refuses a denied address on **every** hop.
+- The port check still runs on every hop.
+- The scheme and userinfo checks still run on every hop.
+- The deadline, the size budget, and the decompression budget are untouched.
+
+**The relaxation is about the host, never the address.** A cross-host redirect to
+`http://169.254.169.254/` is still refused — because the *address* is checked at connect
+time, independently of which host the redirect came from.
+
+**The default stays `False`.** `FetchLimits` does **not** grow a setting for it: it is a
+property of the *call*, not of the deployment, and a settings key would make the
+security-relevant default configurable by accident. The calendar adapter passes `True`
+explicitly, in one place, in code a reader can see.
+
+---
+
+## 4. Step 4 — `adapters/calendar/ics.py`: the adapter
+
+### 4.1 The scheme rules (D6)
+
+```python
+CALENDAR_SCHEMES = {"https": "https", "webcal": "https", "webcals": "https"}
+```
+
+`http://` and everything else → `CalendarRefusedError("scheme")`.
+
+The normalisation happens at **fetch time**. The stored credential keeps the form the
+user typed.
+
+### 4.2 The status mapping (D4)
+
+| HTTP status | Outcome |
+|---|---|
+| 401, 403, 404, 410 | `CalendarRevokedError("revoked")` |
+| 429, 5xx, other 4xx, 3xx | `CalendarTransientError("http_status")` |
+| 2xx | success |
+
+**Every other failure**, from the fetch port:
+
+| Fetch failure | Calendar outcome |
+|---|---|
+| `FetchTimeoutError` | transient |
+| `FetchNetworkError` | transient |
+| `FetchRedirectError` | transient |
+| `FetchContentError` | transient |
+| `FetchHTTPError(401/403/404/410)` | **revoked** |
+| `FetchHTTPError(other)` | transient |
+| `FetchBlockedError("address")` | **refused** |
+| `FetchBlockedError("scheme"/"port"/"userinfo")` | **refused** |
+| `FetchTooLargeError` | **refused** |
+
+**The distinction that matters:** a *revoked* credential is the provider's verdict on the
+user's credential; a *refused* fetch is **our** verdict on the request. A refused fetch
+must never mark a calendar revoked — the user's calendar may be perfectly fine.
+
+### 4.3 The limits (D7)
+
+Named constants in the adapter, passed into the shared client:
+
+```python
+MAX_ICS_BYTES = 5 * 1024 * 1024
+MAX_REDIRECTS = 5
+CONNECT_TIMEOUT = 5.0
+READ_TIMEOUT = 15.0
+WRITE_TIMEOUT = 5.0
+TOTAL_TIMEOUT = 30.0
+DNS_TIMEOUT = 3.0
+```
+
+The adapter builds a `FetchLimits` from them, **not** from `settings.SOURCE_FETCH` — a
+calendar is a different shape from an RSS feed, and the limits are a property of the
+adapter.
+
+### 4.4 The mapping to `CalendarEntry` (D3)
+
+```python
+def to_calendar_entry(event: IcsEvent) -> CalendarEntry | None:
+    """Resolve the event's times and shape it. None when it cannot be placed."""
+```
+
+1. **Resolve the zone.** `event.start_zone` is the IANA name (Windows already mapped).
+   If the start is naive and has no zone, the event is **floating** — it cannot be
+   placed → skipped as `floating_time`.
+2. **`resolve_tz(start, source_zone=zone)`** → a `TzResolution` or a `TzRejection`.
+   A rejection → skipped as `unresolvable_time`.
+3. **The end.** The same resolver with `end=event.end`. If the end cannot be resolved,
+   the entry's `ends_at` is the start (a zero-length event) — never a crash.
+4. **`tz`** is the resolved zone. For an all-day event, the zone is the event's own zone
+   (or `UTC` when it has none) — an all-day event's instant is local midnight.
+
+**The all-day case, precisely:** an all-day event is `VALUE=DATE`, a *date*, not a time.
+Its instant is the **local midnight of its date in its zone**. `formats.ics.times.
+all_day_span` gives the naive midnight and the next midnight; `resolve_tz` then reads
+that wall clock in the zone. An all-day event with no zone → `UTC`, because a date with
+no zone has exactly one sensible reading: the UTC day.
+
+**The floating case, precisely:** a `DTSTART` with no `TZID` and no `Z` is a wall-clock
+time with no zone. `resolve_tz` rejects it. So does the calendar adapter: the event is
+**skipped and counted**. It is not an error — a floating event is a normal thing to find
+in a feed — but it cannot be placed on a timeline, and placing it wrongly would put the
+user's event at the wrong hour.
+
+**`resolve_tz` is `domain.timezones.resolve_tz`** — the same function the catalog
+pipeline calls. There is one timezone resolver in the codebase.
+
+### 4.5 The credential never leaks (D5)
+
+- The crawl adapter's log line carries no URL (already true), and the calendar adapter
+  adds **its own** log line with counts only: `job`, `status_code`, `entry_count`,
+  `skipped_count`, `duration_ms`, `error_code`.
+- **Every** exception is converted at the boundary, so no `httpx` exception — whose
+  message contains the URL — ever escapes.
+- The `httpx` logger stays at WARNING (`settings.LOGGING` already does this).
+
+### 4.6 The port's fetch dependency (D9)
+
+```python
+class IcsCalendarAdapter(CalendarPort):
+    def __init__(self, fetch: SourceFetchPort | None = None) -> None:
+        self._fetch = fetch or get_fetch_port()
+```
+
+**Injected, not constructed**, so the adapter is testable with a scripted fetch and no
+socket. `get_fetch_port` is in `ports.registry`, which `adapters` may import (the layers
+contract puts `adapters` above `ports`).
+
+---
+
+## 5. Step 5 — the contracts and the configuration
+
+### 5.1 The `layers` amendment
+
+```toml
+layers = [
+    "config | worker",
+    "apps | adapters",
+    "formats",
+    "ports",
+    "domain",
+    "shared",
+]
+```
+
+`formats` sits below `apps`/`adapters` and above `ports`. It may import `ports`,
+`domain`, `shared` and third-party libraries. It may import **neither `apps` nor
+`adapters`** — which the layer ordering enforces.
+
+**`root_packages` gains `"formats"`.**
+
+### 5.2 The new contract
+
+```toml
+[[tool.importlinter.contracts]]
+id = "single-ics-parser"
+name = "AD-9 one ICS parser: only formats.ics imports the icalendar library"
+type = "forbidden"
+source_modules = ["domain","apps","ports","config","worker","shared","adapters"]
+forbidden_modules = ["icalendar"]
+allow_indirect_imports = true
+```
+
+`formats` is deliberately **absent** from `source_modules` — it is the one module allowed
+to read ICS.
+
+**A subtlety worth stating:** `allow_indirect_imports = true` is required, because
+`config.api → apps.personalization.api → … → models → fields → credentials` style chains
+exist. But for this contract the *direct* import is the violation, and that is what the
+planted test asserts: a module in `apps` or `adapters` that imports `icalendar` directly
+breaks the contract.
+
+**The `adapters-independent` contract needs `formats` NOT to be an adapter.** `formats` is
+a top-level package, not under `adapters`, so `adapters.*` never covers it. Good.
+
+**But wait:** the `adapters-independent` contract lists `modules = ["adapters.*"]`. The
+`formats` layer is separate. Fine.
+
+### 5.3 The architecture test
+
+`tests/architecture/checkers.py` gains `ROOT_PACKAGES += ("formats",)` so the AST checks
+cover the new package — the `alias_violations` and `direct_write_calls` checks should
+apply to it, and a `formats` module that writes to the database would be a bug.
+
+**`formats` must not import Django.** It is a pure format library: no Django, no
+database, no network. A test asserts it.
+
+### 5.4 `config/adapters.py`
+
+```python
+CALENDAR_ADAPTER = "adapters.calendar.ics.IcsCalendarAdapter"
+REAL_ADAPTERS = {
+    "fetch": HTTP_FETCH_ADAPTER,
+    "throttle": "adapters.throttle.redis.RedisThrottleAdapter",
+    "calendar": CALENDAR_ADAPTER,
+}
+```
+
+**The fake stays the local and CI default** — `FAKE_ADAPTERS["calendar"]` is unchanged.
+
+---
+
+## 6. Step 6 — the tests
+
+### 6.1 `tests/formats/ics/test_parser.py` — the shared parser
+
+The existing 21 tests in `tests/ingestion/parsers/test_ics.py` **move** to
+`tests/formats/ics/test_parser.py`, retargeted at the new signature, plus new cases for
+the `IcsEvent` fields the catalog never needed (`recurrence_id`, `has_rrule`).
+
+**And the catalog's 21 tests stay where they are**, retargeted at the thin mapper — so
+the catalog's output is proven unchanged by the move. That is the anti-fork test: the
+same fixture, through two paths, and the catalog's answers are identical to what they
+were before the refactor.
+
+### 6.2 `tests/adapters/test_calendar_ics.py` — the adapter
+
+| Group | Cases |
+|---|---|
+| **Schemes** | `https` used as is; `webcal` → `https`; `webcals` → `https`; `http` refused; `ftp` refused; a URL with userinfo refused |
+| **Revocation** | 401, 403, 404, 410 → `CalendarRevokedError` — **one test per status** |
+| **Transient** | 429, 500, 502, 503, 504, 400, 301-final → `CalendarTransientError`; a timeout; a network error; a malformed ICS |
+| **Refused** | a blocked address; a blocked scheme; a body over the limit → `CalendarRefusedError`, and **never** revoked |
+| **SSRF** | loopback, link-local metadata, a private range, an IPv6-embedded IPv4, and a **redirect from a public host to a private one** → all refused |
+| **Limits** | an oversized body; a gzip bomb; too many redirects; a timeout — each a named constant's worth |
+| **Parsing** | a Google-shaped fixture; an Apple-shaped fixture; an Outlook-shaped fixture; all-day; floating; a Windows `TZID`; an `RRULE` master; a `RECURRENCE-ID` override |
+| **Identity** | the master's `uid` differs from its override's; both are stable across two imports |
+| **Conditional** | the `ETag` is sent when supplied; a 304 is a success with `not_modified=True` and no entries |
+| **No leaks** | each failure path, with log capture, asserts the URL is absent — including with the `httpx` logger at INFO |
+| **Registered** | the adapter is in `REAL_ADAPTERS`; the fake is still the fake mode's default |
+
+### 6.3 The SSRF tests, specifically
+
+The work item names five cases. Each is a test:
+
+1. **loopback** — `127.0.0.1` → refused
+2. **link-local metadata** — `169.254.169.254` → refused
+3. **private ranges** — `10.0.0.5`, `192.168.1.1`, `172.16.0.1` → refused
+4. **IPv6-embedded IPv4** — `::ffff:127.0.0.1` → refused
+5. **a redirect from a public host to a private one** → refused
+
+**Case 5 is the important one**, because it is the case the cross-host relaxation could
+have opened. The test serves a public host that 302s to a private address, and asserts
+the fetch is **refused**, not followed. **This test is the proof that D1b's relaxation is
+about the host and not the address.**
+
+### 6.4 The scripted network
+
+`tests/adapters/scripted_network.py` is **reused as is** — it already drives the real
+`httpx`/`httpcore` stack with no sockets. The calendar tests build an `HttpFetchAdapter`
+with the calendar's limits and inject it into `IcsCalendarAdapter`.
+
+**The harness needs one addition**: a way to build the adapter with the *calendar's*
+limits. `ScriptedNetwork.adapter(**limits)` already takes keyword overrides, so
+`net.adapter(max_bytes=MAX_ICS_BYTES)` is enough — no change needed.
+
+**A new `ScriptedFetch` fake** — a `SourceFetchPort` that returns canned results — goes
+in `tests/adapters/calendar_fakes.py`, for the tests that do not need the network.
+
+### 6.5 The fixtures
+
+Three provider-shaped ICS files in `tests/fixtures/calendars/`:
+
+- `google.ics` — a `TZID=America/Los_Angeles` event, an `RRULE` master, a
+  `RECURRENCE-ID` override, a `VTIMEZONE` block
+- `apple.ics` — an all-day event, a floating event, a `TZID=Europe/London` event
+- `outlook.ics` — a **Windows** `TZID` (`"W. Europe Standard Time"`), which must map to
+  `Europe/London`
+
+**The existing `tests/fixtures/sources/calendar.ics` is already Outlook-shaped** (it has
+`Eastern Standard Time` and `PRODID:-//Microsoft Corporation//Outlook 16.0`). The new
+fixtures are *additional*, provider-shaped, and are used by the calendar tests.
+
+---
+
+## 7. Step 7 — the order of work
+
+The order matters, because each step's tests depend on the previous step's shape.
+
+1. **`formats/ics`** — move the parser, the times, the zones, the text. Add `IcsEvent`.
+   Move the 21 catalog tests to `tests/formats/ics/` and add the new cases.
+   *Gate: the 21 moved tests pass, unchanged in their assertions.*
+2. **`apps/ingestion/parsers/ics.py`** — rewrite as the thin mapper. The 21 catalog
+   tests stay and are retargeted at the mapper.
+   *Gate: the catalog's output is byte-for-byte what it was.*
+3. **`ports/`** — the calendar's outcomes, `CalendarResult`, the validators; `fetch()`'s
+   new keyword.
+4. **`adapters/crawl/http.py`** — honour `allow_cross_host_redirect`.
+   *Gate: the existing 60+ crawl tests pass unchanged.*
+5. **`adapters/calendar/ics.py`** — the adapter.
+6. **The contracts** — the `layers` amendment, `single-ics-parser`, `root_packages`.
+7. **`config/adapters.py`** — the registration.
+8. **The adapter's tests** — the schemes, the statuses, the SSRF, the limits, the
+   parsing, the leaks.
+9. **The fixtures** — the three provider-shaped files.
+
+---
+
+## 8. Step 8 — the gates
+
+| Gate | Command | Target |
+|---|---|---|
+| Tests | `pytest -q` | 0 failures; the existing 2363 still pass |
+| Coverage | `pytest --cov` | ≥ 98% overall (floor 80%); `domain/` 100% (floor 100%) |
+| Coverage, new code | `pytest --cov=formats --cov=adapters.calendar` | 100% |
+| Lint | `ruff check .` | clean |
+| Format | `ruff format --check .` | clean |
+| Architecture | `lint-imports` | 17 kept, 0 broken (16 + `single-ics-parser`) |
+| Django | `manage.py check` | no issues |
+| Migrations | `manage.py makemigrations --check --dry-run` | no changes detected |
+
+**The coverage target for the new code is 100%,** because this is the code that fetches a
+user-supplied URL — the part where an untested branch is an SSRF hole or a leaked
+credential.
+
+---
+
+## 9. What is deliberately not done
+
+- **No RRULE expansion** (FR-31). A master produces one entry.
+- **No polling, no scheduling, no import write** — `calendar-sync-and-polling`.
+- **No HTTP endpoints** — `calendar-connect-api`.
+- **No `CalendarConnection.etag` column** — the polling item owns that write. This item
+  makes the *adapter* capable of conditional requests; the polling item stores the
+  validators.
+- **No venue lookup.** A personal calendar has no venue registry, so `CalendarEntry`
+  carries no venue.
+
+---
+
+## 10. The risks, and what happens if a step goes wrong
+
+| Risk | If it happens |
+|---|---|
+| Moving the parser changes the catalog's output | Step 2's gate is exactly this: the 21 catalog tests, retargeted, must pass **unchanged in their assertions**. |
+| The `layers` amendment breaks an existing contract | `lint-imports` after step 6; the amendment is additive (a new layer), so the existing contracts' *relative* order is preserved. |
+| The cross-host relaxation opens an SSRF hole | Step 4's tests, especially the redirect-to-private case. The address check is at connect time and is not relaxed. |
+| The `formats` package becomes a dumping ground | The `single-ics-parser` contract and the "no Django" test. |
+| The port's break (`list[CalendarEntry]` → `CalendarResult`) breaks a caller | There is no caller yet but the fake; both are updated in the same change. |
+

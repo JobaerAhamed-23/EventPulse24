@@ -35,7 +35,12 @@ from shared.db import PERSONAL
 #: The schemes a calendar address may use. `webcal://` and `webcals://` are the iCloud
 #: spelling; the adapter normalises them to `https://` at fetch time (D13). This is a
 #: *shape* check, not the SSRF policy — that belongs to the adapter.
-ALLOWED_SCHEMES = frozenset({"http", "https", "webcal", "webcals"})
+#:
+#: `http://` is **not** allowed: the secret ICS URL *is* the credential, and fetching it
+#: in cleartext would put it on the wire on every poll, forever. The adapter refuses it
+#: too — but refusing it here means the user hears about it while they are still typing,
+#: rather than at the first poll, with a stored connection they cannot use.
+ALLOWED_SCHEMES = frozenset({"https", "webcal", "webcals"})
 
 #: A status that still occupies one of the user's provider slots. A disconnected
 #: connection does not: the user gave it up (D7).
@@ -54,7 +59,7 @@ def _validated_url(url: str) -> str:
 
     Two refusals:
 
-    - **No usable scheme.** The address must have one of the four schemes above. This is a
+    - **No usable scheme.** The address must have one of the three schemes above. This is a
       shape check, not a normalisation: the address is never rewritten on the way in.
     - **Credentials in the userinfo component.** `https://user:pass@host/...` carries a
       second secret inside a URL we are about to encrypt and store, and the redaction
