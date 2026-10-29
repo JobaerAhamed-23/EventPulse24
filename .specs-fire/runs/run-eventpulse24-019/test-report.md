@@ -295,3 +295,125 @@ handling, the invalid-interval raises, and both duplicate-rule exits are exercis
 - [x] Coverage target met (80% overall, 100% for `domain/`)
 - [x] All acceptance criteria validated
 - [x] No critical issues open
+
+---
+
+## Work Item: personalization-models
+
+### Test Results
+
+- Passed: 70 (new) + 1795 (full backend suite)
+- Failed: 0
+- Skipped: 0
+
+| Suite | Before | After |
+|-------|--------|-------|
+| Backend (pytest, real Postgres, both schemas) | 1725 passed | **1795 passed** (+70) |
+| `apps/personalization/models.py` coverage | n/a (the file was empty) | **100%** (75 stmts, 0 missed) |
+| Overall coverage | 99.09% | **99.11%** |
+| `make lint-imports` | 13 kept, 0 broken | **13 kept, 0 broken** |
+| `ruff check` / `ruff format --check` | clean | **All checks passed! / 255 files formatted** |
+| `manage.py check` | no issues | **no issues (0 silenced)** |
+| `makemigrations --check` | no changes | **no changes detected** |
+| Frontend (Vitest) | 51 passed | 51 passed (untouched by this item) |
+
+### Acceptance Criteria Validation
+
+- ✅ **A design doc exists** at `.specs-fire/intents/personal-events-and-saved-catalog/work-items/personalization-models-design.md`, covering the `SAVED_EVENT` snapshot semantics and refresh triggers (D12–D16), the `CONFLICT_PAIR` state machine (D17–D26), the `PERSONAL_EVENT` timezone representation (D5–D8), the audit table shape (D27–D28) and the retention category per table (D4). It was approved at Checkpoint 1 before implementation began.
+- ✅ **The design doc is reviewed and approved before implementation begins (Checkpoint 1).** — `checkpoint_1: approved` in the design doc's frontmatter; the approval is recorded in `.specs-fire/state.yaml` by `update-checkpoint.cjs`, not by hand.
+- ✅ **`PERSONAL_EVENT` stores: name, `start_utc`, `end_utc` (nullable), `start_time_tz` (IANA), location (nullable), notes (nullable), `source = user_created`, and a `version`.** — All present. `start_utc`/`end_utc` are `DateTimeField`s (timestamptz under `USE_TZ`); `start_time_tz` is a `CharField(max_length=64)`. The model layer refuses a floating or ambiguous local time by refusing to store one: the *instant* is always UTC and the zone is always named. IANA validity is checked at the command boundary in work item ⑤, because a database check cannot see the timezone database — `config/apps.py` calls `zoneinfo.reset_tzpath(to=())`, so the pinned `tzdata` package is the only source.
+- ✅ **`SAVED_EVENT` holds `event_id` by value — a `UUIDField`, not a foreign key. There is no `ForeignKey` to `catalog` from any `personal` model, and no cross-schema join exists.** — `event_id = models.UUIDField()`. Three independent proofs: `test_model_structure.py` asserts `event_id` is a `UUIDField` with `remote_field is None`; `test_model_structure.py` asserts **no field on any of the three models `is_relation`**; and `tests/wall/test_schema_placement.py` queries `information_schema` and asserts **zero** foreign keys cross from `personal` to `catalog` (in either direction).
+- ✅ **`SAVED_EVENT` is unique per `(user, event_id)`.** — `UniqueConstraint(fields=["user_id", "event_id"], name="saved_event_user_event_uq")`. Pinned by `test_saved_event_rejects_a_second_save_of_the_same_event` and `test_saved_event_allows_two_users_to_save_the_same_event`.
+- ✅ **`CONFLICT_PAIR` links two sides, each a reference to either a `PERSONAL_EVENT` or a `SAVED_EVENT`, with a status and the `ConflictResolution` value.** — Each side is a `(kind, id)` pair: `left_kind`/`left_id` and `right_kind`/`right_id`, with `SideKind ∈ {personal_event, saved_event}`. A `GenericForeignKey` is forbidden by OQ-8, and a UUID alone cannot say which kind of record it names, so the kind is stored beside the id.
+- ✅ **A resolved `CONFLICT_PAIR` is immutable; a pair closed by a catalog state change is distinguishable from one the user resolved.** — The `personal.guard_conflict_pair` trigger rejects any change to `status`, `resolution` or `resolved_at` once the row is `resolved` or `cleared_by_state_change`. The two are distinguished by the **resolution column being NULL**: a state-cleared pair has no user decision, so its `resolution` is NULL while its `resolved_at` is set. `conflict_pair_status_ck` makes the three shapes mutually exclusive.
+- ✅ **The `ConflictResolution` value object covers exactly the PRD's cases; there is no `dismiss` value.** — `Resolution ∈ {keep_both, edit_new, delete_new, update_existing}`, pinned by `test_conflict_pair_has_no_dismiss_resolution`, which asserts the exact set. `conflict_pair_resolution_kind_ck` additionally refuses `edit_new` on a duplicate and `update_existing` on a time conflict, so an illegal pairing is unwritable.
+- ✅ **Every model declares a retention category.** — `ACCOUNT_CONTENT` for the three product models, `AUDIT_LOG` for the audit table. `eventpulse.E003`/`E004` enforce it and `manage.py check` passes. The `ACCOUNT_CONTENT` comment in `shared/retention.py` was widened to name the conflict pairs too, since AD-15 makes that registry what the sweep, deletion and export all read.
+- ✅ **No `personal` model FKs to `User` or `ContentType`; the user is referenced by `UUID` value.** — `user_id` is a plain `UUIDField` on all three models. `test_personal_model_stores_the_user_id_by_value` asserts the field type, and `test_no_personal_model_relates_to_user_or_content_type` asserts no model relates to either.
+- ✅ **The audit table extends `shared.models.AuditEntry`, with the actor stored by value and `actor_check()` applied.** — `PersonalizationAuditEntry(AuditEntry)`. The abstract base contributes `actor_kind`/`actor_id`/`actor_label` and the `actor_check()` constraint, which appears in the migration as `personalization_personalizationauditentry_actor_ck`.
+- ✅ **The `models-personalization` import-linter contract keeps passing.** — `make lint-imports`: **13 contracts kept, 0 broken**. The contract was already declared and already protected; this item gives it something to protect.
+- ✅ **The `domain-pure` contract still passes; no model module imports `domain`.** — `apps/personalization/models.py` imports only `django.db`, `django.utils.timezone`, `shared.models` and `shared.retention`. It does not import `domain` at all, so nothing can pull Django into the domain layer. `domain/` was untouched by this item.
+- ✅ **Migrations apply cleanly on the local stack, and the tables land in the `personal` schema — verified by inspecting `information_schema`, not by assuming the router did the right thing.** — `make migrate` applies `personalization.0001_initial` on both aliases. `tests/wall/test_schema_placement.py` reads `information_schema.tables` and asserts the four `personalization_*` tables are in `personal` and that **none** is in `catalog`. The same inspection was run by hand against the dev database and returned exactly the four tables in `personal`.
+- ✅ **No foreign key constraint crosses from `personal` to `catalog`, asserted by a test.** — `test_no_foreign_key_crosses_from_personal_to_catalog` (and its mirror for `catalog` → `personal`) queries `information_schema.table_constraints` joined to `constraint_column_usage` and asserts the result is empty. The hand inspection found the only FKs in `personal` are Django's own auth/contenttypes tables pointing at other `personal` tables.
+- ✅ **A model test asserts `SAVED_EVENT.event_id` is a plain `UUIDField` and that no `ForeignKey` exists on any of the three models — a structural test, so a future "helpful" FK breaks the build.** — `tests/personalization/test_model_structure.py` is exactly that: it reads the models' metadata rather than their behaviour. `test_personal_model_declares_no_relation_field` asserts the relation field list is empty for each of the three models.
+
+### Tests Written
+
+#### Unit Tests
+
+- `backend/tests/personalization/test_models.py` — 35 tests. The check constraints, the unique constraints, the three legal status shapes and five illegal ones, the resolution/kind pairing in both directions, and the three `__str__` representations.
+- `backend/tests/personalization/test_model_structure.py` — 13 tests. The structural guarantee, read from the model metadata rather than from behaviour.
+
+#### Integration Tests
+
+- `backend/tests/personalization/test_triggers.py` — 9 tests. The `guard_conflict_pair` immutability trigger and the audit table's append-only trigger, exercised with raw SQL below the ORM so a Python-level guard cannot make them pass.
+- `backend/tests/personalization/test_grants.py` — 8 tests. The `ep_personal` runtime role's privileges on the audit table and the product tables, plus the migration's own assertion that the revoke applied.
+- `backend/tests/wall/test_schema_placement.py` — 4 new tests. The four tables' schema placement, and the cross-schema foreign key check in both directions.
+
+### Two corrections made during implementation
+
+Both were caught by the tests, not by inspection:
+
+1. **`conflict_pair_sides_differ_ck` was written backwards.** The first version was
+   `left_kind = right_kind OR left_id = right_id`, which is the condition for the two sides
+   being *the same* record, not for them differing. The constraint therefore rejected every
+   legal row and accepted only the illegal one. The rule is that the sides are the same
+   record only when the kind **and** the id match, so the constraint is now
+   `NOT (kind matches AND id matches)`. The first run of the suite failed all 17 conflict-pair
+   tests with `violates check constraint "conflict_pair_sides_differ_ck"`, which is how the
+   inverted condition was found.
+
+2. **The `ConflictPair` docstring claimed a normalization that does not exist.** It said the
+   sides "are normalised (lexicographically on `(kind, id)`) before writing", implying the
+   model did it. Nothing does: the normalization belongs to the command layer, which is this
+   table's only writer and lands in work item ⑤. The docstring now says that.
+
+### The trigger guards three columns, not the whole row
+
+`guard_conflict_pair` rejects a change to `status`, `resolution` or `resolved_at` on a closed
+pair, and leaves every other column alone. That distinction matters: `updated_at` is
+`auto_now`, so it moves on every save, and freezing it would make a resolved row
+un-saveable. `test_resolved_pair_unrelated_field_may_be_updated` pins that a resolved pair
+still accepts an `updated_at` update and keeps its status and resolution.
+
+### Coverage Details
+
+| Module | Statements | Branches | Functions | Lines |
+|--------|------------|----------|-----------|-------|
+| **TOTAL** | 99.11% | — | — | 99.11% |
+| `backend/domain/` | **100%** | 100% | 100% | 100% |
+| `apps/personalization/models.py` | **100%** | 100% | 100% | 100% |
+
+`apps/personalization/models.py` is fully covered line by line. The only uncovered module in
+the app is `apps/personalization/api.py`, the empty router stub that every app has; the
+API work items fill it.
+
+### Issues Found
+
+| Issue | Severity | Status |
+|-------|----------|--------|
+| `conflict_pair_sides_differ_ck` was inverted, rejecting every legal conflict pair. | Bug | **Fixed** — the condition is now `NOT (kind matches AND id matches)`, and the 17 tests that caught it pass. |
+| The `ConflictPair` docstring claimed the sides were normalised on write. | Documentation | **Fixed** — it now names the command layer as the place that normalisation happens. |
+| The `ACCOUNT_CONTENT` retention comment named only two of the three record types in the category. | Documentation | **Fixed** — the comment now names the conflict pairs too, so the sweep's scope is unambiguous. |
+
+### Known Gaps / Deliberate Omissions
+
+- **The side normalization is not implemented here.** The unique constraint is symmetric only
+  if the command layer normalizes the sides before writing. That is work item ⑤, the only
+  writer of this table.
+- **`PersonalEvent.version` has no trigger enforcing the increment.** Only the command knows
+  whether a mutation is legitimate, so the model holds a positive-value check and the
+  increment is the command's contract.
+- **IANA zone validity is not checked at the model layer.** A database check cannot see the
+  timezone database. The command boundary refuses an invalid zone in work item ⑤.
+- **No service, command, API or frontend.** The FR-58 candidate scan (±30-minute window),
+  the AD-21 save-race protocol and the conflict resolution actions all belong to work item ⑤.
+- **`REMINDER_PLAN` is not a field on `PersonalEvent`.** `delivery` owns it (AD-16); the
+  `personalization` app calls `delivery`'s published service to attach the default. That is
+  work item ④ and ⑤.
+
+### Ready for Completion
+
+- [x] All tests passing
+- [x] Coverage target met (80% overall, 100% for `domain/` and the new model)
+- [x] All acceptance criteria validated
+- [x] No critical issues open

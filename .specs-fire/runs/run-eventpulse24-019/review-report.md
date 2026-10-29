@@ -255,3 +255,211 @@ through `domain.dedup`'s existing tokeniser and never interpreted.
 identity machinery rather than duplicating it, and satisfy every architecture contract. The
 three auto-fixes were re-verified by the full suite (1725 passing) and the coverage gates
 (`domain/` 100%, overall 99.09%).
+
+---
+
+## Work Item: personalization-models
+
+### Summary
+
+| Category | Auto-Fixed | Applied | Skipped |
+|----------|------------|---------|---------|
+| Code Quality | 1 | 0 | 0 |
+| Security | 0 | 0 | 0 |
+| Architecture | 1 | 0 | 0 |
+| Testing | 1 | 0 | 0 |
+| **Total** | **3** | **0** | **0** |
+
+**Tests Status**: Passing — 1795/1795 backend, 0 failed, 0 skipped. `domain/` coverage 100%,
+`apps/personalization/models.py` coverage 100%.
+
+### Files Reviewed
+
+- `backend/apps/personalization/models.py` (created) — the four models
+- `backend/apps/personalization/migrations/0001_initial.py` (created) — schema, two triggers, grants
+- `backend/tests/personalization/factories.py` (created) — the four factories
+- `backend/tests/personalization/test_models.py` (created) — 35 constraint tests
+- `backend/tests/personalization/test_model_structure.py` (created) — 13 structural tests
+- `backend/tests/personalization/test_triggers.py` (created) — 9 raw-SQL trigger tests
+- `backend/tests/personalization/test_grants.py` (created) — 8 role-privilege tests
+- `backend/tests/wall/test_schema_placement.py` (modified) — schema placement + cross-schema FK checks
+- `backend/shared/retention.py` (modified) — the `ACCOUNT_CONTENT` comment
+- `.specs-fire/intents/personal-events-and-saved-catalog/work-items/personalization-models-design.md`
+  (created) — the Checkpoint 1 design doc (D1–D28)
+
+### Auto-Fixed Issues
+
+#### 1. [Code Quality] The sides-differ check constraint was inverted
+
+- **File**: `backend/apps/personalization/models.py`
+- **Description**: `conflict_pair_sides_differ_ck` was written as
+  `left_kind = right_kind OR left_id = right_id` — which is the condition for the two sides
+  being *the same record*, not for them differing. Every legal conflict pair was rejected by
+  Postgres: 17 tests failed with
+  `violates check constraint "conflict_pair_sides_differ_ck"`. The constraint caught the
+  opposite of what it claimed.
+- **Fix**: Negate the conjunction. The sides differ unless the kind *and* the id both match:
+  ```python
+  models.CheckConstraint(
+      condition=~(
+          models.Q(left_kind=models.F("right_kind"))
+          & models.Q(left_id=models.F("right_id"))
+      ),
+      name="conflict_pair_sides_differ_ck",
+  ),
+  ```
+  The migration was regenerated and re-applied, and `test_conflict_pair_rejects_the_same_side_twice`
+  now pins the rejection.
+
+#### 2. [Architecture] The `ConflictPair` docstring claimed the model normalised its own sides
+
+- **File**: `backend/apps/personalization/models.py`
+- **Description**: The docstring said the unique constraint "is symmetric only if the two sides
+  are normalised before writing — lexicographically on `(kind, id)`". Read literally, that
+  attributes the normalisation to the model. Nothing does it: the model cannot know which
+  side is "new", and the normalisation is a command-layer concern. The docstring was
+  over-claiming, and the AD-21 design puts the write protocol in the command layer.
+- **Fix**: The docstring now states the obligation and names its owner:
+  > The unique constraint below is symmetric only if the two sides are normalised before
+  > writing — lexicographically on `(kind, id)` — so `(A, B)` and `(B, A)` are one row.
+  > That normalisation belongs to the command layer, which is this table's only writer.
+
+  The obligation is carried into work item ⑤ (`personalization-write-services`), which owns
+  the commands, and is recorded as a known gap in the test report rather than left implicit.
+
+#### 3. [Code Quality] The `ACCOUNT_CONTENT` retention comment named only two of three record types
+
+- **File**: `backend/shared/retention.py`
+- **Description**: The category covers personal events, saved events *and* the conflicts
+  between them, but the comment listed only the first two. AD-15 makes this registry exactly
+  what the retention sweep, account deletion and the FR-52 export read, so an incomplete
+  description here is a documentation defect in the one place a reader trusts.
+- **Fix**: The comment now names the conflict pairs as well:
+  ```python
+  # Personal events + saved events + the conflicts between them: while the account is
+  # active; purged ≤30 days after deletion.
+  ACCOUNT_CONTENT = "account_content"
+  ```
+
+#### 4. [Testing] A test pinning the trigger's blast radius
+
+- **File**: `backend/tests/personalization/test_triggers.py`
+- **Description**: The `guard_conflict_pair` trigger rejects a change to `status`,
+  `resolution` or `resolved_at` on a closed pair. A first reading of "a resolved pair is
+  immutable" suggests freezing the whole row — but `updated_at` moves on every save, so
+  freezing the whole row would make a resolved row un-saveable. Nothing pinned which columns
+  the trigger actually guards.
+- **Fix**: Added `test_resolved_pair_unrelated_field_may_be_updated`, which updates
+  `updated_at` on a resolved pair and asserts the pair's three state columns are untouched.
+  Together with `test_active_pair_unrelated_field_may_be_updated`, the trigger's contract is
+  now stated in both directions: it guards three columns, not the row.
+
+### Findings Considered and Rejected
+
+- **A `GenericForeignKey` for the conflict sides.** Rejected by OQ-8 and by AD-21: the side is
+  a `(kind, id)` pair held by value, and a `GenericForeignKey` would reintroduce a relation to
+  `ContentType`. The structural test `test_no_personal_model_relates_to_user_or_content_type`
+  makes a regression fail the build.
+- **Separate nullable FK columns per side** (`personal_event_id`, `saved_event_id`). Rejected:
+  it would need `ON DELETE` semantics across two tables, could not express the symmetry the
+  unique constraint needs, and every FK would have to point at a table the wall forbids
+  relating to.
+- **Guarding the closed-pair immutability in Python rather than in a trigger.** Rejected in
+  favour of the trigger, matching the `catalog.guard_event_write` precedent: a closed pair must
+  stay closed even against a write that bypasses the ORM.
+- **An index on `ConflictPair` over the pair columns.** Rejected: the conflict list and the
+  Pulse Card indicator both read a user's *open* pairs, which the `(user_id, status)` index
+  serves. An index over the unordered pair would duplicate the unique constraint's index.
+- **Revoking `UPDATE`/`DELETE` on the audit table from `ep_personal` entirely.** Rejected: the
+  table is shared with the framework's own audit rows and the grant is scoped per table, so the
+  migration revokes on the audit table and the trigger guards the rest.
+
+### Security
+
+- **The append-only audit table is enforced at the database, not in the application.**
+  `personal.forbid_history_mutation` raises `restrict_violation` on any `UPDATE` or `DELETE`,
+  and the migration additionally revokes `UPDATE`/`DELETE` on the table from `ep_personal`.
+  `test_grants.py` asserts the runtime role gets exactly `InsufficientPrivilege` — not a
+  generic failure — and `test_audit_entry_delete_rejected` proves the trigger fires for a
+  delete.
+- **The migration asserts its own grants applied.** The `GRANTS` block ends with a
+  `has_table_privilege` check that raises if `ep_personal` still holds `UPDATE` or `DELETE` on
+  the audit table. A migration that silently failed to revoke would fail loudly at apply time
+  rather than at first use. `test_migration_privilege_assertion_fails_when_revoke_missing`
+  imports the migration module and proves the assertion raises when the revoke is absent.
+- **No cross-schema FK exists in either direction.** `personal` has no `USAGE` on `catalog`, so
+  a FK to a catalog table could not even be created by the runtime role; and the wall test
+  asserts, against `information_schema`, that no FK in `personal` targets `catalog` and none in
+  `catalog` targets `personal`.
+- **No user input reaches an interpreter.** The models declare choices and check constraints;
+  the IANA timezone name is validated at the command boundary (item ⑤), because a database
+  check cannot see the timezone database — the model docstring says so explicitly.
+
+### Architecture
+
+- **AD-3 (the schema wall).** All four tables live in `personal`; `catalog` holds none of them.
+  The `event_id` on `SavedEvent` is a plain `UUIDField` — the structural proof is that
+  `field.remote_field is None`, which the test asserts alongside
+  `not isinstance(field, models.ForeignKey)`.
+- **AD-16 (write ownership).** `personalization` owns `PersonalEvent`, `SavedEvent` and
+  `ConflictPair`; `delivery` owns `REMINDER_PLAN`. `test_personal_event_declares_no_reminder_plan_field`
+  asserts no field on `PersonalEvent` mentions a reminder plan, so the ownership boundary
+  cannot be quietly crossed by a future column.
+- **AD-5 (audit).** `PersonalizationAuditEntry` extends the shared `AuditEntry`, so the actor
+  is stored by value and the table is append-only.
+- **AD-15 (retention).** Each of the four models declares a `retention_category`; `manage.py check`
+  passes with `eventpulse.E003`/`E004` armed, which is the standing proof that no concrete
+  model is left undeclared.
+- **AD-6 (UTC).** `start_utc`/`end_utc` are the storage truth and `start_time_tz` carries the
+  IANA zone the user meant; the check constraint holds the interval coherent
+  (`end_utc >= start_utc`, or open-ended).
+- **AD-21 (conflict semantics).** The 15-minute overlap threshold lives in `domain/conflict.py`
+  from item ② and is not duplicated in the model layer. The model only holds the *record* of a
+  detected conflict — `status`/`resolution`/`resolved_at` — and the check constraints encode
+  the three legal shapes of that state.
+- **Import contracts.** `make lint-imports` reports **13 kept, 0 broken**; `models-personalization`
+  and `domain-pure` both hold.
+- **`manage.py check`** passes with no issues and nothing silenced.
+
+### Project Tooling Used
+
+- **ruff**: `backend/pyproject.toml` (`ruff check`, `ruff format --check`)
+- **import-linter**: `backend/pyproject.toml` (`make lint-imports`)
+- **pytest / pytest-django**: `backend/pyproject.toml` (full suite + coverage gates)
+- **Django system checks**: `python manage.py check`, `makemigrations --check --dry-run`
+- **Vitest**: `frontend/package.json` (regression check — no frontend source touched)
+
+### Standards Referenced
+
+- `.specs-fire/standards/coding-standards.md`
+- `.specs-fire/standards/testing-standards.md`
+- `.specs-fire/standards/constitution.md`
+- `.specs-fire/standards/tech-stack.md`
+- `.specs-fire/standards/system-architecture.md`
+
+### Verification Performed
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Backend suite | `cd backend && uv run pytest -q -p no:randomly` | 1795 passed, 0 failed, 0 skipped |
+| Backend coverage | `cd backend && uv run pytest -q --cov --cov-report=term` | 99.11% total; `domain/` 100%; `apps/personalization/models.py` 100%; 80% gate met |
+| Frontend suite | `cd frontend && pnpm vitest run` | 51 passed / 9 files |
+| Python lint | `cd backend && uv run ruff check` | All checks passed |
+| Format | `cd backend && uv run ruff format --check` | 255 files already formatted |
+| Auto-fix diff | `cd backend && uv run ruff check --fix --diff` | no output — no auto-fixes available |
+| Import contracts | `make lint-imports` | 13 kept, 0 broken |
+| Django checks | `uv run python manage.py check` | no issues (0 silenced) |
+| Migrations in sync | `uv run python manage.py makemigrations --check --dry-run` | No changes detected |
+| Migration reverse | `DJANGO_DB_ROLE=owner ... migrate personalization --database=default zero` | applied cleanly, then re-applied with `make migrate` |
+
+### Verdict
+
+**Approved.** The four models hold the invariants the database can hold, and everything the
+database cannot hold is deferred to the command layer (item ⑤) with the obligation written
+down rather than implied. The wall, the ownership boundary, the retention declaration and the
+append-only audit table are each proven by a test that fails if the guarantee is broken — the
+structural tests read metadata rather than behaviour, so a future "helpful" `ForeignKey` breaks
+the build instead of quietly making a cross-schema join possible.
+
+The four auto-fixes were re-verified by the full suite (1795 passing) and the coverage gates
+(`domain/` 100%, `apps/personalization/models.py` 100%, overall 99.11%).
