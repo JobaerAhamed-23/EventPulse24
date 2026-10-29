@@ -4,10 +4,12 @@ title: Auth API & Session Seam Replacement
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - account-auth-core
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-29T15:19:57.280Z
 ---
 
 # Work Item: Auth API & Session Seam Replacement

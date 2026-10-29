@@ -4,7 +4,7 @@ title: Calendar Connect API
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - auth-api-and-session-seam
   - calendar-sync-and-polling
