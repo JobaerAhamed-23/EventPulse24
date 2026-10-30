@@ -662,6 +662,27 @@ def test_the_fetch_carries_the_calendar_s_own_limits():
     assert limits.dns_timeout == DNS_TIMEOUT == 3.0
 
 
+def test_the_fetch_is_told_the_url_is_a_credential():
+    """The calendar's URL *is* its credential, so the adapter says so (AD-18).
+
+    httpx logs the request URL at INFO. For a calendar that URL carries the provider's
+    token in its path, so the transport must be told not to write it — and only the
+    caller knows that. The transport cannot guess: a source feed's URL is an
+    *identifier*, and the deployment's own diagnostics depend on it being readable.
+
+    So the flag is asserted here, on the adapter's own call, rather than only
+    inferred from the absence of a log line elsewhere.
+    """
+    adapter, fetch = adapter_with(ics_result(calendar()))
+
+    adapter.fetch_entries(feed())
+
+    assert fetch.calls[0].credential is True, (
+        "the calendar adapter must tell the transport that the URL is a credential, "
+        "or the URL reaches httpx's log line."
+    )
+
+
 def test_the_calendar_limits_are_tighter_than_the_source_limits():
     """The point of the calendar's own numbers: a user-supplied URL gets less room."""
     from adapters.crawl.http import FetchLimits as SourceLimits

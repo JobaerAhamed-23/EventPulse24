@@ -25,6 +25,9 @@ class FetchCall:
     source_id: UUID | None = None
     allow_cross_host_redirect: bool = False
     limits: FetchLimits | None = None
+    #: Whether the caller said the URL is a credential (AD-18). The calendar adapter
+    #: must say so — the transport uses it to keep the URL out of httpx's log line.
+    credential: bool = False
 
 
 @dataclass
@@ -48,6 +51,7 @@ class ScriptedFetch:
         source_id: UUID | None = None,
         allow_cross_host_redirect: bool = False,
         limits: FetchLimits | None = None,
+        credential: bool = False,
     ) -> FetchResult:
         self.calls.append(
             FetchCall(
@@ -57,6 +61,7 @@ class ScriptedFetch:
                 source_id=source_id,
                 allow_cross_host_redirect=allow_cross_host_redirect,
                 limits=limits,
+                credential=credential,
             )
         )
         if self.error is not None:

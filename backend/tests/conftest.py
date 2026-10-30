@@ -1,4 +1,4 @@
-"""Test database setup for the AD-3 wall.
+"""Test database setup for the AD-3 wall, and the fixtures every package shares.
 
 Both aliases share one test database (identical TEST settings), but Django only links an alias
 to it when that alias is among the ones being set up, and pytest-django derives that list from
@@ -13,8 +13,28 @@ from django.db import connections
 from django.test.utils import setup_databases, teardown_databases
 
 from shared.db import CATALOG, PERSONAL
+from tests.fixture_ics_server import FixtureIcsServer
 
 PROJECT_ROLES = ("ep_owner", "ep_catalog", "ep_personal")
+
+
+@pytest.fixture
+def fixture_server():
+    """The local ICS server: a real socket, on loopback, answering 200 / 304 / 410.
+
+    **A real server, in every package that asks for it.** The parts of the fetch path
+    that matter here — the SSRF guard, the conditional request, the status mapping, the
+    credential never reaching a log line — only exist on a real socket. A transport-level
+    mock never reaches httpx's own logger, so a test that asserted on that logger would
+    pass for the wrong reason. So the fixture is shared rather than re-declared per
+    package: one server implementation, one place that starts it, and every consumer
+    gets the same behaviour.
+
+    It is a context manager, so the server is always shut down — even if the test fails
+    midway.
+    """
+    with FixtureIcsServer() as server:
+        yield server
 
 
 @pytest.fixture(scope="session")

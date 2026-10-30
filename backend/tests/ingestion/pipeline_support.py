@@ -34,6 +34,7 @@ class ScriptedFetchPort(SourceFetchPort):
         source_id=None,
         allow_cross_host_redirect=False,
         limits: FetchLimits | None = None,
+        credential: bool = False,
     ) -> FetchResult:
         self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
         response = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]

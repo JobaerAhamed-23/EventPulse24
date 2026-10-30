@@ -22,6 +22,7 @@ import ast
 
 import pytest
 
+from shared.db import CATALOG, PERSONAL
 from tests.architecture.checkers import BACKEND_DIR
 
 # The modules that make up the public preview surface.
@@ -281,3 +282,120 @@ def test_the_preview_endpoint_is_an_ast_parseable_function():
         }
 
         assert functions, f"{relative} defines no functions"
+
+
+# --- AD-12: the byte-identical property -----------------------------------------------------
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_every_public_preview_endpoint_is_byte_identical_with_and_without_a_session():
+    """AD-12, as an **invariant over the whole public preview surface**.
+
+    `/api/public/preview` returns identical bodies with and without a session, and
+    `/preview` renders the same for both. The behavioural half of that is in
+    `tests/api/test_preview_api.py`, and it compares one endpoint's bytes.
+
+    **This asserts the property for every endpoint the public preview router
+    declares**, so a *new* endpoint is covered by default rather than by somebody
+    remembering to add a test for it. An endpoint that read a session would be the
+    exact failure AD-12 exists to prevent: the preview is the first thing a visitor
+    sees, it is served to people with no account, and a response that depends on who
+    asked cannot be cached — a shared cache that ignored the session would serve one
+    visitor's response to another.
+
+    **The bodies are compared as bytes.** `response.json()` would compare them as data
+    and miss a difference in whitespace or key order, and a cache treats two different
+    byte strings as two different responses. The claim is about what goes on the wire.
+
+    The signed-in client is a *real* session: Django's own, set by `force_login`. The
+    preview never reads it, and that is exactly the point — having one changes nothing.
+    """
+    from django.test import Client
+
+    from apps.identity.models import User
+
+    user = User.objects.create_user(email="preview-invariant@example.test", password="pw")
+    signed_in = Client()
+    signed_in.force_login(user)
+
+    anonymous_client = Client()
+
+    paths = _public_preview_paths()
+    assert paths, "the public preview router declares no endpoints — the check would be empty"
+
+    for path in paths:
+        anonymous = anonymous_client.get(path)
+        with_session = signed_in.get(path)
+
+        assert anonymous.status_code == with_session.status_code == 200, (
+            f"{path} answered {anonymous.status_code} anonymously and "
+            f"{with_session.status_code} with a session"
+        )
+        assert with_session.content == anonymous.content, (
+            f"{path} returned different bytes with and without a session. The Pulse "
+            "Preview is a public surface (AD-12): its response must not depend on who "
+            "asked."
+        )
+
+
+def _public_preview_paths() -> list[str]:
+    """Every path the public preview router declares, from the router itself.
+
+    **From the router, not from a list.** A list of paths is a list somebody has to
+    remember to update; the router is the truth, so a new endpoint is covered the
+    moment it is declared.
+
+    **The `/api` root comes from the URL configuration**, not from a constant here —
+    the API is mounted at `api/` in `config/urls.py`, and hardcoding that would be a
+    second place to update if the mount moved.
+    """
+    from config.api import api
+
+    root = _api_root()
+
+    paths = []
+    for prefix, router in getattr(api, "_routers", []):
+        if prefix != "/public":
+            continue
+        paths.extend(f"{root}{prefix}{path}" for path in router.path_operations)
+    return sorted(set(paths))
+
+
+def _api_root() -> str:
+    """The path the API is mounted at, read from the URL configuration."""
+    from django.urls import get_resolver
+
+    for pattern in get_resolver().url_patterns:
+        if getattr(pattern, "app_name", "") == "api":
+            return str(pattern.pattern)
+    return "/api"
+
+
+def test_the_public_preview_router_has_no_auth_and_no_session_dependency():
+    """The router's own declaration, read back from the built API.
+
+    The source check above reads the code; this reads the **assembled** router, so a
+    wrapper that added an auth dependency after the fact would be caught too. The two
+    are different failure modes — one is a change to the file, the other is a change to
+    the wiring — and a property this central is worth having both ways.
+
+    **django-ninja's sentinel is `NOT_SET_TYPE`, not `None`.** A router that was never
+    given an `auth=` reads back as an *instance* of the `NOT_SET_TYPE` class; a router
+    given `auth=None` says "explicitly no authentication" and reads back as `None`.
+    Both mean "no session dependency", and both are accepted — what would fail this
+    check is an `auth=` that names an actual dependency.
+    """
+    from ninja.constants import NOT_SET_TYPE
+
+    from config.api import api
+
+    public = [router for prefix, router in getattr(api, "_routers", []) if prefix == "/public"]
+
+    assert len(public) == 1, f"expected exactly one public router, found {len(public)}"
+    router = public[0]
+
+    auth = getattr(router, "auth", NOT_SET_TYPE)
+    assert auth is None or isinstance(auth, NOT_SET_TYPE), (
+        f"the public preview router must have no `auth`, but it has {auth!r}. The "
+        "preview is a public surface (AD-12): it has no session and no user."
+    )
