@@ -416,14 +416,17 @@ intents:
         run_id: run-eventpulse24-021
         completed_at: 2026-10-30T17:30:00Z
       - id: digest-composition-service
-        status: pending
+        status: completed
         complexity: high
         mode: validate
+        design_doc: digest-composition-service-design.md
         depends_on:
           - digest-ranking-domain
           - digest-composition-models
           - digest-user-preferences
           - digest-candidate-reads
+        run_id: run-eventpulse24-021
+        completed_at: 2026-10-30T18:40:00Z
       - id: digest-scheduling
         status: pending
         complexity: medium
@@ -510,10 +513,11 @@ runs:
         - id: digest-composition-service
           intent: pulse-digest-and-trust
           mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-30T18:40:00Z
         - id: digest-read-api
           intent: pulse-digest-and-trust
           mode: confirm
@@ -563,7 +567,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: digest-composition-service
+      current_item: digest-read-api
       started: 2026-10-30T12:40:28.978Z
   completed:
     - id: run-eventpulse24-001

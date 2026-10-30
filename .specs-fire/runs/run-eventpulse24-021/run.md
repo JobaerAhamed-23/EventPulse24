@@ -33,10 +33,10 @@ work_items:
   - id: digest-composition-service
     intent: pulse-digest-and-trust
     mode: validate
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: digest-read-api
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: digest-composition-service
+current_item: digest-read-api
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -102,7 +102,7 @@ wide (12 work items)
 2. **digest-composition-models** (validate) — completed
 3. **digest-user-preferences** (confirm) — completed
 4. **digest-candidate-reads** (confirm) — completed
-5. **digest-composition-service** (validate) — pending
+5. **digest-composition-service** (validate) — completed
 6. **digest-read-api** (confirm) — pending
 7. **event-detail-api** (confirm) — pending
 8. **digest-scheduling** (confirm) — pending
@@ -113,7 +113,7 @@ wide (12 work items)
 
 
 ## Current Item
-digest-composition-service (validate)
+digest-read-api (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -137,6 +137,18 @@ digest-composition-service (validate)
   — D1–D15 plus D5a, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-digest-candidate-reads.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-digest-candidate-reads.md`
+- `backend/apps/personalization/services/digest_composition.py` — the composition
+  command: it reads the three pools, scores them, assigns the three slots, and writes
+  one `PulseDigest` with its `DigestComposition` rows
+- `backend/apps/ingestion/services/chip_matching.py` — the **event's** half of the
+  interest overlap: the title and description matched against the keyword table,
+  whole-word, in the layer that owns the content (AD-9)
+- `backend/tests/personalization/test_digest_composition.py` — 48 tests
+- `backend/tests/ingestion/test_chip_matching.py` — 22 tests
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/digest-composition-service-design.md`
+  — D1–D15 plus D8b, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-digest-composition-service.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-digest-composition-service.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -166,6 +178,11 @@ digest-composition-service (validate)
 - `backend/tests/architecture/test_event_fit_separation.py` — two added tests: the
   candidate read reaches no Event Fit, and the badge leaf reaches neither the Event
   Fit nor `personalization`
+- `backend/apps/ingestion/services/catalog_read.py` — `PublicEventCandidate` gains
+  `chip_keys`, computed from the event's title and description
+- `backend/shared/constants.py` — `INTEREST_CHIP_KEYWORDS`, the table that gives an
+  **event** its interest chips; the interest term is the largest weight in the
+  Relevance Pulse and was pinned to `0.0` without it
 
 ## Decisions
 - **D4 — retention category `ACCOUNT_CONTENT`** for both tables. It is the only category
@@ -245,3 +262,70 @@ digest-composition-service (validate)
   personal read's test asserts on table names instead, because there the catalog side
   is legitimately reached through a published service (AD-2 forbids importing
   `apps.ingestion.models` from `apps.personalization`).
+- **The interest term was inert, and this item built the missing half.** The
+  Relevance Pulse's interest term is `0.45 × interest_overlap`, and `interest_overlap`
+  needs the **event's** chip keys as well as the user's. The event's half existed
+  nowhere: `Event` has no category field and no read produced one. So the term was
+  pinned to `0.0` for every candidate — which the ranking domain calls an *inert
+  weight*: "the published formula would stay arithmetically checkable and still produce
+  a different number from the one on the card, which is a worse trust failure than a
+  reduced formula because it looks verifiable." With it inert the score could never
+  exceed `0.55`, so no card could reach bucket 4 or 5, and `score_slot_3`'s inverted
+  term (`1 − 0.0`) was identical to the plain score — the serendipity slot inverted
+  nothing. The matching is now a pure function in the layer that owns the content
+  (AD-9), and the acceptance criteria could not have been met without it.
+- **The chip matching is a pure function, not a stored column.** A `chip_keys` column
+  on `Event` would need a migration, a write-time computation and a backfill for every
+  existing event — and it would be *wrong* the moment the keyword table changed. A new
+  keyword improves the matching for every event at once, with no migration.
+- **Hyphens and apostrophes are normalised on both sides of the match.** "story-time"
+  and "storytime" are the same word to a reader, so either spelling of a keyword
+  matches either spelling of the text. The first implementation kept the hyphen inside
+  the token and so did not deliver what its own docstring promised; the test found it.
+- **The personal event *is* Slot 1, and the public event is a fallback.** FR-5 puts
+  "Personal Events eligible" first and makes the public event conditional on "if no
+  Personal Event is eligible", so a personal event takes Slot 1 even when a public
+  event would have outscored it. This is the opposite of what a "highest score wins"
+  implementation does, and it is the point of the slot.
+- **The empty state needs both halves.** "No qualifying public event" is not enough:
+  a user with a personal event tomorrow and nothing else in the catalog has a card to
+  show, and a digest saying "nothing today" would be wrong.
+- **A short digest is not padded.** A two-card day is composed with two cards.
+  Padding would mean relaxing a gate — the staleness bound or a confidence threshold —
+  and publishing a card the rules forbid, with the user having no way to know it was
+  filler. And the empty state would lie: two events *is* something happening near you.
+- **Hysteresis is within-day only, and nothing is inherited across days.** The work
+  item's criteria said both "applied across days by reading the previous day's
+  composition" and "across days it resets" — two clauses that cannot both hold.
+  EXPERIENCE.md §4 is the canonical source: "**Across days, hysteresis resets** …
+  **No persistent bucket is stored between days.**" So the service passes
+  `previous_bucket=None`. The conflict is recorded rather than silently resolved.
+- **The re-run is a no-op under a per-user advisory lock, not a constraint violation.**
+  `pulse_digest_user_date_uq` would catch a race as an `IntegrityError` that reaches
+  the caller as a 500. The lock makes the second worker *wait*, see the row the first
+  wrote, and return it — and it is transaction-scoped, so a crashed worker cannot
+  leave a user's digest wedged.
+- **The lock has its own namespace, distinct from every other lock in the codebase.**
+  It does not share `digest_preferences.py`'s: the two commands write different rows —
+  the preference and the composition — and a lock is only a mutual-exclusion device
+  when it excludes the same thing.
+- **The user's country is empty, and the country band is `0.00`.** The
+  `DigestPreference` has a city and a zone and no country. The trade is `0.10` of a
+  score, and it is **stated** rather than papered over with a catalog lookup that
+  would be a second read across the wall, for the *user's* city as well as the
+  event's. **If the preference ever gains a country, D8 has to be revisited.**
+- **The saves mark a card; they are not a candidate pool.** A saved event in another
+  city is not "nearby" — a save is not a statement that the event is nearby — and a
+  save the catalog dropped has no badge, so it cannot be a public composition at all.
+- **The catalog reads happen outside the transaction.** AD-3 forbids a transaction
+  spanning both schemas, and a catalog read inside a `personal` transaction would be
+  reading across the wall even though the write is only to `personal`.
+- **The audit row carries the count, the date and the emptiness — and nothing else.**
+  AD-13 forbids PII and untrusted content in logs, and the audit table is a log. A
+  title or a URL would be untrusted source content in a log; the event ids are already
+  one indexed read away.
+- **An unknown timezone falls back to UTC rather than failing.** The zone is validated
+  at write time, so an unknown name means hand-edited data. A composition that raised
+  would leave the user with **no digest at all**, which is worse than a digest whose
+  day is computed in the fallback zone: the failure mode is a wrong day, not a missing
+  card.

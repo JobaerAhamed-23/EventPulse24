@@ -35,6 +35,7 @@ from uuid import UUID
 from django.db.models import QuerySet
 
 from apps.ingestion.models import Event
+from apps.ingestion.services.chip_matching import chip_keys_for
 from apps.ingestion.services.source_badges import source_badge_for_type
 from domain.errors import NotFoundError
 from shared.constants import (
@@ -245,6 +246,11 @@ class PublicEventCandidate:
     #: When the catalog last saw the event at the source. FR-14's staleness bound is
     #: measured from here.
     last_seen_at: datetime
+    #: The interest-chip keys this event belongs to, matched from its own title and
+    #: description (FR-1). The user's half of the interest overlap is the chips they
+    #: picked at onboarding; this is the event's half, and without it the largest term
+    #: in the Relevance Pulse would be pinned to zero.
+    chip_keys: tuple[str, ...] = ()
 
 
 def _to_public_candidate(event: Event) -> PublicEventCandidate:
@@ -274,6 +280,7 @@ def _to_public_candidate(event: Event) -> PublicEventCandidate:
         tz_inference_confidence=event.tz_inference_confidence,
         tz_review_pending=event.tz_review_pending,
         last_seen_at=event.last_seen_at,
+        chip_keys=chip_keys_for(title=event.title, description=event.description),
     )
 
 

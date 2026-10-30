@@ -236,6 +236,116 @@ INTEREST_CHIPS = (
 # FR-1: "up to 3 picks". A fourth is refused, not silently dropped.
 MAX_INTEREST_PICKS = 3
 
+#: The keywords that put an **event** into an interest chip.
+#:
+#: The user's side of the overlap is the chip keys they picked at onboarding (FR-1), and
+#: that exists. The **event's** side does not: `Event` has no category field, and the
+#: Relevance Pulse's interest term — the largest weight in the formula — needs the
+#: event's chips to compute anything at all. Without them the term is pinned to zero,
+#: which the ranking domain calls an *inert weight*: "the published formula would stay
+#: arithmetically checkable and still produce a different number from the one on the
+#: card, which is a worse trust failure than a reduced formula because it looks
+#: verifiable."
+#:
+#: **This table is that missing half.** It is deliberately small and hand-written: four
+#: to eight unambiguous keywords per chip, matched as whole words against the event's
+#: title and description. It is not a classifier and does not pretend to be one — a
+#: keyword broad enough to match the wrong things is worse than no keyword at all,
+#: because a false match inflates the interest term and puts a card in a category the
+#: user never asked about.
+#:
+#: **Why whole words, and not substrings.** "art" must not match "start", and "market"
+#: must not match "marketing" — a substring match would file part of a city's calendar
+#: under "Arts & culture" on the strength of a word that merely contains another.
+#:
+#: Note that this table lists **both** "sport" and "sports" for `sports_fitness`. Those
+#: are two whole words, and "Sports Clinic" matches the second of them — the rule is
+#: about *substrings*, not about near-synonyms.
+#:
+#: **Hyphens and apostrophes are normalised on both sides.** "story-time" and
+#: "storytime" are the same word to a reader, so either spelling of a keyword matches
+#: either spelling of the text. See `apps.ingestion.services.chip_matching`.
+#:
+#: **Why the keywords live here, and not in `domain/`.** AD-9: matching text over
+#: untrusted source content belongs to the layer that owns the content. `domain/` is
+#: stdlib-only and pure, and has no idea a render exists. `shared/constants.py` is
+#: stdlib-only too, so both may read it.
+#:
+#: **Why the table is editable.** The chip *keys* are stable forever — a renamed label
+#: must not orphan a user's stored picks. These keywords are the matching policy, and
+#: the policy is allowed to change: a new keyword improves the matching for every event
+#: at once, with no migration and no backfill.
+INTEREST_CHIP_KEYWORDS = {
+    "tech_meetups": ("tech", "startup", "developer", "hackathon", "software", "programming"),
+    "sports_fitness": (
+        "sport",
+        "sports",
+        "fitness",
+        "yoga",
+        "gym",
+        "basketball",
+        "soccer",
+        "running",
+    ),
+    "arts_culture": (
+        "concert",
+        "gallery",
+        "museum",
+        "theatre",
+        "theater",
+        "exhibition",
+        "art",
+        "music",
+        "film",
+    ),
+    "family_kids": ("family", "kids", "children", "playground", "storytime", "baby"),
+    "community_volunteering": (
+        "volunteer",
+        "volunteering",
+        "charity",
+        "fundraiser",
+        "donate",
+        "mutual aid",
+    ),
+    "outdoors_nature": (
+        "hike",
+        "hiking",
+        "trail",
+        "park",
+        "garden",
+        "outdoor",
+        "bird",
+        "beach",
+    ),
+    "classes_workshops": (
+        "workshop",
+        "class",
+        "course",
+        "lesson",
+        "training",
+        "bootcamp",
+    ),
+    "markets_fairs": ("market", "fair", "farmers", "flea", "bazaar", "craft fair"),
+    "talks_lectures": (
+        "talk",
+        "lecture",
+        "panel",
+        "conference",
+        "symposium",
+        "keynote",
+        "webinar",
+    ),
+    "government_civic": (
+        "council",
+        "town hall",
+        "mayor",
+        "zoning",
+        "public hearing",
+        "municipal",
+        "civic",
+    ),
+}
+
 # FR-1: "A user who leaves mid-step is resumed at the same step on return within 7 days."
 #
 # The window is **inclusive**: a user exactly 7 days after their last move is still
