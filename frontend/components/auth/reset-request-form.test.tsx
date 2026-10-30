@@ -66,6 +66,18 @@ describe("ResetRequestForm", () => {
     expect(POST).not.toHaveBeenCalled();
   });
 
+  it("recovers when the request never reaches the API", async () => {
+    POST.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<ResetRequestForm />);
+
+    request();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach Pulse. Try again.");
+    expect(screen.getByRole("button", { name: "Send reset link" })).toBeEnabled();
+    // No false "we've sent a link" for a request that never went out.
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("shows the API's refusal rather than a false success", async () => {
     POST.mockResolvedValue({
       data: undefined,

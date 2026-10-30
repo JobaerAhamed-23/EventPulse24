@@ -44,6 +44,13 @@ class PersonalEventOut(Schema):
     """One personal event.
 
     `version` rises by one on every edit (AD-7's send key uses it, so it may only go up).
+
+    `calendar_connection_id` says where the event came from: a connection's id for a row a
+    calendar imported, `None` for one the user entered. It is the **id** and nothing else
+    — the secret address never appears in any response shape (AD-18), and this field does
+    not change that. Onboarding step 1 needs it to show what a calendar just brought in,
+    and Settings → Sources will need it to say what a connection owns before it is
+    disconnected.
     """
 
     id: UUID
@@ -54,6 +61,7 @@ class PersonalEventOut(Schema):
     location: str | None = None
     notes: str | None = None
     version: int
+    calendar_connection_id: UUID | None = None
 
     @classmethod
     def from_snapshot(cls, event: PersonalEventSnapshot) -> "PersonalEventOut":
@@ -67,6 +75,7 @@ class PersonalEventOut(Schema):
             location=event.location,
             notes=event.notes,
             version=event.version,
+            calendar_connection_id=event.calendar_connection_id,
         )
 
 

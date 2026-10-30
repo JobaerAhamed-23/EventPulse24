@@ -664,3 +664,150 @@ passes (3208) with the contract test satisfied by the regenerated schema.
 - **The local database was four `personalization` migrations behind** at the start of the
   run, which made `/api/auth/me` answer `500`. `make migrate` fixed it. That is the
   environment, not the code.
+
+
+---
+
+## Work Item: frontend-onboarding-flow
+
+**Mode:** confirm · **Gates:** `make test-web`, `make lint-web`, `make test-backend`
+
+### Test Results
+
+| Suite | Result |
+|---|---|
+| `make test-web` (Vitest) | **342 passed**, 0 failed, 0 skipped (36 files) |
+| `make lint-web` | **clean** (ESLint, `next typegen` + `tsc --noEmit`, Prettier) |
+| `make test-backend` (pytest) | **3209 passed**, 0 failed |
+
+The frontend suite was 262 after the previous item and is 342 now: **80 added**. The
+backend gained one test for the new projection field, and one existing test was extended.
+
+| File | Tests | Covers |
+|---|---|---|
+| `components/onboarding/onboarding-flow.test.tsx` | 19 | Resume, Back, the two step numbers in both directions, saving, finishing, 409, skip-all |
+| `components/onboarding/calendar-step.test.tsx` | 23 | Providers, guidance, masking and non-persistence, the poll, the cap, the refusals, an existing connection |
+| `components/onboarding/interests-step.test.tsx` | 12 | The cap rule as a pure function, the chips, `aria-pressed`, the disabled state |
+| `components/onboarding/digest-step.test.tsx` | 11 | The time control, presets, the zone default, a stored preference |
+| `components/onboarding/step-shell.test.tsx` | 8 | The progress dots, the announcement, focus, the footer's actions |
+| `app/onboarding/page.test.tsx` | 8 | The three gates, the session-carrying reads, resume on first paint |
+| `backend/tests/personalization/test_personal_events_api.py` | +1, 1 changed | An imported event carries its connection; the contracted field set |
+
+### Acceptance Criteria Validation
+
+| Criterion | Status | Where |
+|---|---|---|
+| Each step implements its mockup; Back / Skip / Continue in the **footer**, never the topbar | **Met** | `step-shell.tsx`; a test asserts each action sits after the step body in document order |
+| Step 1: three providers, equal weight | **Met** | `calendar-providers.ts`, `calendar-step.tsx` |
+| Step 1: choosing one reveals **that** provider's guidance and a masked input | **Met** | Tested, including switching providers |
+| Step 1: the address is never echoed into the DOM after submission, never in `localStorage` | **Met** | Cleared on success; tests read both storages and the DOM, and one drives the real path back to the form |
+| Step 1: connecting shows the sync state, then the imported events | **Met** | The bounded poll, then this connection's events (via the new projection field) |
+| Step 1: the Free cap shows the calm upgrade message, no modal | **Met** | Inline alert + "Upgrade" link; a test asserts no `dialog` role |
+| Step 1: "Connection failed. Skip for now?" is the error state | **Met** | The locked copy, with equal-weight "Try again" and the footer's Skip |
+| Step 2: chips come from the API; a 4th pick is prevented; zero picks is a valid Continue | **Met** | The cap rule is a pure function with its own tests; the chips' `disabled` is tested separately |
+| Step 3: delivery time and an IANA picker defaulting to the browser's zone, reusing `lib/timezones.ts` | **Met** | `digest-step.tsx`; `browserZone()` and `ZONE_CHOICES` |
+| Skip all reaches the skip-all state and then `/` | **Met (with a deviation)** | The mockup's "skip-all state" is the cold-start Pulse Digest, which this intent does not build; `/skip-all` → the placeholder home, as the brief directs |
+| Resume: reloading opens the recorded step | **Met** | The server read is the first paint; a test mocks step 2 and asserts step 2 renders |
+| A completed user visiting `/onboarding` goes to `/` | **Met** | Tested, and proven live (`307 → /`) |
+| The Personal tone is paired with the visible "Personal" label | **Met** | Tested on the imported-event rows |
+| Chips are toggle buttons with `aria-pressed`; progress announced; focus moves to the step heading | **Met** | `step-shell.test.tsx`, `interests-step.test.tsx` |
+| Generated client only; tokens and vanilla components only | **Met** | ESLint and the architecture tests unchanged and passing; no dependency added |
+| Vitest covers each step's render and skip path, masking, the cap, the 3-pick limit, resume, skip-all, the completed redirect | **Met** | The table above |
+
+### Revert Verification
+
+**38 of 38 cases failed their tests, as they must** — after two were fixed. The first run
+reported **two holes**, and both were real gaps rather than harness noise:
+
+1. **"the address is kept after connecting"** passed against broken code. The DOM check
+   only passed because the form unmounts into the sync state once connected, so retaining
+   the credential in component state was invisible to it. There *is* a reachable way back
+   to that form — connect succeeds, the first poll reports the feed revoked, "Try again"
+   returns to the form — and the secret would have been sitting in the field. A test now
+   drives exactly that path, and a second test pins the opposite case: a **refused**
+   address is deliberately kept so the user can fix a typo.
+2. **"a fourth pick is allowed"** passed because the test clicked a `disabled` button,
+   which fires nothing — the guard behind the attribute was never exercised. The cap rule
+   is now a pure exported function (`nextSelection`) tested directly, and the chips'
+   `disabled` attribute is tested separately, with a revert case each. A rule that can
+   only be reached through a disabled control cannot be tested through the UI, and
+   pretending otherwise is how a cap silently stops holding.
+
+| # | Rule reverted | Caught by |
+|---|---|---|
+| 1 | Continue advances the server while revisiting an earlier step | `onboarding-flow.test.tsx` |
+| 2 | Skip calls the API while revisiting | `onboarding-flow.test.tsx` |
+| 3 | Back posts a step call | `onboarding-flow.test.tsx` |
+| 4 | The view ignores the server's answer | `onboarding-flow.test.tsx` |
+| 5 | The flow always starts at step 1 | `onboarding-flow.test.tsx` |
+| 6 | The page reads no state | `page.test.tsx` |
+| 7 | The server reads drop the session cookie | `page.test.tsx` |
+| 8 | A completed user is let into the flow | `page.test.tsx` |
+| 9 | An anonymous visitor is let into the flow | `page.test.tsx` |
+| 10 | Finishing does not go home | `onboarding-flow.test.tsx` |
+| 11 | A 409 is shown as an error instead of going home | `onboarding-flow.test.tsx` |
+| 12 | Skip-all does not finish | `onboarding-flow.test.tsx` |
+| 13–15 | The interests / digest are not saved; a refused save still advances | `onboarding-flow.test.tsx` |
+| 16–19 | The address is unmasked / kept / stored / revealable | `calendar-step.test.tsx` |
+| 20 | Every personal event is claimed as imported | `calendar-step.test.tsx` |
+| 21 | The poll never gives up | `calendar-step.test.tsx` |
+| 22 | A revoked connection is treated as a slow import | `calendar-step.test.tsx` |
+| 23 | The cap message becomes a dialog | `calendar-step.test.tsx` |
+| 24 | The locked failure copy is replaced | `calendar-step.test.tsx` |
+| 25 | The provider guidance does not switch | `calendar-step.test.tsx` |
+| 26 | An existing connection shows an empty form | `calendar-step.test.tsx` |
+| 27 | A fourth pick is allowed (the rule) | `interests-step.test.tsx` |
+| 28 | The chips are not disabled at the cap (the attribute) | `interests-step.test.tsx` |
+| 29 | The chips are hard-coded instead of the API's | `interests-step.test.tsx` |
+| 30 | Picks are reported by label | `interests-step.test.tsx` |
+| 31 | `aria-pressed` never flips | `interests-step.test.tsx` |
+| 32–34 | The zone ignores the browser; a stored time keeps its seconds; a preset does nothing | `digest-step.test.tsx` |
+| 35 | Focus does not move to the new step | `step-shell.test.tsx` |
+| 36 | The progress dots lose their state words | `step-shell.test.tsx` |
+| 37 | The actions move above the step body | `step-shell.test.tsx` |
+| 38 | The busy state does not disable the actions | `step-shell.test.tsx` |
+
+Harness:
+`/tmp/claude-1001/-home-bs1346-Documents-P-project-EventPulse24/ede4680d-7995-49c2-9cb2-855b0550830c/scratchpad/revert-check-onboarding.sh`
+(a session artefact — it mutates working-tree sources, so it lives outside the repo).
+
+### The Live Run-through
+
+Against the real stack, with **the worker and beat running**, through the browser's own
+path (the proxy, the cookie jar, the CSRF header). `ADAPTER_MODE=fake` locally, so the
+calendar adapter returns its two fixed entries for any address — which exercises the
+whole import path without a public feed.
+
+| Step | Result |
+|---|---|
+| Sign up, sign in, `GET /` | `307 → /onboarding` |
+| `/onboarding` renders step 1 | All three providers; **no** "1-click OAuth" anywhere |
+| `POST /api/personal/calendars` | `201`, status `active` |
+| The first import | Landed after **~18 s** — the tick picked it up well inside the 75 s bound |
+| The imported events | Both carry `calendar_connection_id` = the new connection; the user's own events carry `null` |
+| Advance to step 2 | `200`, `current_step: 2`; the page resumes there, with the API's ten chips (no "Music", no "Food & dining") |
+| Two interests saved | `200` |
+| A fourth pick | `422 too_many_interests` — the API refuses it even though the UI prevents it |
+| Advance to step 3, save `07:30` / `America/New_York` | `200`, stored |
+| Finish | `completed: true`, the digest and interests persisted |
+| `GET /` | `200`, the placeholder home, with both imported events on it |
+| A finished user at `/onboarding` | `307 → /` |
+| **Skip all** from step 1 (second account) | `completed: true`, default digest `09:00 UTC`, no interests; `/` shows "Your Pulse is being prepared." and **no** digest cards |
+| **Skip each step** in turn (third account) | step 1 → 2 → 3 → completed |
+
+### A defect the live run found
+
+Returning to step 1 with a calendar already connected said *"Connected. Nothing upcoming
+in that calendar yet."* over a connection that had just imported two events. The page
+hands the step a connection, not its events, and the component only knew about events it
+had watched arrive. It now reads that connection's events on mount. Three tests cover it:
+the events show, the count is right, and a genuinely empty calendar still says so.
+
+This is the kind of defect only a run-through finds: every unit test passed, because each
+one set up the state it was asserting about.
+
+### Notes
+
+- **Node 24** is required for the suite (`.nvmrc`); under Node 20 every Vitest file fails
+  to start inside undici.
+- **No dependency was added.**

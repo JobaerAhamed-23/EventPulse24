@@ -48,6 +48,17 @@ describe("SignOutButton", () => {
     expect(replace).not.toHaveBeenCalledWith("/");
   });
 
+  it("recovers when the request never reaches the API", async () => {
+    POST.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<SignOutButton />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach Pulse. Try again.");
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("stays put and says why when the sign-out fails", async () => {
     POST.mockResolvedValue({
       data: undefined,

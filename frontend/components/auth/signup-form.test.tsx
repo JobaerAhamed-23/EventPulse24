@@ -223,6 +223,30 @@ describe("SignupForm", () => {
     });
   });
 
+  it("recovers when the request never reaches the API", async () => {
+    // A thrown call, which is what a dropped connection actually produces.
+    POST.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<SignupForm />);
+
+    fillIn();
+    submit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach Pulse. Try again.");
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
+  });
+
+  it("recovers when the follow-up sign-in never reaches the API", async () => {
+    POST.mockResolvedValueOnce({ data: { status: "accepted" }, error: undefined });
+    POST.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<SignupForm />);
+
+    fillIn();
+    submit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach Pulse. Try again.");
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
+  });
+
   it("renders no OIDC provider buttons, because none of them can sign anybody in yet", () => {
     render(<SignupForm />);
 

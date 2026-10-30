@@ -76,6 +76,12 @@ class PersonalEventSnapshot:
     location: str | None
     notes: str | None
     version: int
+    #: The calendar connection that imported this event, or `None` for one the user
+    #: entered themselves. It is the connection's **id**, not its credential: the
+    #: address never leaves `calendar_connections` (AD-18). Onboarding step 1 uses it
+    #: to show what a newly connected calendar brought in, and Settings → Sources will
+    #: use it to show what a connection owns before disconnecting it.
+    calendar_connection_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +116,7 @@ def _snapshot(event: PersonalEvent) -> PersonalEventSnapshot:
         location=event.location,
         notes=event.notes,
         version=event.version,
+        calendar_connection_id=event.calendar_connection_id,
     )
 
 

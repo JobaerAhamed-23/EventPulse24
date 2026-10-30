@@ -104,7 +104,16 @@ export function SignupForm() {
 
     setBusy(true);
     const address = email.trim();
-    const signup = await api.POST("/api/auth/signup", { body: { email: address, password } });
+    let signup;
+    try {
+      signup = await api.POST("/api/auth/signup", { body: { email: address, password } });
+    } catch (thrown) {
+      // A request that never reached the API. No account was created, so the form comes
+      // back as it was and the same submit will work once the connection does.
+      setFormError(readApiError(thrown).message);
+      setBusy(false);
+      return;
+    }
 
     if (signup.error) {
       // A weak password or a malformed address: the API's own `details.errors` name the
@@ -121,7 +130,16 @@ export function SignupForm() {
 
     // The account exists (or the address was already taken — the answer is the same, and
     // that is the point). Now the one place a session is created.
-    const signin = await api.POST("/api/auth/signin", { body: { email: address, password } });
+    let signin;
+    try {
+      signin = await api.POST("/api/auth/signin", { body: { email: address, password } });
+    } catch (thrown) {
+      // The account may well exist now; only the sign-in failed to go out. Saying so and
+      // re-enabling the form is better than a button stuck on "Creating account…".
+      setFormError(readApiError(thrown).message);
+      setBusy(false);
+      return;
+    }
     if (signin.error) {
       setFormError(readApiError(signin.error).message);
       setBusy(false);

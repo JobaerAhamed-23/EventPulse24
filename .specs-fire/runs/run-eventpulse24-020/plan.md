@@ -3847,3 +3847,327 @@ the Mailpit link → set new → sign in with it.
   MVP"). The forms are a single column and must not break at a narrow width, but there's
   no mobile mockup to match.
 - **The end-to-end proof** — `e2e-proof-and-contract-tests` owns the browser-level flow.
+
+
+---
+
+# Implementation Plan: Frontend Onboarding Flow (3 steps)
+
+**Work Item:** frontend-onboarding-flow
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Complexity:** medium
+
+## The Problem
+
+`/onboarding` is where `/signup` sends every new account and where `/` sends anyone who
+has not finished. It does not exist, so both redirects currently land on a 404. The three
+steps — calendar, interests, digest — are each optional, and a user who skips all three
+has still finished (FR-1).
+
+The server already owns the flow: `GET /api/personal/onboarding` gives the state,
+`POST /api/personal/onboarding/step` advances, `/step/skip` skips, `/skip-all` finishes,
+and `PUT /interests` and `PUT /digest-preference` store the two steps' values. The step
+endpoints take **no body** — the server knows which step the user is on. That single fact
+shapes the whole flow, because it means the UI's idea of "which step am I looking at" and
+the server's "which step is this user on" are two different things that have to be kept
+straight (see "Back, and the two step numbers").
+
+Four things make this item more than three forms.
+
+**1. The step endpoints are position-based, and the mockup has a Back button.** Posting
+`/step` always advances the *server's* step. A user who goes Back to step 1 and presses
+Continue would advance the server from 2 to 3 while the screen moves from 1 to 2 — the
+flow would silently skip a step. The server has no "go back" endpoint, and it should not:
+the resume rule is about how far someone got.
+
+**2. The calendar sync is not inline.** `POST /api/personal/calendars` answers
+immediately and sets the connection due; **the tick's dispatcher picks it up within 60
+seconds** (`calendar_connections.py`: "It requests a sync; it does not perform one"). So
+"connecting shows the sync state, then the imported events" (FR-3) is a poll with a
+bounded wait, and the step must stay usable — and skippable — while it runs. With no
+worker running locally, it never completes at all, which is a state the UI has to handle
+calmly rather than spin on.
+
+**3. Nothing in the API says which events a calendar imported.** `PersonalEventOut` has
+`id, name, start_time_utc, start_time_tz, end_time_utc, location, notes, version` and no
+connection field, and `GET /api/personal/events` filters only by time. The model *has*
+`calendar_connection_id`; the wire shape does not carry it. So the AC "then the imported
+events" cannot be met exactly as written without a decision — see **D1**.
+
+**4. Three of the four mockups disagree with locked decisions.** Step 1 advertises
+"1-click OAuth", step 2 draws twelve chips including two that do not exist, and the
+"skip-all state" mockup is not an onboarding state at all — it is the first Pulse Digest,
+which this intent explicitly does not build. Each is addressed below rather than
+redesigned.
+
+## The Design
+
+### The route
+
+`app/onboarding/page.tsx` — a server component, `force-dynamic`:
+
+- `getSession()`: anonymous → `redirect("/signin")`; `unavailable` → the calm error the
+  home uses; **completed → `redirect("/")`** (the AC's "a completed user visiting
+  `/onboarding` goes to `/`").
+- Then `GET /api/personal/onboarding` with the visitor's cookies, and render
+  `<OnboardingFlow initial={state} />`.
+
+The server read is what makes **resume** work: the first paint is the user's recorded
+step, not step 1 that then jumps. `me`'s `onboarding.current_step` is enough to route, but
+the flow also needs the stored interests and digest preference, so the full state is read
+here.
+
+### Back, and the two step numbers
+
+`OnboardingFlow` holds **two** numbers:
+
+- `serverStep` — what the API last told us, and
+- `viewStep` — what is on screen.
+
+`viewStep` starts equal to `serverStep`. Back decrements `viewStep` only; it calls
+nothing. Then:
+
+| Action | `viewStep < serverStep` (revisiting) | `viewStep === serverStep` (the live step) |
+|---|---|---|
+| Continue | move `viewStep` forward. **No API call** | `POST /step`, then set both from the answer |
+| Skip for now | move `viewStep` forward. **No API call** | `POST /step/skip`, then set both from the answer |
+
+Revisiting a step the server has already passed is a *view*, so saving from it still
+works (the `PUT`s are independent of position) but it must not push the server forward
+again. This is the single most testable rule in the item and it gets its own tests in
+both directions.
+
+A `409` from any step call means the onboarding was finished elsewhere (another tab):
+the flow goes to `/`.
+
+### Step 1 — calendar
+
+The three providers render as the mockup draws them, at equal visual weight (the
+mockup-onboarding parity rule). Choosing one reveals **that provider's** guidance and a
+masked address field; choosing another switches the panel.
+
+**The mechanism is a pasted ICS/webcal address, not OAuth.** The mockup's sub-labels say
+"1-click OAuth" and "app-specific password"; Amendment A-9 and AD-18 make the MVP
+mechanism the secret address, and the work item says to follow the amendment and keep the
+layout. So the sub-labels state what the step actually does — "Read-only · secret
+calendar address" — and the walkthrough records the divergence.
+
+The guidance is per provider (FR-50). It is new copy; no binding document holds it:
+
+| Provider | Guidance |
+|---|---|
+| Google Calendar | "In Google Calendar, open **Settings → Settings for my calendars**, pick the calendar, then copy the **Secret address in iCal format**." |
+| Apple Calendar | "In iCloud Calendar, click the share icon beside the calendar, tick **Public Calendar**, and copy the address." |
+| Outlook Calendar | "In Outlook, open **Settings → Calendar → Shared calendars**, publish the calendar, and copy the **ICS** link." |
+
+Each panel carries one standing warning — "This address is a key to your calendar. Anyone
+who has it can read it, so we store it encrypted and never show it again." — because that
+is true and because it explains why the field is masked.
+
+**The address field is masked and never echoed.** `type="password"`,
+`autoComplete="off"`, `spellCheck={false}`; the value lives in React state only, is
+cleared on success, and nothing is written to `localStorage` or `sessionStorage`. There is
+no reveal toggle here, deliberately: the sign-in password toggle exists so someone can
+check their own typing, while this is a pasted string the user never needs to read back.
+
+Connect → `POST /api/personal/calendars` → then the sync state:
+
+- `201`: the panel becomes a status line, "Connected. Importing your events…", and the
+  flow polls `GET /api/personal/calendars/{id}` every 3 s.
+- Poll until `sync_in_progress` is false **and** `last_synced_at` is set, up to **~75
+  seconds** (the dispatcher's 60 s tick plus a fetch). Then show what was imported (D1).
+- Past the cap: "We couldn't import yet — we'll keep trying in the background." Continue
+  and Skip have been available the whole time; this is not a blocking state, and with no
+  worker running it is the state a local developer sees.
+- `status: "needs_reconnect"` or a `last_error_kind` during the poll → the failure copy
+  below.
+- `409 calendar_cap_reached` → the API's own message, inline, with a quiet "Upgrade" link
+  and **no modal** (the connect API's payload deliberately carries no modal semantics).
+- `422` (an address that is not one, or one the SSRF policy refuses) → the API's message
+  on the field.
+- Any other failure → `EXPERIENCE.md`'s locked copy: **"Connection failed. Skip for
+  now?"** with two equal-weight buttons, "Skip" and "Try again".
+
+A connection that already exists (the user returns to step 1) shows as connected, with
+its provider and status, rather than an empty form.
+
+### Step 2 — interests
+
+Chips come from `GET /api/personal/onboarding/interest-chips` — the API projects the
+`INTEREST_CHIPS` constant, which is the one copy. **The mockup's twelve chips are not
+implemented**: it draws "Music" and "Food & dining", which are not among the ten the
+intent brief locks, and the AC says the chips come from the API. Recorded, not redesigned.
+
+- Toggle buttons with `aria-pressed`; the count line reads "{n} of 3 picked".
+- A fourth pick is prevented in the UI: once three are chosen the unselected chips are
+  `disabled` with `aria-disabled`, and a quiet line says "That's three — unpick one to
+  change it." (The API refuses a fourth anyway.)
+- Continue saves with `PUT /interests` (the full set, keys not labels) and then advances.
+  Zero picks is a valid Continue and sends an empty list.
+- Skip calls `/step/skip`, which clears the picks server-side.
+
+### Step 3 — digest
+
+- A native `type="time"` field (the mockup's hour/minute + AM/PM pair is three controls
+  for one value; one native control is keyboard- and screen-reader-correct, and the
+  presets below it cover the quick path).
+- The mockup's presets: 8:00, 7:00, 9:00, 12:00, 18:00, as toggle buttons that set the
+  time field.
+- A timezone `<select>` from `ZONE_CHOICES`, defaulting to `browserZone()` — the existing
+  helpers, reused as the AC requires. The hint is the mockup's: "If you travel, we'll
+  switch this for you — confirmed by your device, not silently."
+- "Open my brief →" saves with `PUT /digest-preference` (`delivery_time` as `HH:MM`,
+  `timezone` as IANA) and then advances, which finishes the onboarding; then `/`.
+- Skip writes the server's default (09:00 UTC) and finishes.
+
+### Skip all
+
+The mockup's "skip-all state" is the **first Pulse Digest** — three cold-start cards and
+an interests nudge. This intent does not build the digest, and the previous item's AC
+forbids the placeholder home from showing fake digest cards. So: `POST /skip-all` → `/`,
+which is the placeholder home standing in for that digest exactly as the brief says. See
+**D2**.
+
+The affordance itself is a quiet "Skip all" link in the footer, beside Back, on every
+step — `EXPERIENCE.md`'s "Skip — take me to my brief" belongs in the footer, never the
+topbar.
+
+### The shell
+
+The brand topbar (`BrandTopbar`, from the previous item), the step indicator, the step
+label, the heading, the lede, the step body, and a footer carrying **← Back**, **Skip
+all**, **Skip for now**, **Continue →**. No sidenav: the mockups draw the app sidenav
+with five routes, four of which do not exist, and dead nav links are the same defect this
+intent refused on `/signup`. Recorded in the walkthrough.
+
+Accessibility, per the AC:
+
+- the step indicator is `role="group"` with `aria-label="Onboarding progress"`, each dot
+  labelled "Step n of 3 — done/current/pending";
+- a `role="status"` line announces "Step 2 of 3 · Optional" on each change;
+- focus moves to the step `<h1>` on each step change (`tabIndex={-1}` + `focus()`), so a
+  keyboard or screen-reader user lands on the new step rather than at the page top;
+- chips are `aria-pressed` toggle buttons;
+- every input is labelled by `htmlFor`, errors are `role="alert"` and `aria-describedby`.
+
+## Open Decisions
+
+**D1. "Then the imported events" (step 1).** The API cannot say which personal events a
+connection imported: `PersonalEventOut` has no connection field and `GET
+/api/personal/events` has no such filter, though the model column exists.
+*Recommendation:* add the connection to the projection (one field, one line, regenerate
+the client) and show that connection's imported events — the same kind of contract fix the
+last item made, and it is what Settings → Sources will need too. *Alternative:* show the
+count and the user's upcoming personal events without claiming which are imported (no
+backend change, AC met in spirit only). *Alternative:* diff the ids before and after,
+which is a guess presented as a fact.
+
+**D2. The skip-all destination.** The mockup is the cold-start Pulse Digest, which is out
+of scope for this intent. *Recommendation:* `/`, the placeholder home, as the brief
+directs — and record that the mockup's state belongs to the Pulse Digest intent.
+
+**D3. New copy** with no binding source: the three provider guidance paragraphs, the
+secret-address warning, the "importing your events…" and background-import lines, and the
+three-pick line. The wording is above.
+
+## Deviations From the Mockups (recorded, not asked)
+
+- **No sidenav** on any step (four of its five links do not exist).
+- **No OAuth sub-labels** on the providers; the step says what it does.
+- **Ten chips from the API**, not the mockup's twelve.
+- **One native time control** instead of hour + minute + AM/PM.
+- **No spinner** anywhere; the sync state is a static dot and a line of text, as in the
+  auth surfaces.
+
+## The Files
+
+### Created
+
+| File | Purpose |
+|------|---------|
+| `frontend/app/onboarding/page.tsx` | The route: session and completion gating, the server read |
+| `frontend/components/onboarding/onboarding-flow.tsx` | The client island: the two step numbers, Back/Skip/Continue, skip-all |
+| `frontend/components/onboarding/step-shell.tsx` | The indicator, the labels, the heading, the footer actions |
+| `frontend/components/onboarding/calendar-step.tsx` | The providers, the guidance, the masked field, the sync poll |
+| `frontend/components/onboarding/interests-step.tsx` | The chips, the 3-pick rule |
+| `frontend/components/onboarding/digest-step.tsx` | The time, the presets, the timezone |
+| `frontend/lib/calendar-providers.ts` | The three providers: label, sub-label, guidance |
+| a `*.test.tsx` beside each of the above | See The Tests |
+
+### Modified
+
+| File | Change |
+|------|--------|
+| `backend/apps/personalization/schemas.py`, `api.py` | **D1 only:** carry the connection on `PersonalEventOut` |
+| `frontend/lib/api/openapi.json`, `schema.ts` | **D1 only:** regenerated by `make client` |
+
+## The Tests
+
+| Rule | Test |
+|---|---|
+| Resume | the state says step 2 → step 2 renders, not step 1 |
+| A completed user | `redirect("/")`, and the flow is not rendered |
+| An anonymous visitor | `redirect("/signin")` |
+| Back is a view, not a move | Back from 2 to 1 calls **no** endpoint |
+| Continue while revisiting | `viewStep < serverStep` → the view advances and **no** `/step` call is made |
+| Continue on the live step | `POST /step`, and both numbers follow the answer |
+| Skip while revisiting | no `/step/skip` call |
+| Finishing | `/step` from step 3 → `/` |
+| A 409 from a step call | → `/` (finished in another tab) |
+| Skip all | `POST /skip-all` → `/`, from every step |
+| Step 1: provider choice | picking a provider reveals **that** provider's guidance; picking another switches it |
+| Step 1: masking | the field is `type="password"`, is cleared after a successful connect, and nothing is written to `localStorage`/`sessionStorage` |
+| Step 1: connect | `POST /api/personal/calendars` with the provider and address; then the sync line |
+| Step 1: the sync poll | polls the connection; shows the imported result when it completes (fake timers) |
+| Step 1: the slow sync | past the cap → the background-import line, and Continue still works |
+| Step 1: the cap | `409 calendar_cap_reached` → the API's message, an "Upgrade" link, **no dialog role** |
+| Step 1: a bad address | `422` → the API's message on the field |
+| Step 1: any other failure | "Connection failed. Skip for now?" with both buttons |
+| Step 1: an existing connection | renders as connected, not as an empty form |
+| Step 2: the chips come from the API | the ten API chips render; a planted twelfth does not appear from anywhere else |
+| Step 2: three picks | a fourth chip is disabled and the line appears |
+| Step 2: zero picks | Continue sends `{chip_keys: []}` |
+| Step 2: keys not labels | the `PUT` body carries keys |
+| Step 3: the browser's zone | the select defaults to it |
+| Step 3: presets | a preset sets the time field |
+| Step 3: save | `PUT /digest-preference` with `HH:MM` and the IANA zone |
+| A11y: the indicator | each dot is labelled done/current/pending |
+| A11y: focus | moves to the step heading on each change |
+| A11y: chips | `aria-pressed` reflects the pick |
+| The Personal label | any imported-event preview pairs the warm stripe with the visible "Personal" text |
+
+**Revert verification:** every rule above is reverted and its test watched to fail, in the
+same harness style as the last item — including the two-step-number rule in both
+directions, the masking, the poll cap, and the 4th-pick guard.
+
+**Gates:** `make lint-web`, `make test-web`, and `make test-backend` if D1 changes the
+backend. Then a **live run-through**: sign up → step 1 → connect a calendar against a
+real ICS address with `make worker`/`make beat` running → watch the import land → steps 2
+and 3 → the home; plus a second pass that skips everything.
+
+## The Decisions, and Why
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Where the step state lives | The server's `current_step` is the truth; the view tracks its own | The step endpoints are position-based and have no "back" |
+| Back | A view-only move that calls nothing | The server's step is how far the user *got*; revisiting is not un-getting there |
+| The first paint | Server-rendered from the state | Resume must not flash step 1 first |
+| The sync | A bounded poll, never blocking | The dispatcher is a 60 s tick; AD-11 forbids long work in a request |
+| The address field | Masked, cleared, never stored | It is a credential (AD-18): anyone holding it can read the calendar |
+| The chips | From the API | One copy of the ten, in `shared/constants.py` |
+| The 4th pick | Prevented in the UI *and* refused by the API | The UI stops a mistake; the API stops a client |
+| The time control | One native `type="time"` | Three controls for one value is three chances to get it wrong |
+| Skip all | `/skip-all` then `/` | The mockup's destination is the digest this intent does not build |
+
+## What This Item Does Not Cover
+
+- **The cold-start Pulse Digest** and its interests nudge — the Pulse Digest intent.
+- **OIDC / OAuth calendar connect** — Amendment A-9 sets the MVP mechanism as the pasted
+  address; a later intent may add the handshake.
+- **Settings → Sources** (managing connections after onboarding) — a later intent. This
+  item connects, shows status and errors, and can skip past all of it.
+- **Reconnect and disconnect** — the endpoints exist and are not reached from onboarding.
+- **The mobile layouts** — `EXPERIENCE.md` lists the step 2 and 3 mobile mockups as
+  pending; the steps are a single column and must not break narrow, but there is nothing
+  to match.

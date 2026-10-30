@@ -1138,8 +1138,17 @@ export interface components {
          * @description One personal event.
          *
          *     `version` rises by one on every edit (AD-7's send key uses it, so it may only go up).
+         *
+         *     `calendar_connection_id` says where the event came from: a connection's id for a row a
+         *     calendar imported, `None` for one the user entered. It is the **id** and nothing else
+         *     — the secret address never appears in any response shape (AD-18), and this field does
+         *     not change that. Onboarding step 1 needs it to show what a calendar just brought in,
+         *     and Settings → Sources will need it to say what a connection owns before it is
+         *     disconnected.
          */
         PersonalEventOut: {
+            /** Calendar Connection Id */
+            calendar_connection_id?: string | null;
             /** End Time Utc */
             end_time_utc?: string | null;
             /**

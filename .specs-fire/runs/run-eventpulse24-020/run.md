@@ -75,17 +75,17 @@ work_items:
   - id: frontend-onboarding-flow
     intent: onboarding-and-account
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: frontend-pulse-preview
     intent: onboarding-and-account
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: onboarding-and-account
     mode: confirm
@@ -93,7 +93,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: frontend-onboarding-flow
+current_item: frontend-pulse-preview
 status: in_progress
 started: 2026-10-29T06:25:40.374Z
 completed: null
@@ -115,13 +115,13 @@ wide (13 work items)
 8. **event-fit** (confirm) — completed
 9. **pulse-preview-api-and-geo** (confirm) — completed
 10. **frontend-auth-surfaces** (confirm) — completed
-11. **frontend-onboarding-flow** (confirm) — in_progress
-12. **frontend-pulse-preview** (confirm) — pending
+11. **frontend-onboarding-flow** (confirm) — completed
+12. **frontend-pulse-preview** (confirm) — in_progress
 13. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-frontend-onboarding-flow (confirm)
+frontend-pulse-preview (confirm)
 
 ## Files Created
 (none yet)

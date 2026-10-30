@@ -51,9 +51,20 @@ export function SigninForm() {
     if (!checkEmail()) return;
 
     setBusy(true);
-    const response = await api.POST("/api/auth/signin", {
-      body: { email: email.trim(), password },
-    });
+    let response;
+    try {
+      response = await api.POST("/api/auth/signin", {
+        body: { email: email.trim(), password },
+      });
+    } catch (thrown) {
+      // A *thrown* call is a request that never reached the API — the browser could not
+      // make it at all (openapi-fetch rethrows a failed `fetch`). Without this the
+      // promise would reject into nothing, the button would stay disabled on its busy
+      // label, and the user would have to reload to try again.
+      setFormError(readApiError(thrown).message);
+      setBusy(false);
+      return;
+    }
 
     if (response.error) {
       const failure = readApiError(response.error);

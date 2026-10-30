@@ -147,13 +147,18 @@ describe("SigninForm", () => {
   });
 
   it("shows the offline message when the request never reaches the API", async () => {
-    POST.mockResolvedValue({ data: undefined, error: new TypeError("Failed to fetch") });
+    // openapi-fetch **rethrows** a failed `fetch` rather than returning an error, so this
+    // mock rejects. Mocking a returned error here would test a shape the client cannot
+    // produce — and the form would hang on "Signing in…" in the case that really happens.
+    POST.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<SigninForm />);
 
     fillIn();
     submit();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach Pulse. Try again.");
+    // And the form is usable again, rather than stuck on its busy label.
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
   });
 
   it("marks itself busy while the request is in flight, so it cannot be submitted twice", async () => {

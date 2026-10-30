@@ -96,6 +96,17 @@ describe("ResetConfirmForm", () => {
     });
   });
 
+  it("recovers when the request never reaches the API, with the token unspent", async () => {
+    POST.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<ResetConfirmForm token={TOKEN} />);
+
+    fillIn();
+    submit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach Pulse. Try again.");
+    expect(screen.getByRole("button", { name: "Set new password" })).toBeEnabled();
+  });
+
   it("checks the password's length and the two fields' agreement first", async () => {
     render(<ResetConfirmForm token={TOKEN} />);
 

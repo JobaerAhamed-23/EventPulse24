@@ -67,9 +67,17 @@ export function ResetConfirmForm({ token }: { token: string }) {
     if (invalid) return;
 
     setBusy(true);
-    const response = await api.POST("/api/auth/password-reset/confirm", {
-      body: { token, new_password: password },
-    });
+    let response;
+    try {
+      response = await api.POST("/api/auth/password-reset/confirm", {
+        body: { token, new_password: password },
+      });
+    } catch (thrown) {
+      // A request that never reached the API. The token is unspent, so trying again works.
+      setFormError(readApiError(thrown).message);
+      setBusy(false);
+      return;
+    }
 
     if (response.error) {
       const failure = readApiError(response.error);

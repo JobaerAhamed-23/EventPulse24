@@ -42,7 +42,15 @@ export function ResetRequestForm() {
     setEmailError(null);
 
     setBusy(true);
-    const response = await api.POST("/api/auth/password-reset", { body: { email: address } });
+    let response;
+    try {
+      response = await api.POST("/api/auth/password-reset", { body: { email: address } });
+    } catch (thrown) {
+      // A request that never reached the API: the user is told so, not left waiting.
+      setFormError(readApiError(thrown).message);
+      setBusy(false);
+      return;
+    }
     if (response.error) {
       // A 429 or an unreachable API. Not an answer about the address.
       setFormError(readApiError(response.error).message);

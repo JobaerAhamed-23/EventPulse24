@@ -4,12 +4,14 @@ title: Frontend Onboarding Flow (3 steps)
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - onboarding-state-and-interests
   - calendar-connect-api
   - frontend-auth-surfaces
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-30T08:31:57.714Z
 ---
 
 # Work Item: Frontend Onboarding Flow (3 steps)

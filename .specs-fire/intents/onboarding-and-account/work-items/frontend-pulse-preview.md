@@ -4,7 +4,7 @@ title: Frontend Pulse Preview
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - pulse-preview-api-and-geo
   - frontend-auth-surfaces

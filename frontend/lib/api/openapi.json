@@ -1028,8 +1028,20 @@
         "type": "object"
       },
       "PersonalEventOut": {
-        "description": "One personal event.\n\n`version` rises by one on every edit (AD-7's send key uses it, so it may only go up).",
+        "description": "One personal event.\n\n`version` rises by one on every edit (AD-7's send key uses it, so it may only go up).\n\n`calendar_connection_id` says where the event came from: a connection's id for a row a\ncalendar imported, `None` for one the user entered. It is the **id** and nothing else\n— the secret address never appears in any response shape (AD-18), and this field does\nnot change that. Onboarding step 1 needs it to show what a calendar just brought in,\nand Settings → Sources will need it to say what a connection owns before it is\ndisconnected.",
         "properties": {
+          "calendar_connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Connection Id"
+          },
           "end_time_utc": {
             "anyOf": [
               {

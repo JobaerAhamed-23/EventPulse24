@@ -508,3 +508,90 @@ topbar-quiet rule was re-run against the new path and still fails as it must.
 
 **Approved.** Three mechanical fixes applied, two findings raised and applied with the
 user's decision, 262 frontend tests and 3208 backend tests passing, all gates clean.
+
+
+---
+
+## Work Item: frontend-onboarding-flow
+
+**Reviewed:** 13 files created, 8 modified · **Tooling:** ESLint, Prettier, `tsc --noEmit`, Vitest
+
+### Linters
+
+`make lint-web` is clean. The architecture tests are unchanged and passing: no UI kit, no
+animation library, no Tailwind transition classes, kebab-case filenames, no hand-written
+`fetch`, `lib/api/` touched only by `make client`. No dependency was added.
+
+Three type errors were found and fixed during the build rather than reported:
+`display_label` is required by the generated contract (the backend's default does not
+make it optional on the wire); `current_step` is `number | null | undefined`, so the
+"flow is over" check reads it once into a local; and a test helper's props cast hid a
+missing `children`.
+
+### Findings Raised for Decision (approved and applied)
+
+**1. A dropped connection left every form stuck forever — confirmed by probe.**
+
+`openapi-fetch` **rethrows** a failed `fetch` rather than returning it as `error`. I read
+that in `openapi-fetch/src/index.js` and then proved it with a throwaway test against the
+real client (stub `fetch` → reject; `client.POST` rejects). Nothing in the frontend caught
+it, so a network failure mid-submit rejected into nothing: `setBusy(false)` never ran, the
+button stayed disabled on "Signing in…" / "Creating account…" / "Continue →", and the only
+way out was a page reload. The offline copy written in the previous item
+(`OFFLINE_MESSAGE`) was unreachable in the browser.
+
+Worse, the previous item's test for it mocked `{ data: undefined, error: new TypeError() }`
+— a shape the client never produces for a network failure. **The test passed against a
+fiction** while the real path hung.
+
+*Applied, across both items:* every `api.*` call site now catches a thrown request and
+routes it through `readApiError`, which already had the offline fallback. Seven call sites
+— the four auth forms, the sign-out button, the onboarding flow's step/save/skip-all
+calls, and the calendar connect. The sync poll is the one deliberate exception: a single
+failed poll **continues** rather than failing the import, because the connection is
+already made and the worker is still working.
+
+The misleading test was corrected to reject, and ten tests were added covering the thrown
+path on each surface — each asserting both the message *and* that the control is usable
+again. Five revert cases confirm they fail when the catch is removed.
+
+**2. A connected calendar said it was empty.** (Found by the live run-through, fixed
+during it.) Returning to step 1 with a calendar already connected rendered "Connected.
+Nothing upcoming in that calendar yet." over a connection that had just imported two
+events: the page hands the step a connection, not its events, and the component only knew
+about events it had watched arrive. It now reads that connection's events on mount. Three
+tests: the events appear, the count is right, and a genuinely empty calendar still says
+so.
+
+### Auto-Fixed (mechanical, no behaviour change)
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | The interest cap was a nested ternary inside an event handler, unreachable from any test because the chips it guards are `disabled` | Extracted as `nextSelection`, a pure exported function with its own tests; the `disabled` attribute is tested separately. Both now have revert cases |
+
+### Reviewed and Deliberately Left
+
+| Observation | Why it stands |
+|---|---|
+| The poll's timers accumulate in a ref for the life of the step (at most ~25) | They are all cleared on unmount, and pruning them would add bookkeeping to save a few dozen bytes |
+| A cancelled `wait()` leaves its promise pending forever when the step unmounts | The async loop simply stops; nothing after it runs, so there is no state update on an unmounted component. Rewriting it to reject would mean catching a cancellation that means nothing |
+| `OnboardingFlow` holds the interests in state as well as the server holding them | The step must show the user's picks while they are picking, and the `PUT` sends the set on Continue. Writing on every tap would be an API call per chip |
+| The mockups' sidenav is not rendered | Four of its five routes do not exist; dead nav links are the defect this intent already refused on `/signup` |
+| The step-1 mockup's "1-click OAuth" sub-labels | Amendment A-9 and AD-18 set the MVP mechanism as the pasted secret address. A test asserts the word "OAuth" appears nowhere on the step |
+
+### Security Review
+
+| Check | Result |
+|---|---|
+| The ICS address is treated as a credential | Masked input, no reveal toggle, cleared on success, never in `localStorage`/`sessionStorage`; tests read both storages and the DOM, and one drives the real path back to the form |
+| The address is kept after a *refusal* | Deliberate and tested: a rejected address is still the user's best attempt, and clearing it would make them paste it again to fix a typo |
+| No credential in a response | The backend's shapes carry no address; the new `calendar_connection_id` is an id, and the projection test pins the field set |
+| CSRF | Every write goes through the one client, whose middleware adds the token |
+| Session scoping | All three server reads forward the visitor's cookies; a test asserts each one |
+| Enumeration / information leaks | None added: the step surfaces only the API's own messages |
+
+### Verdict
+
+**Approved.** One mechanical fix, two findings raised and applied, 353 frontend tests and
+3209 backend tests passing, all gates clean, 43 revert cases verified (38 for this item's
+rules plus 5 for the network-failure handling).

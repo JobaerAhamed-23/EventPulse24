@@ -2167,4 +2167,176 @@ frontend, and the next consumer would have hit the same wall. Three lines of tru
 router were cheaper.
 
 ---
+
+# Implementation Walkthrough: The Onboarding Flow (FR-1, FR-3, FR-50)
+
+**Work item:** frontend-onboarding-flow · **Mode:** confirm · **Run:** run-eventpulse24-020
+
+## Summary
+
+`/onboarding` is where `/signup` sends every new account and where `/` sends anyone who
+has not finished. Until this item both redirects landed on a 404. It is now three
+optional steps — calendar, interests, digest — that a user can skip one at a time, skip
+all at once, leave and resume at the step they left.
+
+## The part that is not three forms
+
+**The step endpoints take no body.** `POST /api/personal/onboarding/step` advances *the
+server's* current step, whatever the screen is showing, and there is no "go back": the
+server records how far someone **got**, which is what the 7-day resume rule restores. The
+mockups have a Back button.
+
+So the flow holds two numbers — `serverStep` and `viewStep` — and one rule:
+
+```
+Back            → viewStep -= 1, and call nothing
+Continue / Skip → if viewStep < serverStep: viewStep += 1, call nothing
+                  if viewStep === serverStep: call the API, follow its answer
+```
+
+Without the second line, going Back from step 2 and pressing Continue advances the server
+from 2 to 3 while the screen goes 1 to 2: the user never sees step 3, and a step they
+never answered is recorded as passed. Nothing throws. Four revert cases cover this rule,
+in both directions.
+
+## The rest, in order
+
+**Resume is a server-side read.** The page reads `GET /api/personal/onboarding` with the
+visitor's cookies and hands the state to the client island, so the first paint *is* the
+recorded step. Fetching it in the browser would paint step 1 and then jump — the same bug
+wearing a spinner.
+
+**Step 1 connects by pasted address, not OAuth.** The mockup's sub-labels promise
+"1-click OAuth"; Amendment A-9 and AD-18 make the MVP mechanism the provider's secret
+ICS/webcal address. The sub-labels say what the step does, each provider carries its own
+guidance, and a test asserts the word "OAuth" appears nowhere.
+
+**That address is a credential.** It is masked, never stored in `localStorage` or
+`sessionStorage`, and cleared the moment the connect succeeds — but *kept* after a
+refusal, so a typo can be fixed without pasting it again. The clearing matters because
+there is a real path back to the form: connect, the first poll reports the feed revoked,
+"Try again" — and the secret would otherwise be sitting in the field.
+
+**The import happens elsewhere.** `POST /api/personal/calendars` answers immediately and
+marks the connection due; the worker's 60-second tick picks it up. So the step polls, with
+a ~75-second bound, and then says the import is still running — which is also what a
+developer with no worker running sees. Continue and Skip work throughout: a background job
+never holds the user hostage.
+
+**Step 2's chips come from the API**, which projects `shared/constants.py`'s ten. The
+mockup draws twelve, two of which (Music, Food & dining) are not in the locked set.
+
+**The three-pick cap is two mechanisms.** The chips are `disabled` at three *and* the
+rule refuses a fourth. The attribute stops a mouse; the rule stops everything else.
+
+**Step 3 is one time control**, not the mockup's hour + minute + AM/PM trio, plus its
+presets and a timezone select defaulting to the browser's own zone through the existing
+helpers.
+
+**Skip all** finishes the flow and lands on `/`. The mockup called
+`onboarding-skip-all-state` is not an onboarding state at all — it is the first Pulse
+Digest, three cold-start cards and an interests nudge, which this intent does not build
+and the placeholder home must not fake.
+
+## Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| The two step numbers | `serverStep` and `viewStep`, with the API called only when they agree | The endpoints are position-based and have no "back" |
+| Back | A view move that calls nothing | The server's step is how far the user *got* |
+| The first paint | Server-rendered from the state | Resume must not flash step 1 |
+| The sync | A bounded poll that never blocks the step | The dispatcher is a 60 s tick; AD-11 forbids long work in a request |
+| A single failed poll | Keep watching | The connection is made and the worker is working; one dropped request is not a failed import |
+| The address | Masked, cleared on success, kept on refusal | It is a credential; a rejected one is still the user's best attempt |
+| The chips | From the API | One copy of the ten, in `shared/constants.py` |
+| The cap | A pure rule plus a disabled attribute | A rule reachable only through a disabled control cannot be tested through the UI |
+| Which events a connection imported | A new `calendar_connection_id` on the wire | Nothing else in the API could say it |
+| Skip all | `/skip-all` → `/` | The mockup's destination belongs to the Pulse Digest intent |
+
+## Deviations from Plan
+
+1. **`PersonalEventOut` carries `calendar_connection_id`** (approved at the checkpoint).
+   The model had the column; the wire shape did not, so "then the imported events" was
+   unsatisfiable. Settings → Sources will need the same field.
+
+2. **Every API call site now handles a thrown request** (approved mid-run). Raised in
+   review and confirmed by probe: `openapi-fetch` rethrows a failed `fetch`, nothing
+   caught it, and a dropped connection left every form's button disabled forever. The fix
+   covers the previous item's auth forms too, and the test that "covered" it was mocking a
+   shape the client cannot produce.
+
+3. **A connected calendar's events are read on mount** — found by the live run-through,
+   where step 1 told a user with two imported events that the calendar was empty.
+
+4. **Mockup states not implemented**, each overruled by a binding document: the app
+   sidenav (four of five routes do not exist), the OAuth sub-labels (A-9, AD-18), the
+   twelve chips (the locked ten), the three-control time picker, and the cold-start digest
+   behind Skip all.
+
+## Dependencies Added
+
+| Package | Why |
+|---|---|
+| (none) | |
+
+## How to Verify
+
+```bash
+node -v          # v24.x — the suite does not start under Node 20
+
+make test-web    # 353 passed
+make lint-web    # ESLint + tsc + Prettier
+make test-backend  # 3209 passed
+make client && git status --short frontend/lib/api/   # no diff
+
+# The live run-through needs the worker, because the import is dispatched by the tick:
+make up && make api & make worker & make beat & pnpm --dir frontend dev
+#  sign up            → 307 /onboarding
+#  connect a calendar → 201, and the import lands within ~20s (ADAPTER_MODE=fake)
+#  the imported events carry calendar_connection_id; your own carry null
+#  steps 2 and 3      → the API's ten chips; 07:30 America/New_York stored
+#  finish             → 307 /, with the imported events on the home
+#  a finished user at /onboarding → 307 /
+#  a second account: Skip all     → completed, default digest 09:00 UTC, no fake digest
+```
+
+## Test Coverage
+
+80 tests added (353 frontend, 3209 backend). **43 revert cases**, each watched to fail:
+the two step numbers in both directions, resume, the three gates, the session-carrying
+reads, masking and non-persistence, the poll's bound, the cap rule *and* its attribute,
+the chips' source, focus, the progress labels, and the five network-failure catches. Two
+cases passed against broken code on the first run and are written up in the test report —
+both were holes in my tests, not in the harness.
+
+## Ready for Review
+
+- `/onboarding` with all three steps, every skip path, and resume proven against the
+  running stack with a worker.
+- The calendar connect, from pasted address to imported events on the home.
+- The network-failure handling, which also repairs the auth forms shipped last item.
+
+## Developer Notes
+
+**A position-based API plus a Back button is a trap.** The server's step is not the
+screen's step, and the moment they can differ, every call that says "advance" has to ask
+which one it means. The bug it causes is silent: no error, no throw, just a step that
+finishes without being seen.
+
+**A test can pass against a fiction.** The previous item's offline test mocked a returned
+error; the client throws. The test was green, the code hung, and only reading the client's
+source and probing it showed which was true. When a test mocks a *shape*, the shape is an
+assumption, and assumptions about someone else's library are worth checking once.
+
+**A guard behind a disabled control cannot be tested through the UI.** `fireEvent.click`
+on a disabled button fires nothing, so the assertion that follows proves only that the
+button is disabled. The cap is now a pure function tested directly, with the attribute
+tested separately — two mechanisms, two tests, two revert cases.
+
+**Unit tests set up the state they assert about, which is why they missed the empty
+calendar.** Every test of the imported-events view planted events; none planted a
+*connection without having watched its events arrive*, which is exactly what a returning
+user is. The run-through found it in a minute.
+
+---
 *Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-020*

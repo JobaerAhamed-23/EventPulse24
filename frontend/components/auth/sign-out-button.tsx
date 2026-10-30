@@ -29,7 +29,16 @@ export function SignOutButton() {
   const signOut = async (): Promise<void> => {
     setError(null);
     setBusy(true);
-    const response = await api.POST("/api/auth/signout");
+    let response;
+    try {
+      response = await api.POST("/api/auth/signout");
+    } catch (thrown) {
+      // A request that never reached the API. The session is untouched, so the button
+      // comes back rather than leaving the user in a half-signed-out limbo.
+      setError(readApiError(thrown).message);
+      setBusy(false);
+      return;
+    }
     if (response.error) {
       setError(readApiError(response.error).message);
       setBusy(false);

@@ -135,7 +135,10 @@ def test_the_response_carries_only_the_contracted_fields():
         "location",
         "notes",
         "version",
+        "calendar_connection_id",
     }
+    # The row the user typed came from no calendar.
+    assert payload["calendar_connection_id"] is None
 
 
 def test_creating_an_event_without_a_timezone_is_refused():
@@ -407,6 +410,26 @@ def test_listing_returns_only_the_signed_in_users_events():
     names = [item["name"] for item in payload["items"]]
     assert names == ["Mine"]
     assert str(mine.id) in [item["id"] for item in payload["items"]]
+
+
+def test_an_imported_event_carries_the_connection_that_brought_it_in():
+    """The list says which calendar an event came from — the id, and nothing more.
+
+    Onboarding step 1 shows what a calendar just imported, and it can only do that if the
+    event says which connection it belongs to. The **id** is the whole of it: the secret
+    address is not in this shape and cannot be (AD-18).
+    """
+    user = make_user()
+    connection = uuid4()
+    make_event(user, name="Standup", source="calendar_import", calendar_connection_id=connection)
+    make_event(user, name="Dinner I typed myself")
+    client = signed_in(user)
+
+    payload = client.get("/api/personal/events").json()
+
+    by_name = {item["name"]: item for item in payload["items"]}
+    assert by_name["Standup"]["calendar_connection_id"] == str(connection)
+    assert by_name["Dinner I typed myself"]["calendar_connection_id"] is None
 
 
 def test_listing_orders_by_start_time():
