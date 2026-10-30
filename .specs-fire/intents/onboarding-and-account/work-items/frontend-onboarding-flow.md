@@ -4,7 +4,7 @@ title: Frontend Onboarding Flow (3 steps)
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - onboarding-state-and-interests
   - calendar-connect-api

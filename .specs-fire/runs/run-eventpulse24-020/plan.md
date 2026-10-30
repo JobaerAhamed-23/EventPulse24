@@ -3498,3 +3498,352 @@ a claim about a tree that does not exist.
   us. There is no geo-IP *lookup* service in the stack, and the work item explicitly
   rules one out: "The real adapter only reads a header. It does no database lookup and
   calls no vendor."
+
+
+---
+
+# Implementation Plan: Frontend Auth Surfaces & Signed-in Home
+
+**Work Item:** frontend-auth-surfaces
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Complexity:** medium
+
+## The Problem
+
+The backend can now create a session; the frontend cannot. There is no `/signup`, no
+`/signin`, no `/reset-password`, and `/` does not know who is looking at it. Four things
+were **probed live** before planning (Django + `next dev` + the proxy, 2026-10-30), and
+three of them change the shape of this item:
+
+1. **Every state-changing call through the proxy is refused today.** `GET /api/auth/csrf`
+   through `127.0.0.1:3000` sets the `csrftoken` cookie (the `Set-Cookie` passes through
+   the rewrite), but a `POST /api/auth/signin` with that token and the browser's
+   `Origin: http://127.0.0.1:3000` answers **`403 csrf_failed`**. The same request sent
+   straight to Django with Django's own origin gets past CSRF (a `401
+   invalid_credentials`). The cause: `CSRF_TRUSTED_ORIGINS` defaults to `[]`
+   (`backend/config/env.py:32`), and neither `.env.example` nor `.env` sets it, so
+   Django compares the frontend's `Origin` with its own host (`127.0.0.1:8000`) and
+   refuses. With `CSRF_TRUSTED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000` the
+   whole flow works through the proxy: signup `201`, signin `200` + `sessionid`, `me`
+   `200`, a personal `POST` `201`, signout `200`, `me` `401`.
+2. **The CSRF token rotates on sign-in.** Django's `login()` rotates it; the sign-in
+   response sets a new `csrftoken`. A personal `POST` carrying the **pre-sign-in** token
+   was refused with `403 csrf_failed`. So the client must read the cookie **on every
+   unsafe request** and never hold the token in memory.
+3. **`/` shows a signed-in user an empty list.** With a valid session that owns an event,
+   `GET /api/personal/events` through the proxy lists it, but the rendered `/` says
+   "You haven't added any personal events yet." `PersonalEventsSection` calls
+   `API_BASE_URL` from the Next server **without the visitor's cookie**, so every
+   server-side read is anonymous, gets a 401, and quietly returns `[]`. The placeholder
+   home reuses that component, so this item has to fix it.
+4. The error shapes the UI renders were confirmed on the wire: `invalid_credentials`
+   401 "That email and password don't match."; `invalid_input` 422 with
+   `details.errors[{loc:["password"], msg:"This password is too common."}]`;
+   `invalid_reset_token` 422 "That reset link isn't valid anymore. Ask for a new one.";
+   `csrf_failed` 403 "Your session needs refreshing. Reload the page and try again.";
+   `rate_limited` 429 "That's a lot of requests. Try again in a little while."
+
+(The local database was also four `personalization` migrations behind; `make migrate`
+fixed it. That is the environment, not the code.)
+
+A fifth problem was found by reading the code: the current `/` renders
+`<AddEventButton />` **and** `<PersonalEventsSection />`, and `AddEventButton` mounts its
+own full `PersonalEventsPanel` (with `events=[]`), so the page carries **two** "Your
+personal events" lists, one of them always empty. A render test will pin it before the fix.
+
+## The Design
+
+### 1. CSRF: one middleware on the one client
+
+`lib/backend-client.ts` registers an openapi-fetch middleware (`api.use(...)`, 0.17 API,
+checked in `dist/index.d.ts`) **in the browser only**:
+
+- On `POST`/`PUT`/`PATCH`/`DELETE`, it reads `csrftoken` from `document.cookie` **at
+  request time** and sets `X-CSRFToken`. No module-level cache (finding 2).
+- If the cookie is absent (first visit), it first calls `GET /api/auth/csrf` through the
+  same client — a `GET`, so no recursion — and then reads the cookie it set.
+- `GET`s are untouched, and the middleware is not registered on the server (there is no
+  `document`, and server-side calls are reads).
+
+Every existing write (`personal-events-panel.tsx`'s create, edit, resolve) becomes
+CSRF-correct with **no call-site change**. The logic lives in `lib/csrf.ts` so it is
+testable with a stub `fetch`.
+
+No automatic retry on `csrf_failed`: with the cookie read fresh per request, the
+remaining causes (a cleared cookie mid-form, an origin misconfiguration) are not fixed
+by retrying, and the API's own message already tells the user what to do. It is shown
+verbatim.
+
+**Config:** `.env.example` gains `CSRF_TRUSTED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000`
+with a comment saying why (finding 1), and the setup docs say production must set it to
+the site's origin. I will add the same line to your local `.env`, which is not
+tracked; without it nothing in this item works locally.
+
+### 2. The session, read on the server with the visitor's cookie
+
+`lib/session.ts` (server-only by use; `server-only` is not a dependency and I won't add one):
+
+- `sessionHeaders()` → `{ cookie: (await cookies()).toString() }`: the visitor's
+  cookies, forwarded on server-side reads. Fixes finding 3 in
+  `PersonalEventsSection` and serves the new reads.
+- `getSession()` → `GET /api/auth/me` with those headers, folded into three cases:
+  `{ kind: "signed-in", user }` (200), `{ kind: "anonymous" }` (401), `{ kind:
+  "unavailable" }` (anything else, a thrown fetch, or no `API_BASE_URL`).
+- `homeRoute(session)` → a **pure** function: anonymous → `"/preview"`; signed in and
+  `onboarding.completed === false` → `"/onboarding"`; signed in and completed → `null`
+  (render the home); unavailable → `null` (render the calm error, not a misroute).
+
+**Where the `/` decision lives: in the page, not in `proxy.ts`.** The proxy stays a pure
+`/api/*` forwarder with one job, and a decision in a server component is a plain
+function call that Vitest can drive. The cost is the same one `me` round trip either way.
+`/preview` gets no session dependency from this (AD-12): it is not touched here.
+
+### 3. The routes
+
+| Route | Server component does | Client island |
+|---|---|---|
+| `/` | `getSession()` → `redirect(homeRoute)` or render the placeholder home; keeps `dynamic = "force-dynamic"` | `SignOutButton`, the existing personal-events panel |
+| `/signin` | signed in → `redirect("/")` (the silent redirect, `EXPERIENCE.md` `Component.Auth.SignIn`); otherwise the form | `SigninForm` |
+| `/signup` | signed in → `redirect("/")` (same rule; the spec is silent, so I'm mirroring `/signin`) | `SignupForm` |
+| `/reset-password` | reads `searchParams.token`; a token → the set-new form, none → the request form. `metadata.referrer = "no-referrer"` | `ResetRequestForm`, `ResetConfirmForm` |
+
+`/onboarding` and `/preview` are built by `frontend-onboarding-flow` and
+`frontend-pulse-preview` (the next two items in this run). Until then the redirects
+land on a 404. The redirect targets are correct now and aren't stubbed.
+
+### 4. The pre-auth shell
+
+`components/pre-auth/`: `PreAuthTopbar` (brand-wrap only: logo, wordmark, tagline,
+anchor to `/preview`; nothing else, topbar-quiet rule) and `PreAuthFooter` (the drawn
+footer row, with `aria-current="page"` on the current route's link). `frontend-pulse-preview`
+reuses both. The logo is copied from the mockups to
+`frontend/public/brand/eventpulse24-logo.png` and rendered with `next/image` at 36×36.
+
+### 5. The forms
+
+Shared pieces in `components/auth/`:
+
+- `AuthField`: `<label htmlFor>`, the input, an optional hint (`Text.Meta`, ink-faint),
+  and the error row (⚠ glyph + text, **`color.signal.warn`** per the copy bank, not
+  `signal.error`), `role="alert"`, `aria-invalid`, `aria-describedby`. The same shape as
+  `personal-event-form.tsx`'s `Field`.
+- `PasswordInput`: the reveal toggle, `aria-pressed`, with `aria-label` naming the
+  *destination* state ("Show password" / "Hide password").
+- `SubmitButton`: terracotta primary. While in flight it is `disabled`, `aria-busy`, and
+  shows a **static dot** + "Signing in…" / "Creating account…" / "Sending…" / "Saving…",
+  and the fields go read-only.
+- `lib/api-errors.ts`: `readApiError(error)` → `{ message, fieldErrors }` from the
+  generated `ErrorOut` (`details.errors[].loc/msg`, narrowed at runtime), plus the network
+  case → "Couldn't reach Pulse. Try again." (the `EXPERIENCE.md` error-voice line).
+
+**Sign-in** (`signin-desktop.html`): Email, Password + reveal, "Forgot password?" →
+`/reset-password`, "Sign in"; footer cross-link + privacy line as drawn. Client check:
+the email format on blur ("That doesn't look like a valid email address."). A 401
+renders the API's message **verbatim on the Password field**. The Email field is never
+marked invalid, which is the copy bank's account-enumeration rule. 429 and network
+errors render as a form-level alert. Success → `router.replace("/")` + `router.refresh()`.
+
+**Sign-up** (`signup-desktop.html`): Email, Password ("8 characters minimum" hint),
+Confirm. Client checks use the locked copy-bank strings: "That doesn't look like a valid
+email address.", "Use at least 8 characters.", and "Passwords don't match." on Confirm
+(on Confirm blur and on submit; Password is not cleared). Server 422 `details` render
+verbatim on their fields. **On 201 the form signs in** (the auth seam's deviation 1:
+sign-up establishes no session). It then shows "Account created. Taking you to
+onboarding…", holds 1.5 s (0 ms under `prefers-reduced-motion`), and goes to
+`/onboarding`.
+
+**Reset** (no mockup; it's built from the sign-in vocabulary, as `EXPERIENCE.md` directs):
+
+- *Request*: Email + "Send reset link" → 202 → "We've sent a reset link to {email}."
+  (locked copy) in the `.form-footer` success pattern.
+- *Set new*: the token comes from the URL. On mount, the component strips it from the
+  address bar (`history.replaceState`), and `no-referrer` keeps it out of `Referer`.
+  New password + Confirm use the same client checks as sign-up. Success → "Your password
+  is changed. Sign in with your new password." + a link to `/signin` (**new copy**; see D5).
+- *Expired or used*: there is no token-check endpoint, and a `GET` pre-check would be a
+  token oracle, so this state appears **on submit**. A 422 `invalid_reset_token` shows
+  the API's message verbatim with "Ask for a new one" → the request form.
+
+### 6. The placeholder home
+
+A calm page. It has no fake digest cards and no invented numbers:
+
+- The brand topbar (the same brand-wrap; the anchor goes to `/`).
+- **"Your Pulse is being prepared."** (the work item's phrase) and one sentence: "The
+  Pulse Digest isn't ready yet. Until it is, your personal events and the events you've
+  saved are here." (**new copy**; see D5).
+- `PersonalEventsSection`, which now gets the visitor's cookie. Its own panel carries
+  "Add event". The duplicate `AddEventButton` comes off the page (finding 5). The
+  component stays for the future sidenav.
+- `SavedEventsSection` (**new**, a server read of `GET /api/personal/saved-events` with the
+  cookie): a read-only list of title, local date and time, and venue city, labelled
+  "Saved". Empty: "You haven't saved any events yet." The work item says the home "links
+  to personal and saved events", and neither has a route in the route map, so both are
+  **shown on the home** rather than linked to a 404.
+- A footer: "Signed in as {email}" and `SignOutButton` (`POST /api/auth/signout` →
+  `router.replace("/signin")` + `refresh`). It lives in the footer because the
+  topbar-quiet rule keeps account actions out of the topbar, and the sidenav that will
+  hold "Account" does not exist yet.
+- *Unavailable* (`me` failed for a reason other than 401): "Couldn't reach Pulse. Try
+  again." with a link back to `/`. This is not a redirect to `/preview`, because
+  sending a signed-in user to the anonymous page on an API blip would be a lie.
+
+## Open Decisions: the spec conflicts with the ACs
+
+These are your calls. Each has a recommendation, which I'll build unless you say otherwise.
+
+**D1. Sign-up State C ("An account with that email already exists. Sign in →") and the
+copy-bank lines "Account not found" / "Email already exists".** `EXPERIENCE.md` allows
+the signup leak. The intent (AD-18), the API (201 either way) and this item's AC
+("the UI never adds wording that reveals whether an account exists") forbid it.
+*Recommendation:* drop State C and never render either string. The API can't produce
+them anyway.
+
+**D2. Sign-in's wrong-credentials text.** The copy bank locks "That password doesn't
+match. Try again or reset it."; the AC says "the API's calm messages verbatim", and the
+API says "That email and password don't match." The copy-bank line also implies the
+email was right. *Recommendation:* the API's message verbatim, on the Password field,
+with no inline "reset it" link. "Forgot password?" sits directly below it.
+
+**D3. Sign-up when the follow-up sign-in fails** (the address was taken and the password
+differs). The 201 hides it, but the follow-up sign-in's 401 can't. The *flow* differs
+whatever the copy says; that is inherent to "sign-up creates no session", which the auth
+seam's review accepted. *Recommendation:* show the API's own 401 message verbatim as a
+form-level alert, with the existing "Already have an account? Sign in →" and "Forgot
+password?" paths. No added wording about accounts existing.
+
+**D4. The OIDC provider stack.** It's drawn as three live buttons; the AC forbids dead
+buttons. *Recommendation:* hold the position **in code only**. A marked slot comment
+sits above the form in `SignupForm` where the stack and the "or" separator go, and
+nothing renders, so the card starts at the email form. The alternatives were visible,
+non-interactive tiles saying "Coming soon" (they claim "Auto-connects your calendar",
+which isn't true yet) and `disabled` buttons (dead buttons by another name).
+
+**D5. New copy** with no locked source: the home's sentence, the reset-success line, the
+saved-events empty state, "Signed in as {email}". The wording is above; approve it or
+change it.
+
+**D6. Footer links to routes that don't exist** (How it works `/how`, About `#`, Privacy
+`/privacy`, Contact `#`, Terms `/terms`). The AC says "as drawn". *Recommendation:*
+render them as drawn, including the `#`s. The footer is shared with the preview page,
+and dropping links now would make the next item put them back. Note that the privacy
+line's Terms and Privacy links will 404 until those pages exist.
+
+## Deviations From the Mockups (recorded, not asked)
+
+- **No spinner.** `EXPERIENCE.md` says "No spinners, anywhere", and
+  `styles/motion.test.ts` fails on any animation other than `.fade-in`. The in-flight
+  state uses the spec's own reduced-motion form: a **static dot** + the label.
+- **The primary button stays enabled** (the mockups' State A); validation runs on blur
+  and submit. A button disabled until the form is valid gives no reason why.
+- **Card width 480/520 px** (the mockups and `EXPERIENCE.md`), not `layout.container.form`
+  (720 px, DESIGN.md). The binding mockups and the token disagree, and the mockups are
+  more specific. It is the one non-token value, and the code says why.
+- **Success after sign-up goes to `/onboarding`** (the post-signup routing lock), even
+  for an existing account whose password matched. `/onboarding` sends a finished user
+  home; that is the next item's routing.
+
+## The Files
+
+### Created
+
+| File | Purpose |
+|------|---------|
+| `frontend/lib/csrf.ts` | Read the cookie, fetch the token if it's missing, set `X-CSRFToken` on unsafe methods |
+| `frontend/lib/session.ts` | `sessionHeaders`, `getSession`, `homeRoute` |
+| `frontend/lib/api-errors.ts` | `readApiError`: the API's message and field errors, verbatim |
+| `frontend/app/signin/page.tsx` | `/signin`, with the silent redirect |
+| `frontend/app/signup/page.tsx` | `/signup` |
+| `frontend/app/reset-password/page.tsx` | `/reset-password`: request or set-new by token; `no-referrer` |
+| `frontend/components/pre-auth/pre-auth-topbar.tsx` | The brand-only topbar |
+| `frontend/components/pre-auth/pre-auth-footer.tsx` | The drawn pre-auth footer |
+| `frontend/components/auth/auth-field.tsx` | Label, input, hint, error row; the password reveal toggle |
+| `frontend/components/auth/submit-button.tsx` | The primary with the static-dot in-flight state |
+| `frontend/components/auth/signin-form.tsx` | Sign-in |
+| `frontend/components/auth/signup-form.tsx` | Sign-up, then sign-in, then the hold, then `/onboarding` |
+| `frontend/components/auth/reset-request-form.tsx` | The reset request and the "sent" state |
+| `frontend/components/auth/reset-confirm-form.tsx` | Set-new, success, and expired/used |
+| `frontend/components/auth/sign-out-button.tsx` | Sign out |
+| `frontend/components/saved-events-section.tsx` | The saved-events read for the home |
+| `frontend/public/brand/eventpulse24-logo.png` | Copied from the mockups |
+| a `*.test.ts(x)` beside each of the above | See The Tests |
+
+### Modified
+
+| File | Change |
+|------|--------|
+| `frontend/lib/backend-client.ts` | Register the CSRF middleware in the browser |
+| `frontend/app/page.tsx` + test | Routing + the placeholder home; drop the duplicate `AddEventButton`; still `force-dynamic` |
+| `frontend/components/personal-events-section.tsx` + test | Forward the visitor's cookie (finding 3) |
+| `.env.example` | `CSRF_TRUSTED_ORIGINS` for the local frontend origins |
+| the setup doc that lists `.env` keys (to be found; `README.md` or `docs/`) | Say production must set `CSRF_TRUSTED_ORIGINS` |
+| `.env` (local, untracked) | The same line, so the stack works |
+
+No backend change, and no schema regeneration: every endpoint already exists in
+`lib/api/schema.ts`.
+
+## The Tests
+
+Vitest. `next/navigation` (`redirect`, `useRouter`) and `next/headers` (`cookies`) are
+mocked; API calls are stubbed per test.
+
+| Rule | Test |
+|------|------|
+| CSRF on writes | a client with the middleware and a stub `fetch`: `POST`/`PATCH`/`DELETE` carry `X-CSRFToken` equal to the cookie; `GET` carries none |
+| The token is read fresh | change `document.cookie` between two `POST`s → the second carries the **new** value (finding 2) |
+| A missing cookie is fetched | no cookie → `GET /api/auth/csrf` happens first, then the `POST` carries the token |
+| The real client is wired | `api` from `@/lib/backend-client` sends the header (catches "middleware written, never registered") |
+| The session fold | `me` 200 → signed-in; 401 → anonymous; 500, throw, no base URL → unavailable; the `cookie` header is forwarded |
+| Each routing branch of `/` | anonymous → `redirect("/preview")`; not onboarded → `redirect("/onboarding")`; onboarded → the home renders, `redirect` not called; unavailable → the calm error, `redirect` not called |
+| The silent redirect | signed-in `/signin` → `redirect("/")`; anonymous → the form. Same for `/signup` |
+| The placeholder home | the heading; the personal and saved sections; sign-out; **no digest card, score or Pulse Card markup**; **one** personal-events list (finding 5); still `force-dynamic` |
+| The server reads carry the session | `PersonalEventsSection` and `SavedEventsSection` send the visitor's `cookie` (finding 3) |
+| Sign-in success / errors | success → `/`; 401 → the API's text exactly, on Password, `aria-invalid` on Password only, `role="alert"`; 429 and network → form-level; in-flight → `aria-busy`, disabled, "Signing in…" |
+| Enumeration-neutral copy | across every sign-in and sign-up error path, the page text never contains "already exists", "don't see an account", "no account" or "registered" |
+| Sign-up | mismatch on Confirm (blur and submit), Password kept; too short; bad email; 422 `details` verbatim on the field; 201 → sign-in → the notice → `/onboarding` after 1500 ms (fake timers) and after 0 ms under reduced motion; the follow-up sign-in 401 → the API message (D3) |
+| No dead OIDC buttons | sign-up renders no button named "Continue with …" (D4) |
+| Reset | request → "We've sent a reset link to {email}."; set-new success; `invalid_reset_token` → the expired state with the API's message and the way back; weak password `details` verbatim; the token is stripped from the URL |
+| Sign-out | posts sign-out → `/signin`; an error → the API message |
+| Pre-auth shell | the topbar contains only the brand anchor (no other link or button); the footer's links are as drawn; `aria-current` on the current route |
+| WCAG | every input has a label by `htmlFor`; errors are linked by `aria-describedby`; the reveal toggle's `aria-pressed` flips and its label names the destination state |
+
+**Revert verification.** Each rule above is reverted by hand and its test watched to
+fail: the middleware unregistered, the cookie cached at module load, the `cookie` header
+dropped from a server read, `homeRoute` branches swapped, an enumeration string planted,
+the error moved to the Email field, the 1.5 s hold made unconditional. The results go in
+the test report. A rule whose revert doesn't fail its test gets a better test.
+
+**Gates:** `make lint-web` (ESLint, `tsc` via `next typegen`, Prettier) and
+`make test-web`; the existing architecture tests (kebab-case, no motion classes, no
+hand-written `fetch`) keep passing. **A live run-through** follows on the real stack:
+sign up → land on `/onboarding` (a 404 until the next item; the URL is what's checked),
+sign out, sign in → `/` routes, a personal event appears on the home, reset request →
+the Mailpit link → set new → sign in with it.
+
+## The Decisions, and Why
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Where CSRF is added | One openapi-fetch middleware on the one client | Every write, current and future, is covered with no call-site change; a per-call header would be forgotten once |
+| How the token is held | Read from the cookie per request | It rotates on sign-in (probed). A cached token is refused |
+| Retry on `csrf_failed` | No | Fresh reads remove the common cause. The rest isn't fixed by retrying, and the API's message says what to do |
+| Where `/` routes | In the page's server component | The proxy stays a pure API forwarder; the decision is a pure, testable function |
+| An unavailable API on `/` | A calm error, not a redirect | A signed-in user isn't anonymous because the API blinked |
+| Server reads | Forward the visitor's `Cookie` | Without it every server read is anonymous (probed) |
+| The reset token | Stripped from the address bar on load; `no-referrer` | It's a 30-minute bearer credential for the account; it shouldn't sit in history or leave in a `Referer` |
+| Saved events on the home | Shown inline | Neither has a route yet. Linking to a 404 isn't "links to" |
+| `CSRF_TRUSTED_ORIGINS` | `.env.example` + docs | Without it no local write works; production must set its own origin |
+
+## What This Item Does Not Cover
+
+- **OIDC** — the slot only (D4). A later intent wires it, identity-only, under AD-18.
+- **`/onboarding` and `/preview`** — the next two items. This item redirects to them.
+- **The authed shell (sidenav, `Account` affordance)** — later. Sign-out lives in the
+  home's footer until then.
+- **"Last-visited authed route" after sign-in** — `EXPERIENCE.md` says "or last-visited
+  authed route if available". Nothing records it yet; `/` is the default the spec gives.
+- **Mobile layouts for the auth routes** — `EXPERIENCE.md` defers them ("desktop-first at
+  MVP"). The forms are a single column and must not break at a narrow width, but there's
+  no mobile mockup to match.
+- **The end-to-end proof** — `e2e-proof-and-contract-tests` owns the browser-level flow.

@@ -427,3 +427,84 @@ all 36 revert cases caught.
 - The **geo header's survival through the Next.js rewrite** is noted in the work item
   and does not change the code: Django sees only the port's input, and the code does
   not depend on the host (AD-1).
+
+
+---
+
+## Work Item: frontend-auth-surfaces
+
+**Reviewed:** 24 files created, 7 modified · **Tooling:** ESLint (flat config, `typescript-eslint/strict`), Prettier, `tsc --noEmit`, Vitest
+
+### Linters
+
+`make lint-web` runs ESLint, `next typegen && tsc --noEmit`, and `prettier --check`. All
+three are clean. The project's own architecture tests (`tests/architecture.test.ts`,
+`styles/motion.test.ts`, `tests/lint-rules.test.ts`) still pass unchanged: no UI kit or
+animation library, no Tailwind transition classes, kebab-case filenames, no hand-written
+`fetch`, and `lib/api/` untouched except by `make client`.
+
+Two lint failures were found and fixed during the run rather than reported:
+
+| Issue | Fix |
+|---|---|
+| `@next/next/no-assign-module-variable` — a test helper named its import `module` | Renamed to `client` |
+| Prettier formatting in 4 files | `pnpm --dir frontend format` |
+
+### Auto-Fixed (mechanical, no behaviour change)
+
+| # | Finding | File | Fix |
+|---|---|---|---|
+| 1 | A `useId()` id was set on the password reveal toggle that nothing referenced — noise that reads like a wiring mistake | `components/auth/auth-field.tsx` | Removed the id and the now-unused `useId` import |
+| 2 | `inputClassName` was exported but used only in its own module; an exported styling helper invites a second source of truth for the field border | `components/auth/auth-field.tsx` | Made it module-private |
+| 3 | `/signup`'s page tests lived in `app/signin/page.test.tsx`, away from the page they cover | `app/signin/page.test.tsx` → `app/signup/page.test.tsx` | Split into a file beside its own page, matching the project's colocation convention |
+
+Tests were re-run after each: 262 passing, no change in behaviour.
+
+### Findings Raised for Decision (both approved and applied)
+
+**1. The saved-events `omitted` count was being dropped silently.** `SavedEventListOut`'s
+own documentation says why the field exists: *"the count lets the client tell the user
+that something they saved is no longer available, rather than silently dropping it."* The
+section read `items` and ignored `omitted`, which is exactly the silent drop the backend
+built the field to prevent. The API's intent was checked in the committed schema before
+raising this, not assumed.
+
+*Applied:* one calm line under the list when `omitted > 0`, singular and plural,
+with three tests (the line, the singular form, and its absence at zero). Two revert cases
+confirm both the line and the plural rule fail their tests when broken.
+
+**2. `PreAuthTopbar` was rendered on the signed-in home.** The reuse itself is correct —
+`EXPERIENCE.md` says the pre-auth brand-wrap is *"byte-identical to the authed topbar"*,
+so a second component could only drift — but the name claimed a surface the component had
+outgrown, and the next two frontend items will reach for it.
+
+*Applied:* renamed to `BrandTopbar` at `components/brand-topbar.tsx`, with the docstring
+stating why one component serves both and that only the anchor differs. `PreAuthFooter`
+keeps its name: it really is pre-auth only. Five imports updated; the revert case for the
+topbar-quiet rule was re-run against the new path and still fails as it must.
+
+### Reviewed and Deliberately Left
+
+| Observation | Why it stands |
+|---|---|
+| The reset token is serialized into the page's RSC payload, not just the URL | The client form needs it to submit, and the page is `force-dynamic`, so it is not cached or prerendered. The URL is stripped on mount and `referrer: "no-referrer"` keeps it out of `Referer`. Moving the submit into a server action would remove it from the client entirely — a design change worth its own item, recorded here rather than done quietly |
+| `SavedEventOut.stale` is not surfaced | A stale snapshot has a UX (AD-17 propagation) that belongs to the saved-events surface, which is a later item. Unlike `omitted`, the contract states no client obligation for it |
+| No automatic retry on `csrf_failed` | With the cookie read per request, the remaining causes are a cleared cookie or an untrusted origin; neither is fixed by retrying, and the API's message already says what will work |
+| The in-flight state is a static dot, not the mockups' spinner | `EXPERIENCE.md` overrules the mockups ("No spinners, anywhere"), and `styles/motion.test.ts` would fail the suite on an animation |
+| The auth card is 480/520 px, not `--layout-container-form` (720 px) | The binding mockups and `EXPERIENCE.md` both give the narrower number for auth columns; the token keeps its meaning elsewhere. The one hard-coded width in the item, with the reason in the code |
+
+### Security Review
+
+| Check | Result |
+|---|---|
+| CSRF on every state-changing call | One middleware on the single client; proven on the real client for an auth write and a pre-existing personal write. The token is read per request because Django rotates it at sign-in |
+| Account enumeration | The UI never adds existence wording. Two tests scan the rendered page for "already exists", "don't see an account", "no account", "registered" across every sign-in and sign-up error path. The copy bank's two existence strings are documented as deliberately absent in `lib/auth-validation.ts` |
+| The reset token's handling | Stripped from the address bar on mount, `no-referrer` on the page, never logged, never put in `localStorage`, and spent on submit (no pre-check, which would be a token oracle) |
+| Session handling | The cookie stays first-party (the browser only calls `/api/*` on its own origin); the Next.js server forwards the visitor's cookies only to the API's own base URL |
+| Secrets in the frontend | None. `CSRF_TRUSTED_ORIGINS` is a backend setting; `.env` holds local-only values and is git-ignored |
+| Error messages | The API's words are shown verbatim; the only frontend-authored failure message is the offline one, which describes no server state |
+
+### Verdict
+
+**Approved.** Three mechanical fixes applied, two findings raised and applied with the
+user's decision, 262 frontend tests and 3208 backend tests passing, all gates clean.

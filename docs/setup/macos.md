@@ -169,6 +169,7 @@ After `make up` (and `make migrate` once), `make dev` runs the API, the worker, 
 Open <http://127.0.0.1:3000/dev/health> (a developer page; it doesn't exist in production builds). Each component shows **OK** or **Down** with the reason. `docker compose stop redis` turns Redis to Down (the API answers 503); `docker compose start redis` brings it back.
 
 - **The browser only talks to Next.js.** `frontend/proxy.ts` forwards `/api/*` to `API_BASE_URL` (default `http://127.0.0.1:8000`), read per request: change it in `.env` and restart, no rebuild.
+- **Django must trust the frontend's origin.** The browser's writes arrive through the proxy carrying the Next.js origin, so `CSRF_TRUSTED_ORIGINS` lists it (`.env.example` has the local values). Without it every `POST` answers `403 csrf_failed`. In production it is the site's own origin.
 - **After changing an API endpoint, run `make client`.** It exports the schema to `frontend/lib/api/openapi.json` and regenerates `schema.ts`. The backend suite fails until the committed schema matches the API.
 
 ### Frontend

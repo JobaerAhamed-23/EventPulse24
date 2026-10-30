@@ -499,3 +499,168 @@ module this item created is at 100% coverage. All 36 revert cases were caught; t
 seven that were not caught on the first run were holes in the suite or in the harness,
 and each is now closed — two of them by real fixes to the source, one of which was a
 500 on every rate-limited request to the cities endpoint.
+
+
+---
+
+## Work Item: frontend-auth-surfaces
+
+**Mode:** confirm · **Gates:** `make test-web`, `make lint-web`, `make test-backend`
+
+### Test Results
+
+| Suite | Result |
+|---|---|
+| `make test-web` (Vitest) | **259 passed**, 0 failed, 0 skipped (29 files) |
+| `make lint-web` (ESLint + `next typegen` + `tsc --noEmit` + Prettier) | **clean** |
+| `make test-backend` (pytest) | **3208 passed**, 0 failed |
+
+The frontend suite was 149 tests before this item and is 259 after: **110 added**, and
+one existing test extended. The backend suite grew from 3199 to 3208 — not from new
+backend tests, but because the auth endpoints' declared responses changed and the
+contract test regenerated (see "The contract fix" below).
+
+New and changed test files:
+
+| File | Tests | Covers |
+|---|---|---|
+| `lib/csrf.test.ts` | 14 | Cookie reading, the unsafe-method rule, the fresh read per request, the token fetch |
+| `lib/backend-client.test.ts` | 3 | The middleware is **registered on the real client**, reads and writes both |
+| `lib/session.test.ts` | 10 | Cookie forwarding, the three-way fold, every `homeRoute` branch |
+| `lib/api-errors.test.ts` | 14 | The API's words and field errors, and every malformed shape |
+| `components/auth/signin-form.test.tsx` | 12 | Success, the enumeration rule, 429, offline, in-flight, the reveal toggle |
+| `components/auth/signup-form.test.tsx` | 13 | The locked copy, the API's `details`, the two-call flow, the hold, no OIDC buttons |
+| `components/auth/reset-request-form.test.tsx` | 4 | The locked sentence, said identically for any address |
+| `components/auth/reset-confirm-form.test.tsx` | 6 | Success, expired-or-used, the token leaving the URL, the validators |
+| `components/auth/sign-out-button.test.tsx` | 3 | Sign-out, the destination, the failure path |
+| `components/saved-events-section.test.tsx` | 7 | The session-carrying read and every quiet-failure branch |
+| `components/pre-auth/pre-auth-topbar.test.tsx` | 6 | The topbar-quiet rule, the footer's links, `aria-current` |
+| `app/page.test.tsx` | 9 | All four routing branches, the placeholder's contents, the duplicate-list fix |
+| `app/signin/page.test.tsx` | 8 | The silent redirect on `/signin` and `/signup` |
+| `app/reset-password/page.test.tsx` | 5 | Token / no token / empty / repeated, and `no-referrer` |
+| `components/personal-events-section.test.tsx` | 5 (was 4) | **+1**: the read carries the visitor's session |
+
+### Acceptance Criteria Validation
+
+| Criterion | Status | Where |
+|---|---|---|
+| `/signup` and `/signin` implement their mockups, pre-auth topbar, footer and CTAs as drawn | **Met** | `app/signup/page.tsx`, `app/signin/page.tsx`, `components/pre-auth/*`; `pre-auth-topbar.test.tsx` pins the topbar-quiet rule by looking for its inversion |
+| Space for OIDC buttons, nothing wired, no dead buttons, choice recorded | **Met** | A marked slot comment in `signup-form.tsx`; the test asserts no "Continue with …" button renders |
+| Error states use the API's calm messages verbatim; no wording reveals whether an account exists | **Met** | `lib/api-errors.ts`; `signin-form.test.tsx` and `signup-form.test.tsx` each scan the rendered page for "already exists", "don't see an account", "no account", "registered" |
+| `/reset-password` covers request, sent, set-new, and expired-or-used | **Met** | `reset-request-form.tsx`, `reset-confirm-form.tsx`; six tests, plus the live Mailpit run-through |
+| Routing: anonymous `/` → `/preview` | **Met** | `homeRoute`; live: `307 → /preview` |
+| Routing: signed in, not onboarded → `/onboarding` | **Met** | live: `307 → /onboarding` |
+| Routing: signed in and onboarded → the placeholder home | **Met** | live: `200`, with the heading, both sections and sign-out |
+| Routing: signed-in `/signin` → silent redirect to `/` | **Met** | live: `307 → /` |
+| The placeholder home is calm, has no fake digest cards or data, reuses the personal-events components, has sign-out | **Met** | `app/page.tsx`; a test scans for "why this", "relevance", "pulse score", "tonight's pulse" |
+| CSRF tokens sent on every state-changing call | **Met** | One middleware on the client; proven on the real client for an auth write **and** a personal write |
+| Only the generated client; no hand-written API types (AD-19) | **Met** | ESLint's `no-restricted-imports`/`no-restricted-globals` still pass; the contract was fixed rather than cast around |
+| Design tokens and vanilla components only; no component library | **Met** | `tests/architecture.test.ts` unchanged and passing; no dependency added |
+| WCAG: labelled inputs, visible focus, errors announced | **Met** | Every input has `htmlFor`; errors are `role="alert"` + `aria-describedby`; the reveal toggle's `aria-pressed` and destination-state label are tested |
+| Vitest covers each form's success and error rendering, enumeration-neutral copy, each routing branch, the expired-token state | **Met** | The table above |
+| `make lint-web` and `make test-web` pass | **Met** | Both clean |
+
+### Revert Verification
+
+Every rule was broken in the source and its test watched to fail. The harness backs each
+file up per case and verifies the restore byte for byte; a restore mismatch aborts the
+run, because a silent restore failure makes every later result a claim about a tree that
+does not exist.
+
+**26 of 26 cases failed their tests, as they must.** One case (26) reported a *setup*
+failure on the first run — the mutator's indentation did not match the file, so nothing
+was changed — which the harness caught by comparing the file before and after rather
+than trusting the edit. It was corrected and re-run; a mutation that silently applies to
+nothing would otherwise have been reported as a passing revert case.
+
+| # | Rule reverted | Test that caught it |
+|---|---|---|
+| 1 | The CSRF middleware is never registered on the client | `backend-client.test.ts` |
+| 2 | The CSRF token is cached at load instead of read per request | `csrf.test.ts` |
+| 3 | The header goes on reads instead of writes | `csrf.test.ts` |
+| 4 | The personal read drops the session cookie | `personal-events-section.test.tsx` |
+| 5 | The saved read drops the session cookie | `saved-events-section.test.tsx` |
+| 6 | `getSession` forwards no cookies | `session.test.ts` |
+| 7 | "Unavailable" is folded into "anonymous" | `session.test.ts` |
+| 8 | The `homeRoute` branches are swapped | `session.test.ts` |
+| 9 | The `/onboarding` redirect is dropped | `session.test.ts` |
+| 10 | The sign-in error moves to the Email field | `signin-form.test.tsx` |
+| 11 | An enumeration string is planted in the sign-in form | `signin-form.test.tsx` |
+| 12 | Sign-up skips the follow-up sign-in | `signup-form.test.tsx` |
+| 13 | The hold ignores `prefers-reduced-motion` | `signup-form.test.tsx` |
+| 14 | Sign-up routes to `/` instead of `/onboarding` | `signup-form.test.tsx` |
+| 15 | A dead OIDC button is rendered | `signup-form.test.tsx` |
+| 16 | The reset token is left in the address bar | `reset-confirm-form.test.tsx` |
+| 17 | The expired-token branch is lost | `reset-confirm-form.test.tsx` |
+| 18 | The topbar grows a "Sign in" link | `pre-auth-topbar.test.tsx` |
+| 19 | The home redirects when the API is down | `page.test.tsx` |
+| 20 | The duplicate personal-events list returns | `page.test.tsx` |
+| 21 | The home loses `force-dynamic` | `page.test.tsx` |
+| 22 | The silent redirect on `/signin` is dropped | `signin/page.test.tsx` |
+| 23 | The reset page sends a referrer | `reset-password/page.test.tsx` |
+| 24 | A token in the URL is ignored | `reset-password/page.test.tsx` |
+| 25 | Sign-out routes to `/` | `sign-out-button.test.tsx` |
+| 26 | The API's field errors are replaced with our own wording | `api-errors.test.ts` |
+
+The harness is at
+`/tmp/claude-1001/-home-bs1346-Documents-P-project-EventPulse24/ede4680d-7995-49c2-9cb2-855b0550830c/scratchpad/revert-check.sh`.
+It is a session artefact, not a committed file: it mutates working-tree sources, so it
+belongs outside the repository.
+
+### The Live Run-through
+
+Against the real stack (Django on `127.0.0.1:8000`, `next dev` on `127.0.0.1:3000`,
+Postgres/Redis/Mailpit in Docker), through the browser's own path — the proxy, the
+cookie jar, the CSRF header:
+
+| Step | Result |
+|---|---|
+| Anonymous `GET /` | `307 → /preview` |
+| `/signin`, `/signup`, `/reset-password` render | Forms present; **no** "Continue with …" button on `/signup` |
+| `/reset-password?token=…` | The set-new form, and `<meta name="referrer" content="no-referrer">` |
+| Sign-up, then sign-in (the form's two calls) | `201`, then `200` with `sessionid` |
+| `GET /` before onboarding | `307 → /onboarding` |
+| `GET /` after finishing onboarding | `200`, "Your Pulse is being prepared.", both sections, "Signed in as …", "Sign out" |
+| `GET /signin` while signed in | `307 → /` |
+| Create a personal event, then reload `/` | The event **appears on the home** — the bug this item fixed |
+| Reset request → the Mailpit link → set a new password | `202`, the link renders the set-new form, `200` |
+| Reuse the same token | `422 invalid_reset_token`, "That reset link isn't valid anymore. Ask for a new one." |
+| Sign out, then sign in with the new password | `200`; the old password answers `401` |
+
+### The Contract Fix (a deviation, approved mid-run)
+
+`tsc` rejected three call sites: `POST /api/auth/signup`, `/signout` and
+`/password-reset` declared only their success status, so the generated client typed their
+`error` as `never` — the contract claimed they could not fail. They can: the probe got a
+`422` from sign-up with a weak password, and all three can answer `403 csrf_failed`, with
+`429` on sign-up and the reset request.
+
+The plan said this item would change no backend code. Rather than cast around a contract
+that was wrong, the endpoints now declare the statuses they can actually produce, which
+is what every other endpoint in the project already does. Each declaration was read out
+of the service, not guessed:
+
+| Endpoint | Declared | Why exactly these |
+|---|---|---|
+| `/signup` | `201, 403, 422, 429` | CSRF; `ValidationError` from the password validators or a non-address; the sign-up throttle |
+| `/signin` | `200, 401, 403, 429` | The enumeration-safe credential refusal; CSRF; the sign-in throttle. `authenticate` raises nothing else |
+| `/signout` | `200, 403` | It cannot fail on its merits — an anonymous caller gets `200` — so CSRF is the only error |
+| `/password-reset` | `202, 403, 429` | No validation happens (an unknown address is answered identically), so there is no `422` |
+| `/password-reset/confirm` | `200, 403, 422` | A spent or expired token and a weak password are both `422`; no throttle of its own |
+
+`make client` regenerated `openapi.json` and `schema.ts`, and the full backend suite
+passes (3208) with the contract test satisfied by the regenerated schema.
+
+### Notes
+
+- **Node 24 is required to run the suite.** Under Node 20 every Vitest file fails to
+  start: undici 8.12.3 reads `createZstdDecompress`, which Node 20 does not have. The
+  repo already says so (`.nvmrc` is `24`, `package.json` requires `>=24.15`); it is
+  recorded here because the failure mode is an unhelpful `Cannot read properties of
+  undefined (reading 'bind')` rather than a version message.
+- **No dependency was added.** `@testing-library/user-event` was installed, then removed
+  when the existing component tests turned out to drive interactions with `fireEvent`;
+  `package.json` and the lockfile are unchanged.
+- **The local database was four `personalization` migrations behind** at the start of the
+  run, which made `/api/auth/me` answer `500`. `make migrate` fixed it. That is the
+  environment, not the code.

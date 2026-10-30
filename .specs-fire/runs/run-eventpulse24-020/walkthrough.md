@@ -1922,4 +1922,249 @@ fixed, because the shared home would change another app's endpoint — and a sec
 helper that is copied twice is a security helper that will be fixed in one place only.
 
 ---
+
+# Implementation Walkthrough: Frontend Auth Surfaces & Signed-in Home (FR-4, AD-18, AD-19)
+
+**Work item:** frontend-auth-surfaces · **Mode:** confirm · **Run:** run-eventpulse24-020
+
+## Summary
+
+The backend could create a session; the frontend could not. This item builds `/signup`,
+`/signin` and `/reset-password`, turns `/` into a route that knows who is asking, and
+gives the signed-in user a calm placeholder home until the Pulse Digest exists.
+
+Three of the five things worth knowing about this item were found by **running the
+stack**, not by reading it. The plan was written after the probe, which is why its shape
+differs from what the mockups suggest.
+
+## What the probe found, and what it changed
+
+**1. Every write through the proxy was refused — `403 csrf_failed`.** `GET
+/api/auth/csrf` through `127.0.0.1:3000` sets the cookie, but a `POST` carrying that
+token and the browser's own `Origin` was refused, while the same request sent straight to
+Django with Django's origin got through to a `401`. `CSRF_TRUSTED_ORIGINS` defaults to
+`[]` and nothing set it, so Django compared the frontend's origin against its own host.
+Nothing in this item would have worked locally. `.env.example`, both setup docs and the
+local `.env` now carry the setting.
+
+**2. Django rotates the CSRF token at sign-in.** `login()` cycles it, and the sign-in
+response sets a new `csrftoken`. A write carrying the pre-sign-in token was refused. So
+the middleware reads `document.cookie` **per request** and caches nothing — the obvious
+implementation (read it once at module load) breaks every write a user makes after
+signing in, and only after signing in, which is a miserable bug to find later.
+
+**3. The signed-in home showed an empty list.** With a valid session that owned an event,
+the API listed it and the rendered `/` said "You haven't added any personal events yet."
+`PersonalEventsSection` calls the API from the Next.js server, which is a **different
+HTTP client** with no session: every server-side read was anonymous, got a 401, and the
+component's quiet-failure path turned that into an empty list. Every server-side personal
+read now forwards the visitor's cookies.
+
+**4. The page rendered two personal-events lists.** `/` mounted `AddEventButton` beside
+`PersonalEventsSection`, and that button mounts its own `PersonalEventsPanel` with
+`events={[]}` — so there were two "Your personal events" surfaces, one permanently empty.
+Found by reading, pinned by a test, then fixed.
+
+**5. Three endpoints claimed they could not fail.** `tsc` rejected the call sites:
+`signup`, `signout` and `password-reset` declared only their success status, so the
+generated client typed `error` as `never`. The probe had already seen a `422` from
+sign-up. The contract was fixed rather than cast around — see Deviations.
+
+## Structure Overview
+
+```
+frontend/
+├── lib/
+│   ├── csrf.ts              # the token on every unsafe request; read per request
+│   ├── session.ts           # sessionHeaders, getSession, homeRoute (pure)
+│   ├── api-errors.ts        # the API's words and field errors, verbatim
+│   ├── auth-validation.ts   # the three locked client-side checks
+│   └── backend-client.ts    # + the CSRF middleware, browser only
+├── app/
+│   ├── page.tsx             # the routing decision + the placeholder home
+│   ├── signin/              # the form, and the silent redirect
+│   ├── signup/              # the form; the OIDC slot is held in code
+│   └── reset-password/      # request | set-new, by token; no-referrer
+└── components/
+    ├── brand-topbar.tsx     # the brand lockup, pre-auth and authed
+    ├── pre-auth/            # the footer and the shared auth page shell
+    ├── auth/                # fields, submit, the four forms, sign-out
+    └── saved-events-section.tsx
+```
+
+## The parts worth understanding
+
+### The CSRF token belongs to the client, not to the call sites
+
+The middleware is registered on `api` itself, so every write is covered — including the
+personal-event create, edit and conflict-resolve calls written in an earlier intent,
+which were never touched. A per-call header would have been forgotten exactly once, and
+the failure would look like a broken form rather than a missing header.
+
+`lib/csrf.ts` does not import `openapi-fetch`: AD-19 keeps that import to the one module
+allowed to build a client, so the middleware is typed structurally. That also makes it
+testable without a client at all, which is why there are two test files — one for the
+behaviour, one proving it is actually **registered on the real client**. Those are
+different failures: a middleware written and never registered passes all of its own tests
+and refuses every write in production.
+
+### The `/` decision is a pure function, in the page
+
+`homeRoute(session)` returns `/preview`, `/onboarding`, or `null` for "render the home".
+It lives in `lib/session.ts` and the page calls it. The alternative — putting the rule in
+`proxy.ts` — would give the proxy a second job on every request to every route, and make
+the rule reachable only through an HTTP round trip in tests.
+
+The fourth case matters as much as the three: when `me` fails for any reason other than a
+401, the session is **`unavailable`**, not `anonymous`, and the home renders a calm
+"Couldn't reach Pulse. Try again." Folding it into `anonymous` would throw a signed-in
+user out to the marketing page because one request failed.
+
+### Enumeration safety is a UI property too
+
+The API spent an item making sign-up, sign-in and reset answer identically for known and
+unknown addresses. A frontend that said "we don't see an account with that email" would
+hand the oracle straight back. So:
+
+- the sign-in error always lands on the **Password** field, never on Email;
+- the API's message is shown verbatim, including where the copy bank disagrees;
+- two of the copy bank's locked strings are **deliberately not implemented**, with the
+  reason recorded in `lib/auth-validation.ts`;
+- two tests scan the rendered page for existence wording across every error path.
+
+### Sign-up is two calls
+
+`POST /api/auth/signup` establishes no session, because a `Set-Cookie` on one answer and
+not another is a confirmed-password oracle. The form therefore signs in afterwards. The
+user fills in one form and ends up signed in; the session is created in the one place
+that creates sessions.
+
+What a taken address looks like, honestly: the sign-up answers `201` as it does for every
+address, and the follow-up sign-in fails unless the password is that account's. The user
+sees the API's own "That email and password don't match." — the same words `/signin`
+shows, and no claim about whether an account exists.
+
+### The reset token is treated as a credential
+
+It is a 30-minute, single-use bearer credential for the account, and it arrives in a URL
+because email can only carry a link. The form strips the query string on mount, the page
+sets `referrer: "no-referrer"`, and the expired-or-used state appears **on submit** —
+there is no way to ask whether a token is good without spending it, and an endpoint that
+answered would let someone test guesses for free.
+
+## Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Where the CSRF token is added | One middleware on the one client | Covers every write, current and future, with no call-site change |
+| How the token is held | Read from the cookie per request | Django rotates it at sign-in (probed); a cached token is refused |
+| Retry on `csrf_failed` | No | The remaining causes are not fixed by retrying, and the API's message says what works |
+| Where `/` routes | A pure function, called in the page | The proxy keeps one job; the rule is directly testable |
+| An unreachable API on `/` | A calm error, not a redirect | A signed-in user is not anonymous because a request failed |
+| Server-side reads | Forward the visitor's `Cookie` | Without it every server read is anonymous (probed) |
+| Sign-in's error text | The API's words, on the Password field | The copy bank's line implies the address was right — the leak the rule prevents |
+| The OIDC stack | A marked slot in code; nothing rendered | The AC forbids dead buttons; a "coming soon" tile would still promise calendar auto-connect |
+| Saved events on the home | Shown inline, with the `omitted` count | Neither surface has a route yet; the API asks clients not to drop omissions silently |
+| The in-flight affordance | A static dot | "No spinners, anywhere", and the motion test enforces it |
+| The auth card width | 480/520 px, not the 720 px token | The binding mockups and `EXPERIENCE.md` both give the narrower number for auth columns |
+| The brand topbar | One component for both surfaces | `EXPERIENCE.md`: the pre-auth brand-wrap is "byte-identical to the authed topbar" |
+
+## Deviations from Plan
+
+1. **The backend contract was fixed.** The plan said this item would change no backend
+   code. `tsc` then rejected three call sites because `signup`, `signout` and
+   `password-reset` declared only their success status, while the probe had already seen
+   a `422` from sign-up and all three can answer `403`. Rather than cast around a contract
+   that was wrong, the endpoints now declare the statuses they can actually produce —
+   each read out of the service, not guessed — and `make client` regenerated the schema.
+   **Approved mid-run.** The full backend suite passes (3208).
+
+2. **The saved-events `omitted` count is shown.** Raised in review: the field's own
+   documentation says it exists so the client can say something a user saved is gone
+   "rather than silently dropping it". **Approved**, applied with three tests.
+
+3. **`PreAuthTopbar` became `BrandTopbar`.** Raised in review: the component is correct
+   on the signed-in home (the lockup is shared by design) but the name said otherwise.
+   **Approved**, renamed across five imports.
+
+4. **Mockup states not implemented**, each overruled by a binding document:
+   - sign-up's "An account with that email already exists" (AD-18 and this item's AC);
+   - sign-in's "That password doesn't match. Try again or reset it." (the API's own,
+     enumeration-safe wording is shown instead);
+   - the spinner (`EXPERIENCE.md`: "No spinners, anywhere");
+   - the three OIDC provider buttons (no dead affordances).
+
+## Dependencies Added
+
+| Package | Why |
+|---|---|
+| (none) | `@testing-library/user-event` was installed and then removed when the existing component tests turned out to use `fireEvent`. `package.json` and the lockfile are unchanged |
+
+## How to Verify
+
+```bash
+# Node 24 is required: under Node 20 every Vitest file fails to start with an
+# unhelpful "Cannot read properties of undefined (reading 'bind')" from undici.
+node -v   # v24.x — see .nvmrc
+
+# The frontend
+make test-web      # 262 passed
+make lint-web      # ESLint + next typegen + tsc --noEmit + Prettier
+
+# The contract and the backend
+make client && git status --short frontend/lib/api/   # no diff
+make test-backend                                     # 3208 passed
+
+# The live run-through (needs `make up` first)
+make api & pnpm --dir frontend dev
+#  anonymous GET /            → 307 /preview
+#  sign up → sign in → GET /  → 307 /onboarding
+#  skip onboarding → GET /    → 200, the placeholder home
+#  GET /signin while signed in → 307 /
+#  create a personal event    → it appears on /
+#  reset request → the Mailpit link at :8025 → set new → sign in
+```
+
+## Test Coverage
+
+110 tests added, one existing test extended; 262 frontend tests in total, and the backend
+suite at 3208. **29 revert cases**, each watched to fail: the middleware unregistered,
+the token cached, the cookie dropped from each server read, every routing branch swapped,
+the sign-in error moved to Email, an enumeration string planted, the follow-up sign-in
+skipped, the reduced-motion hold ignored, a dead OIDC button rendered, the token left in
+the URL, the topbar given a "Sign in" link, the duplicate list restored, `force-dynamic`
+removed, `no-referrer` dropped, the `omitted` count dropped. Details in
+`test-report.md`.
+
+## Ready for Review
+
+- `/signup`, `/signin`, `/reset-password` and the signed-in `/`, with all four routing
+  branches proven against the running stack.
+- CSRF on every state-changing call, including the writes built in an earlier intent.
+- The enumeration rule held at the UI, with tests that scan for the wording.
+
+## Developer Notes
+
+**A probe is worth more than a reading.** Three of this item's five defining facts —
+the CSRF origin, the token rotation, the missing cookie on server reads — are invisible
+in the source and obvious within one round trip. The first two would have shipped as
+"the forms don't work"; the third as "my events disappeared".
+
+**The Next.js server is not the browser.** Every server component that reads a personal
+endpoint must forward the visitor's cookies. The failure is silent in the worst way: the
+API answers 401, a quiet-failure path turns that into an empty list, and the page looks
+like working code with no data.
+
+**A copy bank can be older than the rule it contradicts.** `EXPERIENCE.md` locks
+"An account with that email already exists" for `/signup`; AD-18 and the API make that
+sentence unsayable. Where a locked string and a security property disagree, the property
+wins and the omission is recorded in the code — otherwise the next person reinstates it
+from the copy bank.
+
+**A contract that cannot express failure is a contract that will be worked around.** The
+three endpoints declaring only their success status would have pushed a cast into the
+frontend, and the next consumer would have hit the same wall. Three lines of truth in the
+router were cheaper.
+
+---
 *Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-020*

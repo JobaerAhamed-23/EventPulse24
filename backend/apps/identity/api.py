@@ -146,7 +146,11 @@ def get_csrf(request):
 
 @router.post(
     "/signup",
-    response={201: SignUpOut},
+    # The statuses this endpoint can actually answer with. A 403 is the CSRF refusal
+    # (`require_csrf`), a 422 is a password Django's validators rejected or an address
+    # that is not one, and a 429 is the throttle. Declaring them is what puts `ErrorOut`
+    # in the generated client, so the frontend can read the message it has to show.
+    response={201: SignUpOut, 403: ErrorOut, 422: ErrorOut, 429: ErrorOut},
     summary="Create an account",
     description=(
         "Creates an account. The answer is the same whether the address was new or "
@@ -183,7 +187,9 @@ def signup(request, body: SignUpIn):
 
 @router.post(
     "/signin",
-    response={200: SignInOut, 401: ErrorOut},
+    # 401 is the one enumeration-safe credential refusal; 403 is the CSRF refusal and
+    # 429 the throttle. `authenticate` raises nothing else.
+    response={200: SignInOut, 401: ErrorOut, 403: ErrorOut, 429: ErrorOut},
     summary="Sign in",
     description=(
         "Authenticates an email and a password and establishes the session. A wrong "
@@ -206,7 +212,9 @@ def signin(request, body: SignInIn):
 
 @router.post(
     "/signout",
-    response={200: SignOutOut},
+    # Signing out cannot fail on its merits — an anonymous caller is answered 200 — so
+    # the CSRF refusal is the only error it can produce.
+    response={200: SignOutOut, 403: ErrorOut},
     summary="Sign out",
     description=(
         "Ends the session the request carries. The session cookie is cleared, so the "
@@ -268,7 +276,9 @@ def me(request):
 
 @router.post(
     "/password-reset",
-    response={202: PasswordResetRequestOut},
+    # The address is never validated here (an unknown one is answered identically), so
+    # there is no 422: only the CSRF refusal and the throttle.
+    response={202: PasswordResetRequestOut, 403: ErrorOut, 429: ErrorOut},
     summary="Ask for a password reset",
     description=(
         "Asks for a reset link. A known address gets one, by transactional email; an "
@@ -286,7 +296,9 @@ def password_reset_request(request, body: PasswordResetRequestIn):
 
 @router.post(
     "/password-reset/confirm",
-    response={200: PasswordResetConfirmOut, 422: ErrorOut},
+    # 422 covers both a spent or expired token and a password the validators rejected;
+    # 403 is the CSRF refusal. This endpoint has no throttle of its own.
+    response={200: PasswordResetConfirmOut, 403: ErrorOut, 422: ErrorOut},
     summary="Set a new password",
     description=(
         "Consumes a reset token and sets a new password. The token is single-use and "

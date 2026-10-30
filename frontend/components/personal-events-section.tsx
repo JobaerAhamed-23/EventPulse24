@@ -1,6 +1,7 @@
 import type { components } from "@/lib/api/schema";
 import { apiBaseUrl } from "@/lib/api-base-url";
 import { api } from "@/lib/backend-client";
+import { sessionHeaders } from "@/lib/session";
 
 import { PersonalEventsPanel } from "@/components/personal-events-panel";
 
@@ -44,12 +45,20 @@ export async function PersonalEventsSection() {
  * (a build machine, a misconfigured deploy), the request may fail (the API is down), and
  * the API may answer with an error (the visitor is not signed in). None of those is a
  * reason to show an error page for a personal list.
+ *
+ * **The read carries the visitor's cookies, and it has to.** This runs on the Next.js
+ * server, which is a different HTTP client from the browser: it has no session of its
+ * own, so without `sessionHeaders()` every read here is anonymous, the API answers 401,
+ * and the quiet-failure path above turns that into an empty list. The visible symptom was
+ * a signed-in user's own home telling them they had no personal events while the same
+ * read from the browser listed them — a failure that looks like missing data rather than
+ * a missing cookie, which is what made it worth a comment.
  */
 async function readPersonalEvents(): Promise<PersonalEvent[]> {
   if (!apiBaseUrl()) return [];
 
   try {
-    const response = await api.GET("/api/personal/events");
+    const response = await api.GET("/api/personal/events", { headers: await sessionHeaders() });
     return response.data?.items ?? [];
   } catch {
     // A read that cannot be made is a read that found nothing.

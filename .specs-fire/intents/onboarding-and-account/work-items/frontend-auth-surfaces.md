@@ -4,10 +4,12 @@ title: Frontend Auth Surfaces & Signed-in Home
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - auth-api-and-session-seam
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-30T06:52:07.133Z
 ---
 
 # Work Item: Frontend Auth Surfaces & Signed-in Home
