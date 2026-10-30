@@ -29,6 +29,10 @@ from ninja import Query, Router, Status
 from apps.identity.api_auth import current_user
 from apps.ingestion.services.catalog_read import EventNotFoundError, get_public_event
 from apps.personalization.schemas import (
+    CalendarConnectIn,
+    CalendarConnectionListOut,
+    CalendarConnectionOut,
+    CalendarReconnectIn,
     ConflictOut,
     ConflictResolutionIn,
     ConflictResolutionOut,
@@ -47,6 +51,13 @@ from apps.personalization.schemas import (
     SavedEventListQuery,
     SavedEventOut,
     SchedulingConflictOut,
+)
+from apps.personalization.services.calendar_connections import (
+    connect_calendar,
+    disconnect_calendar_for_user,
+    get_calendar_connection,
+    list_calendar_connections,
+    reconnect_calendar_for_user,
 )
 from apps.personalization.services.conflict_resolutions import resolve_conflict
 from apps.personalization.services.conflicts import PERSONAL_EVENT_SIDE
@@ -499,6 +510,153 @@ def post_skip_all(request):
         now=timezone.now(),
     )
     return OnboardingStateOut.from_state(state)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The calendar connections (FR-50)
+#
+# Five endpoints under `/api/personal/calendars`. They share the router's
+# `auth=current_user`, so every one is authed, and **none of them accepts a user id as
+# input** — the scoping comes from the session and cannot be talked out of by a payload.
+#
+# **The address is the credential, and it never comes back.** The secret ICS/webcal
+# address *is* the credential (AD-18): Google classifies it as a secret and offers a
+# reset for it. So the output shape has no field for it — not in full, not masked, not
+# as a fragment — and the guarantee is structural rather than careful: there is nowhere
+# for it to go.
+#
+# **The Free cap is a conflict, not a bad request.** The address the user pasted is
+# perfectly good; it is the state of the account that refuses it. So the refusal is a
+# 409 with a calm message and a plain-data `details` — and **no modal semantics**: the
+# approved copy is an inline prompt with a quiet "Upgrade" link, so the payload carries
+# no `modal`, no `title`, no `actions` and no `dismissable`.
+#
+# **The provider is a label, not a branch.** It is stored, echoed back and checked
+# against the known providers, and nothing in the server behaves differently for Google
+# than for Apple (FR-3's provider-parity contract).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/calendars",
+    response={200: CalendarConnectionListOut},
+    summary="List the signed-in user's calendar connections",
+    description=(
+        "The user's own calendar connections: the provider, the status, when it last "
+        "synced and whether a sync is running. The calendar address is **never** "
+        "returned — it is the credential, and it is write-only. No one else's "
+        "connections are listed."
+    ),
+)
+def list_calendars(request):
+    """The signed-in user's calendar connections."""
+    views = list_calendar_connections(user_id=request.user.pk, now=timezone.now())
+    return CalendarConnectionListOut(
+        items=[CalendarConnectionOut.from_view(view) for view in views]
+    )
+
+
+@router.post(
+    "/calendars",
+    response={201: CalendarConnectionOut, 409: ErrorOut, 422: ErrorOut},
+    summary="Connect a calendar",
+    description=(
+        "Connects a calendar by its secret ICS/webcal address. The address is stored "
+        "encrypted and is never returned. The first sync is **enqueued, not run inline** "
+        "— the response comes back immediately with the connection's status, and the "
+        "import lands a moment later. A Free account may hold one calendar; a second "
+        "connection is refused with a calm upgrade prompt."
+    ),
+)
+def post_calendar(request, body: CalendarConnectIn):
+    """Connect a calendar, and queue its first sync."""
+    connection = connect_calendar(
+        user_id=request.user.pk,
+        provider=body.provider,
+        url=body.address,
+        display_label=body.display_label,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    # The row is read back through the published read service rather than projected off
+    # the command's return value, so the response goes through exactly the same
+    # projection as every other read — and so there is one place that decides what a
+    # connection looks like.
+    view = get_calendar_connection(
+        user_id=request.user.pk, connection_id=connection.pk, now=timezone.now()
+    )
+    return Status(201, CalendarConnectionOut.from_view(view))
+
+
+@router.get(
+    "/calendars/{connection_id}",
+    response={200: CalendarConnectionOut, 404: ErrorOut},
+    summary="Get one of the signed-in user's calendar connections",
+    description=(
+        "One of the user's own calendar connections and its sync state, so onboarding "
+        "step 1 can show the imported events without leaving the flow. A connection "
+        "that belongs to somebody else reads as not found."
+    ),
+)
+def get_calendar(request, connection_id: UUID):
+    """One of the user's own calendar connections."""
+    view = get_calendar_connection(
+        user_id=request.user.pk, connection_id=connection_id, now=timezone.now()
+    )
+    return CalendarConnectionOut.from_view(view)
+
+
+@router.post(
+    "/calendars/{connection_id}/reconnect",
+    response={200: CalendarConnectionOut, 404: ErrorOut, 422: ErrorOut},
+    summary="Reconnect a calendar whose access was revoked",
+    description=(
+        "Replaces a revoked calendar's address and brings it back to life. The events it "
+        "already imported are kept — the provider revoked the address, not the events. "
+        "A connection that is already active is refused: there is nothing to reconnect, "
+        "and silently replacing a working credential would change which calendar the "
+        "user is looking at without them asking."
+    ),
+)
+def post_reconnect_calendar(request, connection_id: UUID, body: CalendarReconnectIn):
+    """Replace a revoked calendar's address."""
+    # The scoping by `user_id` happens **inside the service**, so another user's
+    # connection reads as not found — not as forbidden — and the API layer never
+    # touches the model.
+    connection = reconnect_calendar_for_user(
+        user_id=request.user.pk,
+        connection_id=connection_id,
+        url=body.address,
+        display_label=body.display_label,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return CalendarConnectionOut.from_view(
+        get_calendar_connection(
+            user_id=request.user.pk, connection_id=connection.pk, now=timezone.now()
+        )
+    )
+
+
+@router.delete(
+    "/calendars/{connection_id}",
+    response={204: None, 404: ErrorOut},
+    summary="Disconnect a calendar",
+    description=(
+        "Disconnects one of the user's calendars. The credential is destroyed and the "
+        "events that calendar imported are purged, along with their conflict pairs and "
+        "their reminder plans. The user's own events are untouched."
+    ),
+)
+def delete_calendar(request, connection_id: UUID):
+    """Disconnect a calendar and purge the events it imported."""
+    disconnect_calendar_for_user(
+        user_id=request.user.pk,
+        connection_id=connection_id,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return Status(204, None)
 
 
 __all__ = ["router"]

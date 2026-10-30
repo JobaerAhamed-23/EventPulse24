@@ -201,6 +201,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's calendar connections
+         * @description The user's own calendar connections: the provider, the status, when it last synced and whether a sync is running. The calendar address is **never** returned — it is the credential, and it is write-only. No one else's connections are listed.
+         */
+        get: operations["apps_personalization_api_list_calendars"];
+        put?: never;
+        /**
+         * Connect a calendar
+         * @description Connects a calendar by its secret ICS/webcal address. The address is stored encrypted and is never returned. The first sync is **enqueued, not run inline** — the response comes back immediately with the connection's status, and the import lands a moment later. A Free account may hold one calendar; a second connection is refused with a calm upgrade prompt.
+         */
+        post: operations["apps_personalization_api_post_calendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/calendars/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one of the signed-in user's calendar connections
+         * @description One of the user's own calendar connections and its sync state, so onboarding step 1 can show the imported events without leaving the flow. A connection that belongs to somebody else reads as not found.
+         */
+        get: operations["apps_personalization_api_get_calendar"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a calendar
+         * @description Disconnects one of the user's calendars. The credential is destroyed and the events that calendar imported are purged, along with their conflict pairs and their reminder plans. The user's own events are untouched.
+         */
+        delete: operations["apps_personalization_api_delete_calendar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/calendars/{connection_id}/reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconnect a calendar whose access was revoked
+         * @description Replaces a revoked calendar's address and brings it back to life. The events it already imported are kept — the provider revoked the address, not the events. A connection that is already active is refused: there is nothing to reconnect, and silently replacing a working credential would change which calendar the user is looking at without them asking.
+         */
+        post: operations["apps_personalization_api_post_reconnect_calendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/events": {
         parameters: {
             query?: never;
@@ -461,6 +529,90 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CalendarConnectIn
+         * @description A provider and the secret address to connect.
+         *
+         *     The `address` is the secret ICS/webcal address. It is **write-only**: it goes in
+         *     and it is never handed back, in whole or in part, in any response.
+         */
+        CalendarConnectIn: {
+            /** Address */
+            address: string;
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
+         * CalendarConnectionListOut
+         * @description The user's calendar connections.
+         */
+        CalendarConnectionListOut: {
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["CalendarConnectionOut"][];
+        };
+        /**
+         * CalendarConnectionOut
+         * @description One calendar connection, as it is shown to the user.
+         *
+         *     There is no `address` field and no `fingerprint` field. The fingerprint is a keyed
+         *     HMAC and so is not a secret, but it is not the user's business either, and a digest
+         *     in a response body is one more thing to leak in a screenshot.
+         *
+         *     `last_error_kind` is a **slug** (`revoked`, `transient`, …), never a message and
+         *     never a URL: an `httpx` exception message contains the full request URL, which *is*
+         *     the credential (AD-13).
+         */
+        CalendarConnectionOut: {
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error Kind */
+            last_error_kind?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Next Sync At */
+            next_sync_at?: string | null;
+            /** Provider */
+            provider: string;
+            /** Status */
+            status: string;
+            /**
+             * Sync In Progress
+             * @default false
+             */
+            sync_in_progress: boolean;
+        };
+        /**
+         * CalendarReconnectIn
+         * @description A new address for a connection the provider revoked.
+         *
+         *     The provider revoked the old secret, so the address the user pastes now is a *new*
+         *     one. The connection's row is reused rather than a second row being created.
+         */
+        CalendarReconnectIn: {
+            /** Address */
+            address: string;
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+        };
         /** ComponentOut */
         ComponentOut: {
             /** Reason */
@@ -1448,6 +1600,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthUnavailableOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_list_calendars: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionListOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarConnectIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_get_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_delete_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_reconnect_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarReconnectIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

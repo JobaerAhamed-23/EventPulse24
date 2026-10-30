@@ -1,6 +1,134 @@
 {
   "components": {
     "schemas": {
+      "CalendarConnectIn": {
+        "description": "A provider and the secret address to connect.\n\nThe `address` is the secret ICS/webcal address. It is **write-only**: it goes in\nand it is never handed back, in whole or in part, in any response.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "display_label": {
+            "default": "",
+            "title": "Display Label",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "address"
+        ],
+        "title": "CalendarConnectIn",
+        "type": "object"
+      },
+      "CalendarConnectionListOut": {
+        "description": "The user's calendar connections.",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CalendarConnectionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "CalendarConnectionListOut",
+        "type": "object"
+      },
+      "CalendarConnectionOut": {
+        "description": "One calendar connection, as it is shown to the user.\n\nThere is no `address` field and no `fingerprint` field. The fingerprint is a keyed\nHMAC and so is not a secret, but it is not the user's business either, and a digest\nin a response body is one more thing to leak in a screenshot.\n\n`last_error_kind` is a **slug** (`revoked`, `transient`, …), never a message and\nnever a URL: an `httpx` exception message contains the full request URL, which *is*\nthe credential (AD-13).",
+        "properties": {
+          "display_label": {
+            "default": "",
+            "title": "Display Label",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Kind"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "next_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Sync At"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "sync_in_progress": {
+            "default": false,
+            "title": "Sync In Progress",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "status"
+        ],
+        "title": "CalendarConnectionOut",
+        "type": "object"
+      },
+      "CalendarReconnectIn": {
+        "description": "A new address for a connection the provider revoked.\n\nThe provider revoked the old secret, so the address the user pastes now is a *new*\none. The connection's row is reused rather than a second row being created.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "display_label": {
+            "default": "",
+            "title": "Display Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "CalendarReconnectIn",
+        "type": "object"
+      },
       "ComponentOut": {
         "properties": {
           "reason": {
@@ -1731,6 +1859,223 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/personal/calendars": {
+      "get": {
+        "description": "The user's own calendar connections: the provider, the status, when it last synced and whether a sync is running. The calendar address is **never** returned — it is the credential, and it is write-only. No one else's connections are listed.",
+        "operationId": "apps_personalization_api_list_calendars",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectionListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List the signed-in user's calendar connections",
+        "tags": [
+          "personal"
+        ]
+      },
+      "post": {
+        "description": "Connects a calendar by its secret ICS/webcal address. The address is stored encrypted and is never returned. The first sync is **enqueued, not run inline** — the response comes back immediately with the connection's status, and the import lands a moment later. A Free account may hold one calendar; a second connection is refused with a calm upgrade prompt.",
+        "operationId": "apps_personalization_api_post_calendar",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarConnectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectionOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Connect a calendar",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/calendars/{connection_id}": {
+      "delete": {
+        "description": "Disconnects one of the user's calendars. The credential is destroyed and the events that calendar imported are purged, along with their conflict pairs and their reminder plans. The user's own events are untouched.",
+        "operationId": "apps_personalization_api_delete_calendar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Disconnect a calendar",
+        "tags": [
+          "personal"
+        ]
+      },
+      "get": {
+        "description": "One of the user's own calendar connections and its sync state, so onboarding step 1 can show the imported events without leaving the flow. A connection that belongs to somebody else reads as not found.",
+        "operationId": "apps_personalization_api_get_calendar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectionOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Get one of the signed-in user's calendar connections",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/calendars/{connection_id}/reconnect": {
+      "post": {
+        "description": "Replaces a revoked calendar's address and brings it back to life. The events it already imported are kept — the provider revoked the address, not the events. A connection that is already active is refused: there is nothing to reconnect, and silently replacing a working credential would change which calendar the user is looking at without them asking.",
+        "operationId": "apps_personalization_api_post_reconnect_calendar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarReconnectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectionOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Reconnect a calendar whose access was revoked",
+        "tags": [
+          "personal"
         ]
       }
     },

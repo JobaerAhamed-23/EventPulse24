@@ -403,7 +403,93 @@ class OnboardingStateOut(Schema):
         )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The calendar connections (FR-50)
+#
+# **The address never appears in an output shape.** The secret ICS/webcal address *is*
+# the credential (AD-18): Google classifies it as a secret and offers a reset for it. So
+# `CalendarConnectionOut` has no field for it — not in full, not masked, not as a
+# fragment. The guarantee is structural rather than careful: the shape cannot carry the
+# address, so no endpoint can leak it by accident.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class CalendarConnectIn(Schema):
+    """A provider and the secret address to connect.
+
+    The `address` is the secret ICS/webcal address. It is **write-only**: it goes in
+    and it is never handed back, in whole or in part, in any response.
+    """
+
+    provider: str
+    address: str
+    #: The user's own name for the calendar ("Work", "Family") — not the URL, and not a
+    #: secret. It is how two calendars are told apart in the UI.
+    display_label: str = ""
+
+
+class CalendarReconnectIn(Schema):
+    """A new address for a connection the provider revoked.
+
+    The provider revoked the old secret, so the address the user pastes now is a *new*
+    one. The connection's row is reused rather than a second row being created.
+    """
+
+    address: str
+    display_label: str = ""
+
+
+class CalendarConnectionOut(Schema):
+    """One calendar connection, as it is shown to the user.
+
+    There is no `address` field and no `fingerprint` field. The fingerprint is a keyed
+    HMAC and so is not a secret, but it is not the user's business either, and a digest
+    in a response body is one more thing to leak in a screenshot.
+
+    `last_error_kind` is a **slug** (`revoked`, `transient`, …), never a message and
+    never a URL: an `httpx` exception message contains the full request URL, which *is*
+    the credential (AD-13).
+    """
+
+    id: UUID
+    provider: str
+    status: str
+    display_label: str = ""
+    #: When the last poll finished. Null if it never has.
+    last_synced_at: datetime | None = None
+    #: When the next poll is due. Null if the connection is not going to be polled.
+    next_sync_at: datetime | None = None
+    #: Whether a worker holds the claim right now. A stale claim is a lost job, not a
+    #: sync in progress.
+    sync_in_progress: bool = False
+    last_error_kind: str | None = None
+
+    @classmethod
+    def from_view(cls, view) -> "CalendarConnectionOut":
+        """Project the service's plain data onto the wire shape."""
+        return cls(
+            id=view.id,
+            provider=view.provider,
+            status=view.status,
+            display_label=view.display_label,
+            last_synced_at=view.last_synced_at,
+            next_sync_at=view.next_sync_at,
+            sync_in_progress=view.sync_in_progress,
+            last_error_kind=view.last_error_kind,
+        )
+
+
+class CalendarConnectionListOut(Schema):
+    """The user's calendar connections."""
+
+    items: list[CalendarConnectionOut] = []
+
+
 __all__ = [
+    "CalendarConnectIn",
+    "CalendarConnectionListOut",
+    "CalendarConnectionOut",
+    "CalendarReconnectIn",
     "ConflictAction",
     "ConflictOut",
     "ConflictResolutionIn",

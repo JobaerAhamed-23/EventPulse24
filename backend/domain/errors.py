@@ -163,15 +163,35 @@ class InvalidCalendarCredentialError(ValidationError):
     default_message = "That calendar address doesn't look right."
 
 
-class CalendarProviderCapReached(DomainError):
+class CalendarProviderCapReached(ConflictError):
     """The account already has as many connected calendars as its tier allows (FR-50).
 
     The Free-tier cap is one provider. The user is shown a calm upgrade message, not a
     modal; the API layer decides how, this error only says the cap was hit.
+
+    **This is a conflict, not a bad request.** The address the user pasted is perfectly
+    good — it is the *state of the account* that refuses it, because the account already
+    holds the one calendar its plan allows. The request was well-formed and conflicts
+    with the account, which is what a 409 means; a 400 would say "your request was
+    wrong", and it was not. (This is the same reasoning that makes a completed
+    onboarding a 409 rather than a 400.)
     """
 
     code = "calendar_cap_reached"
     default_message = "You've connected the calendars your plan allows."
+
+
+class CalendarConnectionNotFoundError(NotFoundError):
+    """The calendar connection does not exist, or is not the caller's (FR-50).
+
+    **Not found, not forbidden.** A 403 would confirm that the record exists, so a
+    caller could probe for other users' connection ids by watching for 403 instead of
+    404. A 404 says nothing about what exists — the same rule the personal-events
+    endpoints follow.
+    """
+
+    code = "calendar_connection_not_found"
+    default_message = "We couldn't find that calendar connection."
 
 
 class TooManyInterestsError(ValidationError):

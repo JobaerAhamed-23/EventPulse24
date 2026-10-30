@@ -223,10 +223,21 @@ class CalendarConnection(UUIDv7Model):
 
     class Meta:
         constraints = [
-            # One calendar per user. The fingerprint is keyed, so this also means the same
-            # address cannot be connected twice (D6).
+            # One **live** calendar per address, per user. The fingerprint is keyed, so
+            # this also means the same address cannot be connected twice (D6).
+            #
+            # **Partial, so a disconnected row does not squat the address.** A
+            # disconnected connection has had its credential destroyed, but the
+            # fingerprint — a keyed HMAC of the old address — is still on the row, and
+            # the row waits for the retention sweep (D7). Under an unpartial constraint
+            # that fingerprint would still occupy the address, and a user who
+            # disconnected a calendar and then re-added the same one would hit the
+            # constraint and get a 500 for an ordinary, everyday sequence. Excluding the
+            # disconnected rows says what the constraint means: *one live connection per
+            # address*. The same shape as `ingestion`'s `event_live_source_item_uq`.
             models.UniqueConstraint(
                 fields=["user_id", "credential_fingerprint"],
+                condition=~models.Q(status="disconnected"),
                 name="calendar_connection_user_credential_uq",
             ),
             # D7's state machine, held by the database: a connection that is not
