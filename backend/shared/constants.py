@@ -61,6 +61,19 @@ INGEST_CLAIM_TTL = timedelta(hours=1)
 # FR-13: a source with no successful ingestion within this many cadences is flagged stale.
 STALE_AFTER_CADENCES = 2
 
+# FR-14: an Event older than this many times its source's `freshness_ttl_hours` is not
+# surfaced in a fresh Pulse Digest.
+#
+# This is **not** `STALE_AFTER_CADENCES`, though the number is the same: a cadence is how
+# often a source is polled, a TTL is how long its facts are treated as current. Two
+# different quantities with two different meanings get two different names — AD-8 says a
+# threshold lives in one place, not that two thresholds may share one name.
+#
+# The bound is measured from `Event.last_seen_at` — when the catalog last saw the event at
+# the source — not from `updated_at`, which moves whenever *we* touch the row and would
+# keep a stale event alive.
+DIGEST_STALE_TTL_MULTIPLIER = 2
+
 # AD-17: the reconciler re-enqueues state changes unpropagated for longer than this, oldest
 # first, at most this many per run.
 OUTBOX_RECONCILE_AFTER = timedelta(minutes=5)

@@ -17,13 +17,15 @@ from django.utils import timezone
 from apps.ingestion.event_fit.writes import write_event_fit
 from apps.ingestion.models import Event, EventFit, Source
 from apps.ingestion.services.preview_read import (
+    list_preview_cards,
+    list_supported_cities,
+    source_badge_for,
+)
+from apps.ingestion.services.source_badges import (
     SOURCE_BADGE_AGGREGATOR,
     SOURCE_BADGE_COMMUNITY,
     SOURCE_BADGE_CRAWLED,
     SOURCE_BADGE_OFFICIAL,
-    list_preview_cards,
-    list_supported_cities,
-    source_badge_for,
 )
 from shared.actor import Actor
 from shared.db import CATALOG

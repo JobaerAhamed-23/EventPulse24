@@ -4,9 +4,11 @@ title: Eligible-candidate reads, on both sides of the wall
 intent: pulse-digest-and-trust
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-10-30
+completed_at: 2026-10-30T17:30:00Z
+run_id: run-eventpulse24-021
 ---
 
 # Work Item: Eligible-candidate reads, on both sides of the wall
