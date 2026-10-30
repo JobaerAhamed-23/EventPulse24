@@ -12,12 +12,14 @@ from django.db import models
 
 from apps.personalization.models import (
     ConflictPair,
+    DigestComposition,
     PersonalEvent,
     PersonalizationAuditEntry,
+    PulseDigest,
     SavedEvent,
 )
 
-MODELS = [PersonalEvent, SavedEvent, ConflictPair]
+MODELS = [PersonalEvent, SavedEvent, ConflictPair, PulseDigest, DigestComposition]
 
 
 @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
@@ -108,3 +110,34 @@ def test_personal_event_declares_no_reminder_plan_field():
 
     assert "reminder_plan" not in field_names
     assert not any("reminder" in name for name in field_names)
+
+
+def test_digest_composition_holds_its_parent_digest_by_value():
+    """D2: `digest_id` is a plain UUID, not a foreign key.
+
+    `PulseDigest` is in the *same* schema, so a foreign key would be legal to write and
+    would cascade the digest's deletion into its children — and AD-10 says a composition is
+    immutable and must outlive its day. A UUID column has no `remote_field` at all, so
+    there is nothing for a cascade to hang from.
+    """
+    field = DigestComposition._meta.get_field("digest_id")
+
+    assert isinstance(field, models.UUIDField)
+    assert not isinstance(field, models.ForeignKey)
+    assert field.remote_field is None
+
+
+def test_digest_composition_holds_its_event_by_value():
+    """AD-3: the event's id crosses the wall by value, never as a relation."""
+    field = DigestComposition._meta.get_field("event_id")
+
+    assert isinstance(field, models.UUIDField)
+    assert not isinstance(field, models.ForeignKey)
+    assert field.remote_field is None
+
+
+def test_pulse_digest_holds_its_user_by_value():
+    field = PulseDigest._meta.get_field("user_id")
+
+    assert isinstance(field, models.UUIDField)
+    assert not isinstance(field, models.ForeignKey)

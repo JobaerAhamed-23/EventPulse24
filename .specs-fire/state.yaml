@@ -267,8 +267,9 @@ intents:
         completed_at: 2026-10-29T05:31:56.212Z
   - id: onboarding-and-account
     title: Onboarding, Account & Calendar Connect
-    status: in_progress
+    status: completed
     created: 2026-10-29
+    completed_at: 2026-10-30T11:16:02.900Z
     work_items:
       - id: account-auth-core
         status: completed
@@ -376,8 +377,180 @@ intents:
           - frontend-pulse-preview
         run_id: run-eventpulse24-020
         completed_at: 2026-10-30T11:16:02.872Z
+  - id: pulse-digest-and-trust
+    title: Pulse Digest, Relevance Pulse & the Trust Surfaces
+    status: in_progress
+    created: 2026-10-30
+    work_items:
+      - id: digest-ranking-domain
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-021
+        completed_at: 2026-10-30T13:02:28.917Z
+      - id: digest-composition-models
+        status: in_progress
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: digest-user-preferences
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: digest-candidate-reads
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: digest-composition-service
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - digest-ranking-domain
+          - digest-composition-models
+          - digest-user-preferences
+          - digest-candidate-reads
+      - id: digest-scheduling
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-composition-service
+      - id: digest-read-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-composition-service
+      - id: event-detail-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-composition-service
+      - id: frontend-pulse-card
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-read-api
+      - id: frontend-digest-home
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-pulse-card
+          - digest-read-api
+      - id: frontend-event-detail
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-pulse-card
+          - event-detail-api
+      - id: e2e-proof-and-contract-tests
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-digest-home
+          - frontend-event-detail
+          - digest-scheduling
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-021
+      scope: wide
+      work_items:
+        - id: digest-ranking-domain
+          intent: pulse-digest-and-trust
+          mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-30T13:02:28.917Z
+        - id: digest-composition-models
+          intent: pulse-digest-and-trust
+          mode: validate
+          status: in_progress
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+        - id: digest-user-preferences
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: digest-candidate-reads
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: digest-composition-service
+          intent: pulse-digest-and-trust
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: digest-read-api
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: event-detail-api
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: digest-scheduling
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-pulse-card
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-digest-home
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-event-detail
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: e2e-proof-and-contract-tests
+          intent: pulse-digest-and-trust
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+      current_item: digest-composition-models
+      started: 2026-10-30T12:40:28.978Z
   completed:
     - id: run-eventpulse24-001
       scope: single

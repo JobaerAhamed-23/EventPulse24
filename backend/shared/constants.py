@@ -320,6 +320,172 @@ EVENT_FIT_TAG_ORDER = (
     EVENT_FIT_TAG_THIS_WEEKEND,
 )
 
+# ── Relevance Pulse ranking (AD-10, FR-22, FR-5) ─────────────────────────────────
+#
+# The Relevance Pulse is the **per-user** explanation — the one on an authenticated card,
+# the Detail Screen and (later) the email. AD-10 persists it beside the decision it
+# explains and never recomputes it at render.
+#
+# **The published formula, and what is missing from it.** FR-22 publishes
+#
+#     relevance_score = 0.40 × preference_graph_match
+#                     + 0.25 × source_reliability
+#                     + 0.20 × recency_fit
+#                     + 0.15 × novelty_vs_exploration
+#
+# and locks those weights. **Two of the four components have no input in this codebase**:
+#
+#   * `source_reliability` — FR-16 is unbuilt; `Source` has no score field. It is not
+#     "not implemented yet": the number does not exist and cannot be computed.
+#   * `novelty_vs_exploration` — needs the Preference Graph (FR-25, deferred) *and* an
+#     event category, and `Event` has no category field.
+#
+# A term multiplied by a constant is an **inert weight**: the published formula would stay
+# arithmetically checkable and still produce a different number from the one on the card,
+# which is a worse trust failure than a reduced formula because it looks verifiable.
+# `domain/event_fit.py` set this precedent when it refused to invent a "Free" tag — "they
+# are added to Event Fit's rule set then, not faked now."
+#
+# So the omitted terms are **absent from the expression**, and the surviving weights are
+# redistributed so they still sum to 1.0. The docstring of `domain/ranking.py` states the
+# reduction, names every omitted input, and names the FR that will supply it.
+#
+# The weights below are the **reduced** ones. `RANKING_WEIGHT_SUM` is pinned to 1 by a test,
+# so the score still occupies [0, 1] and FR-22's bucket boundaries mean what they say.
+
+# The reduced formula's four surviving inputs.
+#
+#   relevance_score = RANKING_WEIGHT_INTEREST × interest_overlap
+#                   + RANKING_WEIGHT_RECENCY  × recency
+#                   + RANKING_WEIGHT_CITY     × city_match
+#                   + RANKING_WEIGHT_CONFIDENCE × confidence
+#
+# **Interest overlap is 0.45**, not FR-22's published 0.40 for `preference_graph_match`.
+# The chips are the Preference Graph's only surviving trace, so they inherit the
+# preference term's *rank* — the largest — while the slack from the two absent terms is
+# spread across the survivors.
+#
+# **Recency is 0.25**, up from FR-22's 0.20 for `recency_fit`: it is the term that
+# survives most directly, the event's start time against the user's day.
+#
+# **City match is 0.20**, and it is **additive**, not a multiplier. FR-5 multiplies by a
+# `geographic_distance_factor`, which zeroes out every event outside the user's city — but
+# city membership is decided by the *candidate read*, not by the score. Once the read has
+# filtered to the user's city, multiplying by a city factor would multiply by a constant,
+# which is exactly the inert weight this section exists to avoid.
+#
+# **Confidence is 0.10**, the smallest share. FR-22 says the Confidence Pulse measures the
+# AI's certainty about relevance "not just trust in the source"; extraction confidence is
+# the one measure of "how well do we know this event's facts" that exists, and it is the
+# same number the eligibility gates use.
+RANKING_WEIGHT_INTEREST = Decimal("0.45")
+RANKING_WEIGHT_RECENCY = Decimal("0.25")
+RANKING_WEIGHT_CITY = Decimal("0.20")
+RANKING_WEIGHT_CONFIDENCE = Decimal("0.10")
+
+# The four weights must sum to exactly 1, so the score stays in [0, 1] and the bucket
+# boundaries keep their meaning. Pinned by `tests/shared/test_constants.py`.
+RANKING_WEIGHT_SUM = (
+    RANKING_WEIGHT_INTEREST
+    + RANKING_WEIGHT_RECENCY
+    + RANKING_WEIGHT_CITY
+    + RANKING_WEIGHT_CONFIDENCE
+)
+
+# The recency bands, in order: how soon the event starts, relative to `now`.
+#
+# Each band is an **inclusive** upper bound on the time until the start, and the comparison
+# is made in the **event's own IANA zone** (AD-6) — the same rule `domain/event_fit.py` is
+# built around. A 23:30 event in `America/New_York` is "tonight" on Friday, not Saturday.
+RANKING_RECENCY_WITHIN_DAY = Decimal("1.00")
+RANKING_RECENCY_WITHIN_THREE_DAYS = Decimal("0.75")
+RANKING_RECENCY_WITHIN_WEEK = Decimal("0.50")
+RANKING_RECENCY_WITHIN_FORTNIGHT = Decimal("0.25")
+RANKING_RECENCY_LATER = Decimal("0.00")
+
+# The city bands. **`Venue` has no coordinates**, so haversine is not computable and
+# "nearby" is a band rather than a distance. The brief records this as a named deviation
+# from FR-5's distance curve; when coordinates arrive, this is where they land.
+RANKING_CITY_SAME = Decimal("1.00")
+RANKING_CITY_SAME_COUNTRY = Decimal("0.50")
+RANKING_CITY_OTHER = Decimal("0.00")
+
+# FR-22's bucket boundaries, exact. The score is clamped to [0, 1] before mapping, and the
+# rendered bucket is always an integer 1–5. **No interpolation.**
+#
+# On an exact boundary the **lower** bucket wins: 0.850 → 4 dots, not 5. That rule is why
+# the score is a `Decimal` and never a float — `0.85` as a binary float is not
+# `Decimal("0.85")`, and it lands the card in the wrong bucket.
+RANKING_BUCKET_5 = Decimal("0.85")
+RANKING_BUCKET_4 = Decimal("0.65")
+RANKING_BUCKET_3 = Decimal("0.45")
+RANKING_BUCKET_2 = Decimal("0.25")
+
+# The score's bounds.
+RANKING_SCORE_MIN = Decimal("0.00")
+RANKING_SCORE_MAX = Decimal("1.00")
+
+# The score is 1..5, and 5 is the best.
+RANKING_BUCKET_MIN = 1
+RANKING_BUCKET_MAX = 5
+
+# The hysteresis threshold: within one local day, a bucket holds unless the raw score
+# moves by **at least** this much.
+#
+# **≥0.10, not ±0.02.** The deprecated `ranking-algorithm-transparency-desktop.html` mockup
+# says ±0.02; EXPERIENCE.md §4 says ≥0.10 and is the canonical source, and the spines-win
+# rule governs. The deviation is recorded in the design doc.
+RANKING_HYSTERESIS_DELTA = Decimal("0.10")
+
+# "Tonight" starts at this local hour, in the **event's** zone.
+#
+# The same hour Event Fit uses, and the same rule: an event at 09:00 is later today, not
+# tonight, and calling it "tonight" would be a lie about the next eight hours.
+RANKING_EVENING_HOUR = 17
+
+# FR-5's Slot 1: an eligible **personal** event within this window is the must-know card.
+RANKING_PERSONAL_EVENT_WINDOW = timedelta(hours=48)
+
+# The boost a personal event gets in Slot 1.
+#
+# A personal event inside 48 hours is the one card that is certainly the user's and
+# certainly soon. The boost is a named constant rather than a fudge inside the formula, so
+# a reader can see exactly how much the slot-1 personal preference is worth.
+RANKING_PERSONAL_EVENT_BOOST = Decimal("0.20")
+
+# The Why-this Tag keys. Stable slugs — the server states facts, the client speaks the
+# user's language, so the label is the frontend's business.
+#
+# `discovery` is **not** a generic tag: FR-25 and the PRD §3 Glossary require it on Slot 3,
+# where it replaces a category name. UJ-1's `novel` is stale and does not govern.
+RANKING_TAG_NEARBY = "nearby"
+RANKING_TAG_TONIGHT = "tonight"
+RANKING_TAG_TOMORROW = "tomorrow"
+RANKING_TAG_WEEKEND = "weekend"
+RANKING_TAG_SAVED = "saved"
+RANKING_TAG_DISCOVERY = "discovery"
+
+# The prefix for a chip-match tag: `matches_music`, `matches_tech_meetups`.
+RANKING_TAG_CHIP_PREFIX = "matches_"
+
+# At most three Why-this Tags on a card (FR-6).
+RANKING_MAX_TAGS = 3
+
+# The tag order. Fixed, so two cards carrying the same tags always list them the same way
+# — an unordered set would make the rendered card depend on the database's mood.
+#
+# The order is also the **priority**: when more than three tags apply, the first three in
+# this order win. So a card that is nearby, tonight and matches a chip shows
+# `nearby, tonight, matches_music` — never three chip tags.
+RANKING_TAG_ORDER = (
+    RANKING_TAG_DISCOVERY,
+    RANKING_TAG_NEARBY,
+    RANKING_TAG_TONIGHT,
+    RANKING_TAG_TOMORROW,
+    RANKING_TAG_WEEKEND,
+    RANKING_TAG_SAVED,
+)
+
 # ── Pulse Preview (FR-2, AD-12, PRD §11.2) ────────────────────────────────────────
 #
 # The Pulse Preview is the **first value a visitor gets**, before they have an account:

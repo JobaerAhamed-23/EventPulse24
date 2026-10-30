@@ -15,9 +15,13 @@ the save-race protocol) belongs to the commands.
 from django.db import models
 from django.utils import timezone
 
+# Aliased as well, because `PulseDigest` has a field named `timezone`, and a field that
+# shadows the module name is a trap for whoever edits that class next.
+from django.utils import timezone as django_timezone
+
 from apps.personalization.fields import EncryptedTextField
 from shared.constants import ONBOARDING_STEP_COUNT
-from shared.models import AuditEntry, UUIDv7Model
+from shared.models import AppendOnlyModel, AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
 
@@ -580,3 +584,245 @@ class PersonalizationAuditEntry(AuditEntry):
     """The `personalization` audit log (AD-5). Append-only; written only through `write_audit`."""
 
     retention_category = RetentionCategory.AUDIT_LOG
+
+
+class PulseDigest(UUIDv7Model):
+    """One user's Pulse Digest for one local calendar day (FR-5, FR-8, AD-10).
+
+    **This row is the empty state.** FR-8's empty digest — a real digest with no cards —
+    is a fact the user is shown ("nothing near you today"), and it is different from
+    "we never composed for this user today", which is a job that has not run. One model
+    with nullable columns cannot tell those apart; a parent row with zero children can.
+
+    `is_empty` is **stored, not derived**, so a reader does not have to count children to
+    know whether this was a deliberate empty digest or a composition that happened to
+    fail. It is set at composition time.
+
+    **Unlike `DigestComposition`, this row is not append-only.** A digest is a fact about
+    a day, not a mutable record — but the row is still correctable, and the runtime role
+    keeps `UPDATE` on it so a correction can land. That is why `is_empty` is not
+    "immutable" here: the composition service sets it once, and nothing in this model
+    forbids a later correction.
+
+    **The local day is the user's day, not UTC's.** `local_date` is a `DateField` and
+    `timezone` records the IANA zone it was computed in, because "today" means different
+    things in Tokyo and Los Angeles and the digest must be able to say which it meant.
+    The pair is the unit; `local_date` alone would be ambiguous.
+
+    **Every relation is by value (OQ-8).** The user is a `UUIDField`, not a relation to
+    `User`.
+
+    There is no `updated_at`. A digest is a fact about a day, not a mutable record, and a
+    row whose `updated_at` can change invites the question of what changed.
+
+    Design: .specs-fire/intents/pulse-digest-and-trust/work-items/
+    digest-composition-models-design.md (decisions D1, D2, D4, D8, D9, D10).
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The user's local calendar day. A `DateField`, not a `DateTimeField`: the day is the
+    # unit, and `timezone` says which day it was.
+    local_date = models.DateField()
+    # The IANA zone the local date was computed in, e.g. "America/Los_Angeles".
+    timezone = models.CharField(max_length=64)
+    # When the digest was composed.
+    #
+    # `django.utils.timezone.now` spelled out, not `timezone.now`: the field named
+    # `timezone` above shadows the module inside this class body, and a field that
+    # shadows an import is a trap for whoever edits this class next.
+    composed_at = models.DateTimeField(default=django_timezone.now)
+    # FR-8: this digest is the empty state. Stored, not derived (D1).
+    is_empty = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            # One digest per user per local calendar day. This is the constraint that
+            # makes "deterministic per user per day" true at the database (D8).
+            models.UniqueConstraint(
+                fields=["user_id", "local_date"],
+                name="pulse_digest_user_date_uq",
+            ),
+        ]
+        indexes = [
+            # The digest read: today's digest for this user.
+            models.Index(fields=["user_id", "local_date"], name="pulse_digest_user_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The local date and whether this is the empty state. A local date is not PII —
+        # it is the user's own day, and it is already on the row (AD-13).
+        state = "empty" if self.is_empty else "composed"
+        return f"digest {self.local_date} ({state})"
+
+
+#: The slots, in the order they are read on a digest (FR-5: the must-know card is first).
+#:
+#: This order is **not** alphabetical and **not** the order rows were written in, so it
+#: needs a home of its own. A database index on a `CHAR` column sorts alphabetically, which
+#: would put "nearby" before "must_know" and "serendipity" last — so the read sorts the
+#: three rows in Python, against this tuple, and this tuple is the single place the slot
+#: order lives (D12).
+#:
+#: It is defined here, outside `DigestComposition.Slot`, because a `TextChoices` member
+#: holds a scalar: a tuple attribute inside the enum class would be read as an enum
+#: member and fail at import.
+DIGEST_SLOT_ORDER = ("must_know", "nearby", "serendipity")
+
+
+class DigestComposition(AppendOnlyModel, UUIDv7Model):
+    """One event's persisted explanation within one user's digest (AD-10, FR-5, FR-22).
+
+    **AD-10:** "the persisted Why-this Tags, Confidence Pulse, and Source Badge for one
+    Event in one user's digest at one composition time. A **Pulse Card is a projection of
+    it**, never a stored entity."
+
+    This row is not a cache of a decision — it **is** the decision. The card, the detail
+    screen and (later) the email all read this row, which is the only way three surfaces
+    cannot give three answers to "why this?". That is why it is append-only: a row that
+    could be rewritten would let the card and the detail screen disagree.
+
+    **Immutable, with nothing settable later (D3).** `append_only_mutable` is the
+    inherited empty frozenset, so no field may ever change after insert. This differs
+    from `EventStateChange`, whose `propagated_at` goes from NULL to a value exactly
+    once; nothing about a composition becomes known later.
+
+    **Every relation is by value (OQ-8, D2).** `digest_id` is the parent `PulseDigest`'s
+    id as a plain `UUIDField`, *not* a foreign key — even though `PulseDigest` is in the
+    same schema. A foreign key would cascade a digest's deletion into its children, and
+    AD-10 says a composition is immutable and must outlive its day. `event_id` is the
+    catalog Event's id by value, because AD-3 forbids a relation across the wall (the
+    same treatment `SavedEvent.event_id` uses).
+
+    `user_id` is denormalised onto the row. It is redundant with the parent digest, and
+    that redundancy is the point: the Detail Screen looks up "the most recent composition
+    for this `(user, event)` pair" in a single indexed lookup, and it must not have to
+    join through the parent to do it (D8).
+
+    **The score is an exact decimal, never a float.** `numeric(3,2)` holds `0.00`–`1.00`,
+    the range `domain/ranking.py` produces. FR-22's bucket boundaries are exact, so the
+    stored value has to be exact too.
+
+    **The tags are keys, not display strings** (D6). The server states facts; the client
+    speaks the user's language. The list order is the Why-this Tag order, exactly as
+    `EventFit.tags` stores it — the two explanation kinds stay structurally parallel.
+
+    **The Source Badge is a type, not a label and not an icon** (EXPERIENCE.md §4). The
+    server names the type; the frontend owns the label and the glyph. A personal event
+    has no source at all, so its badge is null — and a check constraint says so (D7).
+
+    Design: .specs-fire/intents/pulse-digest-and-trust/work-items/
+    digest-composition-models-design.md (decisions D2-D12).
+    """
+
+    class Slot(models.TextChoices):
+        """Which slot the event occupies (FR-5, Amendment A-2).
+
+        **The order the slots are read in lives in `DIGEST_SLOT_ORDER`**, just above this
+        class (D12). The three slots are read in a fixed order — must-know, then nearby,
+        then serendipity — and that order is not alphabetical, not numeric, and not the
+        order rows were written in. A `CHAR` index sorts alphabetically, so the index on
+        `(digest_id, slot)` is for *lookup*, not for *ordering*: the read sorts the three
+        rows in Python, against that order.
+
+        The order cannot live *inside* this class: a `TextChoices` member holds a scalar,
+        so a tuple attribute here would be read as an enum member and fail at import.
+        """
+
+        MUST_KNOW = "must_know"
+        NEARBY = "nearby"
+        SERENDIPITY = "serendipity"
+
+    class EventKind(models.TextChoices):
+        """Whether the event is a public catalog Event or the user's own (D7).
+
+        Not decoration: a personal event is a row in `personal`, not in `catalog`, so it
+        has no source, no Source Badge, and no catalog `event_version`.
+        """
+
+        PUBLIC = "public"
+        PERSONAL = "personal"
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+    # Nothing about a composition becomes known after it is written (D3).
+    append_only_mutable = frozenset()
+
+    # The parent digest's id, by value — no foreign key (D2).
+    digest_id = models.UUIDField()
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The event's id, by value. A catalog Event's id for a public composition, a
+    # PersonalEvent's id for a personal one. No FK: AD-3 forbids the relation.
+    event_id = models.UUIDField()
+    event_kind = models.CharField(max_length=16, choices=EventKind.choices)
+    slot = models.CharField(max_length=16, choices=Slot.choices)
+    # The raw Relevance Pulse. `numeric(3,2)` — exact, and exactly the range
+    # `domain/ranking.py` produces (D5).
+    score = models.DecimalField(max_digits=3, decimal_places=2)
+    # FR-22's Confidence Pulse: 1 to 5, and no sixth value (D5).
+    bucket = models.PositiveSmallIntegerField()
+    # The ordered Why-this Tag keys. The list order is the tag order (D6).
+    tags = models.JSONField(default=list)
+    # The Source Badge *type*. Null for a personal event, which has no source (D6, D7).
+    source_badge = models.CharField(max_length=32, null=True, blank=True)
+    # The catalog Event's version at composition time. Null for a personal event (D7).
+    event_version = models.PositiveIntegerField(null=True, blank=True)
+    # When this composition was made.
+    composed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        # The append-only guards must also apply to related-object paths (D3).
+        base_manager_name = "objects"
+        constraints = [
+            # No duplicate event within one digest — FR-5's "a Pulse Card in the digest
+            # is not a duplicate of another", held at the database (D8).
+            models.UniqueConstraint(
+                fields=["digest_id", "event_id"], name="digest_composition_digest_event_uq"
+            ),
+            # FR-22's bucket is 1 to 5.
+            models.CheckConstraint(
+                condition=models.Q(bucket__gte=1) & models.Q(bucket__lte=5),
+                name="digest_composition_bucket_ck",
+            ),
+            # A public event has a source and a version; a personal one has neither (D7).
+            #
+            # The kind is compared as a literal string, not as `EventKind.PUBLIC`: the
+            # enum and the model class are both still being defined while this body
+            # executes, so neither name is bound yet. The literal *is* the enum's value —
+            # the two are pinned together by `test_digest_composition_kind_values_match_the
+            # _constraint`.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(event_kind="public")
+                    & models.Q(event_version__isnull=False)
+                    & models.Q(source_badge__isnull=False)
+                )
+                | (
+                    models.Q(event_kind="personal")
+                    & models.Q(event_version__isnull=True)
+                    & models.Q(source_badge__isnull=True)
+                ),
+                name="digest_composition_kind_shape_ck",
+            ),
+        ]
+        indexes = [
+            # The Detail Screen's "most recent composition for this (user, event) pair" —
+            # one indexed lookup, and the descending `composed_at` means the newest row
+            # is the first the index yields (D8).
+            models.Index(
+                fields=["user_id", "event_id", "-composed_at"], name="digest_comp_user_event_idx"
+            ),
+            # The digest read: every composition of one digest. For lookup, not order (D12).
+            models.Index(fields=["digest_id", "slot"], name="digest_comp_digest_slot_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The slot and the bucket, and nothing else (D10). The event's title is untrusted
+        # source text; putting it here would put it in every log line and every admin
+        # list column (AD-9, AD-13). Django's `__repr__` delegates to `__str__`, so
+        # `repr()` is safe for free — the same one-lever pattern `CalendarConnection`
+        # uses to keep its credential out of `repr`.
+        return f"{self.slot} digest composition, bucket {self.bucket}"
