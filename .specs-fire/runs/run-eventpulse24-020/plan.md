@@ -4171,3 +4171,726 @@ and 3 → the home; plus a second pass that skips everything.
 - **The mobile layouts** — `EXPERIENCE.md` lists the step 2 and 3 mobile mockups as
   pending; the steps are a single column and must not break narrow, but there is nothing
   to match.
+
+
+---
+
+# Implementation Plan: Frontend Pulse Preview
+
+**Work Item:** frontend-pulse-preview
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Complexity:** medium
+
+## The Problem
+
+`/preview` is where every anonymous visitor to `/` is sent, and it does not exist — so
+the redirect built two items ago lands on a 404. It is the first value anyone gets before
+they have an account: three cards for their city, a say in which city that is, and one
+soft invitation to sign up.
+
+The work is mostly in deciding **what the page is allowed to say**, because the mockup
+says four things the API cannot support.
+
+**1. The dots are not what the mockup calls them.** `pulse-preview-desktop.html` prints a
+legend — *"Confidence dots show how many sources confirm a listing (5 = verified across
+the open web; 1 = single source)"* — and `EXPERIENCE.md` defines `Indicator.Confidence`
+the same way. The API's `score` is the **Event Fit**: `min(how soon it starts, how well
+its facts were extracted)` (`domain/event_fit.py`). It counts no sources. AD-10 exists
+precisely because these indicators look identical on screen and must never be substituted;
+this item's AC says to label the 1–5 "as Event Fit's meaning" and to use no Relevance
+Pulse wording. So the legend and the tooltip are rewritten to say what the number is.
+
+**2. The stripes have no data.** The mockup gives each card a category stripe and a legend
+— Must-know / Nearby / Discovery. Those are Pulse **Digest** categories, assigned at
+digest composition from a session. `PreviewCardOut` has no category and cannot have one
+(AD-12). Rendering three stripes would mean inventing a category per card.
+
+**3. "3 events, all free" is unknowable.** The intent brief is explicit that catalog
+events have **no price field**. The pill says a thing we cannot check.
+
+**4. The card tags in the mockup are invented** — "classical", "free", "rooftop". The API
+sends tag **keys**: `tonight`, `tomorrow`, `this_weekend`, `in_<city>` (the labels are
+"the frontend's", by the backend's own comment).
+
+One more thing shapes the build: **AD-12 says the page must render identically for an
+anonymous and a signed-in visitor, and be cacheable**. That rules out a server-rendered
+read, which would also have no loading state — and the AC requires "Loading shows 3 card
+skeletons". So the page is a static shell and the data is fetched **in the browser**.
+That is also what makes geo work: the edge's `x-vercel-ip-city` arrives on the browser's
+own request, which `proxy.ts` forwards to Django. A fetch from the Next server would carry
+the server's headers, not the visitor's.
+
+## The Design
+
+### The route
+
+`app/preview/page.tsx` — a **static** server component. No `force-dynamic`, no session
+read, no cookie read: it renders the brand topbar, the hero, the section shell and the
+pre-auth footer, and mounts one client island. Being static is the AC, and it is checkable:
+a test asserts the module exports no `dynamic` and that nothing in it touches
+`next/headers` or `getSession`.
+
+### The island: `PreviewSection`
+
+It owns the request and the three states.
+
+```
+on mount → read the choice cookie → GET /api/public/preview[?city=…][&use_geo=false]
+   loading → three card skeletons
+   200 + items → the cards
+   200 + no items → "No preview available in {city} yet."
+   429 / error / thrown → "Couldn't load the preview. Refresh."
+```
+
+The cookie (`ep_preview_city`, a **session** cookie, written with `document.cookie`) holds
+one of three shapes: absent (ask, and use geo), `off` (the opt-out), or a city name
+("Change" picked one). It is read and written in the browser only, so the page stays
+cacheable and no server-side variation exists (`PREVIEW_VARY` is `Accept-Encoding` alone).
+
+*An observation, not a change:* because the API's `Vary` does not include the geo header,
+a shared cache keyed on URL alone could in principle serve one city's geo-resolved preview
+to another city's visitor. Sending an explicit `?city=` whenever the visitor has chosen
+one — which this page does — keeps those responses correctly keyed. The no-parameter geo
+case remains the backend's decision, recorded in its own walkthrough.
+
+### The banner (FR-2)
+
+`role="region"`, `aria-label="Location consent"`, with the locked sentence: **"Showing
+events near {city}. Use a different city?"** and three keyboard-reachable actions:
+
+| Action | What it does |
+|---|---|
+| **Use this** | Writes the resolved city to the cookie; the banner closes and does not return this session |
+| **Change** | Opens the picker: `GET /api/public/preview/cities`, one tap per city, writes it to the cookie and refetches |
+| **Don't use my location** | Writes `off`, refetches with `use_geo=false` (so the backend falls back to NYC and **does not consult geo at all**), and the banner does not return this session |
+
+It appears only when no choice has been made. It is rendered **after** the resolved city
+is known, so it can name it.
+
+### The card
+
+`components/preview/preview-card.tsx` — the smallest card the mockup needs, named so the
+Pulse Digest intent extends rather than forks it. Per card:
+
+- the title, the venue (when there is one), and the **local start time with its zone
+  label** (`utcInstantToLocal` plus the zone, which the AC asks for by name);
+- the Why-this tags as italic micro-tags (`--type-scale-microtag`), labelled from the
+  keys: `tonight` → "Tonight", `tomorrow` → "Tomorrow", `this_weekend` → "This weekend",
+  `in_<city>` → "In {City}", and an unknown key is rendered from its slug rather than
+  dropped;
+- the **Event Fit** 1–5 as five dots with `aria-label="Event Fit 4 of 5"` and a visible
+  "Event Fit" label, plus the hand-rolled tooltip (`<button aria-describedby>` + sibling
+  `<span role="tooltip">`, per `DESIGN.md`): *"How soon it is, and how complete our
+  details are. Not a personal recommendation."*;
+- the **Source Badge** as `EXPERIENCE.md` defines it — `official_site` → "Official",
+  `community` → "Community", `aggregator` → "Listing site", `crawled_html` → the amber
+  triangle with "Unverified" — each with its locked tooltip and a **visible text label**,
+  never icon-only;
+- the Save button and the locked helper "We'll hold your seat."
+
+No category stripe, no "all free" pill.
+
+### The soft wall (FR-2)
+
+The 1st and 2nd Save record the intent **in the island's state only**. The 3rd tap routes
+to `/signup`.
+
+**Pre-signup saves are not carried into the account, and the page says so.** There is no
+anonymous save endpoint — `POST /api/personal/saved-events` needs a session — and nothing
+in this intent replays them after sign-up. So the save's own confirmation is honest:
+*"Saved for this visit. Sign up to keep it."* Inventing a carry-over would mean stashing
+event ids and replaying them post-signup, which is a feature nobody has specified and
+which the Pulse Digest intent may well want to design properly.
+
+### Accessibility
+
+The banner is a labelled region with real buttons; the dots carry a text alternative and a
+visible label; every badge has its inline text; the tooltips are focus- and tap-reachable
+per the `DESIGN.md` pattern; nothing is carried by colour alone.
+
+## Deviations From the Mockup (recorded, not asked)
+
+- **The dots are labelled "Event Fit"**, with a tooltip that says what it measures. The
+  mockup's "sources confirm a listing" legend describes a different number (AD-10).
+- **No category stripes and no stripe legend** — the preview has no categories.
+- **No "3 events, all free" pill** — there is no price data; the head says "Next 3 days in
+  {city}" and the count, which are both true.
+- **Tags are the API's keys, labelled** — not the mockup's invented ones.
+- **No "Suggest an event" link** on the empty state. `EXPERIENCE.md` asks for it for
+  search-engine referrers, pointing at `/suggest?city=…`, and that route does not exist.
+  A dead link is the defect this intent has refused twice already; it is recorded for the
+  item that builds `/suggest`.
+- **Footer links as drawn**, including the two `#`s, exactly as `/signin` and `/signup`
+  already render them (`PreAuthFooter` is reused unchanged).
+
+## The Files
+
+### Created
+
+| File | Purpose |
+|------|---------|
+| `frontend/app/preview/page.tsx` | The static route: topbar, hero, section, footer |
+| `frontend/components/preview/preview-section.tsx` | The island: the fetch, the three states, the banner and the soft wall |
+| `frontend/components/preview/preview-card.tsx` | One card: time, tags, Event Fit, badge, Save |
+| `frontend/components/preview/geo-banner.tsx` | The consent banner and the city picker |
+| `frontend/components/preview/card-skeleton.tsx` | The three loading skeletons |
+| `frontend/lib/preview-labels.ts` | Tag keys → labels, badge types → label and tooltip |
+| `frontend/lib/preview-choice.ts` | The session cookie: read, write, and its three shapes |
+| a `*.test.ts(x)` beside each | See The Tests |
+
+### Modified
+
+| File | Change |
+|------|--------|
+| (none expected) | The page reuses `BrandTopbar` and `PreAuthFooter` as they are |
+
+No backend change and no client regeneration: both endpoints already exist in `schema.ts`.
+
+## The Tests
+
+| Rule | Test |
+|---|---|
+| The page is session-free and static | No `dynamic` export; the module reads no session and no cookies (AD-12) |
+| Renders from fixtures | Three cards: title, venue, local time + zone label |
+| The local time | A UTC instant renders in the card's own zone, with the zone shown |
+| The Event Fit | Five dots, `aria-label="Event Fit n of 5"`, a visible "Event Fit" label |
+| **No Confidence/Relevance wording** | The rendered page contains neither "Confidence" nor "Relevance" nor "confirm a listing" |
+| The tooltip | `aria-describedby` points at a sibling `role="tooltip"` that says what the number measures |
+| Tag labels | Each key renders its label; `in_brooklyn` → "In Brooklyn"; an unknown key still renders |
+| Source badges | Each of the four types renders its locked label and tooltip, with visible text |
+| Loading | Three skeletons while the request is in flight |
+| Empty | "No preview available in {city} yet.", with the API's city name |
+| An unsupported explicit city | The empty copy names **that** city, not the fallback's |
+| Error, 429, and a thrown request | "Couldn't load the preview. Refresh." |
+| The banner appears once | Shown with no cookie; hidden when one is set |
+| "Use this" | Writes the city to the cookie, closes the banner, makes no second request |
+| "Don't use my location" | Writes `off` **and** refetches with `use_geo=false` |
+| "Change" | Lists the cities from the API, and picking one refetches with `?city=` |
+| The cookie is a session cookie | No `expires`/`max-age`, and `SameSite=Lax` |
+| The soft wall | Saves 1 and 2 record and say "Saved for this visit. Sign up to keep it."; the 3rd routes to `/signup` |
+| The soft wall is per visitor, not per card | Three taps on three different cards still wall on the third |
+| Accessibility | The banner is a labelled region; its actions are buttons; the dots have a text alternative |
+
+**Revert verification:** every rule above reverted and watched to fail, in the same harness
+style — including the wording guard, the `use_geo=false` call, the cookie's shape, and the
+third-save wall.
+
+**Gates:** `make lint-web`, `make test-web`. Then a **live run-through** with
+`GEO_FAKE_CITY` set: the banner naming the fake city, "Don't use my location" falling back
+to NYC, "Change" switching cities, the empty state for an unsupported city, and the soft
+wall on the third save.
+
+## The Decisions, and Why
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Where the data is fetched | In the browser | AD-12's cacheable, session-free page; the edge's geo header is on the visitor's request; and the AC's loading state only exists if there is a load |
+| The page's rendering | Static shell | "Statically generated or ISR'd where the platform allows" — nothing on it varies per visitor |
+| The choice's home | A session cookie, written client-side | FR-2 says "persists in a cookie for the session"; writing it server-side would make the page vary |
+| The 1–5's label | "Event Fit", with what it measures | It is not the Confidence Pulse, and AD-10 forbids substituting one for the other |
+| The stripes | Omitted | A category would have to be invented per card |
+| Pre-signup saves | Not carried into the account, and said plainly | There is no anonymous save endpoint; a silent loss would be worse than a plain sentence |
+| The card component | `preview-card.tsx`, deliberately minimal | The Pulse Digest intent owns the full card and should extend this, not fork it |
+
+## What This Item Does Not Cover
+
+- **The Pulse Digest card** in full — categories, the Relevance Pulse, the conflict
+  indicator. A later intent.
+- **`/suggest`** and the SEO-referrer link on the empty state.
+- **Carrying pre-signup saves into the account** — unspecified; recorded here as a gap.
+- **`/events/:id`, `/events/near-me`, `/pricing`, `/privacy`, `/terms`, `/how`** — the
+  footer and the cards link to routes other intents build.
+- **The mobile layout** — `pulse-preview-mobile.html` exists but the AC names the desktop
+  mockup; the page is a single column and must not break narrow.
+
+---
+
+# Implementation Plan: End-to-End Proof & Contract Tests
+
+**Work Item:** e2e-proof-and-contract-tests
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Complexity:** medium
+
+## The Problem
+
+Twelve items of this intent are built and individually tested: accounts and sessions,
+onboarding, calendar connect, the ICS adapter, the poll, Event Fit, the Pulse Preview
+API, the geo port, and the three frontend surfaces. **Every one of them was tested in
+isolation.** Not one has been tested *together*.
+
+That gap is where this intent's real failures live. The preview's geo city and the
+calendar's address policy are the same policy seen from two ends. The session that
+onboarding creates is the session the personal-events endpoints read. The soft wall's
+third tap depends on the preview API's shape. A defect that only appears when the
+pieces compose — a column routed to the wrong schema, a session that the preview
+inadvertently varies on, a credential that leaks into a log line *because* a poll
+failed and logged its URL — is invisible to every test written so far.
+
+There is a second, harder problem. The AC asks for **a calendar connected to a local
+fixture ICS server**. The SSRF policy denies loopback, in two separate places, and
+neither of them can currently be relaxed:
+
+- `apps/personalization/services/calendar_connections.py:204` calls `is_denied`
+  **directly** in `_refused_host`. A loopback literal is refused **at connect time**,
+  before the row is ever created. Not injectable.
+- `adapters/calendar/ics.py:346` resolves its fetch port from the registry, which
+  constructs `HttpFetchAdapter()` with **no arguments** — so `deny=is_denied`, always.
+
+The AC says the allowance must be *"impossible to enable outside tests, and add a test
+proving that"*. That is a design requirement, not a fixture detail, and it is the part of
+this item that needs deciding before anything else is written.
+
+## The Design
+
+### The shape of the proof: one scenario, one test
+
+Following `run-eventpulse24-019`'s pattern, the scenario is **one test**, not a
+sequence. The reason is stated in that run's own test-report: *"the point of a proof is
+that the steps compose."* A pytest module whose steps share one transaction and one
+client is the only way to show that they compose — a chain of independent tests proves
+each step and not the whole.
+
+```
+test_the_whole_onboarding_and_calendar_flow_holds_together
+  1.  an anonymous visitor is sent from / to /preview
+  2.  the preview resolves the faked geo city, with Event Fit tags
+  3.  "Don't use my location" switches the preview to NYC
+  4.  the 3rd save routes to /signup (the soft wall)
+  5.  the visitor signs up and lands on /onboarding step 1
+  6.  they skip all, land on /, and the personal-events endpoints now work
+  7.  they sign out, sign back in, and / does not re-enter onboarding
+  8.  a password reset sends one transactional mail; the link sets a new password
+  9.  **reusing the link fails**
+  10. a second user connects a calendar pointed at the local fixture ICS server
+  11. the poll imports its events as PersonalEvents linked to the connection
+  12. an overlapping event produces the CONFLICT_PAIR behaviour
+  13. the fixture server returns 410 → the connection needs_reconnect, events remain
+  14. disconnecting removes exactly that connection's events; the user's own remain
+  15. a second calendar connection is refused with the calm upgrade message
+```
+
+**Steps 1–4 and 7 are frontend.** They are proven with **Vitest + jsdom** against the
+surfaces the last three items built, plus the pure route function in
+`frontend/lib/session.ts` (`homeRoute(session)`) that decides `/preview` vs
+`/onboarding` vs `/`. **Playwright is not installed and will not be added** — a new
+browser dependency is a scope decision this proof item should not make silently, and
+the behaviours the AC names (redirect, third-tap routing, sign-out/sign-in) are
+already covered by jsdom tests of the real components. **What the backend scenario
+cannot see — that the page is the same for an anonymous and a signed-in visitor — is
+proven by the backend side of AD-12** (below), which is the stronger check anyway:
+identical *bodies* from the API, not merely similar-looking markup.
+
+**Steps 5–15 are backend.** One `Client` (a `CsrfClient`, from `tests/csrf.py`) and one
+database, so the session created in step 5 is the session read in step 6.
+
+### The fixture ICS server
+
+**A local, switchable HTTP server, started by the test, on an ephemeral port.**
+`backend/tests/adapters/test_crawl_loopback.py` already shows the pattern — a raw
+`socket.create_server(("127.0.0.1", 0))` listener — but that one serves a single gzip
+body and cannot be told what to do next. This one must be able to answer **200 with a
+body**, **304**, and **410** on demand, because steps 11, 13 and 15 need all three.
+
+It is a **test-only module**, `backend/tests/e2e/fixture_ics_server.py`:
+- binds `127.0.0.1:0` and publishes the chosen port;
+- serves a **fixed** ICS body (so the import is deterministic), from
+  `backend/tests/fixtures/calendars/google.ics`, which already exists and is currently
+  unused;
+- a `set_status(410)`-style switch changes what it answers next, and a `requests` log
+  records every path it was asked for, so the test can assert the poll actually asked.
+
+**It is local and deterministic, with no live provider in CI.** The server binds to
+loopback and is started and stopped by the test itself.
+
+### The test-only allowance (the part that needs deciding)
+
+Two blockers stand between a loopback fixture server and a successful connect. They are
+separate and need separate answers, because they are separate kinds of check:
+
+**Blocker 1 — the connect-time pre-flight** (`calendar_connections._refused_host`).
+
+This is a *pre-flight*, not the policy. Its own docstring says so: the real check is the
+connect-time one, and "**it cannot be bypassed**". So the allowance here must **not**
+weaken the SSRF policy; it must let the row be created so that the connect-time check
+is the thing that runs.
+
+**Blocker 2 — the connect-time check itself** (`GuardedBackend.connect_tcp`).
+
+This one *is* the policy, and it is the thing that must be relaxed for the fixture
+server to be reachable at all.
+
+### The decision: one switch, in one place, that only tests can turn
+
+> **Corrected during implementation.** What shipped is **not** the settings flag this
+> section originally described. The flag was tried and it does not work — a *global*
+> setting switches the policy off for every test in the suite, not just the one that
+> asked for it, and the thirteen tests that pin the SSRF policy all stopped refusing.
+> The shape that shipped is a **per-call context manager** that is refused outright
+> outside the test settings module. The reasoning is recorded in full under
+> "The Files" above and in `backend/ports/fetch_policy.py`'s own docstring.
+
+**A context manager a test opens by name, which refuses to open at all unless the
+settings module in use is `config.settings_test`.**
+
+```python
+# ports/fetch_policy.py
+@contextmanager
+def allow_loopback_fetch() -> Iterator[None]:
+    if settings_module_name() != TEST_SETTINGS_MODULE:
+        raise LoopbackAllowanceUnavailable(...)
+    ...
+
+
+def fetch_deny_policy() -> Callable[[IPv4Address | IPv6Address], bool]:
+    """The address policy a fetch actually enforces."""
+    if loopback_allowed():
+        return lambda address: False
+    return is_denied
+```
+
+The rule that makes it safe:
+
+> **The permissive policy is available only inside an explicitly opened, test-only
+> block.** It is not a setting a production deployment can set — it is not read from
+> the environment at all, and `config/settings.py` does not define the name.
+
+So:
+- The **block refuses to open** under `config.settings` (the production one) or with no
+  settings module at all — it raises rather than granting the allowance.
+- The **flag is a `ContextVar`**, so it is per-thread and per-task: a test that opens
+  the block does not open it for the test that runs after it.
+- The **helper resolves the settings module by name** (`django.conf.settings` is not
+  enough — it cannot distinguish the two files) and checks it.
+
+**And a test proves it.** The AC asks for "a test proving that" the allowance cannot be
+enabled outside tests. `tests/e2e/test_loopback_allowance.py` asserts four things: the
+permissive policy is reachable inside the block under the test settings; the block
+**refuses to open** under `config.settings` and with no settings module; the default is
+the real deny table; and the flag does not leak on an exception, nor across contexts.
+It also asserts that the production settings module defines no `ALLOW_LOOPBACK`-named
+setting at all.
+
+**The port.** A fixture server on an ephemeral port needs its port in
+`settings.SOURCE_FETCH["allowed_ports"]`. `calendar_connections._refused_port` reads
+**the same setting**, so both move in lockstep — one change, both sides agree, and the
+test cannot accidentally pass one check and fail the other.
+
+**What this item does not do.** It does not weaken the policy for anyone. The
+production path keeps `is_denied`, the deny-list stays the single table, and the
+allowance is unreachable without the test settings module.
+
+### The credential invariant
+
+The AC asks that "the captured backend logs, the API responses and the frontend DOM
+snapshots never contain the fixture ICS URL, and the database column holds ciphertext".
+
+Four separate checks, because they are four separate leaks:
+
+| Leak | How it is closed |
+|---|---|
+| **The database** | The raw column is read, not the decrypted value: `CalendarConnection.objects.using(PERSONAL).values_list("credential", flat=True)` and asserted to be ciphertext — not the URL, and not the plaintext |
+| **The logs** | `caplog` captures the whole scenario; every record's message and `extra` is asserted to be free of the URL. This is where a failed poll would leak it, so the **410 step runs inside the capture** |
+| **The API responses** | Every response body the scenario receives is scanned for the URL |
+| **The DOM** | The frontend's rendered output is scanned in the jsdom steps |
+
+The URL is generated at runtime and **never appears literally in the test source**, so
+the assertion is a real search for a secret rather than a match on a constant.
+
+### The AD-12 invariant
+
+"`/api/public/preview` returns identical bodies with and without a session, and
+`/preview` renders the same for both."
+
+The **backend** half is the strong one and is asserted in the scenario: the same
+request, once anonymous and once with a valid session cookie, must return **byte-identical
+bodies**. This belongs in `backend/tests/architecture/test_preview_anonymity.py`, which
+already pins the preview's anonymity, rather than in the scenario — it is an invariant,
+not a flow.
+
+The **frontend** half is already proven by `frontend/app/preview/page.test.tsx` (no
+`dynamic`, no session, no cookies) and by the live run-through recorded in that item's
+test-report. It is **re-verified here** rather than re-implemented.
+
+### The architecture invariants
+
+The AC asks that AD-3 / AD-16 be asserted in `backend/tests/architecture/`. The
+existing `test_personal_events_invariants.py` already pins the personal-events
+invariants; these are **extended, not duplicated**:
+
+| Invariant | How it is proved |
+|---|---|
+| No new FK crosses schemas | The existing alias check, extended to the models this intent added (`Interest`, `CalendarConnection`) |
+| `identity` writes only `USER` | The write-ownership check, extended to the auth commands |
+| `personalization` writes `INTEREST` and `CALENDAR_CONNECTION` | As above, plus its existing entities |
+| `ingestion` writes `EVENT_FIT` | The existing event-fit separation check, extended for the persistence path |
+
+### The gates
+
+- `make test-backend` — the whole suite, including the scenario.
+- `make coverage-backend` — **≥80% overall, 100% on `domain/`**.
+- `make lint-backend` and `make lint-imports` — including any contract amended by
+  `ics-calendar-adapter`, **with the amendment's reason recorded in the contract's
+  description** (the AC asks for this by name).
+- `make manage ARGS=check` — including the retention category for every new model.
+- `backend/tests/worker/test_tick.py` — **untouched**, and `beat_schedule` still exactly
+  one 60s tick. The tick now enqueues `schedule_sources` *and* `schedule_calendars`; the
+  invariant is one **beat entry**, not one enqueue.
+- `make lint-web` and `make test-web` — the frontend half.
+- CI green, no skipped or quarantined tests.
+
+### The test report's contents
+
+The AC names six things the report must record:
+
+1. the scenario and its result;
+2. the enumeration-safety and token-reuse checks;
+3. the credential-leak sweep;
+4. the coverage figures;
+5. the **provisional** `CALENDAR_POLL_INTERVAL` with **OQ-7 still open**;
+6. the carried-forward gaps — OIDC, `SUBSCRIPTION` / the Pro cap, FR-1's first-digest
+   proof (moved to the Pulse Digest intent), "Free" tags and reliability in Event Fit,
+   and the PRD glossary amendment (OQ-6).
+
+## The Files
+
+> **Corrected during implementation.** The design below was *revised* while it was being
+> built, and the revision is recorded here rather than left in the transcript. The
+> original shape was **a settings flag** — `ALLOW_LOOPBACK_FETCH = True` in
+> `config/settings_test.py`, resolved by a helper in `domain/address_policy.py`. It was
+> tried, and it **does not work**: the flag is *global*, so it switches the SSRF policy
+> off for **every test in the suite**, not just the one that asked for it. The thirteen
+> tests that pin the policy — that a private address is refused, that a redirect to a
+> private address is refused, that a host resolving to any denied address is refused
+> without connecting — all stopped refusing. A test-only allowance that weakens the
+> policy everywhere is not a test-only allowance; it is a hole in the policy with a
+> convenient name.
+>
+> The shape that shipped is **a per-call context manager**,
+> `ports.fetch_policy.allow_loopback_fetch()`, which:
+>
+> - is **off by default**, so the thirteen policy tests keep passing unchanged — and
+>   they are the proof that the default really is the deny table;
+> - is **scoped to a block and to the current context** (a `ContextVar`), so it does
+>   not leak into the next test and is not inherited by an async task by accident;
+> - **refuses to open at all** unless the settings module in use is
+>   `config.settings_test` — the module's *name*, so there is nothing to set, export or
+>   pass. `config/settings.py` does not define the name at all.
+>
+> The permissive policy is `lambda address: False` — *admits everything*, which is why
+> it is reachable only inside an explicitly opened, test-only block. It is deliberately
+> not "deny loopback but allow the rest": an allowance that names an exception invites
+> the next exception, and this one is a test fact rather than a policy.
+>
+> The helper lives in `ports/`, not `domain/`, because `domain` may not import Django
+> (`domain-pure`) and the resolution needs the settings. `shared` is the wrong side of
+> the layering for the same reason — it sits *below* `domain` and may not import it.
+> `ports` is the layer both `apps` and `adapters` can reach, and `ports/registry.py`
+> already reads Django's settings, so the precedent is there.
+
+### Created
+
+| File | Purpose |
+|------|---------|
+| `backend/ports/fetch_policy.py` | The policy resolution and the test-only allowance: `fetch_deny_policy()`, `allow_loopback_fetch()`, and the settings-module check |
+| `backend/tests/e2e/fixture_ics_server.py` | The local, switchable ICS server (200 / 304 / 410) |
+| `backend/tests/e2e/test_onboarding_and_calendar_proof.py` | The scenario, as one test, plus the boundary cases |
+| `backend/tests/e2e/test_loopback_allowance.py` | Proves the allowance cannot be enabled outside tests |
+| `backend/tests/e2e/test_fixture_ics_server.py` | Drives the fixture server through the real hardened client: 200 / 304 / 410, the request log, the conditional headers, and that an untrusting client is still refused |
+| `backend/tests/architecture/test_write_ownership.py` | The AD-16 write-ownership check, over every table the tree writes |
+
+### Modified
+
+| File | Change |
+|------|--------|
+| `backend/config/settings_test.py` | **The flag is removed**, and a comment records why a global flag was the wrong shape. There is deliberately no allowance setting here at all |
+| `backend/apps/personalization/services/calendar_connections.py` | The pre-flight consults `fetch_deny_policy()`, so a test allowance reaches it without weakening anything |
+| `backend/adapters/crawl/http.py` | `GuardedTransport` and `HttpFetchAdapter` take an **optional SSL context** — a caller-supplied *trust anchor*, not a relaxation. The production wiring never passes one, and the default is still httpx's own with `trust_env=False` |
+| `backend/adapters/calendar/ics.py` | `calendar_limits()` reads `allowed_ports` from `settings.SOURCE_FETCH`, so the adapter and `_refused_port` cannot disagree about which ports are connectable |
+| `backend/tests/architecture/test_preview_anonymity.py` | The AD-12 byte-identical assertion, over **every** path the public router declares |
+| `backend/pyproject.toml` | The banned-API rule for `ports/fetch_policy.py` — `DJANGO_SETTINGS_MODULE` is Django's bootstrap variable, not deployment configuration |
+
+### The production behaviour that did change
+
+**Two production files changed, and neither changes what the server does.**
+
+- **`adapters/crawl/http.py`** — the *ability* to add a trust anchor. The default is
+  unchanged (`httpx.create_ssl_context(trust_env=False)`), verification stays on, and
+  the hostname is still checked. The proof needs the fixture's self-signed certificate
+  trusted; the alternative was to turn checking off, which is a much larger change than
+  adding an anchor. A test proves an untrusting client is still refused.
+- **`adapters/calendar/ics.py`** — the *source* of the port allowlist. It previously
+  hard-coded `{80, 443}` while `_refused_port` read
+  `settings.SOURCE_FETCH["allowed_ports"]`, so the two could disagree: an address could
+  be accepted at connect time and refused on every poll, with the only evidence being a
+  slug in the connection's error field. Both now read the same setting, which is what
+  makes them unable to disagree.
+
+**The deny-list is untouched.** `domain/address_policy.is_denied` remains the single
+table, and the production path enforces exactly what it always did.
+
+## The Tests
+
+| Rule | Test |
+|---|---|
+| The whole flow composes | The scenario, one test, 15 steps |
+| The preview is anonymous | The AD-12 byte-identical assertion, in `tests/architecture/` |
+| The allowance cannot escape the tests | `test_loopback_allowance.py`: the block **raises** under `config.settings` and with no settings module; the default is the real deny table; the flag is per-context and does not leak on an exception; the production settings define no `ALLOW_LOOPBACK`-named setting |
+| The fixture server answers what it is told | 200 / 304 / 410, and the request log |
+| The credential is ciphertext at rest | The raw column, read directly |
+| The credential is in no log line | `caplog` across the whole scenario, **including the 410 step** |
+| The credential is in no response | Every response body scanned |
+| The credential is in no DOM | The frontend's jsdom output scanned; the backend proves the served markup carries none either |
+| Enumeration safety | The reset request for an unknown email is indistinguishable from a known one |
+| Token reuse fails | The reset link works once; using it again fails |
+| The revoked feed keeps its events | 410 → `needs_reconnect`, and the imported events are still there |
+| Disconnect purges only its own | The connection's events go; the user's own remain |
+| The Free cap holds | A second connection is refused with the calm message |
+| The conflict pair appears | An overlapping imported event produces the `CONFLICT_PAIR` behaviour |
+| The tick is untouched | `test_tick.py` passes; `beat_schedule` is one entry |
+| The write ownership holds | `test_write_ownership.py`: every table the tree writes has exactly one owning app, and a planted cross-app write is caught |
+| The fixture server is real | `test_fixture_ics_server.py`: 200 / 304 / 410 through the **real** hardened client, the conditional headers, and that an untrusting client is still refused |
+
+**Revert verification:** each rule reverted and watched to fail, in the same harness
+style as the previous items — including the byte-identical assertion, the settings-module
+check, the ciphertext check, and the log sweep.
+
+## The Decisions, and Why
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| The scenario's shape | One test, not a sequence | "The point of a proof is that the steps compose" — a chain of independent tests proves each step and not the whole |
+| The fixture server | A raw socket server in the test | It must be switchable (200 / 304 / 410) and deterministic; `FakeCalendarAdapter` cannot be told what to answer, and the point is to exercise the *real* adapter against a real socket |
+| The allowance | A **per-call context manager** that refuses to open outside `config.settings_test` | The AC asks for it to be "impossible to enable outside tests". A *settings flag* was tried and is wrong: it is global, so it weakens the policy for the whole suite. A block that is opened by name and refuses to open under any other settings module is per-call, per-context, and unreachable in a deployment |
+| Where the helper lives | `ports/fetch_policy.py` | The **table** stays in `domain/address_policy.py` — there is exactly one deny-list and the helper must not become a second one. The **resolution** has to read the settings, and `domain` may not import Django (`domain-pure`), so it lives in `ports`, the layer both `apps` and `adapters` can reach |
+| The pre-flight | Consults the same helper; the connect-time check is untouched | The pre-flight's own docstring says it "cannot be bypassed" — so it must not be the thing that is relaxed |
+| The port allowance | One setting, read by both sides | `_refused_port` and the adapter read the same `allowed_ports`, so they cannot disagree |
+| The browser | Vitest + jsdom; **no Playwright** | A new browser dependency is a scope decision this proof item should not make silently, and the AC's frontend behaviours are already covered by jsdom tests of the real components |
+| The AD-12 check | In `tests/architecture/`, on the API's body | An identical *body* is a stronger claim than similar markup, and it is an invariant rather than a flow |
+| The invariants | Extended, not duplicated | `test_personal_events_invariants.py` already pins them; a second copy would drift |
+| Mailpit | An in-memory email adapter, patched at the seam | The proof needs the *message* — the reset link and its token — so the mailer is swapped for an in-memory adapter at `get_email_port`. Django's `mail.outbox` cannot carry a Django `EmailMessage`; the SMTP path is already covered by `test_email_smtp.py` |
+
+## What This Item Does Not Cover
+
+- **A live-provider poll.** The interval stays provisional and OQ-7 stays open. The
+  fixture server is deterministic, which is the point of it, and it is **not** evidence
+  that 1 hour is right for a real Google secret address.
+- **The browser.** No Playwright, no real browser, no visual check.
+- **A `next build` gate.** Still missing from the local `make` targets — run-019 flagged
+  it and it is still absent. **Recorded, not added**: a build gate is a project-wide
+  decision, not this item's.
+- **The Pulse Digest.** The placeholder home stands in for it; FR-1's "first digest
+  within 30 seconds" moves to the Pulse Digest intent.
+- **OIDC, `SUBSCRIPTION`, the Pro tier, "Free" tags, reliability weighting in Event
+  Fit, and the PRD glossary amendment (OQ-6).** All carried forward and recorded.
+- **Fixing a bug found here.** This is a proof item. A defect is fixed in the work item
+  that owns the code, or recorded as a known issue. **This item never expands its
+  scope.**
+
+---
+
+## Post-Review Amendments — `e2e-proof-and-contract-tests`
+
+The code review found eight issues and changed the design in three places. This section
+records the amendments, because a plan that is not updated after the work stops being
+the record of what was decided.
+
+### 1. The allowance has **two** gates, not one
+
+**The plan said**: "a per-call context manager that refuses to open outside
+`config.settings_test`."
+
+**The review found that this was not enough.** `DJANGO_SETTINGS_MODULE` is a
+**deployment-controlled** environment variable — `manage.py`, `config/asgi.py`,
+`config/wsgi.py` and `config/celery.py` all set it with `os.environ.setdefault(...)` —
+and `config.settings_test` is a **fully functional** settings module, not a crippled
+one. An operator who pointed it there would have reached the permissive policy, which
+admits *every* address, including a link-local metadata address.
+
+So the name check became **necessary but not sufficient**, and a second gate was added
+that no deployment can satisfy by configuration: **a test runner must be executing a
+test right now**, signalled by `PYTEST_CURRENT_TEST`.
+
+Both gates live in `_allowance_refusal_reason`, so there is one decision point for
+whether the permissive policy is reachable.
+
+**The second gate's first implementation was wrong.** It looked for a pytest `Session`
+object in `vars(pytest)`. Probing showed `get_config()` returns a `Config` outside
+pytest too, so it was not a discriminator. The environment signal replaced it.
+
+### 2. The fetch port carries a `credential` flag
+
+**The plan said**: "the production behaviour that changed: two production files."
+
+**The review found a third and a fourth**, and the third was a **live credential leak**.
+
+httpx logs the **full request URL** at INFO, and for a calendar that URL *is* the
+credential (AD-18). The deployment pinned `httpx` to `WARNING`, so the leak never
+appeared in a log — and the proof's own sweep was **structurally blind to it**, because
+`caplog.set_level("INFO")` sets the root logger and httpx was pinned below it.
+
+The obvious fix — a redaction pattern that scrubs every `https://` path — was tried and
+**reverted**: it broke `https://x.test/cb?token=[token]&page=2`, which the project
+deliberately keeps readable, because a source feed's URL is an *identifier*.
+
+So the fact moved to where it belongs: **the caller that holds a credential says so**.
+
+```python
+# ports/fetch.py
+def fetch(self, url, *, ..., credential: bool = False) -> FetchResult: ...
+```
+
+```python
+# adapters/calendar/ics.py
+credential=True,
+```
+
+```python
+# adapters/crawl/http.py
+@contextmanager
+def _url_logging_suppressed(credential: bool):
+    """Stop the HTTP client from writing the request URL, for a credential fetch."""
+```
+
+It is **additive**, defaults to `False`, and it is an *addition* to the `WARNING` pin
+rather than a replacement — a transport handed a credential URL by a caller who forgot
+to say so must still not write it.
+
+### 3. The transport refuses a context that disables verification
+
+**The plan said**: "the *ability* to add a trust anchor", and that "the production
+wiring never passes one".
+
+**The review found** that a caller-supplied context was used exactly as given, so a
+context with `CERT_NONE` or `check_hostname = False` would have made every fetch
+through it trivially interceptable — for a calendar, whose URL is the credential, the
+worst possible place to lose verification.
+
+`GuardedTransport` now refuses such a context at construction. The **ability to add a
+trust anchor** is unchanged and still the only thing the parameter enables.
+
+### 4. The fixture server moved to the top of the `tests` package
+
+**The plan said**: `backend/tests/e2e/fixture_ics_server.py`.
+
+**The review found** that the adapter's own credential test needs a **real socket** —
+a transport-level mock never reaches httpx's logger, so the test would have passed on a
+build where the fix was absent. The server therefore had to be reachable from a second
+package.
+
+It moved to `backend/tests/fixture_ics_server.py`, beside `tests/csrf.py` — which is
+where shared test-support code already lives — with a shared `fixture_server` fixture
+in `backend/tests/conftest.py`.
+
+### The plan's "two production files" became four
+
+| File | Why it changed |
+|------|---------------|
+| `adapters/crawl/http.py` | The trust anchor (planned), **plus** the URL-logging suppression and the verification assertion (review) |
+| `adapters/calendar/ics.py` | The shared port allowlist (planned), **plus** `credential=True` (review) |
+| `ports/fetch.py` | The `credential` keyword (review) |
+| `adapters/crawl/fake.py` | Accepts the new keyword — **a bug, not a feature**: the port is an ABC, so the keyword's absence was invisible until the call |
+
+**The deny-list is still untouched.** `domain/address_policy.is_denied` remains the
+single table, and the production path enforces exactly what it always did.

@@ -4,11 +4,13 @@ title: Frontend Pulse Preview
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - pulse-preview-api-and-geo
   - frontend-auth-surfaces
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-30T09:12:19.614Z
 ---
 
 # Work Item: Frontend Pulse Preview

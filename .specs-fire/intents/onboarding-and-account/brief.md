@@ -1,8 +1,9 @@
 ---
 id: onboarding-and-account
 title: Onboarding, Account & Calendar Connect
-status: in_progress
+status: completed
 created: 2026-10-29
+completed_at: 2026-10-30T11:16:02.900Z
 ---
 
 # Intent: Onboarding, Account & Calendar Connect

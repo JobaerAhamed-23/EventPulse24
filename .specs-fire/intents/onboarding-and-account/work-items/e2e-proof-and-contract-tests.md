@@ -4,11 +4,13 @@ title: End-to-End Proof & Contract Tests
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - frontend-onboarding-flow
   - frontend-pulse-preview
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-30T11:16:02.872Z
 ---
 
 # Work Item: End-to-End Proof & Contract Tests

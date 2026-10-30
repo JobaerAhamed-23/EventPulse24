@@ -276,7 +276,7 @@ intents:
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T07:45:51.037Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: auth-api-and-session-seam
         status: completed
         complexity: medium
@@ -284,7 +284,7 @@ intents:
         depends_on:
           - account-auth-core
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T15:19:57.280Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: onboarding-state-and-interests
         status: completed
         complexity: medium
@@ -292,21 +292,21 @@ intents:
         depends_on:
           - auth-api-and-session-seam
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T16:11:06.375Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: calendar-connection-model
         status: completed
         complexity: high
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T09:04:48.182Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: ics-calendar-adapter
         status: completed
         complexity: high
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T10:49:13.086Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: calendar-sync-and-polling
         status: completed
         complexity: high
@@ -315,7 +315,7 @@ intents:
           - calendar-connection-model
           - ics-calendar-adapter
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T12:19:19.508Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: calendar-connect-api
         status: completed
         complexity: medium
@@ -324,14 +324,14 @@ intents:
           - auth-api-and-session-seam
           - calendar-sync-and-polling
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-29T17:29:46.273Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: event-fit
         status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-30T01:38:21.917Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: pulse-preview-api-and-geo
         status: completed
         complexity: medium
@@ -339,7 +339,7 @@ intents:
         depends_on:
           - event-fit
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-30T05:00:02.339Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: frontend-auth-surfaces
         status: completed
         complexity: medium
@@ -347,7 +347,7 @@ intents:
         depends_on:
           - auth-api-and-session-seam
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-30T06:52:07.133Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: frontend-onboarding-flow
         status: completed
         complexity: medium
@@ -357,130 +357,27 @@ intents:
           - calendar-connect-api
           - frontend-auth-surfaces
         run_id: run-eventpulse24-020
-        completed_at: 2026-10-30T08:31:57.714Z
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: frontend-pulse-preview
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - pulse-preview-api-and-geo
           - frontend-auth-surfaces
+        run_id: run-eventpulse24-020
+        completed_at: 2026-10-30T11:16:02.872Z
       - id: e2e-proof-and-contract-tests
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - frontend-onboarding-flow
           - frontend-pulse-preview
+        run_id: run-eventpulse24-020
+        completed_at: 2026-10-30T11:16:02.872Z
 runs:
-  active:
-    - id: run-eventpulse24-020
-      scope: wide
-      work_items:
-        - id: account-auth-core
-          intent: onboarding-and-account
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T07:45:51.037Z
-        - id: calendar-connection-model
-          intent: onboarding-and-account
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T09:04:48.182Z
-        - id: ics-calendar-adapter
-          intent: onboarding-and-account
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T10:49:13.086Z
-        - id: calendar-sync-and-polling
-          intent: onboarding-and-account
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T12:19:19.508Z
-        - id: auth-api-and-session-seam
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T15:19:57.280Z
-        - id: onboarding-state-and-interests
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T16:11:06.375Z
-        - id: calendar-connect-api
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-29T17:29:46.273Z
-        - id: event-fit
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-30T01:38:21.917Z
-        - id: pulse-preview-api-and-geo
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-30T05:00:02.339Z
-        - id: frontend-auth-surfaces
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-30T06:52:07.133Z
-        - id: frontend-onboarding-flow
-          intent: onboarding-and-account
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-10-30T08:31:57.714Z
-        - id: frontend-pulse-preview
-          intent: onboarding-and-account
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-        - id: e2e-proof-and-contract-tests
-          intent: onboarding-and-account
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: frontend-pulse-preview
-      started: 2026-10-29T06:25:40.374Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -658,3 +555,47 @@ runs:
           mode: confirm
       started: 2026-10-29T02:04:32.027Z
       completed: 2026-10-29T05:31:56.212Z
+    - id: run-eventpulse24-020
+      scope: wide
+      work_items:
+        - id: account-auth-core
+          intent: onboarding-and-account
+          mode: validate
+        - id: calendar-connection-model
+          intent: onboarding-and-account
+          mode: validate
+        - id: ics-calendar-adapter
+          intent: onboarding-and-account
+          mode: validate
+        - id: calendar-sync-and-polling
+          intent: onboarding-and-account
+          mode: validate
+        - id: auth-api-and-session-seam
+          intent: onboarding-and-account
+          mode: confirm
+        - id: onboarding-state-and-interests
+          intent: onboarding-and-account
+          mode: confirm
+        - id: calendar-connect-api
+          intent: onboarding-and-account
+          mode: confirm
+        - id: event-fit
+          intent: onboarding-and-account
+          mode: confirm
+        - id: pulse-preview-api-and-geo
+          intent: onboarding-and-account
+          mode: confirm
+        - id: frontend-auth-surfaces
+          intent: onboarding-and-account
+          mode: confirm
+        - id: frontend-onboarding-flow
+          intent: onboarding-and-account
+          mode: confirm
+        - id: frontend-pulse-preview
+          intent: onboarding-and-account
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: onboarding-and-account
+          mode: confirm
+      started: 2026-10-29T06:25:40.374Z
+      completed: 2026-10-30T11:16:02.872Z
