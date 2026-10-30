@@ -39,7 +39,6 @@ from apps.personalization.credentials import fingerprint
 from apps.personalization.models import CalendarConnection, ConflictPair, PersonalEvent
 from apps.personalization.services.audit import write_audit
 from apps.personalization.services.personal_events import delete_personal_event
-from domain.address_policy import is_denied
 from domain.errors import (
     CalendarConnectionNotFoundError,
     CalendarProviderCapReached,
@@ -47,6 +46,7 @@ from domain.errors import (
     InvalidCalendarCredentialError,
 )
 from ports.calendar import Credential
+from ports.fetch_policy import fetch_deny_policy
 from shared.actor import Actor
 from shared.constants import CALENDAR_CLAIM_TTL, FREE_TIER_CALENDAR_PROVIDER_CAP
 from shared.credential_key import InvalidCredentialKey, parse_key
@@ -190,6 +190,14 @@ def _refused_host(hostname: str | None) -> None:
     **It cannot be bypassed.** The connect-time check still runs and still refuses, so a
     rebind between this check and the fetch does not get through.
 
+    **The policy it consults is the configured one.** It reads
+    `ports.fetch_policy.fetch_deny_policy()`, which is the real `is_denied` — and
+    stays the real `is_denied` — unless the *test settings module* is in use. The
+    test-only allowance lets a proof connect a calendar to a local fixture ICS server
+    on loopback, which this pre-flight would otherwise refuse before the row is
+    created; it is reachable only under `config.settings_test`, and
+    `tests/e2e/test_loopback_allowance.py` proves that.
+
     The host is never empty here: the caller has already refused an address with no
     netloc, and `urlsplit` on an address that has one always yields a hostname.
     """
@@ -201,7 +209,7 @@ def _refused_host(hostname: str | None) -> None:
         # Not a literal: a name. The connect-time check resolves it.
         return
 
-    if is_denied(address):
+    if fetch_deny_policy()(address):
         raise InvalidCalendarCredentialError(details={"field": "url"})
 
 

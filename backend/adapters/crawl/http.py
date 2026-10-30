@@ -23,10 +23,12 @@ One `httpx.Client` per fetch, closed afterwards; no cookie is ever sent.
 
 import logging
 import socket
+import ssl
 import threading
 import time
 import zlib
 from collections.abc import Callable, Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from uuid import UUID
@@ -35,7 +37,6 @@ import httpcore
 import httpx
 from django.conf import settings
 
-from adapters.crawl.address_policy import is_denied
 from ports.fetch import (
     NOT_MODIFIED,
     FetchBlockedError,
@@ -50,6 +51,7 @@ from ports.fetch import (
     SourceFetchPort,
 )
 from ports.fetch import FetchLimits as _PortFetchLimits
+from ports.fetch_policy import fetch_deny_policy
 
 logger = logging.getLogger(__name__)
 
@@ -137,13 +139,16 @@ class GuardedBackend(httpcore.NetworkBackend):
         *,
         getaddrinfo: GetAddrInfo = socket.getaddrinfo,
         connector: httpcore.NetworkBackend | None = None,
-        deny: AddressPolicy = is_denied,
+        deny: AddressPolicy | None = None,
     ) -> None:
         self._limits = limits
         self._deadline = deadline
         self._getaddrinfo = getaddrinfo
         self._connector = connector or httpcore.SyncBackend()
-        self._deny = deny
+        # Resolved **now**, not at import time: the policy is a fact about the settings
+        # module in use, and that can differ between the process that imported this
+        # module and the one running the test. `None` means "the configured policy".
+        self._deny = deny if deny is not None else fetch_deny_policy()
 
     def _resolve(self, host: str, port: int) -> list[tuple]:
         """getaddrinfo with a timeout. It runs on a one-shot daemon thread that exits when the
@@ -213,17 +218,96 @@ class GuardedTransport(httpx.HTTPTransport):
 
     httpx 0.28 has no public way to pass a network backend; `_pool` is replaced instead.
     tests/adapters/test_crawl_http.py has a tripwire for an httpx upgrade that breaks this.
+
+    **`ssl_context` is an optional caller-supplied trust store.** It defaults to httpx's
+    own (`trust_env=False`, so the machine's CA bundle and no environment variable), and
+    the production wiring never passes one. A caller that passes one is *adding* a trust
+    anchor, not removing verification: the context still verifies the peer and still
+    checks the hostname. The end-to-end proof passes one so that it can trust the
+    fixture server's self-signed certificate — the alternative would be to turn
+    verification off, which this module will not do.
+
+    **That promise is enforced, not merely documented.** A caller-supplied context is
+    checked here, and a context that does not verify is refused with
+    `ValueError`. Without the check the module would accept a context with
+    `verify_mode = ssl.CERT_NONE` and `check_hostname = False` — which silently
+    disables certificate verification for every fetch that used it — and the
+    docstring's promise would be a statement of intent rather than a property of the
+    code. The code review found exactly that gap: the claim was true of the one
+    caller that existed and false of the module.
     """
 
-    def __init__(self, backend: GuardedBackend) -> None:
+    def __init__(self, backend: GuardedBackend, ssl_context: ssl.SSLContext | None = None) -> None:
         super().__init__(retries=0, trust_env=False)
+        context = ssl_context or httpx.create_ssl_context(trust_env=False)
+        _assert_context_verifies(context)
         self._pool = httpcore.ConnectionPool(
-            ssl_context=httpx.create_ssl_context(trust_env=False),
+            ssl_context=context,
             max_connections=4,
             max_keepalive_connections=0,
             retries=0,
             network_backend=backend,
         )
+
+
+def _assert_context_verifies(context: ssl.SSLContext) -> None:
+    """Refuse an SSL context that does not verify the peer.
+
+    **Two conditions, both required.** `verify_mode == ssl.CERT_NONE` means the
+    certificate is not checked at all; `check_hostname` being false means the name in
+    the certificate is not matched against the name that was asked for. Either one
+    alone is enough to make a fetch trivially interceptable, so both are checked.
+
+    The check is on the *context the caller supplied*, not on the default — the
+    default is httpx's own, which is known to verify, and is not re-checked.
+    """
+    if context.verify_mode != ssl.CERT_REQUIRED:
+        raise ValueError(
+            "the SSL context must verify the peer certificate "
+            f"(verify_mode must be ssl.CERT_REQUIRED, not {context.verify_mode!r})"
+        )
+    if not context.check_hostname:
+        raise ValueError("the SSL context must check the hostname (check_hostname must be True)")
+
+
+@contextmanager
+def _url_logging_suppressed(credential: bool):
+    """Stop the HTTP client from writing the request URL, for a credential fetch.
+
+    **httpx logs the URL, and for a calendar the URL is the credential** (AD-18).
+    At INFO it emits `HTTP Request: GET <full URL> "<status>"`, and a calendar's
+    path carries the provider's token. The end-to-end proof found this: with the
+    `httpx` logger lowered into its credential-leak sweep, the sweep failed on the
+    calendar's own request URL.
+
+    **The suppression is on the logger's *level*, and it is restored.** The logger
+    object is not replaced and its handlers are not touched — only its effective
+    level is raised for the duration — so a concurrent fetch in another thread that
+    *does* want its URL logged is unaffected by this one, and the level is exactly
+    what it was before.
+
+    **A credential fetch that produced no log line at all is still logged.** This
+    module's own record — "Calendar feed read", with counts and byte totals only — is
+    emitted by the calendar adapter, not by httpx, and it is what a reader needs.
+    What is suppressed is httpx's copy of the *URL*, and only that.
+
+    **`credential=False` is a no-op**, so an ordinary source fetch keeps httpx's
+    URL logging exactly as it had it. The deployment-wide `WARNING` pin in
+    `settings.LOGGING` stays as the second line of defence; this is the first.
+    """
+    if not credential:
+        yield
+        return
+
+    loggers = [logging.getLogger(name) for name in ("httpx", "httpcore")]
+    previous = [logger.level for logger in loggers]
+    for logger in loggers:
+        logger.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        for logger, level in zip(loggers, previous, strict=True):
+            logger.setLevel(level)
 
 
 # --- Content decoding ------------------------------------------------------------------------
@@ -319,14 +403,20 @@ class HttpFetchAdapter(SourceFetchPort):
         *,
         getaddrinfo: GetAddrInfo = socket.getaddrinfo,
         connector: httpcore.NetworkBackend | None = None,
-        deny: AddressPolicy = is_denied,
+        deny: AddressPolicy | None = None,
         clock: Clock = time.monotonic,
+        ssl_context: ssl.SSLContext | None = None,
     ) -> None:
         self._limits = limits or FetchLimits.from_settings()
         self._getaddrinfo = getaddrinfo
         self._connector = connector
-        self._deny = deny
+        # `None` means "the configured policy" — resolved here, so the adapter honours
+        # the settings module in force rather than the one that was in force when this
+        # module was imported.
+        self._deny = deny if deny is not None else fetch_deny_policy()
         self._clock = clock
+        # `None` means "httpx's own trust store". See `GuardedTransport`.
+        self._ssl_context = ssl_context
 
     def fetch(
         self,
@@ -337,12 +427,18 @@ class HttpFetchAdapter(SourceFetchPort):
         source_id: UUID | None = None,
         allow_cross_host_redirect: bool = False,
         limits: FetchLimits | None = None,
+        credential: bool = False,
     ) -> FetchResult:
         started = time.monotonic()
         status, size, error_code = None, 0, None
         try:
             result = self._fetch(
-                url, etag, last_modified, allow_cross_host_redirect, limits or self._limits
+                url,
+                etag,
+                last_modified,
+                allow_cross_host_redirect,
+                limits or self._limits,
+                credential=credential,
             )
             status, size = result.status, len(result.body)
             return result
@@ -394,6 +490,7 @@ class HttpFetchAdapter(SourceFetchPort):
         last_modified: str | None,
         allow_cross_host_redirect: bool = False,
         limits: FetchLimits | None = None,
+        credential: bool = False,
     ) -> FetchResult:
         bounds = limits or self._limits
         target = httpx.URL(url)
@@ -420,8 +517,9 @@ class HttpFetchAdapter(SourceFetchPort):
         if last_modified:
             headers["If-Modified-Since"] = last_modified
         with (
+            _url_logging_suppressed(credential),
             httpx.Client(
-                transport=GuardedTransport(backend),
+                transport=GuardedTransport(backend, self._ssl_context),
                 follow_redirects=True,
                 max_redirects=bounds.max_redirects,
                 trust_env=False,

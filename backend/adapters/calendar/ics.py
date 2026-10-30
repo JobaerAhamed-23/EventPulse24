@@ -80,7 +80,19 @@ def calendar_limits() -> FetchLimits:
 
     A fresh instance per fetch: the limits are immutable, but building one here keeps the
     adapter's numbers in one place and the transport free of calendar knowledge.
+
+    **The allowed ports are the deployment's, not the adapter's.** Every other bound
+    here is a named constant — a property of what a calendar feed *is*. The port
+    allowlist is different: it says which ports this deployment will open a socket to,
+    and `apps.personalization.services.calendar_connections._refused_port` refuses an
+    address whose port is not in it. So the two must read the **same** setting, or an
+    address could be accepted at connect time and refused on every poll (or the other
+    way round) — and the only evidence would be a slug in the connection's error field.
+
+    Reading the same setting is what makes them unable to disagree.
     """
+    from django.conf import settings
+
     return FetchLimits(
         user_agent=USER_AGENT,
         max_bytes=MAX_ICS_BYTES,
@@ -89,6 +101,7 @@ def calendar_limits() -> FetchLimits:
         read_timeout=READ_TIMEOUT,
         total_timeout=TOTAL_TIMEOUT,
         max_redirects=MAX_REDIRECTS,
+        allowed_ports=frozenset(settings.SOURCE_FETCH["allowed_ports"]),
     )
 
 
@@ -159,6 +172,12 @@ class IcsCalendarAdapter(CalendarPort):
                 last_modified=feed.last_modified,
                 allow_cross_host_redirect=True,
                 limits=calendar_limits(),
+                # **The URL is the credential** (AD-18), so the transport is told not to
+                # write it. httpx logs the request URL at INFO, and a calendar's path
+                # carries the provider's token — the end-to-end proof's credential-leak
+                # sweep caught exactly that line. The adapter's own record ("Calendar
+                # feed read", counts only) still says what happened.
+                credential=True,
             )
         except FetchHTTPError as exc:
             raise _status_outcome(exc.status) from None

@@ -133,7 +133,31 @@ class SourceFetchPort(ABC):
         source_id: UUID | None = None,
         allow_cross_host_redirect: bool = False,
         limits: FetchLimits | None = None,
+        credential: bool = False,
     ) -> FetchResult: ...
+
+
+# Why a caller may ask for the URL to be treated as a credential.
+#
+# **httpx logs the request URL.** At INFO it emits `HTTP Request: GET <full URL>
+# "<status>"`, and for a calendar that URL *is* the credential (AD-18): the path
+# carries the provider's token. The project's answer so far has been to pin the
+# `httpx` and `httpcore` loggers to WARNING in `settings.LOGGING`, which works — but
+# it is a *deployment-wide* answer to a *per-fetch* fact, and it silences those
+# loggers for ordinary source fetches too, where the URL is an identifier worth
+# keeping.
+#
+# The end-to-end proof found the gap. It lowered the `httpx` logger into its
+# credential-leak sweep — deliberately, because that logger is the one most likely to
+# carry the secret — and the sweep failed on the calendar's own request URL.
+#
+# So the fact is now carried where it belongs: **the caller that holds a credential
+# says so**, and the transport stops the HTTP library from writing the URL. A source
+# fetch does not ask, so its URL is still logged when the deployment wants it to be.
+#
+# This is an *addition* to the WARNING pin, not a replacement: the pin stays, because
+# a transport that is handed a credential-bearing URL by a caller who forgot to say so
+# must still not write it.
 
 
 # Why a caller may ask for a cross-host redirect.

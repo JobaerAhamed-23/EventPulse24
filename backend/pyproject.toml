@@ -65,6 +65,11 @@ known-first-party = [
 # config/ is the only reader of the environment; manage.py bootstraps DJANGO_SETTINGS_MODULE.
 "config/**" = ["TID251"]
 "manage.py" = ["TID251"]
+# ports/fetch_policy.py reads DJANGO_SETTINGS_MODULE to learn WHICH settings file is in
+# use — that is the test-only loopback allowance's whole mechanism, and it is the
+# bootstrap variable Django itself sets before any settings module is imported. It is
+# not deployment configuration, so it does not belong in config.env.
+"ports/fetch_policy.py" = ["TID251"]
 # Generated migrations carry Django's long built-in help_text strings.
 "**/migrations/*" = ["E501"]
 

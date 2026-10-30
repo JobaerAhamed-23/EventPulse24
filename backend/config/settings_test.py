@@ -16,6 +16,20 @@ DATABASES = build_databases(env, role="owner")
 DEBUG = False
 SESSION_COOKIE_SECURE = not DEBUG
 
+# **There is deliberately no loopback-allowance flag here.** The end-to-end proof
+# connects a calendar to a local fixture ICS server on loopback, which the SSRF
+# policy rightly denies, so it needs an allowance — but a *global* settings flag
+# would switch the policy off for every test in the suite, not just the one that
+# asked for it. (It was tried; the thirteen tests that pin the SSRF policy all
+# stopped refusing.)
+#
+# So the allowance is not a setting at all: it is `ports.fetch_policy.
+# allow_loopback_fetch()`, a context manager that a test opens by name. It is
+# refused outright unless the settings module in use is *this one* — the name is
+# the whole mechanism — so there is nothing for an operator to set, export or
+# pass. `tests/e2e/test_loopback_allowance.py` proves both halves: the
+# permissive policy inside the block, and the refusal under production settings.
+
 INSTALLED_APPS = [
     *BASE_INSTALLED_APPS,
     "tests.wall.catalog_probe",
