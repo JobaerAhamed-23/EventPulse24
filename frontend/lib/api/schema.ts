@@ -271,6 +271,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's Pulse Digest for today
+         * @description The user's Pulse Digest for their local day, as it was composed.
+         *
+         *     The response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.
+         *
+         *     Each card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.
+         *
+         *     The times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.
+         */
+        get: operations["apps_personalization_api_read_digest_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/events": {
         parameters: {
             query?: never;
@@ -804,6 +830,127 @@ export interface components {
              */
             id: string;
             onboarding: components["schemas"]["OnboardingStatusOut"];
+        };
+        /**
+         * DigestCardOut
+         * @description One Pulse Card on the digest (FR-6).
+         *
+         *     **The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;
+         *     the card shows 1-5 dots. Sending the score would invite the frontend to re-bucket it
+         *     — which is the "recomputed at render" failure wearing a different hat, and would break
+         *     the no-flicker rule, since the bucket the user saw this morning is a **persisted fact
+         *     about their day**. The Detail Screen's own read carries the score; the card's
+         *     contract is the card's.
+         *
+         *     **The tags are the persisted keys, in the persisted order.** They are not recomputed
+         *     and not re-sorted — the order is the priority order, and it is what the card and the
+         *     Detail Screen must agree on (AD-10). The client owns the labels.
+         *
+         *     **The times are instants plus the IANA zone.** AD-6: "display-time conversion happens
+         *     at the presentation edge, never in domain logic". The API does not send a
+         *     pre-formatted local string.
+         *
+         *     **The display facts are optional.** They live in the catalog (for a public event) or
+         *     in the user's own agenda (for a personal one), and either place may have moved on
+         *     since the composition. When they have, `catalog_event_missing` says so and the
+         *     *explanation* is still there — the composition is a fact about the day, and its
+         *     explanation must not change because a source moved.
+         *
+         *     **`source_badge` is the variant key, or `None`.** A personal event has no source, so
+         *     it has no badge; `None` here means "there is no source", not "unknown". The client
+         *     owns the label and the glyph.
+         */
+        DigestCardOut: {
+            /** Bucket */
+            bucket: number;
+            /** Canonical Url */
+            canonical_url?: string | null;
+            /**
+             * Catalog Event Missing
+             * @default false
+             */
+            catalog_event_missing: boolean;
+            /**
+             * Conflict
+             * @default false
+             */
+            conflict: boolean;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Kind */
+            event_kind: string;
+            /** Location */
+            location?: string | null;
+            /** Slot */
+            slot: string;
+            /** Source Badge */
+            source_badge?: string | null;
+            /** Start Time Tz */
+            start_time_tz?: string | null;
+            /** Start Time Utc */
+            start_time_utc?: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /** Title */
+            title?: string | null;
+            /**
+             * Tz Review Pending
+             * @default false
+             */
+            tz_review_pending: boolean;
+            /** Venue City */
+            venue_city?: string | null;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * DigestOut
+         * @description The signed-in user's Pulse Digest for their local day (FR-5, FR-8, FR-6).
+         *
+         *     **`status` says which of the three states this is**, and all three answer **200**.
+         *     A 404 would mean "there is no such digest", which is true of `not_composed` and false
+         *     of `empty` — and the client would have to map a status code onto "nothing happening"
+         *     versus "not ready", which is exactly the interpretation the API is supposed to
+         *     remove.
+         *
+         *     **The city carries its `city_source`,** because the fallback city is not the user's
+         *     city: FR-8's copy is "No qualifying events in **{city}**", and if the city is the
+         *     server's fallback rather than the user's, the copy is misleading.
+         *
+         *     **`timezone` is on the response.** The digest row stores the zone it was composed in,
+         *     and the client needs it to render the local date it was given. Without it, a client
+         *     showing "Wednesday" has no way to know which Wednesday.
+         */
+        DigestOut: {
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["DigestCardOut"][];
+            /** City */
+            city?: string | null;
+            /** City Source */
+            city_source?: string | null;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "composed" | "empty" | "not_composed";
+            /** Timezone */
+            timezone: string;
         };
         /**
          * DigestPreferenceIn
@@ -2015,6 +2162,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_read_digest_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestOut"];
                 };
             };
         };

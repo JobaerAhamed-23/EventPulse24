@@ -17,7 +17,7 @@ A conflict payload carries **no internal field**: no reminder-plan state, no cat
 no field the client has no use for.
 """
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Literal
 from uuid import UUID
 
@@ -38,6 +38,19 @@ ConflictAction = Literal["keep_both", "edit_new", "update_existing", "delete_new
 #: The actions a request may ask for. The service refuses a pairing that is illegal for the
 #: pair's kind, so the union is accepted here and narrowed there.
 ConflictResolutionValue = Literal["keep_both", "edit_new", "update_existing", "delete_new"]
+
+#: The three states a digest read can report, as a closed set.
+#:
+#: **They are three different facts, not two.** `composed` means there is a digest and it
+#: has cards; `empty` means there is a digest and it has none ("we looked and there was
+#: nothing"); `not_composed` means there is **no** digest — the composition job has not
+#: run yet. The last one is not the second one: a user who arrives before the worker has
+#: composed would be shown "nothing on the pulse today", which is a **lie**, because
+#: something might be on the pulse and the system simply has not looked yet.
+#:
+#: A `Literal` rather than a plain string, because the client has to tell the three apart
+#: and a generated type is worth more than the convenience of a `str`.
+DigestStatus = Literal["composed", "empty", "not_composed"]
 
 
 class PersonalEventOut(Schema):
@@ -397,6 +410,99 @@ class DigestPreferenceOut(Schema):
     include_personal_events: bool = True
 
 
+class DigestCardOut(Schema):
+    """One Pulse Card on the digest (FR-6).
+
+    **The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;
+    the card shows 1-5 dots. Sending the score would invite the frontend to re-bucket it
+    — which is the "recomputed at render" failure wearing a different hat, and would break
+    the no-flicker rule, since the bucket the user saw this morning is a **persisted fact
+    about their day**. The Detail Screen's own read carries the score; the card's
+    contract is the card's.
+
+    **The tags are the persisted keys, in the persisted order.** They are not recomputed
+    and not re-sorted — the order is the priority order, and it is what the card and the
+    Detail Screen must agree on (AD-10). The client owns the labels.
+
+    **The times are instants plus the IANA zone.** AD-6: "display-time conversion happens
+    at the presentation edge, never in domain logic". The API does not send a
+    pre-formatted local string.
+
+    **The display facts are optional.** They live in the catalog (for a public event) or
+    in the user's own agenda (for a personal one), and either place may have moved on
+    since the composition. When they have, `catalog_event_missing` says so and the
+    *explanation* is still there — the composition is a fact about the day, and its
+    explanation must not change because a source moved.
+
+    **`source_badge` is the variant key, or `None`.** A personal event has no source, so
+    it has no badge; `None` here means "there is no source", not "unknown". The client
+    owns the label and the glyph.
+    """
+
+    event_id: UUID
+    #: Which slot the event fills — `must_know`, `nearby` or `serendipity`.
+    slot: str
+    #: `public` or `personal`. FR-19 requires the "Personal" label, so the client needs
+    #: to know which kind it is looking at.
+    event_kind: str
+    #: The event's name. `None` when the display facts are gone — there is no name to
+    #: show, and the card does not invent one.
+    title: str | None = None
+    canonical_url: str | None = None
+    start_time_utc: datetime | None = None
+    end_time_utc: datetime | None = None
+    start_time_tz: str | None = None
+    #: A public event's place is a venue.
+    venue_name: str | None = None
+    venue_city: str | None = None
+    #: A personal event's place is free text ("2 Example Street"). It is **not** matched
+    #: against a city and it is **not** turned into a venue.
+    location: str | None = None
+    #: The persisted Why-this Tag keys, in the persisted order.
+    tags: list[str] = []
+    #: FR-22's Confidence Pulse: 1 to 5.
+    bucket: int
+    #: The Source Badge variant key, or `None` for a personal event.
+    source_badge: str | None = None
+    #: Whether the event's timezone is still under review — the time is approximated and
+    #: the client marks it as such.
+    tz_review_pending: bool = False
+    #: Whether the event's display facts are gone. The card is still valid and still
+    #: explained; the client marks it rather than hiding it.
+    catalog_event_missing: bool = False
+    #: Whether the event is in an open conflict pair (FR-58). A **live** condition of the
+    #: user's own calendar, read from the persisted pairs — so the indicator on a card
+    #: and the one on the Timeline cannot disagree.
+    conflict: bool = False
+
+
+class DigestOut(Schema):
+    """The signed-in user's Pulse Digest for their local day (FR-5, FR-8, FR-6).
+
+    **`status` says which of the three states this is**, and all three answer **200**.
+    A 404 would mean "there is no such digest", which is true of `not_composed` and false
+    of `empty` — and the client would have to map a status code onto "nothing happening"
+    versus "not ready", which is exactly the interpretation the API is supposed to
+    remove.
+
+    **The city carries its `city_source`,** because the fallback city is not the user's
+    city: FR-8's copy is "No qualifying events in **{city}**", and if the city is the
+    server's fallback rather than the user's, the copy is misleading.
+
+    **`timezone` is on the response.** The digest row stores the zone it was composed in,
+    and the client needs it to render the local date it was given. Without it, a client
+    showing "Wednesday" has no way to know which Wednesday.
+    """
+
+    status: DigestStatus
+    local_date: date
+    timezone: str
+    city: str | None = None
+    city_source: str | None = None
+    #: The three slots, in slot order. Empty for the `empty` and `not_composed` states.
+    cards: list[DigestCardOut] = []
+
+
 class OnboardingStatusOut(Schema):
     """How far through the onboarding the user is.
 
@@ -538,8 +644,11 @@ __all__ = [
     "ConflictResolutionOut",
     "ConflictResolutionValue",
     "ConflictSideOut",
+    "DigestCardOut",
+    "DigestOut",
     "DigestPreferenceIn",
     "DigestPreferenceOut",
+    "DigestStatus",
     "InterestChipOut",
     "InterestChipsOut",
     "InterestsIn",

@@ -49,7 +49,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from hashlib import blake2b
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db import connections, transaction
 
@@ -67,6 +66,7 @@ from apps.personalization.services.digest_candidates import (
     list_personal_candidates,
     list_saved_candidates,
 )
+from apps.personalization.services.digest_dates import local_date_for
 from domain.ranking import (
     RankingInputs,
     apply_hysteresis,
@@ -184,24 +184,6 @@ def _read_interest_keys(user_id: UUID) -> tuple[str, ...]:
         .values_list("chip_key", flat=True)
     )
     return tuple(rows)
-
-
-def _local_date(*, now: datetime, zone_name: str) -> date:
-    """The user's local calendar day.
-
-    **By conversion, not by arithmetic.** `now.astimezone(zone).date()` is the user's
-    day; adding 24 hours to a UTC date would be a different day for most of the
-    world, and a DST transition would break it twice a year.
-
-    An unknown zone falls back to UTC rather than raising: the zone is validated at
-    write time by the onboarding command, so an unknown name here means hand-edited
-    data — not that the composition should fail.
-    """
-    try:
-        zone = ZoneInfo(zone_name)
-    except (ZoneInfoNotFoundError, ValueError):
-        zone = ZoneInfo(DEFAULT_DIGEST_TIMEZONE)
-    return now.astimezone(zone).date()
 
 
 def _inputs_for_public(
@@ -587,7 +569,7 @@ def compose_digest(
     zone_name = preference.timezone if preference else DEFAULT_DIGEST_TIMEZONE
     user_city = (preference.city or "") if preference else ""
     include_personal_events = preference.include_personal_events if preference else True
-    local_date = _local_date(now=now, zone_name=zone_name)
+    local_date = local_date_for(now=now, zone_name=zone_name)
     user_chip_keys = _read_interest_keys(user_id)
 
     # --- the reads, outside the transaction (AD-3) --------------------------------

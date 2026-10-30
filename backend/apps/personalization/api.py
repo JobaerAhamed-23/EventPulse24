@@ -36,6 +36,8 @@ from apps.personalization.schemas import (
     ConflictOut,
     ConflictResolutionIn,
     ConflictResolutionOut,
+    DigestCardOut,
+    DigestOut,
     DigestPreferenceIn,
     InterestChipOut,
     InterestChipsOut,
@@ -61,6 +63,7 @@ from apps.personalization.services.calendar_connections import (
 )
 from apps.personalization.services.conflict_resolutions import resolve_conflict
 from apps.personalization.services.conflicts import PERSONAL_EVENT_SIDE
+from apps.personalization.services.digest_read import read_digest
 from apps.personalization.services.onboarding import (
     advance_step,
     get_onboarding_state,
@@ -359,6 +362,82 @@ def list_saved(request, filters: SavedEventListQuery = EVENT_LIST_QUERY):
             continue
         items.append(SavedEventOut.from_snapshot(saved, public))
     return SavedEventListOut(items=items, omitted=omitted)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The Pulse Digest (FR-5, FR-6, FR-8)
+#
+# One endpoint. It is a **read of persisted rows and nothing else** — no scoring, no
+# ranking, no tag generation. AD-10 says an explanation is persisted at composition time
+# and never recomputed at render, and this is where that rule either holds or is quietly
+# broken: a read that recomputed would be a read that could disagree with the card the
+# user saw that morning, and the disagreement would be silent.
+#
+# **All three states answer 200**, and the body's `status` says which one it is:
+# `composed`, `empty` (we looked and there was nothing) or `not_composed` (the
+# composition job has not run yet). The last two are different facts — showing a user
+# "nothing on the pulse today" before the worker has looked would be a lie.
+#
+# **There is no date parameter.** The endpoint serves *today's* digest, and a
+# date-parameterised endpoint is a digest *history* endpoint — a different surface, and
+# not this one.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/digest",
+    response={200: DigestOut},
+    summary="The signed-in user's Pulse Digest for today",
+    description=(
+        "The user's Pulse Digest for their local day, as it was composed.\n\n"
+        "The response always says which state it is in: `composed` (there is a digest "
+        "and it has cards), `empty` (there is a digest and it has none — nothing "
+        "qualifying near you today), or `not_composed` (the digest has not been built "
+        "yet). The last two are different facts and the client shows different things "
+        "for them.\n\n"
+        "Each card carries the event's name, time and place, up to three Why-this Tag "
+        "keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The "
+        "bucket is sent rather than the raw score: the bucket the user saw this "
+        "morning is a persisted fact about their day, and a client that re-bucketed it "
+        "could flicker.\n\n"
+        "The times are instants plus an IANA timezone; converting them for display is "
+        "the client's job. `catalog_event_missing` marks a card whose event the "
+        "catalog no longer holds — the explanation is still there, because a "
+        "composition is a fact about the day."
+    ),
+)
+def read_digest_endpoint(request):
+    """The signed-in user's Pulse Digest for their local day."""
+    digest = read_digest(user_id=request.user.pk, now=timezone.now())
+    return DigestOut(
+        status=digest.status,
+        local_date=digest.local_date,
+        timezone=digest.timezone,
+        city=digest.city,
+        city_source=digest.city_source,
+        cards=[
+            DigestCardOut(
+                event_id=card.event_id,
+                slot=card.slot,
+                event_kind=card.event_kind,
+                title=card.title,
+                canonical_url=card.canonical_url,
+                start_time_utc=card.start_time_utc,
+                end_time_utc=card.end_time_utc,
+                start_time_tz=card.start_time_tz,
+                venue_name=card.venue_name,
+                venue_city=card.venue_city,
+                location=card.location,
+                tags=list(card.tags),
+                bucket=card.bucket,
+                source_badge=card.source_badge,
+                tz_review_pending=card.tz_review_pending,
+                catalog_event_missing=card.catalog_event_missing,
+                conflict=card.conflict,
+            )
+            for card in digest.cards
+        ],
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

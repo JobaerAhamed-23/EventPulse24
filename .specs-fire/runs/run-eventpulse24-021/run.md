@@ -40,10 +40,10 @@ work_items:
   - id: digest-read-api
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: event-detail-api
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: digest-read-api
+current_item: event-detail-api
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -103,7 +103,7 @@ wide (12 work items)
 3. **digest-user-preferences** (confirm) — completed
 4. **digest-candidate-reads** (confirm) — completed
 5. **digest-composition-service** (validate) — completed
-6. **digest-read-api** (confirm) — pending
+6. **digest-read-api** (confirm) — completed
 7. **event-detail-api** (confirm) — pending
 8. **digest-scheduling** (confirm) — pending
 9. **frontend-pulse-card** (confirm) — pending
@@ -113,7 +113,7 @@ wide (12 work items)
 
 
 ## Current Item
-digest-read-api (confirm)
+event-detail-api (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -149,6 +149,17 @@ digest-read-api (confirm)
   — D1–D15 plus D8b, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-digest-composition-service.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-digest-composition-service.md`
+- `backend/apps/personalization/services/digest_dates.py` — the shared local-date rule:
+  `local_date_for(*, now, zone_name)` — the one place that decides which calendar day
+  `now` falls on for the user
+- `backend/apps/personalization/services/digest_read.py` — the read of the persisted
+  rows: `read_digest(*, user_id, now) -> DigestRead`, with the three states, the card
+  projection and the live conflict flag
+- `backend/tests/personalization/test_digest_api.py` — 30 tests
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/digest-read-api-design.md`
+  — D1–D12 plus D4b, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-digest-read-api.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-digest-read-api.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -183,6 +194,12 @@ digest-read-api (confirm)
 - `backend/shared/constants.py` — `INTEREST_CHIP_KEYWORDS`, the table that gives an
   **event** its interest chips; the interest term is the largest weight in the
   Relevance Pulse and was pinned to `0.0` without it
+- `backend/apps/personalization/schemas.py` — `DigestStatus`, `DigestCardOut`,
+  `DigestOut`
+- `backend/apps/personalization/api.py` — `GET /api/personal/digest`
+- `backend/apps/personalization/services/digest_composition.py` — `_local_date` replaced
+  by the shared `local_date_for`
+- `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` — the regenerated contract
 
 ## Decisions
 - **D4 — retention category `ACCOUNT_CONTENT`** for both tables. It is the only category
@@ -329,3 +346,62 @@ digest-read-api (confirm)
   would leave the user with **no digest at all**, which is worse than a digest whose
   day is computed in the fallback zone: the failure mode is a wrong day, not a missing
   card.
+- **D10 was reversed — the conflict flag is on the card, read live.** The design
+  originally said the card must not carry it, on the argument that a conflict is a
+  *live* condition while the composition is a *fact about a day*. The reasoning is
+  sound but the conclusion pointed at a surface that does not exist: there is **no
+  conflict read endpoint** — `list_conflict_pairs` is a service that nothing publishes.
+  And FR-58's indicator renders *on a card*, so a card that could not show it would be
+  missing one of the six trust signals, and "adaptive density never hides a trust
+  signal" is a locked rule. So the flag is read from the **persisted `ConflictPair`
+  rows at request time** and is **never computed** (AD-21) — live in the same sense
+  `tz_review_pending` is live. The composition row is untouched.
+- **The conflict lookup costs two queries, and one of them is a bridge.** The open
+  pairs, and the user's saves of the public cards: a pair's sides are the *personal*
+  rows (a `PersonalEvent`'s id and a `SavedEvent`'s id), while a public card names the
+  *catalog* event's id — so the save is what connects them. A personal card's
+  `event_id` **is** the `PersonalEvent`'s id and matches directly. The bound moved
+  from four to six; it is still a constant, and the save lookup is only reached once a
+  pair exists to look for.
+- **The `saved` flag is not a separate field.** It travels as the persisted `saved`
+  Why-this tag. The save lookup exists for the *conflict*, not for the flag, and
+  recomputing the flag would be recomputing an explanation.
+- **D5 was reversed — the card's display facts are optional.** The first draft had a
+  required `title: str` and an epoch `start_time_utc` for a card whose catalog event
+  had been dropped. A card showing an empty title at 1970-01-01 tells the user
+  something that is not true, and the sentinel would have been invisible in the schema
+  — every consumer would have had to know that the epoch means "gone". So `title`,
+  `canonical_url`, `start_time_utc`, `end_time_utc` and `start_time_tz` are all
+  `None` when the facts are gone, and `catalog_event_missing=True` says why. The card
+  still appears, still carries its bucket, its tags and its badge.
+- **The required fields are exactly the ones the composition holds.** `event_id`,
+  `slot`, `event_kind`, `tags`, `bucket`, plus the flags. AD-10 guarantees the
+  *explanation* is persisted, so it can never be missing; the *display facts* live
+  elsewhere and may have moved on.
+- **The local-date rule is shared, not copied.** `_local_date` was promoted out of
+  `digest_composition.py` into `digest_dates.py`, and both sides import it. The
+  failure this prevents is silent and nasty: a read that computed a different day
+  would report `not_composed` on a day that has three cards on it.
+- **The response's `timezone` is the digest's, not the preference's.** The read
+  resolves *today's* day from the **current** preference's zone — a user who moved may
+  now be on a different day — but the response reports the **digest row's** stored
+  zone. A mismatch is then visible rather than silent.
+- **The three states are three distinct 200 responses.** `composed`, `empty` and
+  `not_composed`. A 404 would be true of one and false of the other, and `not_composed`
+  is not an error: the digest is composed by a worker (AD-11), so a read that
+  composed one would be a write from a request path.
+- **The query bound is on the read, and the read is counted directly.** The first
+  bound was four and the read measured five — the extra two were the framework's auth
+  seam (the session row and the user row), paid by every endpoint on the router and
+  not the read's. The bound moved onto the service, where it means something, and the
+  endpoint path got its own test: the count must not grow with the number of cards.
+- **The duplicated `_read_preference` was left alone, deliberately.** Both
+  `digest_composition.py` and `digest_read.py` ask the same question of the same row.
+  The duplication is *already* the established answer to "how do two modules read the
+  preference?" — the alternative, a shared read module for a single-row lookup, would
+  be a module that exists for one function. It is recorded rather than removed.
+- **The endpoint's test `NOW` is the wall clock, and that is not an inconsistency.** The
+  composition service takes `now` as a parameter, so its tests choose it; the endpoint
+  resolves `now` itself, so the test has to write the digest for *today's* local date.
+  The first run answered `not_composed` for a digest that existed — and the fix was in
+  the test, not the code.

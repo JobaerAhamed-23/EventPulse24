@@ -369,6 +369,220 @@
         "title": "CurrentUserOut",
         "type": "object"
       },
+      "DigestCardOut": {
+        "description": "One Pulse Card on the digest (FR-6).\n\n**The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;\nthe card shows 1-5 dots. Sending the score would invite the frontend to re-bucket it\n— which is the \"recomputed at render\" failure wearing a different hat, and would break\nthe no-flicker rule, since the bucket the user saw this morning is a **persisted fact\nabout their day**. The Detail Screen's own read carries the score; the card's\ncontract is the card's.\n\n**The tags are the persisted keys, in the persisted order.** They are not recomputed\nand not re-sorted — the order is the priority order, and it is what the card and the\nDetail Screen must agree on (AD-10). The client owns the labels.\n\n**The times are instants plus the IANA zone.** AD-6: \"display-time conversion happens\nat the presentation edge, never in domain logic\". The API does not send a\npre-formatted local string.\n\n**The display facts are optional.** They live in the catalog (for a public event) or\nin the user's own agenda (for a personal one), and either place may have moved on\nsince the composition. When they have, `catalog_event_missing` says so and the\n*explanation* is still there — the composition is a fact about the day, and its\nexplanation must not change because a source moved.\n\n**`source_badge` is the variant key, or `None`.** A personal event has no source, so\nit has no badge; `None` here means \"there is no source\", not \"unknown\". The client\nowns the label and the glyph.",
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "integer"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "catalog_event_missing": {
+            "default": false,
+            "title": "Catalog Event Missing",
+            "type": "boolean"
+          },
+          "conflict": {
+            "default": false,
+            "title": "Conflict",
+            "type": "boolean"
+          },
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_kind": {
+            "title": "Event Kind",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          },
+          "source_badge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Badge"
+          },
+          "start_time_tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Tz"
+          },
+          "start_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Utc"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tz_review_pending": {
+            "default": false,
+            "title": "Tz Review Pending",
+            "type": "boolean"
+          },
+          "venue_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue City"
+          },
+          "venue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Name"
+          }
+        },
+        "required": [
+          "event_id",
+          "slot",
+          "event_kind",
+          "bucket"
+        ],
+        "title": "DigestCardOut",
+        "type": "object"
+      },
+      "DigestOut": {
+        "description": "The signed-in user's Pulse Digest for their local day (FR-5, FR-8, FR-6).\n\n**`status` says which of the three states this is**, and all three answer **200**.\nA 404 would mean \"there is no such digest\", which is true of `not_composed` and false\nof `empty` — and the client would have to map a status code onto \"nothing happening\"\nversus \"not ready\", which is exactly the interpretation the API is supposed to\nremove.\n\n**The city carries its `city_source`,** because the fallback city is not the user's\ncity: FR-8's copy is \"No qualifying events in **{city}**\", and if the city is the\nserver's fallback rather than the user's, the copy is misleading.\n\n**`timezone` is on the response.** The digest row stores the zone it was composed in,\nand the client needs it to render the local date it was given. Without it, a client\nshowing \"Wednesday\" has no way to know which Wednesday.",
+        "properties": {
+          "cards": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DigestCardOut"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "city_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City Source"
+          },
+          "local_date": {
+            "format": "date",
+            "title": "Local Date",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "composed",
+              "empty",
+              "not_composed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "local_date",
+          "timezone"
+        ],
+        "title": "DigestOut",
+        "type": "object"
+      },
       "DigestPreferenceIn": {
         "description": "The digest delivery time and timezone, and the two content preferences.\n\nThe delivery time is a **local wall clock** — \"09:00\" means nine in the morning where\nthe user is, not nine in the morning UTC. The zone says where that is.\n\n**The two new fields are optional, and omission means \"leave it alone\".** The city\nand the opt-out are separate settings, and a client that only wants to change the\ndelivery time must not silently clear the city or silently re-include personal\nevents.\n\n**`city` is the user's home city, in the catalog's spelling.** A city the catalog\ndoes not cover is stored as the fallback with `city_source` `fallback`, so the digest\ncan say \"we don't have your city yet\" rather than passing the fallback off as the\nuser's city.\n\n**A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an\nomitted field are the same value here, so \"leave it alone\" and \"clear it\" cannot be\ntold apart — and a shape that cannot say which one it means must not guess. Guessing\n\"clear\" would wipe the city of every client that sends the field as `null`, and\nguessing \"leave alone\" would make the value unreachable. So a `null` city is\n**left alone**, and clearing is not offered here at all: the service can clear the\ncity (`set_home_city(city=None)`), and a future settings endpoint may expose it\nthrough a shape that *can* distinguish the two. Until then, \"no city\" is reached by\nthe sign-up path or by the backfill, not by this request.",
         "properties": {
@@ -2358,6 +2572,29 @@
           }
         },
         "summary": "Reconnect a calendar whose access was revoked",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/digest": {
+      "get": {
+        "description": "The user's Pulse Digest for their local day, as it was composed.\n\nThe response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.\n\nEach card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.\n\nThe times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.",
+        "operationId": "apps_personalization_api_read_digest_endpoint",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The signed-in user's Pulse Digest for today",
         "tags": [
           "personal"
         ]
