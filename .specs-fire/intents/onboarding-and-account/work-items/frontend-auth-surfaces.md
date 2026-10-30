@@ -4,7 +4,7 @@ title: Frontend Auth Surfaces & Signed-in Home
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - auth-api-and-session-seam
 created: 2026-10-29

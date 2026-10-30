@@ -92,6 +92,17 @@ class Settings(BaseSettings):
     # The fake fetch adapter's fixtures (index.json + files). Not needed when fetching over http.
     source_fixtures_dir: Path = REPO_ROOT / "backend" / "tests" / "fixtures" / "sources"
 
+    # FR-2: the city the **fake** geo adapter reports. The fake is the local and CI default
+    # (ADAPTER_MODE=fake), and the work item asks for it to be "configurable to return a
+    # chosen city" — so this is where the chosen city comes from.
+    #
+    # Unset or empty: the fake reports **no location**, which is the geo-miss branch. Set it
+    # to a supported city and every request resolves to that city; set it to an unsupported
+    # one and the endpoint takes the fallback branch.
+    #
+    # This is the *fake's* configuration, so it has no effect when ADAPTER_MODE=real.
+    geo_fake_city: str | None = None
+
     @field_validator("django_allowed_hosts", "csrf_trusted_origins", mode="before")
     @classmethod
     def split_comma_separated(cls, value: object) -> object:

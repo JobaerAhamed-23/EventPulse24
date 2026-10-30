@@ -525,6 +525,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Pulse Preview for a city
+         * @description Up to three Pulse Cards for a city, each with its Event Fit score and Why-this tags and its Source Badge. With no `city` parameter the city is inferred from the edge's geo header; an explicit `city` overrides it; `use_geo=false` is the visitor's 'Don't use my location' choice and the location is then not consulted at all. The response says which city was resolved and how it was resolved. No session is used and none is set.
+         */
+        get: operations["apps_catalog_preview_api_preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/preview/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cities the Pulse Preview can serve
+         * @description The supported cities, alphabetically, for the one-tap city picker. A city is supported when the catalog has at least one upcoming public event with an Event Fit for it. No session is used and none is set.
+         */
+        get: operations["apps_catalog_preview_api_preview_cities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1144,6 +1184,65 @@ export interface components {
             start_time_tz?: string | null;
             /** Start Time Utc */
             start_time_utc?: string | null;
+        };
+        /**
+         * PreviewCardOut
+         * @description One card in the Pulse Preview.
+         */
+        PreviewCardOut: {
+            /** City */
+            city: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Score */
+            score: number;
+            /** Slug */
+            slug: string;
+            /** Source Badge */
+            source_badge: string;
+            /** Source Name */
+            source_name: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Tags */
+            tags: string[];
+            /** Title */
+            title: string;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * PreviewCitiesOut
+         * @description The supported cities, for the one-tap city picker.
+         */
+        PreviewCitiesOut: {
+            /** Cities */
+            cities: string[];
+        };
+        /**
+         * PreviewOut
+         * @description The preview for a city.
+         *
+         *     **`city` is always present**, even when `items` is empty: the empty case is a city
+         *     the catalog does not cover, and the frontend shows "No preview available in {city}
+         *     yet." — it needs the name to say it. It is never another city's name: an
+         *     unsupported explicit city returns an empty preview carrying **that** city's name.
+         */
+        PreviewOut: {
+            /** City */
+            city: string;
+            /** City Source */
+            city_source: string;
+            /** Items */
+            items: components["schemas"]["PreviewCardOut"][];
         };
         /**
          * SavedEventListOut
@@ -2250,6 +2349,67 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_preview_api_preview: {
+        parameters: {
+            query?: {
+                city?: string | null;
+                use_geo?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_preview_api_preview_cities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewCitiesOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

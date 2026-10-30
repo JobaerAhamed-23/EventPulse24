@@ -10,6 +10,10 @@ FAKE_ADAPTERS = {
     "billing": "adapters.billing.fake.FakeBillingAdapter",
     "calendar": "adapters.calendar.fake.FakeCalendarAdapter",
     "fetch": "adapters.crawl.fake.FakeFetchAdapter",
+    # FR-2: the fake geo adapter reports the city GEO_FAKE_CITY names. It is the local and
+    # CI default, and it is what makes the geo hit, the geo miss and the fallback
+    # branches testable without a header.
+    "geo": "adapters.geo.fake.FakeGeoAdapter",
     # The throttle fake counts in memory, so its window is controlled by the test's clock.
     "throttle": "adapters.throttle.memory.InMemoryThrottleAdapter",
 }
@@ -19,12 +23,19 @@ FETCH_ADAPTERS = {"fake": FAKE_ADAPTERS["fetch"], "http": HTTP_FETCH_ADAPTER}
 
 CALENDAR_ADAPTER = "adapters.calendar.ics.IcsCalendarAdapter"
 
+HEADER_GEO_ADAPTER = "adapters.geo.header.HeaderGeoAdapter"
+
 # Filled in by the intents that build the real gateway, email provider, Stripe and ICS adapters.
 REAL_ADAPTERS: dict[str, str] = {
     "fetch": HTTP_FETCH_ADAPTER,
     # The ICS adapter serves Google, Apple and Outlook alike: they all publish
     # iCalendar, so there is one adapter, not three.
     "calendar": CALENDAR_ADAPTER,
+    # FR-2: the real geo adapter reads the edge's geo header. There is no vendor to call
+    # and no database to consult — the edge already knows where the request came from —
+    # so the real adapter needs no credentials and no configuration beyond the header's
+    # name. It is therefore available in real mode from the start.
+    "geo": HEADER_GEO_ADAPTER,
     # Redis is already in the stack (the Celery broker), so the throttle has a real
     # adapter from the start.
     "throttle": "adapters.throttle.redis.RedisThrottleAdapter",

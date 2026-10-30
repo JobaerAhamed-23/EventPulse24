@@ -187,6 +187,7 @@ source_modules = [
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
+    "adapters.geo",
     "adapters.logging",
     "adapters.throttle",
 ]
@@ -213,6 +214,7 @@ source_modules = [
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
+    "adapters.geo",
     "adapters.llm",
     "adapters.logging",
     "adapters.throttle",
@@ -235,6 +237,7 @@ source_modules = [
     "adapters.billing",
     "adapters.calendar",
     "adapters.email",
+    "adapters.geo",
     "adapters.llm",
     "adapters.logging",
     "adapters.throttle",

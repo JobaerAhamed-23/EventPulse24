@@ -333,13 +333,15 @@ intents:
         run_id: run-eventpulse24-020
         completed_at: 2026-10-30T01:38:21.917Z
       - id: pulse-preview-api-and-geo
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - event-fit
+        run_id: run-eventpulse24-020
+        completed_at: 2026-10-30T05:00:02.339Z
       - id: frontend-auth-surfaces
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -438,17 +440,18 @@ runs:
         - id: pulse-preview-api-and-geo
           intent: onboarding-and-account
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-30T05:00:02.339Z
+        - id: frontend-auth-surfaces
+          intent: onboarding-and-account
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: frontend-auth-surfaces
-          intent: onboarding-and-account
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: frontend-onboarding-flow
           intent: onboarding-and-account
           mode: confirm
@@ -470,7 +473,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: pulse-preview-api-and-geo
+      current_item: frontend-auth-surfaces
       started: 2026-10-29T06:25:40.374Z
   completed:
     - id: run-eventpulse24-001

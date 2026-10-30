@@ -4,10 +4,12 @@ title: Pulse Preview API & Geo Port
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - event-fit
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-30T05:00:02.339Z
 ---
 
 # Work Item: Pulse Preview API & Geo Port

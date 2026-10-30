@@ -171,6 +171,11 @@ SOURCE_FETCH = {
     "fixtures_dir": env.source_fixtures_dir,
 }
 
+# FR-2: the city the **fake** geo adapter reports (adapters.geo.fake). Unset: the fake
+# reports no location, which is the geo-miss branch. It has no effect in real mode, where
+# the adapter reads the edge's geo header instead.
+GEO_FAKE_CITY = env.geo_fake_city
+
 # Used by the SMTP email adapter; locally this is Mailpit. Django 6.1 MAILERS (EMAIL_HOST and
 # EMAIL_PORT are deprecated). Tests swap every mailer for the locmem backend automatically.
 MAILERS = {

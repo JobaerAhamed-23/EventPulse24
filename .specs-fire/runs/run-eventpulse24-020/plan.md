@@ -3028,3 +3028,473 @@ code is not a regression test.
   price field and FR-16 source reliability isn't built, so 'Free' tags and reliability
   weighting wait until those exist." So there is no `free` tag and no source weighting
   in the score.
+
+
+---
+
+# Implementation Plan: Pulse Preview API & Geo Port
+
+**Work Item:** pulse-preview-api-and-geo
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Complexity:** medium
+
+## The Problem
+
+FR-2 is the first value a visitor gets, before they have an account: three Pulse Cards
+for their city, with Why-this Tags, a 1–5 Confidence Pulse and a Source Badge. Three
+things have to be true for it to work, and they pull in opposite directions.
+
+**It is anonymous.** AD-12: "Public event pages render fully without a session." The
+preview is a *public* surface, so it must not read `request.user`, must not touch
+`personal`, and must not set a cookie — otherwise it is not cacheable and the response
+depends on who asked.
+
+**It is local.** "Three events in the user's inferred city" means the server has to
+know which city the visitor is in. The only source of that is the **edge's geo header**
+(Vercel sets `x-vercel-ip-city`; the header name is the edge's business, not ours). That
+header is attacker-controlled — a caller can send any value it likes — so it is untrusted
+input, and it is *privacy-relevant*: PRD §10.2 and FR-2's consent banner make "Don't use
+my location" a first-class choice.
+
+**It is honest.** The preview must not show Brooklyn's events under the heading "Events
+in Queens". If a city has nothing, it gets an empty preview **with the city's name**,
+not another city's events.
+
+## The Design
+
+### 1. The geo port — `ports/geo.py`
+
+A port, like every other thing that reaches outside the app (`ports/throttle.py`,
+`ports/fetch.py`):
+
+```python
+@dataclass(frozen=True)
+class GeoResult:
+    """Where the caller is, as far as the edge told us."""
+    city: str | None
+
+class GeoPort(ABC):
+    @abstractmethod
+    def resolve_city(self, headers: Mapping[str, str]) -> str | None:
+        """The city the edge says this request came from, or None."""
+        ...
+```
+
+**The port takes headers, not a request.** That is the whole design in one sentence: the
+port's input is a bag of headers, so the adapter reads a header and does nothing else —
+no database lookup, no vendor call, no `request` object. AD-1 says the code doesn't
+depend on the host, and a port whose input is a header mapping cannot depend on a host.
+
+**The port is stdlib-only and imports no Django**, like every other port here.
+
+### 2. The real adapter — `adapters/geo/header.py`
+
+It reads **one** header — `x-vercel-ip-city` — and does three things to it:
+
+1. **Length-bounded.** A header is up to 8 KB and it is attacker-controlled, so the
+   value is truncated/rejected past a bound (named constant, `GEO_CITY_MAX_LENGTH = 64`).
+   A city name longer than 64 characters is not a city; it is an attempt to get the
+   value somewhere it shouldn't go.
+2. **URL-decoded exactly once.** The edge URL-encodes the city (`Brooklyn%2CNY`),
+   because a raw header value cannot contain some characters. `unquote` **once** — not
+   twice, because decoding twice is how `%252e%252e%252f` becomes `../`. The result is
+   decoded once and then *not* decoded again.
+3. **Normalized and validated.** Stripped, collapsed, and reduced to a safe city shape.
+   The result is used only as a *lookup key* against the supported-cities set, never
+   interpolated into SQL or into a path, but it is still untrusted.
+
+**The real adapter does no lookup and calls no vendor.** It returns the city name the
+edge gave, or `None`. Deciding whether that city is *supported* is the application
+layer's job, not the adapter's — the adapter does not know what the catalog covers.
+
+**The header name is a named constant** (`GEO_HEADER_NAME = "x-vercel-ip-city"`), so
+changing the edge means changing one line. The *port* does not know the header name.
+
+### 3. The fake adapter — `adapters/geo/fake.py`, and it is the default
+
+`FAKE_ADAPTERS["geo"]` points at it, so local and CI get it. It returns **a chosen
+city**, configured from `config/env.py`:
+
+```
+GEO_FAKE_CITY=<city>       # unset or empty → the adapter reports no location
+```
+
+The work item says "a fake adapter is the local and CI default, **configurable to
+return a chosen city**", and that is exactly what this is. The fake reads its city from
+the settings object, so:
+
+- CI can set `GEO_FAKE_CITY=Brooklyn` and every request resolves to Brooklyn.
+- A test can set it to `None` to exercise the geo miss.
+- A test can set it to a **supported** city or an **unsupported** one, which is what
+  makes the two fallback branches testable without touching a header.
+
+`config/env.py` is the only module allowed to read the environment (ruff bans
+`os.environ` everywhere else), so this is the only place the value comes from.
+
+**The fake also honours the header when asked to.** No — it does not. The fake returns
+its configured city and ignores the headers entirely. That is what makes it a fake: a
+test that wants to exercise the *real* adapter's header handling reaches for the real
+adapter, and a test that wants a deterministic city sets the config.
+
+### 4. Where the endpoint lives, and the one architectural problem
+
+The endpoint is a **public, session-free surface**. `apps/catalog` is where the other
+public surface lives (`/api/catalog/events`), it is already registered under a router,
+and it never touches `personal`. So the preview endpoint belongs in **`apps/catalog`**,
+on a **new router** mounted at `/api/public`.
+
+**The problem:** the work item says "the endpoint reads `catalog` only through
+`ingestion`'s published read interface". `apps.catalog` **cannot** import
+`apps.ingestion.event_fit.reads` directly — that module imports `apps.ingestion.models`,
+and the `models-ingestion` contract protects that module to `apps.ingestion` alone. The
+contract is right and the previous item proved it: `personalization` cannot reach the
+Event Fit that way either.
+
+**The resolution is a wrapper published through `ingestion`'s service interface.** A new
+module, `apps/ingestion/services/preview_read.py`, which:
+
+- calls `apps.ingestion.event_fit.reads.list_event_fit_for_city` (it lives *inside*
+  `apps.ingestion`, so the contract is satisfied),
+- adds the **Source Badge inputs** the fit read does not carry (the source's type and
+  name — the badge is a function of the *source*, and the fit read deliberately does not
+  join the source),
+- exposes the **supported-cities list** — the distinct cities that have at least one
+  upcoming published event **with an Event Fit**.
+
+`apps/catalog` then imports `apps.ingestion.services.preview_read` and nothing else
+from ingestion. The catalog schema is reached only through ingestion's published
+interface. The contract holds, and the endpoint's data comes from the catalog side.
+
+**The wrapper is a query, not a write.** It lives under `services/` because that is where
+ingestion's published reads live (`catalog_read.py` is there), not because it writes
+anything.
+
+### 5. The supported cities, and the NYC fallback
+
+**Supported cities** = the distinct cities that have at least one upcoming published,
+non-superseded event **with a current Event Fit**. The "with Event Fit" half matters: a
+city with events but no fits is a city the preview cannot serve, and listing it in the
+picker would offer a city that answers with an empty preview. The supported set is
+exactly the set of cities for which the preview has something to show.
+
+The set is **derived from the catalog**, not configured. A hard-coded city list is a
+list that goes stale the moment a source in a new city is ingested, and the picker would
+offer a city the preview cannot fill.
+
+**NYC is a named constant** in `shared/constants.py`:
+
+```python
+# FR-2: "falls back to the most-popular city (NYC at MVP)". The fallback when geo
+# resolves to a city the catalog does not cover, or when geo resolves to nothing.
+PREVIEW_FALLBACK_CITY = "New York City"
+```
+
+The fallback is the **fallback**, so it is used in exactly two places:
+
+- **A geo city that is not supported** → the preview resolves to the fallback city.
+- **No geo city at all** → the preview resolves to the fallback city.
+
+**An explicit `city` is never silently replaced.** If the visitor picked a city from the
+picker and it is not supported, the answer is an **empty preview carrying that city's
+name** — not the fallback's events under the wrong name. This is the work item's rule
+and it is the honest one: the frontend shows "No preview available in {city} yet.", and
+if we answered with NYC's events the heading would be a lie.
+
+### 6. The endpoint's shape
+
+```
+GET /api/public/preview?city=<city>&use_geo=<bool>
+GET /api/public/preview/cities
+```
+
+**Resolution order**, in one place, so there is one rule and not three:
+
+| Situation | Resolved city | `source` | Cards |
+|---|---|---|---|
+| `use_geo=false` (the opt-out) | the fallback city | `fallback` | the fallback city's |
+| `city` given, supported | that city | `query` | that city's |
+| `city` given, **not** supported | that city (unchanged) | `query` | **none** — empty preview |
+| no `city`, geo resolves to a supported city | that city | `geo` | that city's |
+| no `city`, geo resolves to an unsupported city | the fallback city | `fallback` | the fallback city's |
+| no `city`, geo resolves to nothing | the fallback city | `fallback` | the fallback city's |
+
+**The `source` field says how the city was resolved** — `geo`, `query` or `fallback` —
+which is what the frontend needs to show "Showing events near Brooklyn" versus
+"No preview available in Queens yet."
+
+**The opt-out is explicit and it is a parameter, not a cookie.** The frontend sends
+`use_geo=false` when the visitor picks "Don't use my location". The endpoint then
+**never consults the geo port** — and a test proves it by planting a geo port that
+raises if it is called. "Never consulted" is a stronger claim than "consulted and
+ignored", and the stronger claim is the one that can be checked.
+
+**The response carries the resolved city and the source**, so the frontend never has to
+guess what it got.
+
+### 7. The card's fields
+
+Each card carries:
+
+| Field | From |
+|---|---|
+| `id`, `slug` | the fit read |
+| `title` | the fit read |
+| `venue_name` | the fit read |
+| `start_time_utc`, `start_time_tz` | the fit read — **UTC plus an explicit IANA zone** (AD-6) |
+| `score` | the fit read — the persisted 1–5 Event Fit |
+| `tags` | the fit read — the persisted tag keys, in order |
+| `source_name` | the preview read wrapper |
+| `source_badge` | the preview read wrapper — one of the five badge types |
+
+**The Source Badge inputs, "if the read interface provides them".** The catalog's
+`PublicEvent` already carries `source_name`, and `Source` carries `source_type` — so the
+inputs **are** available, and this item provides them. The badge *type* is derived from
+the source's type and acquisition method:
+
+| Source | Badge type |
+|---|---|
+| `source_type=venue`, `source_type=promoter` | `official_site` |
+| `source_type=community`, `source_type=government` | `community` |
+| `source_type=ticketing`, `source_type=media` | `aggregator` |
+| `source_type=other` + `acquisition_method=crawl` | `crawled_html` |
+
+There is no `user_imported` badge here: a user-imported event is a *personal* event, and
+personal events are not in the public preview (FR-2's out-of-scope line: "Personal event
+surfacing in Pulse Preview"). The five-badge list is the UX spec's list; this surface
+can only ever produce four of them, and saying so in the code is better than a mapping
+that pretends otherwise.
+
+The badge is a **type**, not a label and not an icon: the UX spec owns the label
+("Official", "Community", "Listing site", "Forwarded") and the glyph. The server states
+the fact; the client speaks the user's language — the same rule the Event Fit tags
+follow.
+
+**The score and the badge are different things and are named differently.** `score` is
+the Event Fit (AD-10); `source_badge` is the Source Badge (FR-23). They are never
+substituted for one another.
+
+### 8. The response
+
+```python
+class PreviewOut(Schema):
+    city: str                    # the resolved city, always present
+    city_source: str             # "geo" | "query" | "fallback"
+    items: list[PreviewCardOut]
+```
+
+`city` is always present — even for an unsupported explicit city, where it is the city
+the visitor asked for. The empty case is `items: []` with the city's name, not an
+omitted field.
+
+`GET /api/public/preview/cities` returns `{"cities": ["Brooklyn", "New York City"]}` —
+the supported cities, **alphabetically**, for the one-tap picker. Alphabetical, because
+a picker whose order changes between requests is a picker nobody can find anything in.
+
+### 9. Cacheable
+
+The preview is a **public, per-city** response, so it is cacheable and it says so:
+
+- `Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=600`
+- `Vary: Accept-Encoding` — and **nothing session-related**.
+
+**`Vary` must not include `Cookie`.** A response that varies on the cookie is not
+cacheable, and — worse — a shared cache that stores one variant under a key that ignores
+the cookie would serve one visitor's response to another. The endpoint sets no cookie
+and reads no session, so the response is identical for everyone and the cache key is
+just the URL.
+
+**The cacheability is a testable property**: the response headers carry no `Cookie` in
+`Vary`, and the body is byte-identical for a signed-in caller and an anonymous one.
+
+**Why 60 seconds of browser cache and 300 of shared cache.** The preview's content
+moves when the Event Fit refresh runs (every 15 minutes) and when events start. A
+minute of browser cache keeps a reload from re-querying; five minutes of shared cache
+keeps a popular city's preview from hammering the database; and
+`stale-while-revalidate` means a visitor is never waiting on the origin for a card they
+could have had a moment ago. The numbers are named constants.
+
+### 10. Rate-limited per IP
+
+PRD §11.2: "Rate limiting on all public endpoints (per-IP and per-user)". The preview is
+a public endpoint, so it is limited per IP. It has **no per-user limit**, because it has
+no user — that is the point of AD-12, and a per-user limit on an anonymous endpoint
+would mean reading the session, which would mean the endpoint is not anonymous.
+
+**The limit is generous**, because the endpoint is cheap and cacheable and a visitor
+legitimately reloads a preview while deciding: 60 requests per IP per minute. Named
+constants in `shared/constants.py`.
+
+**The throttle key is the IP and nothing else.** The IP comes from the same
+`_client_ip` rule the auth endpoints use — `X-Forwarded-For` only when
+`settings.TRUST_FORWARDED_FOR` is on (off by default), otherwise `REMOTE_ADDR` — and it
+is **never logged and never stored** (AD-13). It only ever becomes part of a throttle key,
+which is why the rule includes "the value must parse as an IP address": a caller cannot
+pad the key with arbitrary text.
+
+**The throttle is checked before the work.** The port's `check` is a counter; the
+endpoint calls it first and answers 429 with `Retry-After` when the limit is tripped. A
+429 on a public cacheable endpoint is a *cacheable* answer too — it must not be cached
+as if it were content.
+
+### 11. The privacy rules, which are rules and not preferences
+
+Two of them, from the work item's own note ("Never store the resolved city server-side
+for an anonymous visitor, and never log it with the IP"):
+
+- **The resolved city is never stored.** It is a response field and nothing else. There
+  is no table, no cache entry, no session key. The endpoint computes it, returns it, and
+  forgets it.
+- **The city is never logged with the IP.** In fact **neither is ever logged** — the
+  resolved city is not logged at all, because a log line that pairs "Brooklyn" with a
+  request is a geo-log, and the point of not storing it is that it is not stored. The
+  only thing that touches a log on this path is an error, and the error handler does not
+  include the city.
+
+**The opt-out is honoured server-side.** "Don't use my location" is a real choice, and a
+choice the server ignores is not a choice. `use_geo=false` means the geo port is **not
+called** — proven by a planted port that raises on call.
+
+### 12. Where the geo header is read — and what we do *not* depend on
+
+The work item asks: "Check whether the platform's geo header survives that rewrite."
+
+**Checked, by reading the framework source.** `frontend/proxy.ts` rewrites `/api/*` to
+Django with `NextResponse.rewrite(url)`. In Next 16.3.8, `resolve-routes.js` restores
+the `x-middleware-request-*` headers onto the rewritten request **under their original
+names**, so `x-vercel-ip-city` survives the rewrite.
+
+**But the design does not depend on it.** The port's input is a header mapping; the
+adapter reads a named header; the endpoint passes the request's headers. If a future
+proxy drops the header, the symptom is "geo resolves to nothing" and the visitor gets
+the fallback city — a degraded but correct answer. **No code branches on whether the
+proxy forwarded it.** That is AD-1: the code does not depend on the host.
+
+### 13. The router
+
+`config/api.py` mounts a new router:
+
+```python
+api.add_router("/public", public_router)
+```
+
+So the URLs are `/api/public/preview` and `/api/public/preview/cities`.
+
+**Why a new router and not the catalog one.** The catalog router is mounted at
+`/api/catalog` and is about *events*. The preview is about a *resolved city* and it has
+its own auth-free semantics, its own cache headers and its own rate limit. A separate
+router makes those properties obvious at the mount point, and it keeps the `/api/public`
+prefix the work item names.
+
+**The router has no `auth=`.** django-ninja's `auth=` on a router is the session
+dependency. The preview router has none, and the endpoints never call
+`request.user` — and an architecture test asserts the *source* of the preview modules
+mentions neither `request.user` nor `personal`.
+
+### 14. AD-19 — the client is regenerated
+
+The OpenAPI schema is the contract, and the frontend client is generated from it
+(AD-19). Adding two endpoints changes the schema, so the generated client is
+regenerated: `pnpm generate:client` (or whatever the frontend's script is called), and
+the regenerated file is committed.
+
+## The Files
+
+### Created
+
+| File | Purpose |
+|------|---------|
+| `backend/ports/geo.py` | The port: a header mapping in, a city or nothing out |
+| `backend/adapters/geo/__init__.py` | The package |
+| `backend/adapters/geo/header.py` | The real adapter: reads one header, bounds it, decodes it once |
+| `backend/adapters/geo/fake.py` | The fake: returns the configured city |
+| `backend/apps/ingestion/services/preview_read.py` | The published read: the preview cards and the supported cities |
+| `backend/apps/catalog/preview_api.py` | The preview router and its two endpoints |
+| `backend/apps/catalog/preview_schemas.py` | The wire shapes (AD-19) |
+| `backend/tests/ports/test_geo.py` | The port and both adapters: bounding, one decode, normalization |
+| `backend/tests/catalog/test_preview_api.py` | The endpoints: every branch of the resolution table |
+| `backend/tests/ingestion/test_preview_read.py` | The published read: the supported cities and the source badge |
+| `backend/tests/architecture/test_preview_anonymity.py` | No session, no `personal`, no `request.user` |
+| `backend/revert_preview_check.sh` | The revert harness |
+
+### Modified
+
+| File | Change |
+|------|--------|
+| `backend/ports/registry.py` | `GeoPort` → `PORT_KEYS` + `get_geo_port()` |
+| `backend/config/adapters.py` | `FAKE_ADAPTERS["geo"]` → the fake |
+| `backend/config/env.py` | `GEO_FAKE_CITY` |
+| `backend/config/api.py` | Mount `/public` |
+| `backend/shared/constants.py` | NYC, the limits, the header name, the length bound, the cache TTLs |
+| `backend/apps/ingestion/services/__init__.py` | Nothing — the package docstring already says it |
+| `frontend/src/lib/api/generated/schema.ts` | Regenerated from the OpenAPI schema (AD-19) |
+| `frontend/src/lib/api/generated/client.ts` | Regenerated |
+
+## The Tests
+
+| Rule | Test |
+|------|------|
+| The geo hit | the fake's configured city resolves, and `city_source` is `geo` |
+| The geo miss | no configured city → the fallback city, and `city_source` is `fallback` |
+| A geo city outside the supported set | the fallback city, and the fallback's cards |
+| An explicit override | `?city=Brooklyn` wins over geo, and `city_source` is `query` |
+| An unsupported explicit city | an **empty** preview carrying that city's name — and **not** the fallback's events |
+| The opt-out | `?use_geo=false` → the fallback, and a planted geo port that raises is **not** called |
+| Identical with and without a session | the same request signed in and unsigned returns byte-identical bodies and identical headers |
+| The per-IP limit | the N+1-th request from one IP is a 429 with `Retry-After`; a different IP is unaffected |
+| Fewer than 3 events | a city with one fit returns one card, not three and not an error |
+| Cacheable | `Cache-Control` is public; `Vary` has no `Cookie` |
+| The supported cities | only cities with an upcoming fit; alphabetical |
+| The header is bounded | a 10 KB city value is refused |
+| The header is decoded once | `%2520` decodes to `%20`, not to a space |
+| The real adapter does no lookup | the adapter returns the header's city without touching the catalog |
+| No `personal` | the preview modules never mention `personal` |
+| No `request.user` | the preview modules never mention `request.user` |
+| The supported-city read is published | `apps.catalog` reaches the Event Fit only through `ingestion`'s service |
+
+## The Revert Verification
+
+Every rule is verified by **reverting it and watching the test fail**, in the harness
+style the earlier items established. A regression test that passes against the broken
+code is not a regression test — and the run's standing rule is that **a revert case that
+does not fail is not a revert case; it is a hole in the suite wearing a harness's
+clothes.** The harness backs each file up **uniquely per case** and **verifies the
+restore byte for byte**, because a restore that silently fails makes every later result
+a claim about a tree that does not exist.
+
+## The Decisions, and Why
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| The geo port's input | A **header mapping**, not a request | The adapter can then do nothing but read a header — no database, no vendor, no host dependency (AD-1) |
+| The header name | `x-vercel-ip-city`, a **named constant** | The edge owns the name; changing edges changes one line, not the port |
+| The fake's city | From `config/env.py` (`GEO_FAKE_CITY`) | `config.env` is the only module allowed to read the environment. The work item asks for a fake configurable to a chosen city; this is it |
+| The endpoint's home | `apps/catalog`, on a **new `/api/public` router** | The catalog is the public surface; a separate router makes the auth-free, cacheable, rate-limited semantics obvious at the mount |
+| How `catalog` reaches the Event Fit | Through a **wrapper in `ingestion`'s services** | `apps.catalog` cannot import `apps.ingestion.event_fit.reads` (the `models-ingestion` contract protects the model to `apps.ingestion`). The wrapper is inside `apps.ingestion`, so the contract holds and the endpoint still reads the catalog only through ingestion's published interface |
+| The supported cities | **Derived from the catalog**, not configured | A configured list goes stale when a source in a new city is ingested, and would offer cities the preview cannot fill |
+| NYC | `PREVIEW_FALLBACK_CITY` in `shared/constants.py` | "NYC is a named constant" is the work item's own wording. One copy, so the frontend and the backend cannot disagree about the fallback's spelling |
+| An unsupported explicit city | An **empty preview carrying that city's name** | The alternative — the fallback's events under the requested city's name — is a heading that lies |
+| The opt-out | `use_geo=false`, and the geo port is **not called** | "Never consulted" is checkable; "consulted and ignored" is not |
+| The cache headers | `public`, `s-maxage`, `stale-while-revalidate`; **`Vary` without `Cookie`** | A response that varies on the cookie is not cacheable, and a shared cache ignoring the cookie would serve one visitor's response to another |
+| The rate limit | Per IP only, 60/min, **no per-user limit** | The endpoint has no user. A per-user limit would mean reading the session, which would mean the endpoint is not anonymous (AD-12) |
+| The IP source | `REMOTE_ADDR`, and `X-Forwarded-For` only when `TRUST_FORWARDED_FOR` is on | The header is attacker-controlled; trusting it unconditionally defeated the auth throttle entirely. The same rule the auth endpoints use |
+| The resolved city | **Never stored, never logged** | PRD §10.2 and the work item's own note. A log line pairing a city with a request is a geo-log, which is what "never store it" is about |
+| The Source Badge | A **type**, derived from the source's type and acquisition method | The UX spec owns the label and the glyph. The server states the fact; the client speaks the user's language |
+| `user_imported` | **Not producible here** | A user-imported event is a personal event, and FR-2 puts personal events out of scope for the preview. Four badges are reachable; the fifth is not |
+| The score and the badge | Separate fields, `score` and `source_badge` | AD-10: two indicators that look identical must never be silently substituted for one another. Different names are the least that can be done |
+
+## What This Item Does Not Cover
+
+- **The Pulse Preview page** — `frontend-pulse-preview` owns it. This item ships the
+  endpoint it will call, and the generated client.
+- **The consent banner and the cookie** — FR-2 says the choice "persists in a cookie for
+  the session". The cookie is the frontend's; this item ships the **server half**, which
+  is the part that has to be right: the opt-out is honoured and the geo port is not
+  consulted.
+- **The Source Badge's label and glyph** — `EXPERIENCE.md §4` owns them. This item ships
+  the type.
+- **The SEO city page** — the same Event Fit serves it, but that page is a later item.
+- **A real geo vendor** — the real adapter reads a header, which is what the edge gives
+  us. There is no geo-IP *lookup* service in the stack, and the work item explicitly
+  rules one out: "The real adapter only reads a header. It does no database lookup and
+  calls no vendor."

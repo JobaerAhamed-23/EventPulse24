@@ -1672,4 +1672,254 @@ to the event. The fix is not a smarter read; it is a writer on a cadence, and a
 staleness check that says which rows are out of date.
 
 ---
+
+# Implementation Walkthrough: The Pulse Preview API & Geo Port (FR-2, AD-12)
+
+**Work Item:** pulse-preview-api-and-geo
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Generated:** 2026-10-30
+
+## Summary
+
+The Pulse Preview is **the first thing a visitor gets, before they have an account**.
+This item is the backend behind it: two public endpoints, a geo port that turns the
+edge's location header into a city name, and the published read that produces the
+cards.
+
+The item's central constraint is **AD-12**: the public surface renders fully without a
+session. That is not one property — it is *two* facts that happen to be the same fact.
+The endpoint never reads `request.user`, never reads `personal`, and sets no cookie;
+and that is exactly what makes its response cacheable, because the cache key can be the
+URL. A surface that touched the session would be neither anonymous nor cacheable.
+
+The second thing worth understanding before writing the frontend is that **the preview
+does not guess.** It has one table of what happens when, and an explicit city is never
+silently replaced. If a visitor picks a city the catalog does not cover, the answer is
+an empty preview carrying **that** city's name — not the fallback's events under the
+requested name, which would be a heading that lies.
+
+The third is the **opt-out**. "Don't use my location" is a real choice, and a choice the
+server ignores is not a choice. So `use_geo=false` means the geo port is **not called
+at all** — a stronger claim than "called and the answer ignored", and the only one a
+test can check. The test replaces the port with one that raises.
+
+## Structure Overview
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│  The port — no Django, no host                           │
+│  ports/geo.py                                             │
+│    resolve_city(headers: Mapping[str,str]) -> str | None │
+│    · a bag of headers, NOT a request (AD-1)               │
+│    · "is this city supported?" is NOT the port's job     │
+├──────────────────────────────────────────────────────────┤
+│  The adapters                                            │
+│  adapters/geo/header.py  (real)  — reads ONE header     │
+│    · length-bounded BEFORE decoding (decode only shrinks)│
+│    · URL-decoded exactly ONCE                            │
+│    · no database lookup, no vendor call                  │
+│  adapters/geo/fake.py    (local/CI default)              │
+│    · configurable: GEO_FAKE_CITY                         │
+├──────────────────────────────────────────────────────────┤
+│  The public surface — no session (AD-12)                 │
+│  apps/catalog/preview_api.py                              │
+│    GET /api/public/preview            → up to 3 cards    │
+│    GET /api/public/preview/cities     → the city picker  │
+│    · one resolution table, one function                 │
+│    · cacheable; Vary carries nothing session-related    │
+│    · rate-limited per IP; each route its own budget      │
+│  apps/catalog/preview_schemas.py — the wire shapes       │
+├──────────────────────────────────────────────────────────┤
+│  The published read — lives INSIDE ingestion              │
+│  apps/ingestion/services/preview_read.py                 │
+│    · cards = Event Fit rows + Source Badge inputs        │
+│    · supported cities = derived, not configured           │
+│    · hands over plain data, so catalog never holds a     │
+│      model it is forbidden to import                     │
+└──────────────────────────────────────────────────────────┘
+```
+
+## The resolution table
+
+There is **one** table of what happens when, and it is implemented in one function
+(`_resolve_city`), so there is one rule and not three:
+
+| Situation | Resolved city | `city_source` | Cards |
+|---|---|---|---|
+| `use_geo=false` | the fallback | `fallback` | the fallback city's |
+| `city` given, supported | that city | `query` | that city's |
+| `city` given, **not** supported | that city (unchanged) | `query` | **none** |
+| no `city`, geo → supported | that city | `geo` | that city's |
+| no `city`, geo → unsupported | the fallback | `fallback` | its own |
+| no `city`, geo → nothing | the fallback | `fallback` | the fallback city's |
+
+The fallback is used for a **geo** city the catalog cannot serve, because the visitor
+did not choose it — the edge guessed, and a guess the catalog cannot serve should not
+produce an empty page. It is **not** used for an **explicit** unsupported city, because
+there the visitor did choose it and deserves to be told the truth about it.
+
+## The spelling of a city belongs to the catalog
+
+The spelling a visitor types is not the spelling the events are filed under, and a
+preview headed `"BROOKLYN"` listing the events filed under `"Brooklyn"` is a heading
+nobody can search for. So both paths answer with **the catalog's spelling**.
+
+The canonicaliser is **asymmetric on purpose**: it replaces the name only when the
+catalog holds that city. An unsupported city comes back exactly as the caller wrote
+it — otherwise the canonicaliser would break the rule it sits next to (an unsupported
+city must never be silently renamed into a supported one).
+
+## The wall: the read lives *inside* `apps.ingestion`
+
+AD-2's `models-ingestion` contract protects `apps.ingestion.models` to
+`apps.ingestion`. The obvious place for the preview's read is `apps/catalog` — and it
+does not work, because the Event Fit read imports that model directly, so
+`apps.catalog` cannot reach the Event Fit through it either.
+
+So the read lives at `apps/ingestion/services/preview_read.py`: inside
+`apps.ingestion`, so the contract holds, and handing over **frozen dataclasses**
+rather than model instances, so the calling app never holds a reference to a model it
+may not import. The wall holds without either side knowing the other's models.
+
+## The privacy rules are structural, not aspirational
+
+PRD §10.2 says the resolved city is never stored server-side for an anonymous visitor
+and never logged with the IP. A promise in a docstring is not a guarantee, so the rules
+are **checked on the code**: the architecture suite fails if the preview surface reads
+the session, imports the personal schema, writes to a cache, or logs the city.
+
+The IP is used only as part of a throttle key — the same treatment the auth endpoints
+give it — and it comes from `X-Forwarded-For` **only when the deployment says to trust
+it**. Next's rewrite forwards the browser's headers as they arrived, so a browser that
+sets the header has that value reach Django unchanged; trusting it unconditionally let
+any caller mint a fresh throttle bucket per request. `TRUST_FORWARDED_FOR` is **off by
+default**.
+
+## Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| The supported cities | **Derived** from the catalog, never configured | A hard-coded list goes stale the moment a source in a new city is ingested, and the picker would then offer a city the preview cannot fill |
+| What makes a city supported | An **upcoming, published, non-superseded** event with a **current** Event Fit | A city with events but no fits is a city the preview cannot serve; a fit whose `event_version` no longer matches its event describes an event that no longer exists |
+| The order of the city list | Python's `sorted(..., key=str.casefold)`; the database is **not** asked to sort | A database's `ORDER BY` on text is a **locale collation** — `en_US.UTF-8` ignores punctuation at the primary level — so the deployment's locale would decide the picker's order |
+| The opt-out | A branch that **skips the call** | A geo lookup is a request to the edge, and "the visitor said not to" should mean the request is never made |
+| The explicit `city` parameter | **Bounded** by the same constant as the header, and falls through rather than truncating | Two untrusted inputs into one endpoint, one bounded and one not, is the asymmetry; truncating would answer with a different city than the one asked for |
+| The Source Badge | A **type**, derived in the read | The fit read deliberately does not join the source — a fit is about an event's fit, not about where it came from |
+
+## Dependencies Added
+
+None. No new package, no new table, no new service beyond the published read.
+
+## How to Verify
+
+```bash
+# The item's own tests
+cd backend && .venv/bin/python -m pytest \
+    tests/ports/test_geo.py \
+    tests/api/test_preview_api.py \
+    tests/ingestion/test_preview_read.py \
+    tests/architecture/test_preview_anonymity.py -q
+
+# The whole suite, with coverage
+cd backend && .venv/bin/python -m pytest -q --cov --cov-report=term-missing
+
+# The linter, the contracts, and Django's own checks
+cd backend && .venv/bin/python -m ruff check .
+cd backend && .venv/bin/python -m ruff format --check .
+cd backend && .venv/bin/python manage.py check
+make lint-backend
+
+# The coverage gates
+make coverage-backend
+
+# The revert verification — thirty-six cases, each watched to fail
+cd backend && bash revert_preview_check.sh
+```
+
+## Test Coverage
+
+| Module | Coverage |
+|--------|----------|
+| `ports/geo.py` | 100% |
+| `adapters/geo/header.py` | 100% |
+| `adapters/geo/fake.py` | 100% |
+| `apps/catalog/preview_api.py` | 100% |
+| `apps/catalog/preview_schemas.py` | 100% |
+| `apps/ingestion/services/preview_read.py` | 100% |
+
+**100 item-scoped tests**, 3208 in the whole backend suite, 99.04% total coverage,
+19/19 import contracts kept.
+
+**Thirty-six revert cases, all caught** — thirty-two for the item's own rules and four
+for the review's fixes.
+
+## Ready for Review
+
+- [x] All acceptance criteria met
+- [x] Tests passing
+- [x] No critical issues remaining — the review's five findings are all fixed and
+      revert-verified
+- [x] Documentation updated — the module docstrings state the new guarantees
+- [x] Developer notes captured
+
+## Developer Notes
+
+**A refusal that cannot be rendered is a crash.** The cities endpoint declared
+`response={200: PreviewCitiesOut}` with no 429 schema, so every rate-limited request to
+it raised `ConfigError: Schema for status 429 is not set` and returned a **500**. The
+preview route was fine, which is why the bug survived: the two routes were written in
+parallel and only one was tested past its limit. **Two parallel routes need two
+parallel tests** — a limit that is never reached is a limit that has never run.
+
+**A response map is a contract, and ninja enforces it.** `Status(429, body)` tells
+ninja which schema to validate the body against; if the map has no entry for that
+status, ninja raises rather than guessing. The 429 was in the map for one route and not
+the other, and nothing about the code said so.
+
+**Unreachable code is not a safety net; it is a claim the code does not make.** The
+adapter bounded the header *before* decoding and then bounded the decoded value
+*again* — but `unquote` only ever **shortens** a value, so the second check could never
+fire. The second check was removed and the reason recorded, because the next reader
+would otherwise assume it was load-bearing.
+
+**Two untrusted inputs into one endpoint should have the same bound.** The geo header
+was bounded to 64 characters; the `?city=` parameter was not bounded at all. Reading the
+two paths side by side is how that asymmetry showed up — the header was bounded because
+the review of an *earlier* item had noticed headers are attacker-controlled, and nobody
+had carried the lesson to the query parameter. **A bound is a property of the input,
+not of the parameter it arrived in.**
+
+**An over-long value should fall through, not truncate.** Truncating would answer with
+a different city than the caller asked for — and could answer with one the catalog
+happens to hold. Echoing would put an arbitrarily long value into the response body.
+Treating it as *no city at all* makes it the same shape as the endpoint's normal path.
+
+**A database's `ORDER BY` on text is a locale collation.** `en_US.UTF-8` ignores
+punctuation at the primary level and orders case in a locale-specific way, so two
+deployments with different locales would offer the same cities in a different order.
+`str.casefold` compares code points and is the same everywhere. **The rule being pinned
+is *which mechanism decides the order*, not *what the order is*** — and two attempts at
+finding a behavioural discriminator failed, because `"St. John's"` and `"St Johns"` do
+not discriminate (the space sorts before the period) and `"A"` and `"a"` cannot (the
+catalog's dedup makes them one city). The check is structural now: the read must not
+ask the database to sort at all.
+
+**A harness whose levers drift with the source has stopped verifying anything.** After
+the review phase edited the source, four cases' patterns no longer matched and the
+harness reported four skips. A skip is counted as a **hole**, and the run fails — which
+is the right behaviour, because a case whose patch cannot be found has verified nothing
+and reporting it as a pass would be a lie.
+
+**A restore that is not verified is not a restore.** Every case gets a unique backup and
+**compares the restored file against it byte for byte** before moving on. A restore that
+silently fails is worse than no restore: it makes every later result a claim about a
+tree that does not exist.
+
+**Duplicated security code drifts.** `_client_ip` is byte-identical in
+`apps/identity/api.py` and `apps/catalog/preview_api.py`. It is recorded rather than
+fixed, because the shared home would change another app's endpoint — and a security
+helper that is copied twice is a security helper that will be fixed in one place only.
+
+---
 *Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-020*

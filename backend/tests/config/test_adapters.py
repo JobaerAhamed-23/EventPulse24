@@ -65,3 +65,23 @@ def test_the_real_calendar_adapter_implements_the_port():
     adapter = import_string(REAL_ADAPTERS["calendar"])
 
     assert issubclass(adapter, CalendarPort)
+
+
+def test_real_mode_has_the_header_geo_adapter():
+    """The real geo adapter reads the edge's header — no vendor, no lookup.
+
+    The `real` mode is not yet selectable (four ports still have no real adapter), so
+    the real table is checked here one entry at a time rather than by reaching the
+    `return dict(REAL_ADAPTERS)` line.
+    """
+    assert REAL_ADAPTERS["geo"] == "adapters.geo.header.HeaderGeoAdapter"
+
+
+def test_the_real_geo_adapter_implements_the_port():
+    from django.utils.module_loading import import_string
+
+    from ports.geo import GeoPort
+
+    adapter = import_string(REAL_ADAPTERS["geo"])
+
+    assert issubclass(adapter, GeoPort)

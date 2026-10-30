@@ -1,51 +1,53 @@
 ---
 run: run-eventpulse24-020
-work_item: event-fit
+work_item: pulse-preview-api-and-geo
 intent: onboarding-and-account
 generated: 2026-10-30
 status: passing
 ---
 
-# Test Report: Event Fit (AD-10, FR-26)
+# Test Report: Pulse Preview API & Geo Port (FR-2, AD-12)
 
-> **These are the post-review figures.** The code review added a package wall, four
-> new tests and five new revert cases; the numbers below are the ones the tree
-> produces **now**, not the ones it produced before the review.
+> **These are the post-review figures.** The revert harness found two real defects and
+> one hole in the suite during this phase; the numbers below are the ones the tree
+> produces **now**, not the ones it produced before those were fixed.
 
 ## Summary
 
 | Category | Passed | Failed | Skipped | Coverage |
 |----------|--------|--------|---------|----------|
-| Item-scoped | 236 | 0 | 0 | 100% (every module this item created) |
-| **Total (whole backend)** | **3098** | **0** | **0** | **99.01%** |
+| Item-scoped | 100 | 0 | 0 | 100% (every module this item created) |
+| **Total (whole backend)** | **3208** | **0** | **0** | **99.04%** |
 
-The 236 item-scoped tests are a subset of the 3098-test backend suite. The whole
-backend suite is **3098 passed, 0 failed** in 83.72s; coverage is **99.01%** across
-6662 statements, with **162 files at 100%**.
+The 100 item-scoped tests are a subset of the 3208-test backend suite. The whole
+backend suite is **3208 passed, 0 failed** in 87.39s; coverage is **99.04%** across
+6884 statements, with **169 files at 100%**.
 
-**Every module this item created or changed is at 100%**:
+**Every module this item created is at 100%**:
 
 | Module | Coverage |
 |--------|----------|
-| `domain/event_fit.py` | 100% |
-| `apps/ingestion/event_fit/__init__.py` | 100% |
-| `apps/ingestion/event_fit/writes.py` | 100% |
-| `apps/ingestion/event_fit/reads.py` | 100% |
-| `config/management/commands/backfill_event_fit.py` | 100% |
-| `worker/tasks.py` | 100% |
+| `ports/geo.py` | 100% |
+| `adapters/geo/header.py` | 100% |
+| `adapters/geo/fake.py` | 100% |
+| `adapters/geo/__init__.py` | 100% |
+| `apps/catalog/preview_api.py` | 100% |
+| `apps/catalog/preview_schemas.py` | 100% |
+| `apps/ingestion/services/preview_read.py` | 100% |
 
-The 66 uncovered statements are pre-existing gaps elsewhere in the codebase.
+The 66 uncovered statements are pre-existing gaps elsewhere in the codebase
+(`source_registry.py`, `venue_registry.py` and the `real` adapter mode's unreachable
+line).
 
 ## Test Commands
 
 ```bash
 # The item's own tests
 cd backend && .venv/bin/python -m pytest \
-    tests/domain/test_event_fit.py \
-    tests/ingestion/test_event_fit.py \
-    tests/ingestion/test_event_fit_command.py \
-    tests/architecture/test_event_fit_separation.py \
-    tests/architecture/test_import_contracts.py -q
+    tests/ports/test_geo.py \
+    tests/api/test_preview_api.py \
+    tests/ingestion/test_preview_read.py \
+    tests/architecture/test_preview_anonymity.py -q
 
 # The whole backend suite, with coverage
 cd backend && .venv/bin/python -m pytest -q --cov --cov-report=term-missing
@@ -63,436 +65,437 @@ cd backend && .venv/bin/python manage.py check
 make coverage-backend
 
 # The revert verification harness
-cd backend && bash revert_event_fit_check.sh
+cd backend && bash revert_preview_check.sh
 ```
 
 ## What Was Added
 
 | File | Tests | Covers |
 |------|-------|--------|
-| `backend/tests/domain/test_event_fit.py` | 36 | The pure function: every score band at its boundary, every tag rule, the local-day computation across a DST transition and across the date line, the city slug, determinism |
-| `backend/tests/ingestion/test_event_fit.py` | 33 | The catalog side: the write, the ingest hooks, the read, the backfill, the staleness refresh, the city-change retirement |
-| `backend/tests/ingestion/test_event_fit_command.py` | 7 | The `backfill_event_fit` command: idempotence, the dry run, the batching, the skipped-event report |
-| `backend/tests/architecture/test_event_fit_separation.py` | 8 | AD-10: the two kinds of explanation never cross, in **both** directions, and the re-export bypass is planted |
-| `backend/tests/architecture/test_import_contracts.py` | 4 new | The contract's *shape* is pinned, and two new planted violations for the package wall |
+| `backend/tests/ports/test_geo.py` | 20 | The port and its two adapters: the header read, the case-insensitive lookup, the length bound, the **once-only** decode, the normalization, and the fake's configurability |
+| `backend/tests/api/test_preview_api.py` | 39 | The two endpoints: the geo hit, the geo miss, the explicit override, the unsupported city, the opt-out, the identical-bytes session test, the per-IP limit, fewer than three events, the cache headers, the bound on the explicit city |
+| `backend/tests/ingestion/test_preview_read.py` | 21 | The published read: the cards, the fit's ordering, every Source Badge mapping, the supported cities |
+| `backend/tests/architecture/test_preview_anonymity.py` | 14 | AD-12: no session, no `personal`, no cookie, no adapter import, no Event Fit package import, no storing, no logging |
 
-`backend/revert_event_fit_check.sh` is the **revert verification harness** — twenty-one
+`backend/revert_preview_check.sh` is the **revert verification harness** — thirty-six
 cases, each of which patches a rule out of the source, runs the tests, records the
 outcome, and restores. It is how the revert table below was produced.
 
 ## What Was Changed in the Existing Tests
 
-Five existing test files changed, all of them because the **model set grew**, the
-**tick's job list grew**, or the **import contract's shape became load-bearing**:
-
 | File | Change |
 |------|--------|
-| `backend/tests/ingestion/test_models.py` | The model count 7 → 8, and `EventFit` added to the retention-category table (`SOURCE_REGISTRY`) |
-| `backend/tests/wall/test_schema_placement.py` | `ingestion_eventfit` added to the catalog-side table list |
-| `backend/tests/worker/test_scheduling_tasks.py` | The tick's expected job list, plus the new refresh-cadence and refresh-task tests |
-| `backend/tests/architecture/test_import_contracts.py` | The `event-fit-separation` plants updated for the package, plus a **new** pin on the contract's shape |
+| `backend/tests/config/test_adapters.py` | Two new tests: the real table has the header geo adapter, and it implements the port. The `real` mode is not yet selectable (four ports still have no real adapter), so the real table is checked one entry at a time. |
 
-**No existing test's expectations were weakened.** The tick's parametrization was
-*corrected*, not relaxed: see the note under "The refresh cadence" below.
+**No existing test's expectations were weakened.** The OpenAPI schema and the
+TypeScript client were regenerated (`make openapi`, `make client`) because the
+endpoints are new — that is AD-19, and `test_committed_openapi_schema_matches_the_live_api`
+is what checks it.
 
 ## The Properties Pinned
 
-### The score is the lower of two bands (and never a sum)
+### The geo header is untrusted input, and it is bounded before it is expanded
 
-The score is the **minimum** of the proximity band and the confidence band. Taking the
-lower is the honest rule: a badly-extracted event happening tonight is not a good fit,
-however soon it is — and a weighted sum would need weights nobody can justify without
-labelled data.
+The header came from the caller. Three things happen to it before it is allowed near
+anything, and each has its own test.
 
-- `test_the_score_is_the_lower_of_the_two_bands` — a good event a week out beats a
-  great-confidence event a fortnight out.
-- `test_the_score_is_the_lower_of_the_two_bands_the_other_way` — and the reverse
-  direction, so the rule is not accidentally one-sided.
-- `test_the_confidence_bands` — eight parametrized cases, each pinned at the exact
-  constant and at the band edges.
-- `test_an_event_with_no_confidence_scores_on_proximity_alone` — no
-  confidence is not a reason to refuse an indicator.
+- `test_the_header_value_is_length_bounded` — a 10 KB "city" is not a city, it is an
+  attempt to put a value somewhere it should not go.
+- `test_a_value_at_the_bound_is_accepted` — the bound is a bound and not a truncation.
+- `test_the_header_is_url_decoded_exactly_once` — **the one that matters most.**
+  `%2520` is a space that was encoded twice. One decode turns it into `%20`, still
+  encoded; a second decode would turn it into a space, and that is the same shape of
+  mistake that turns `%252e%252e%252f` into `../`.
+- `test_a_double_encoded_traversal_is_not_decoded_into_one` — the end-to-end version.
+  After one decode the value is `%2e%2e%2f`, which contains a path separator only after
+  a *second* decode, so it must never become `../`.
+- `test_the_header_is_read_case_insensitively` — HTTP header names are case-insensitive,
+  and the port takes a plain mapping, so the adapter does the folding itself.
 
-### The day boundary is the event's own local day, never UTC's
+**The `?city=` parameter is untrusted input too, and it is bounded by the same
+constant.** Two untrusted inputs into one endpoint, one bounded and one not, is the
+asymmetry that prompted the bound — and the bound is the *same* `GEO_CITY_MAX_LENGTH`
+the header uses, because a city name is a city name whichever way it arrived.
 
-This is the rule the work item calls out as the easiest to get wrong, and the tests are
-built around it.
+- `test_an_over_long_city_is_not_a_city` — an over-long city is treated as **no city
+  at all**: the request falls through to geo, and the response carries the geo city.
+  It is not echoed back.
+- `test_a_city_at_the_bound_is_accepted` — the bound is a bound and not a truncation:
+  a city exactly at the limit is still a city, and is answered as the query's city.
 
-- `test_an_event_tonight_is_not_tomorrow_even_when_utc_says_so` — an event at 23:30
-  local on Friday is "tonight" on Friday, even when UTC has already rolled over to
-  Saturday.
-- `test_a_dst_transition_does_not_move_the_day` — the spring-forward and fall-back
-  transitions, where the UTC day and the local day disagree by an hour.
-- `test_a_date_line_crossing_keeps_the_events_day` — Auckland, where the local day is
-  a day ahead of UTC's.
-- `test_the_local_day_is_the_events_not_the_readers` — the general case.
+### The opt-out is honoured by *not consulting the geo port at all*
 
-### "This weekend" means the one weekend in view
+"Don't use my location" is a real choice, and a choice the server ignores is not a
+choice. The stronger claim — the port is **not called** — is the one a test can check.
 
-The weekend rule took three attempts to get right, and the reasoning is worth
-recording because the wrong answers are plausible.
+- `test_the_opt_out_does_not_consult_the_geo_port` — the geo port is **replaced with a
+  port that raises if it is called**. A test that merely asserted the *result* would
+  pass against an implementation that called the port and threw the answer away, which
+  is exactly the implementation the work item is worried about.
+- `test_the_opt_out_ignores_a_geo_city_that_would_otherwise_win` — the end-to-end
+  version: even a good geo city loses to the opt-out.
 
-- `test_the_weekend_in_view_from_each_day_of_the_week` — eight parametrized cases, one
-  per weekday, each asking what "this weekend" means from that day.
-- `test_the_weekend_after_the_one_under_way_is_not_in_view` — from a Saturday, the
-  weekend seven days out is **not** "this weekend"; it is the one after.
-- `test_the_next_weekend_from_a_saturday_is_still_the_weekend_in_view` — the Sunday of
-  the weekend under way is still in view.
-- `test_the_weekend_across_new_year_is_still_this_weekend` — the year boundary, where an
-  ISO-week-number comparison would lose the weekend entirely (2027-01-01 is ISO week 53
-  of 2026).
+### The response is identical signed-in and unsigned — compared **byte for byte**
 
-**Every weekend is named by its Saturday, and the comparison is between dates.** Three
-formulations were rejected before that one worked: a plain "within seven days" bound
-(wrong in both directions), an ISO-week-number comparison (wraps at the year boundary),
-and a Monday-of-the-week comparison (wrong from a Saturday).
+- `test_the_response_is_identical_signed_in_and_unsigned` — `response.content`, not
+  `response.json()`. Two different bodies can compare equal as JSON and differ in
+  bytes, and the byte comparison is the one that catches a whitespace or key-order
+  difference that a cache would treat as two responses.
+- `test_the_preview_sets_no_session_cookie` — a response that sets a cookie is a
+  response that depends on something.
 
-### The place tag is the venue's city, and it is plain ASCII
+### The response is cacheable, and does not vary on the cookie
 
-- `test_the_city_tag` — parametrized over the slug rules: `"San Francisco"` and
-  `"san francisco"` produce the same key, `"São Paulo"` → `in_sao_paulo`,
-  `"München"` → `in_munchen`. A tag key has to survive a JSON round-trip, a URL segment
-  and a CSS selector unchanged, so accents are folded to their ASCII base.
-- `test_the_place_tag_is_last` — the tag order is fixed: time tags first, place last.
+- `test_the_response_is_cacheable_as_a_public_document` — `public` and `max-age`.
+- `test_the_response_does_not_vary_on_the_cookie` — a response that varies on the
+  cookie is not cacheable. Worse: a shared cache that stored one variant under a key
+  that ignores the cookie would serve one visitor's response to another.
+- `test_a_refused_request_is_not_cached` — a 429 is not content.
 
-### A fit is written when the event is created, and recomputed when it changes
+### The limit is per IP, and the address it uses is the real one
 
-- `test_a_new_event_gets_a_fit_from_the_ingest_path` — the fit is part of the event's
-  creation, inside the same transaction, from the ingest path's **own hook** rather
-  than from the writer called by hand.
-- `test_a_changed_event_gets_a_recomputed_fit` — a lifecycle change moves the event, so
-  the fit is recomputed against the new facts.
-- `test_the_recomputed_fit_is_not_stale` — the regression this pins. The write bumps
-  `event_version` in the database with `F()`, so the in-memory event still holds the old
-  number; a fit computed from that stale instance would record the old version, and the
-  read would skip it — the event would **silently vanish** from the preview rather than
-  show a wrong tag.
+- `test_the_ip_limit_is_enforced` — 60 requests are served, the 61st is refused.
+- `test_the_limit_is_per_ip` — one host cannot spend another host's budget.
+- `test_the_forwarded_header_is_ignored_by_default` — **the security one.** Next's
+  rewrite forwards the browser's headers as they arrived, so a browser that sets
+  `X-Forwarded-For` has that value reach Django unchanged. Trusting it
+  unconditionally let any caller mint a fresh throttle bucket per request, and the
+  limit would have been no limit at all.
+- `test_a_forwarded_header_that_is_not_an_address_is_refused` — the value must parse
+  as an IP address, so a caller cannot pad the key with arbitrary text.
+- `test_the_cities_endpoint_is_rate_limited_too` — the limit protects the endpoint
+  *family*, not one route. Otherwise the cities endpoint would be a way around it.
 
-### A stale row is never served
+### An unsupported explicit city returns an empty preview with its own name
 
-- `test_a_stale_fit_is_never_served` — the Event moved on since the fit was computed,
-  so the fit describes an event that no longer exists. It is skipped, not served.
-- `test_the_read_skips_an_event_that_has_already_started` — an event that has started
-  is not coming.
-- `test_the_read_skips_an_unpublished_event` — an `in_review` event is not publicly
-  listed (AD-6, AD-8).
+- `test_an_unsupported_explicit_city_returns_an_empty_preview_with_its_own_name` — the
+  frontend shows "No preview available in {city} yet.", and it needs the requested
+  city's name to say it.
+- `test_an_unsupported_explicit_city_does_not_show_the_fallback_s_events` — **the
+  failure this rule exists to prevent.** If the fallback's cards appeared under
+  "Queens", the heading would be a lie — and a visitor would tap "Save" on an event
+  that is not near them.
 
-### The read serves the persisted row; it computes nothing (AD-10)
+### The answer carries the catalog's spelling of the city
 
-- `test_the_read_does_not_compute_anything` — the score on the row is the score that is
-  served, even when it disagrees with what a fresh computation would say. This is the
-  AD-10 rule made testable: the read is not a calculator.
-- `test_the_read_returns_the_persisted_tags_untouched` — the read serves the tags as
-  they stand.
-- The architecture test asserts the read module never calls `compute_event_fit` — a
-  **static** check, so the guarantee survives a future edit that adds a call.
+- `test_the_catalogs_own_spelling_of_a_city_is_the_one_returned` — the spelling a
+  visitor types is not the spelling the events are filed under, and a preview headed
+  `"BROOKLYN"` listing the events filed under `"Brooklyn"` is a heading nobody can
+  search for. `_canonical` replaces the name only when the catalog holds that city;
+  when it does not, the name the visitor gave is returned unchanged.
 
-### The top N comes back in the right order
+### The supported cities are derived, not configured
 
-- `test_the_read_returns_the_best_fit_first` — the better-fit event is deliberately the
-  **later** one, so the test cannot pass whichever way the query is written. (See
-  "R10 — the case that did not fail" below.)
-- `test_the_read_breaks_a_score_tie_on_the_start_time` — among equally good fits, the
-  sooner one is the more useful one.
-- `test_the_read_returns_three_by_default` and `test_the_read_honours_an_explicit_limit`.
+A hard-coded city list goes stale the moment a source in a new city is ingested, and
+the picker would then offer a city the preview cannot fill.
 
-### The backfill is idempotent, and in the strong sense
+- `test_a_city_with_no_upcoming_fit_is_not_supported` — a city with events but no fits
+  is a city the preview cannot serve.
+- `test_a_stale_fit_does_not_make_its_city_supported` — a fit whose `event_version` no
+  longer matches its event describes an event that no longer exists.
+- `test_a_past_event_does_not_support_its_city` — a city whose only event has already
+  started has no upcoming preview.
+- `test_the_same_city_spelled_two_ways_is_listed_once` — two spellings of one city
+  would put the city in the picker twice.
 
-- `test_the_backfill_is_idempotent` — running it twice writes the same rows, not twice
-  as many. The write is an upsert, which is what makes this true.
-- `test_the_backfill_does_not_move_the_computed_at_of_a_row_that_did_not_change` — the
-  **strong** sense: a row that already says the same thing is not rewritten at all, so
-  its `computed_at` — which says when the fit was last *computed* — does not lie.
-- `test_a_fit_whose_tags_changed_is_rewritten` — and the other direction, so the
-  "don't rewrite" branch cannot become "never rewrite".
-- `test_the_backfill_batches` — the batching is the bound on the refresh cost.
-- `test_the_backfill_skips_an_unpublished_event`.
+### The Source Badge is a type, and the server states the fact
 
-### A venue that changes city retires the old fit
+The server names the type; the client owns the label and the glyph. Every mapping has
+its own test, including the two that are about restraint.
 
-- `test_a_fit_is_retired_when_the_venue_moves_city` — the event does not appear in the
-  preview of a city it has left.
-- `test_a_fit_is_not_duplicated_by_a_city_spelled_differently` — "Brooklyn" and
-  "brooklyn" are one city, so there is one row and one preview entry.
+- `test_a_crawled_source_is_the_crawled_badge` — *how* the facts were obtained is what
+  the ⚠ means: scraped, not published to us. The crawl wins over the source's type,
+  because a crawled venue site is still a scrape.
+- `test_an_unknown_source_type_is_an_aggregator` — the least specific claim, and the
+  one that asserts no verification the registry has not made.
+- `test_the_badge_is_never_the_user_imported_one` — a user-imported event is a
+  *personal* event, and FR-2 puts personal events out of scope, so this surface can
+  only ever produce four of the five badge types. The mapping says so rather than
+  pretending the fifth is reachable.
 
-### The refresh is what keeps "Tonight" from going stale
+### The privacy rules are structural, not aspirational
 
-- `test_the_refresh_recomputes_the_fits` — the tick's answer to time passing. The
-  refresh is a **writer**, not a render-time computation, which is the other half of
-  AD-10's rule: the render never computes, and something has to.
-- `test_the_refresh_batches` and `test_the_refresh_skips_an_event_with_no_venue_city`.
+PRD §10.2 and the work item's own note: the resolved city is **never** stored and
+**never** logged — not "never logged with the IP", because a log line that pairs a
+city with a request *is* a geo-log, and the point of not storing the city is that it is
+not stored.
 
-### The two kinds of explanation never cross (AD-10)
-
-`tests/architecture/test_event_fit_separation.py` asserts this in **both** directions,
-on the real tree, **AST-based** rather than import-based — a module can reach another
-through an alias, through a re-export, or through a function it was handed, and a
-runtime import check would only catch the first.
-
-- `test_personalization_does_not_import_the_event_fit_read` — the wall, checked on the
-  **package prefix**, so it catches a direct import, an alias, and a re-export alike.
-- `test_the_wall_catches_a_re_export` — the bypass that broke the first wall is
-  **planted**: a module that re-exports the read, and a module that imports *it*, and
-  the assertion is that the wall sees the name. This is the case that proves the wall
-  is a wall.
-- `test_personalization_may_still_read_the_public_catalog` — the wall is **narrow on
-  purpose**. Saving an event to your calendar needs the event's public facts, so
-  `personalization` may import `catalog_read`. This test pins that the wall is not
-  wider than it needs to be.
-- `test_ingestion_does_not_import_personalization` — the Event Fit is computed on the
-  catalog side, from catalog facts.
-- `test_the_event_fit_read_never_reads_the_personal_schema` — a visitor with no
-  session (AD-12) gets this and nothing else; a read of `personal` would be a leak even
-  if the value were discarded.
-- `test_the_domain_function_is_the_only_place_a_fit_is_computed` — there is one place
-  that computes, and it is the writer.
-
-The two import-linter contracts (`event-fit-separation`, `event-fit-catalog-only`) make
-the same wall **structural**, and `tests/architecture/test_import_contracts.py` plants
-a violation for each so the contracts are known to break when they should. The
-contract's **shape** is pinned too — see "The wall is a package" below.
+- `test_the_preview_does_not_log_the_resolved_city` and
+  `test_the_preview_does_not_store_the_resolved_city` — checked on the **code**, with
+  the docstrings stripped, so the checks cannot trip over their own explanation.
 
 ## Acceptance Criteria Validation
 
 | Criterion | Result | Where it is pinned |
 |-----------|--------|-------------------|
-| A **pure function** in `domain/event_fit.py` takes start, end, timezone, extraction confidence, city and "now"; returns an integer 1–5 and an ordered tuple of tag keys | ✅ | `domain/event_fit.py` — stdlib only, enforced by the `domain-pure` contract; `test_the_fit_is_frozen`, `test_the_score_is_never_outside_one_to_five` |
-| Thresholds in `shared/constants.py` | ✅ | `shared/constants.py` — every band boundary is a named constant |
-| Tags are generic, time- and place-based | ✅ | `test_tonight_needs_the_evening`, `test_tomorrow_is_the_next_local_day`, `test_the_city_tag`, `test_the_place_tag_is_last` |
-| Day boundaries computed in the event's own IANA timezone, not UTC | ✅ | `test_an_event_tonight_is_not_tomorrow_even_when_utc_says_so`, `test_the_local_day_is_the_events_not_the_readers` |
-| A test pins a DST transition and a date-line case | ✅ | `test_a_dst_transition_does_not_move_the_day`, `test_a_date_line_crossing_keeps_the_events_day` |
-| The score is deterministic — no randomness, nothing computed at render time | ✅ | `test_the_same_inputs_always_give_the_same_output`, `test_the_fit_is_frozen`; `domain/` has no clock read at all |
-| `domain/` coverage stays at 100% | ✅ | `make coverage-backend` → `domain/` TOTAL 619, 0 missed, 100% |
-| An `EventFit` model on the catalog side keyed by `(event, city)`, with score, tags, `computed_at` and the input `event_version` | ✅ | `apps/ingestion/models.py`; the `event_fit_event_city_uq` unique constraint and the `event_fit_score_range_ck` check |
-| AD-15 retention category; written **only** by `ingestion` | ✅ | `RetentionCategory.SOURCE_REGISTRY`; the `models-ingestion` protected contract; `test_the_domain_function_is_the_only_place_a_fit_is_computed` |
-| Recomputed when the event is created or changes, inside the existing ingest path and transaction discipline | ✅ | `test_a_new_event_gets_a_fit_from_the_ingest_path`, `test_a_changed_event_gets_a_recomputed_fit` |
-| A stale row is never served | ✅ | `test_a_stale_fit_is_never_served`, `test_the_recomputed_fit_is_not_stale` |
-| The plan states how time-relative staleness is handled **and why it complies** with AD-10 | ✅ | `plan.md` — "The Staleness Problem"; the refresh is a **writer** on a cadence, so the render still computes nothing |
-| A management command backfills and is idempotent | ✅ | `test_the_command_is_idempotent`, `test_the_dry_run_writes_nothing`, `test_the_command_batches` |
-| A published read returns the top N (default 3) for a city, ordered by score then start time, with the persisted score and tags | ✅ | `test_the_read_returns_three_by_default`, `test_the_read_returns_the_best_fit_first`, `test_the_read_breaks_a_score_tie_on_the_start_time` |
-| It never reads `personal` | ✅ | `test_the_event_fit_read_never_reads_the_personal_schema` (static) |
-| Event Fit never feeds an authenticated surface as a Relevance Pulse substitute | ✅ | The `event-fit-separation` contract (a **package**); `test_personalization_does_not_import_the_event_fit_read`; `test_the_wall_catches_a_re_export` |
-| An architecture test asserts `personalization` doesn't import the Event Fit read | ✅ | `tests/architecture/test_event_fit_separation.py` |
+| A **geo port** maps a request's edge geo header to a city name or nothing | ✅ | `ports/geo.py` — `resolve_city(headers: Mapping[str, str]) -> str | None`; `test_the_port_takes_headers_and_not_a_request` |
+| A **fake adapter** is the local/CI default and is **configurable to return a chosen city** | ✅ | `adapters/geo/fake.py`; `test_the_fake_reports_its_configured_city`, `GEO_FAKE_CITY` in `config/env.py` and `config/settings.py` |
+| The **real adapter** only reads a header — no database lookup, no vendor call | ✅ | `adapters/geo/header.py`; `test_the_header_adapter_does_no_lookup_and_calls_no_vendor` (asserts the module's source contains no `django.db`, `httpx`, `requests`, `urllib.request` or `socket`) |
+| The decoded header is **length-bounded** and **URL-decoded once** | ✅ | `test_the_header_value_is_length_bounded`, `test_the_header_is_url_decoded_exactly_once`, `test_a_double_encoded_traversal_is_not_decoded_into_one` |
+| The explicit `city` parameter is **bounded by the same constant** | ✅ | `test_an_over_long_city_is_not_a_city`, `test_a_city_at_the_bound_is_accepted` — an over-long city is treated as no city and falls through to geo |
+| **Supported cities** = the cities with at least one upcoming public event that has Event Fit | ✅ | `apps/ingestion/services/preview_read.py`; `test_the_supported_cities_are_the_cities_with_a_current_fit` |
+| A geo city outside that set falls back to **NYC**; NYC is a **named constant** | ✅ | `PREVIEW_FALLBACK_CITY` in `shared/constants.py`; `test_a_geo_city_outside_the_supported_set_falls_back` |
+| `GET /api/public/preview?city=` returns **up to 3 cards** | ✅ | `PREVIEW_SIZE = 3`; `test_the_preview_returns_at_most_three_cards` |
+| Each card has title, venue, local start time with timezone, fit score and tags | ✅ | `test_a_card_carries_the_event_fit_and_the_source_badge` — the card's keys are pinned **exactly** |
+| …and Source Badge inputs | ✅ | `PreviewCard.source_name` / `source_badge`; `test_the_cards_carry_the_fit_and_the_badge` |
+| The response returns the resolved city **and whether it came from geo, the query, or the fallback** | ✅ | `city_source` ∈ `{geo, query, fallback}`; `test_the_preview_body_carries_the_city_and_its_source` |
+| With no `city` param it uses geo | ✅ | `test_the_geo_city_is_used_when_there_is_no_city_parameter` |
+| An explicit `city` overrides geo | ✅ | `test_an_explicit_city_overrides_geo` |
+| An unsupported explicit city returns an **empty preview with the resolved city** — never another city's events | ✅ | `test_an_unsupported_explicit_city_returns_an_empty_preview_with_its_own_name`, `test_an_unsupported_explicit_city_does_not_show_the_fallback_s_events` |
+| `GET /api/public/preview/cities` lists the supported cities | ✅ | `test_the_cities_endpoint_lists_the_supported_cities` |
+| **No session.** A test calls both endpoints signed-in and unsigned and gets identical responses | ✅ | `test_the_response_is_identical_signed_in_and_unsigned`, `test_the_cities_response_is_identical_signed_in_and_unsigned` — compared **byte for byte** |
+| The endpoint doesn't touch `request.user` or `personal` | ✅ | `test_the_preview_surface_never_reads_the_session`, `test_the_preview_surface_never_touches_the_personal_schema` — checked on the **code** |
+| **Cacheable.** Cache headers suited to a public per-city response; varies on the city input and nothing session-related | ✅ | `test_the_response_is_cacheable_as_a_public_document`, `test_the_response_does_not_vary_on_the_cookie` |
+| **Rate-limited per IP** (PRD §11.2) | ✅ | `test_the_ip_limit_is_enforced`, `test_the_limit_is_per_ip`, `test_the_cities_endpoint_is_rate_limited_too` |
+| The **"Don't use my location"** choice is honoured — geo is not consulted | ✅ | `test_the_opt_out_does_not_consult_the_geo_port` — the port is **replaced with one that raises** |
+| Router registered, client regenerated (AD-19) | ✅ | `config/api.py` mounts it at `/public`; `test_the_preview_modules_are_reachable_from_the_router`; `make openapi` + `make client`; `test_committed_openapi_schema_matches_the_live_api` |
 | `make lint-imports` passes | ✅ | 19 kept, 0 broken |
-| `manage.py check` passes | ✅ | no issues (1 silenced) |
-| The coverage gates pass | ✅ | 99.01% overall (≥80%), `domain/` 100% |
-| Tests cover each tag rule at its boundaries, the score bands, the local-day computation across DST, recompute on version change, no stale row served, backfill idempotence, and the top-N ordering | ✅ | 236 tests across five files |
+| The endpoint reads `catalog` only through `ingestion`'s published read interface | ✅ | `apps/ingestion/services/preview_read.py`; `test_the_preview_never_reads_the_ingestion_models`, `test_the_preview_read_hands_over_plain_data`, `test_the_preview_never_imports_the_event_fit_package_directly` |
+| The resolved city is **never stored** server-side, and **never logged** with the IP | ✅ | `test_the_preview_does_not_store_the_resolved_city`, `test_the_preview_does_not_log_the_resolved_city` |
+| Tests cover: geo hit, geo miss → NYC, explicit override, unsupported city → empty, opt-out skipping geo, identical with and without a session, the per-IP limit, fewer than 3 events | ✅ | 100 tests across four files |
 
 ## Reverting Each Rule
 
 Every rule was verified by **reverting it and watching the test fail**. A regression test
-that passes against the broken code is not a regression test. The harness is
-`backend/revert_event_fit_check.sh`; it patches the source, runs the test files,
-records the outcome, restores, and ends with a `git diff --stat` that proves every
-patch was put back.
+that passes against the broken code is not a regression test — and the run's standing
+rule is that **a revert case that does not fail is not a revert case; it is a hole in
+the suite wearing a harness's clothes.** The harness is
+`backend/revert_preview_check.sh`; it patches the source, runs the test files, records
+the outcome, restores, and ends with a `git diff --stat` that proves every patch was put
+back.
 
 | # | Rule | Reverted | Result |
 |---|------|----------|--------|
-| R1 | The day boundary is the event's own local day, not UTC's | both `astimezone` calls redirected to UTC | **16 tests fail** ✓ |
-| R2 | An event that has already started is in the last band | the `until_start <= 0` check removed | **2 tests fail** ✓ |
-| R3 | The score is the **lower** of the two bands | `min(proximity, confidence)` → `max(...)` | **18 tests fail** ✓ |
-| R4 | The confidence band is a band, not a pass-through | the four comparisons replaced by `return 5` | **7 tests fail** ✓ |
-| R5 | The weekend is the one weekend in view, named by its Saturday | the Saturday comparison replaced by a seven-day bound | **4 tests fail** ✓ |
-| R6 | The place tag is the venue's city, slugged | the NFKD accent-folding removed | **2 tests fail** ✓ |
-| R7 | The fit row records the version it was computed from | `event_version` hard-coded to 1 | **2 tests fail** ✓ |
-| R8 | A stale fit is never served | the version check disabled | **1 test fails** ✓ |
-| R9 | The read serves the persisted score and tags; it computes nothing | the served score/tags hard-coded | **2 tests fail** ✓ |
-| R10 | The preview is ordered by score, then by start time | `-score` dropped from the ordering | **1 test fails** ✓ |
-| R11 | The ingest path recomputes the fit when the event changes | the `outcome != "unchanged"` guard disabled | **2 tests fail** ✓ |
-| R12 | The ingest hook re-reads the event, so the fit carries the new version | the re-read removed | **3 tests fail** ✓ |
-| R13 | The backfill is an upsert, so it is idempotent | `update_or_create` → `get_or_create` | **5 tests fail** ✓ |
-| R14 | The fit is written when the event is created, inside the same transaction | the create-path `_write_fit` call removed | **1 test fails** ✓ |
-| R15 | The tick refreshes the fits every fifteen minutes | the refresh guard disabled | **5 tests fail** ✓ |
-| R16 | The read never reaches the personal schema | `PERSONAL` added to the read's imports | **1 test fails** ✓ |
-| V1 | A fit for a city the event has left is retired | the delete of the other-city rows removed | **1 test fails** ✓ |
-| V2 | A row that already matches is not rewritten | the comparison removed | **2 tests fail** ✓ |
-| V3 | The Event Fit is a package, so the wall cannot be opened with a third name | the contract narrowed to one module name | **3 tests fail** ✓ |
-| V4 | The wall checks the package PREFIX, not a list of names | the prefix check replaced by an equality check | **1 test fails** ✓ |
-| V5 | The wall test can read a planted module outside the backend tree | the outside-the-tree fallback removed | **58 tests fail** ✓ |
+| R1 | The real adapter reads the edge's geo header | the header read returns `None` | **7 tests fail** ✓ |
+| R2 | The header value is URL-decoded exactly once | `unquote(unquote(raw))` | **2 tests fail** ✓ |
+| R3 | The header value is length-bounded before it is used | the bound check disabled | **1 test fails** ✓ |
+| R4 | The header lookup is case-insensitive | `headers.get(name)` | **1 test fails** ✓ |
+| R5 | The header value is normalized into a city shape | the character filter removed | **5 tests fail** ✓ |
+| R6 | The fake adapter is configurable to return a chosen city | the setting ignored | **3 tests fail** ✓ |
+| R7 | The fallback city is the named constant | a literal city name | **4 tests fail** ✓ |
+| R8 | An explicit city overrides geo | the explicit city replaced by the first supported one | **3 tests fail** ✓ |
+| R9 | A geo city outside the supported set falls back | the support check removed | **1 test fails** ✓ |
+| R9b | The answer carries the catalog's spelling of the city | the canonicalisation removed | **1 test fails** ✓ |
+| R10 | The opt-out does not consult the geo port at all | `if use_geo:` → `if True:` | **2 tests fail** ✓ |
+| R11 | An unsupported explicit city returns an empty preview, not the fallback's cards | the unsupported city replaced by the fallback | **4 tests fail** ✓ |
+| R12 | The response is cacheable as a public document | `Cache-Control` not set | **1 test fails** ✓ |
+| R13 | The response does not vary on the cookie | `Vary: Cookie` | **1 test fails** ✓ |
+| R14 | A refused request is not cached | `Cache-Control: no-store` removed | **1 test fails** ✓ |
+| R15 | The public preview is rate limited per IP | the limit raised to 10⁹ | **6 tests fail** ✓ |
+| R16 | The limit is keyed on the caller address | one key for every caller | **1 test fails** ✓ |
+| R17 | A refused request says when to retry | `Retry-After` not set | **1 test fails** ✓ |
+| R17b | The cities endpoint can answer a refusal at all | the 429 schema removed from the response map | **2 tests fail** ✓ |
+| R18 | A city is supported only when it has a current Event Fit | the staleness check disabled | **2 tests fail** ✓ |
+| R19 | A city with no upcoming event is not supported | the future filter removed | **6 tests fail** ✓ |
+| R20 | A superseded event does not support its city | the exclusion removed | **6 tests fail** ✓ |
+| R21 | The supported cities are listed alphabetically | the Python sort removed | **3 tests fail** ✓ |
+| R21b | The order is the Python one, not the database's locale collation | the database's `ORDER BY` put back | **1 test fails** ✓ |
+| R22 | One city spelled two ways is listed once | the case-insensitive dedup removed | **1 test fails** ✓ |
+| R23 | The support check is case-insensitive | `city in self.cities` | **1 test fails** ✓ |
+| R24 | The preview shows at most three cards | `PREVIEW_SIZE = 99` | **1 test fails** ✓ |
+| R25 | A crawled source gets the crawled badge, whatever its type | the crawl check disabled | **1 test fails** ✓ |
+| R26 | An unknown source type is the least specific claim, the aggregator | the fallback badge changed to "official" | **1 test fails** ✓ |
+| R27 | The catalog does not reach the Event Fit package directly | the import pointed at `event_fit.reads` | **28 tests fail** ✓ |
+| R28 | The preview surface never reads the session | `_ = request.user` planted | **1 test fails** ✓ |
+| R29 | The preview surface never touches the personal schema | `from shared.db import PERSONAL` planted | **1 test fails** ✓ |
+| R30 | The preview never stores the resolved city | `cache.set("preview:city", resolved)` planted | **1 test fails** ✓ |
+| R31 | The preview never logs the resolved city | a `logging` call planted | **1 test fails** ✓ |
+| R32 | The router is mounted at `/public` | the mount path changed | **35 tests fail** ✓ |
+| R33 | The explicit city is bounded, like the header | the bound check disabled | **1 test fails** ✓ |
 
-**All twenty-one reverts were restored** and the suite re-run green afterwards;
+**All thirty-six reverts were restored** and the suite re-run green afterwards;
 `git diff --stat` confirmed no revert artifacts remained.
 
 ### The cases that did not fail, and what they taught
 
-Three of the twenty-one cases did not fail on the first run. All three were holes in
-the suite wearing a harness's clothes, and all three are now caught.
+**Seven of the thirty-six cases did not fail on the first run.** Five were holes in the
+suite; two were holes in the harness itself. All seven are now caught.
 
-**R10 — the ordering test could not tell two orderings apart.**
-`test_the_read_returns_the_best_fit_first` had the better-fit event as the **sooner**
-one (2 hours vs 5 days), so ordering by score and ordering by start time gave the
-**same answer** and the test passed whichever way the query was written. The fix was
-in the test, not the source: the better-fit event is now the **later** one.
+**R3 — the bound was stated twice, so removing one check left the other.**
+The adapter bounded the raw value *and* the decoded value. Decoding only ever
+*shortens* a value — each `%XX` escape becomes one character — so the second check
+could never fire: it was unreachable code. An unreachable check is not a safety net,
+it is a claim the code does not make. The second check was **removed**, the comment
+rewritten to say why one check is enough, and the revert case now removes the one that
+remains.
 
-**V3 — the wall was load-bearing and the suite could not tell.** With the package
-contract in place, reverting it to name-only left **all 212 tests passing**. The fix
-was to pin the contract's *shape* in `test_import_contracts.py` — the same way
-`single-ics-parser` and `redis-sdk` are already pinned there — so that narrowing the
-wall is now an observable failure.
+**R8, R11, R21 — the tests could not tell two behaviours apart.**
 
-**V4 — the planted bypass was not the real bypass.** The re-export plant imported
-`apps.ingestion.event_fit.reads`, which a wall made of a *list* of names would also
-catch. The real bypass is the **name of the module that does the re-exporting**:
-`personalization` importing `apps.ingestion.event_fit_preview`. The plant was
-rewritten to model both hops — the module that re-exports, and the module that imports
-*it* — and the assertion now fails as it should.
+- *R8 and R11* reverted the wrong branch: the lever was the city-resolution function,
+  but the pattern was written against a version of the source from before an edit, so
+  the patch never applied and the case was **skipped** rather than run. A skipped case
+  is not a passing case, and the harness says so — it counts a skip as a hole and
+  fails the run. The patterns were corrected against the current source.
+- *R21* was a genuine hole. The supported cities were sorted **twice**: once by the
+  database (`ORDER BY city`) and once in Python (`sorted(..., key=str.casefold)`). The
+  two orderings agreed on the test's city names, so removing the Python sort changed
+  nothing observable and the test passed. The fix was in the **source**: the database
+  is no longer asked to sort at all, because a text `ORDER BY` is a **locale
+  collation** — `en_US.UTF-8` ignores punctuation at the primary level and orders case
+  in a locale-specific way — so two deployments with different locales would list the
+  same cities in a different order. `str.casefold` is the same everywhere, so it is the
+  sort that decides. The Python sort is now the only sort, and removing it breaks the
+  test.
 
-### The harness had a bug, and it was a bad one
+**R21b — the same rule, the other lever.** With the database's sort gone, putting it
+back is caught by a **structural** check (`test_the_supported_cities_are_not_ordered_by_the_database`),
+not by a behavioural one.
 
-The harness backed each file up to `/tmp/revert_backup_$(basename "$file")` — keyed on
-the **basename** alone. Three cases target `writes.py` (R7, R13, V1), so they shared one
-backup path; case A's restore overwrote case B's backup, and the file was left
-**reverted** for every case that followed. R7 reported `PATTERN NOT FOUND — the revert
-did not apply`, and the final `git diff --stat` showed `writes.py` still holding
-`get_or_create`.
+**The discriminator that was not usable.** The attempt to make the behavioural
+alphabetical test discriminate between the two orderings failed, and the reason is
+worth recording. The obvious candidate — `"St. John's"` against `"St Johns"` — does
+**not** discriminate: Python's `str.casefold` puts `"St Johns"` first as well, because
+the comparison reaches the space (0x20) before the period (0x2E). The candidate that
+*does* discriminate — `"A"` against `"a"` — cannot be used either, because the
+catalog's dedup is case-insensitive, so the two are **one** city and only one is ever
+listed. A test cannot use a pair the data will not hold. The rule was therefore made
+**structural**: the read must not ask the database to sort, and that is checked on the
+code.
 
-Two fixes: a **unique backup per case**, and — the important one — **the restore is
-verified, not assumed**. Each case compares the restored file against its backup byte
-for byte and aborts the run if they differ. A restore that silently fails is worse than
-no restore: it makes every later result a claim about a tree that does not exist.
+### Two real defects the harness found, and one the review found
+**The cities endpoint could not answer a refusal at all.** It declared
+`response={200: PreviewCitiesOut}` with no 429 schema, so when the throttle refused a
+request, django-ninja raised `ConfigError: Schema for status 429 is not set` and the
+endpoint returned a **500**. Every rate-limited request to `/api/public/preview/cities`
+was a server error rather than a refusal. The fix is one line — the 429 schema — and
+`test_the_cities_endpoint_is_rate_limited_too` is what found it. It is the only reason
+the case exists: the cities endpoint had never been tested past its limit.
+
+**The two paths answered with different spellings.** The geo path returned the
+catalog's spelling of the city (`"Brooklyn"`); the explicit path returned the caller's
+(`"BROOKLYN"`). A visitor typing `brooklyn` got a preview headed `brooklyn` listing the
+events filed under `Brooklyn`. Both paths now answer with the catalog's spelling —
+**and only when the catalog holds that city**, so an unsupported city is never silently
+renamed.
+
+**The third defect was found by reading the two untrusted-input paths side by side.**
+The geo header was bounded to `GEO_CITY_MAX_LENGTH`; the `?city=` query parameter was
+not bounded at all, so a caller could send an arbitrarily long value and have it echoed
+back in the response. Two untrusted inputs into one endpoint, one bounded and one not,
+is the asymmetry that prompted it. The bound is the **same constant** the header uses,
+and an over-long city is treated as **no city at all** — the request falls through to
+geo and then to the fallback, rather than being echoed back.
+
+### The harness had a bug, and it was the same bug as before
+
+The event-fit harness keyed its backup on the file's **basename** alone, so two cases
+touching the same file shared one backup path, and case A's restore overwrote case B's
+backup. This harness is written the other way round from the start: **a unique backup
+per case**, and — the important one — **the restore is verified, not assumed**. Each
+case compares the restored file against its backup byte for byte and aborts the run if
+they differ. A restore that silently fails is worse than no restore: it makes every
+later result a claim about a tree that does not exist.
+
+The harness also **counts a skipped case as a hole**. A case whose pattern drifted is
+not a passing case; it is a case that did not run. Three cases skipped on the first
+run for exactly that reason, and the run failed.
+
+After the review phase edited the source — the explicit-city branch gained the bound,
+and `_throttle_key` gained its `scope` parameter — **four more cases' patterns drifted**
+and the run failed again with four skips. The patterns were corrected against the
+current source; the run is green with **36 cases, 36 caught, 0 holes**.
+
+The lesson is the same one the previous item's harness taught: **a harness whose levers
+drift with the source is a harness that has stopped verifying anything.** The skip is
+counted as a hole for exactly that reason — a case whose patch cannot be found has
+verified nothing, and reporting it as a pass would be a lie.
 
 ## Notes on the Implementation
 
 Five decisions are worth recording, because each one could reasonably have gone the
 other way.
 
-### The Event Fit is a **package**, and that is what makes the wall hold
+### The published read lives *inside* `apps.ingestion`, not in `apps.catalog`
 
-AD-10 forbids the two kinds of explanation from crossing, and the obvious way to enforce
-that is a check on import *names*. But `personalization` legitimately imports
-`catalog_read` — saving an event to your calendar needs the event's public facts.
+AD-2's `models-ingestion` contract protects `apps.ingestion.models` to `apps.ingestion`
+— so `apps.catalog` cannot import `apps.ingestion.models`, and it cannot import
+`apps.ingestion.event_fit.reads` either, because *that* module imports the model
+directly. The obvious placement for the preview's read is `apps/catalog`, and it does
+not work.
 
-The first version of the wall named **two leaves**
-(`apps.ingestion/services/event_fit.py` and `.../event_fit_read.py`). A third module
-that re-exported the read — `event_fit_preview.py`, two lines — walked straight
-through it, with the import contract **green** and the architecture test **green**. A
-wall made of names is opened by adding a name.
+So the read lives at `apps/ingestion/services/preview_read.py`: inside `apps.ingestion`,
+so the contract holds, and handing over **frozen dataclasses** rather than model
+instances, so the calling app never holds a reference to a model it may not import. The
+wall holds without either side knowing the other's models. The work item asks that "the
+endpoint reads `catalog` only through `ingestion`'s published read interface", and this
+module is that interface.
 
-So the Event Fit became a **package** — `apps/ingestion/event_fit/`, with `writes.py`
-and `reads.py` inside it — and the contract names the package:
+### The Source Badge is derived in the read, because the fit read does not join the source
 
-```toml
-forbidden_modules = [
-    "apps.ingestion.event_fit",
-    "apps.ingestion.event_fit.*",
-]
-```
+The Event Fit read carries the score, the tags and the event's public facts. It
+deliberately does **not** join the source — a fit is about an event's fit, not about
+where it came from. The preview needs the badge, so the published read joins the source
+(one query, keyed by event id) and derives the badge type.
 
-A package is **one name that covers everything inside it**, so a new Event Fit module
-is inside the wall by default rather than outside it until somebody notices.
+### The opt-out is a branch that skips the call, not a flag on the answer
 
-**And the two guards are complementary, each honest about its scope.** The import
-contract catches every *direct* import of the package or anything in it. It cannot
-catch a module *outside* the package that re-exports what is inside — a `forbidden`
-contract matches on import names and has no data-flow analysis — so the AST test
-checks the **package prefix** instead, and `apps.ingestion.event_fit_preview` starts
-with `apps.ingestion.event_fit`.
+The temptation is to call the geo port and ignore its answer when `use_geo=false`. The
+rule here is that the port is **not called**, and the test replaces it with a port that
+raises if it is. The difference matters for a reason that is not theoretical: a geo
+lookup is a request to the edge, and "the visitor said not to" should mean the request
+is never made — not that the answer was discarded afterwards.
 
-`test_personalization_may_still_read_the_public_catalog` pins that the wall is narrow
-on purpose.
+### The `user_imported` badge is not producible here, and the mapping says so
 
-### The staleness refresh is a writer on a cadence, and that is how it complies
+A user-imported event is a *personal* event, and FR-2 puts personal events out of scope
+for the preview. The UX spec names five badge types; this surface can only ever produce
+four of them. Rather than map the fifth and pretend it is reachable, the mapping
+leaves it out and `test_the_badge_is_never_the_user_imported_one` states it.
 
-"Tonight" is a statement about *now*, so a persisted tag goes stale as time passes and
-not only when the event changes. AD-10 says the *render* never computes — so the
-recompute has to live somewhere else. It lives in `worker.tasks.refresh_event_fits`,
-enqueued by the tick every fifteen minutes, which recomputes the fits of the published
-events and writes them.
+### The explicit city is bounded by the same constant as the header, and falls through rather than truncating
 
-The rule is unchanged in substance: the render path reads a persisted row and computes
-nothing. What the refresh adds is the *writer* half, which is what makes "tonight" mean
-today's evening rather than the evening it was written on.
+Two untrusted inputs reach this endpoint — the edge's geo header and the `?city=`
+parameter — and the header was bounded while the parameter was not. The bound is the
+**same** `GEO_CITY_MAX_LENGTH`, because a city name is a city name whichever way it
+arrived.
 
-### The cadence is approximate, and the two cadences nest
-
-The tick keeps no state, so "every fifteen minutes" means "on every tick whose minute is
-a multiple of fifteen" — approximate in the same way the reconciler's five minutes is.
-
-The first version of the tick test assumed minutes 15, 30 and 45 were **not** multiples
-of five. Every multiple of fifteen *is* a multiple of five, so the refresh always lands
-on a reconciler minute and the two cadences nest: the refresh never runs alone. The
-test's expectations were corrected and the nesting is now documented in the tick's own
-docstring, so the next person does not make the same arithmetic mistake.
-
-### The score band is a duration, and the plan said "today"
-
-The plan's band table originally said the top band was an event that "**starts
-today**". The code says "starts within 24 hours", measured as a duration from `now` —
-and the **code is right**, because a duration is timezone-independent, because the local
-day is already computed for the tags (a second "day" rule would be a second truth), and
-because "how soon" is what the preview answers while "starts today" reads as a calendar
-fact. The plan was corrected, not the code, and the reasoning is recorded there.
-
-### An event with no venue city gets no row at all
-
-The city is not guessed from the source, the title, or the source's city. An event in an
-unknown city is in no city's preview, and a preview that puts it in the wrong one is
-worse than a preview that leaves it out. The `city` column therefore has a
-`CheckConstraint` forbidding the empty string, and `test_an_event_with_no_venue_city_gets_no_fit_row`
-pins the behaviour.
-
-There is a subtlety the command test found: an event with **no venue at all** is never
-even *seen* by the backfill's query, so it is not in the count either — while an event
-with a venue whose city is blank **is** seen and **is** skipped, and the command says so.
-Hiding the difference would make the output look like a bug.
+An over-long city is treated as **no city at all**, so the request falls through to geo
+and then to the fallback — the same shape as the "no city" case, which is the
+endpoint's normal path. The alternatives were both worse: **truncating** would answer
+with a different city than the caller asked for (and could answer with one the catalog
+happens to hold), and **echoing** would put an arbitrarily long value into the response
+body and into the `city` field.
 
 ## The Final Gate
 
-```
-pytest -q --cov --cov-report=term-missing
-3098 passed in 83.72s (0:01:23)
-TOTAL                                             6662     66    99%
-162 files skipped due to complete coverage.
-Required test coverage of 80.0% reached. Total coverage: 99.01%
-
-pytest tests/domain/test_event_fit.py \
-         tests/ingestion/test_event_fit.py \
-         tests/ingestion/test_event_fit_command.py \
-         tests/architecture/test_event_fit_separation.py \
-         tests/architecture/test_import_contracts.py -q
-236 passed in 5.47s
-
-coverage report --include='domain/*' --fail-under=100
-TOTAL     619      0   100%
-
-coverage report --include='domain/event_fit.py,apps/ingestion/event_fit/*,config/management/commands/backfill_event_fit.py'
-TOTAL     207      0   100%
-5 files skipped due to complete coverage.
-
-ruff check .
-All checks passed!
-
-ruff format --check .
-366 files already formatted
-
-lint-imports
-Contracts: 19 kept, 0 broken.
-
-manage.py check
-System check identified no issues (1 silenced).
-
-revert_event_fit_check.sh
-R1–R16 and V1–V5: every case caught (each run failed at least one test)
-```
+| Check | Command | Result |
+|-------|---------|--------|
+| The item's tests | `pytest tests/ports/test_geo.py tests/api/test_preview_api.py tests/ingestion/test_preview_read.py tests/architecture/test_preview_anonymity.py` | **100 passed** |
+| The whole backend suite | `pytest -q` | **3208 passed, 0 failed** |
+| Coverage | `make coverage-backend` | 99.04% overall (≥80%), `domain/` 100% |
+| The item's own modules | `pytest --cov=apps.catalog.preview_api ...` | **207 statements, 0 missed, 100%** |
+| The linter | `ruff check .` | All checks passed |
+| The formatter | `ruff format --check .` | 377 files already formatted |
+| The import contracts | `make lint-backend` | **19 kept, 0 broken** |
+| Django's own checks | `manage.py check` | no issues (1 silenced) |
+| The revert verification | `bash revert_preview_check.sh` | **36 cases, 36 caught, 0 holes** |
+| The committed API contract | `test_committed_openapi_schema_matches_the_live_api` | ✅ the schema and the TypeScript client are regenerated |
 
 ## What This Item Does Not Cover
 
-- **The Pulse Preview endpoint and the geo lookup** — `pulse-preview-api-and-geo` owns
-  the HTTP surface, the geolocation and the city resolution. This item ships the
-  **read service** that surface will call: `list_event_fit_for_city(city=..., now=...)`.
-- **The frontend preview** — `frontend-pulse-preview` owns the surface that renders the
-  score and the tags.
-- **The Relevance Pulse** — this item is the other half of AD-10's pair, and the
-  separation between them is the point. The Relevance Pulse itself is
-  `personalization`'s, and nothing here reaches it.
-- **The SEO pages** — AD-10 names the SEO pages as one of the Event Fit's surfaces, but
-  this item delivers the read; the pages are a separate surface.
-- **`end_time_utc`** — the pure function accepts it "for completeness — a long event
-  still starts when it starts, and the fit is about the start". It is not used yet, and
-  saying so is better than pretending it is.
+- **The frontend.** The Pulse Preview's *pages* are the `frontend-pulse-preview` work
+  item. This item is the backend the pages will call: the two endpoints, the geo port
+  and its adapters, the published read, and the wire contract.
+- **The `real` adapter mode as a whole.** Four ports (`billing`, `email`, `embedding`,
+  `llm`) still have no real adapter, so `ADAPTER_MODE=real` cannot be selected yet.
+  The real *geo* adapter exists and is wired into the real table; the table itself
+  cannot be reached.
+- **A geolocation vendor.** The real adapter reads the edge's header and does nothing
+  else — no lookup, no vendor call. That is a deliberate answer to PRD §10.2, not a
+  gap: a geo-IP vendor would mean sending every visitor's address to a third party on
+  every page load.
+- **The city picker's UI.** `/api/public/preview/cities` returns the names; drawing
+  the picker is the frontend item's.
+- **Persisting the resolved city.** PRD §10.2 forbids it for an anonymous visitor, and
+  the endpoint does not do it. The privacy rules are enforced structurally, so a later
+  edit that adds a `cache.set` or a `logger.info` fails the architecture suite.
+
+---
 
 ### Test Result
 
-**Passing.** 3098 passed, 0 failed, 99.01% coverage, 100% on all six modules this item
-created or changed, ruff clean, format clean, 19/19 import contracts kept, and all
-**twenty-one** rules pinned by a revert that was watched to fail.
+**PASS.** 100 item-scoped tests, 3208 in the whole backend suite, 0 failures. Every
+module this item created is at 100% coverage. All 36 revert cases were caught; the
+seven that were not caught on the first run were holes in the suite or in the harness,
+and each is now closed — two of them by real fixes to the source, one of which was a
+500 on every rate-limited request to the cities endpoint.

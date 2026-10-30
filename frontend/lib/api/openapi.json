@@ -1173,6 +1173,125 @@
         "title": "PersonalEventPatchIn",
         "type": "object"
       },
+      "PreviewCardOut": {
+        "description": "One card in the Pulse Preview.",
+        "properties": {
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source_badge": {
+            "title": "Source Badge",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "venue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Name"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "start_time_utc",
+          "start_time_tz",
+          "city",
+          "score",
+          "tags",
+          "source_name",
+          "source_badge"
+        ],
+        "title": "PreviewCardOut",
+        "type": "object"
+      },
+      "PreviewCitiesOut": {
+        "description": "The supported cities, for the one-tap city picker.",
+        "properties": {
+          "cities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cities"
+        ],
+        "title": "PreviewCitiesOut",
+        "type": "object"
+      },
+      "PreviewOut": {
+        "description": "The preview for a city.\n\n**`city` is always present**, even when `items` is empty: the empty case is a city\nthe catalog does not cover, and the frontend shows \"No preview available in {city}\nyet.\" — it needs the name to say it. It is never another city's name: an\nunsupported explicit city returns an empty preview carrying **that** city's name.",
+        "properties": {
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "city_source": {
+            "title": "City Source",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "city",
+          "city_source",
+          "items"
+        ],
+        "title": "PreviewOut",
+        "type": "object"
+      },
       "SavedEventListOut": {
         "description": "The user's saved events, and how many were left out.\n\n`omitted` counts the saves whose catalog event has since disappeared — superseded or\nunpublished. They are not listed, because they have no title to show, but they are not\nhidden either: the count lets the client tell the user that something they saved is no\nlonger available, rather than silently dropping it.",
         "properties": {
@@ -2758,6 +2877,99 @@
         "summary": "Save a public event",
         "tags": [
           "personal"
+        ]
+      }
+    },
+    "/api/public/preview": {
+      "get": {
+        "description": "Up to three Pulse Cards for a city, each with its Event Fit score and Why-this tags and its Source Badge. With no `city` parameter the city is inferred from the edge's geo header; an explicit `city` overrides it; `use_geo=false` is the visitor's 'Don't use my location' choice and the location is then not consulted at all. The response says which city was resolved and how it was resolved. No session is used and none is set.",
+        "operationId": "apps_catalog_preview_api_preview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "use_geo",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Use Geo",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "The Pulse Preview for a city",
+        "tags": [
+          "preview"
+        ]
+      }
+    },
+    "/api/public/preview/cities": {
+      "get": {
+        "description": "The supported cities, alphabetically, for the one-tap city picker. A city is supported when the catalog has at least one upcoming public event with an Event Fit for it. No session is used and none is set.",
+        "operationId": "apps_catalog_preview_api_preview_cities",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewCitiesOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "The cities the Pulse Preview can serve",
+        "tags": [
+          "preview"
         ]
       }
     }

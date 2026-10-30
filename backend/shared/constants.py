@@ -319,3 +319,64 @@ EVENT_FIT_TAG_ORDER = (
     EVENT_FIT_TAG_TOMORROW,
     EVENT_FIT_TAG_THIS_WEEKEND,
 )
+
+# ── Pulse Preview (FR-2, AD-12, PRD §11.2) ────────────────────────────────────────
+#
+# The Pulse Preview is the **first value a visitor gets**, before they have an account:
+# three Pulse Cards for their city. It is a *public* surface — no session, no `personal`,
+# no cookie — so it is cacheable, and every constant here serves that.
+
+# FR-2: "falls back to the most-popular city (NYC at MVP)".
+#
+# **One copy.** The backend resolves the fallback and the frontend shows it; if the two
+# spelled it differently, the consent banner would name a city the preview does not
+# serve. So the spelling lives here and nowhere else.
+#
+# It is the fallback for two situations only: geo resolved to **nothing**, and geo
+# resolved to a city the catalog does not cover. It is *not* the answer to an explicit
+# unsupported city — that one returns an empty preview carrying the requested city's
+# name, because showing the fallback's events under the requested name is a heading that
+# lies.
+PREVIEW_FALLBACK_CITY = "New York City"
+
+# The edge's geo header. Vercel sets `x-vercel-ip-city`; the value is URL-encoded
+# (e.g. `Brooklyn%2CNY`).
+#
+# **The header name is a constant**, not a literal spread through the code: the edge owns
+# the name, and changing edges changes one line. The *port* does not know it — the port's
+# input is a bag of headers, and the adapter is what knows which one to read.
+GEO_HEADER_NAME = "x-vercel-ip-city"
+
+# A city name longer than this is not a city, it is an attempt to put a value somewhere it
+# should not go. The header is attacker-controlled, and it is read from a request.
+GEO_CITY_MAX_LENGTH = 64
+
+# PRD §11.2: "Rate limiting on all public endpoints (per-IP and per-user)".
+#
+# The preview is limited **per IP only**. It has no per-user limit because it has no
+# user — that is the point of AD-12, and a per-user limit on an anonymous endpoint would
+# mean reading the session, which would mean the endpoint is not anonymous.
+#
+# The limit is generous because the endpoint is cheap, cacheable, and a visitor
+# legitimately reloads a preview while deciding. Sixty a minute is far above what a
+# person does and far below what a scraper does.
+PREVIEW_THROTTLE_WINDOW_SECONDS = 60
+PREVIEW_THROTTLE_IP = 60
+
+# The preview's cache headers. The browser holds it for a minute, a shared cache for five,
+# and a shared cache may serve a slightly stale copy while it refreshes in the background.
+#
+# `stale-while-revalidate` is the point of the third number: a visitor is never made to
+# wait on the origin for a card they could have had a moment ago.
+#
+# The preview's content moves when the Event Fit refresh runs (every 15 minutes) and when
+# events start, so these TTLs are longer than one refresh and shorter than a day.
+PREVIEW_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+
+# The preview's `Vary` header. **Nothing session-related may appear here.**
+#
+# A response that varies on the cookie is not cacheable, and — worse — a shared cache
+# that stores one variant under a key that ignores the cookie would serve one visitor's
+# response to another. The preview sets no cookie and reads no session, so the response
+# is identical for everyone and the cache key is the URL.
+PREVIEW_VARY = "Accept-Encoding"
