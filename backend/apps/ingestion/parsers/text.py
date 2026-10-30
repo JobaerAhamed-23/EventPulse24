@@ -1,57 +1,21 @@
-"""Plain text, safe URLs and derived ids for parsed candidates (AD-9).
+"""Safe URLs and derived ids for parsed candidates (AD-9).
 
-Source content is untrusted: markup is stripped (never rendered), `<script>` and `<style>`
-content is dropped, and only absolute http(s) URLs survive.
+Source content is untrusted: only absolute http(s) URLs survive, and an id the source did
+not give is derived rather than invented.
+
+**`plain_text` moved to `formats/text.py`.** Stripping markup off untrusted content
+is a *format* concern, not a catalog one — the ICS parser needs it too — so the
+implementation lives in the shared layer and is re-exported here for the catalog's other
+parsers (`feeds`, `jsonld`), which are not ICS consumers.
 """
 
-import re
-import unicodedata
 from hashlib import sha256
-from html import unescape
-from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
 from apps.ingestion.parsers.types import MAX_SOURCE_EVENT_ID, MAX_URL
+from formats.text import plain_text
 
-_WHITESPACE = re.compile(r"\s+")
-_DROPPED_ELEMENTS = frozenset({"script", "style", "template", "noscript"})
-
-
-class _TextExtractor(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.parts: list[str] = []
-        self._dropping = 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag in _DROPPED_ELEMENTS:
-            self._dropping += 1
-        elif tag in ("br", "p", "div", "li", "tr"):
-            self.parts.append(" ")
-
-    def handle_endtag(self, tag):
-        if tag in _DROPPED_ELEMENTS and self._dropping:
-            self._dropping -= 1
-
-    def handle_data(self, data):
-        if not self._dropping:
-            self.parts.append(data)
-
-
-def plain_text(value: object, limit: int) -> str:
-    """Markup stripped, entities decoded, control characters removed, whitespace collapsed,
-    truncated to `limit` characters."""
-    if value is None:
-        return ""
-    text = str(value)
-    if "<" in text:
-        extractor = _TextExtractor()
-        extractor.feed(text)
-        extractor.close()
-        text = "".join(extractor.parts)
-    text = unescape(text)
-    text = "".join(" " if unicodedata.category(c)[0] == "C" else c for c in text)
-    return _WHITESPACE.sub(" ", text).strip()[:limit]
+__all__ = ["absolute_iri", "derived_id", "http_url", "item_id", "plain_text"]
 
 
 def http_url(value: object, base: str = "") -> str:

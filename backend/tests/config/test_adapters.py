@@ -4,7 +4,7 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
-from config.adapters import FAKE_ADAPTERS, adapter_paths
+from config.adapters import FAKE_ADAPTERS, REAL_ADAPTERS, adapter_paths
 from ports.registry import PORT_KEYS
 
 
@@ -27,7 +27,7 @@ def test_real_mode_fails_and_names_every_missing_adapter():
 
     assert str(excinfo.value) == (
         "ADAPTER_MODE=real is not available yet: "
-        "no real adapter for billing, calendar, email, embedding, llm."
+        "no real adapter for billing, email, embedding, llm."
     )
 
 
@@ -49,6 +49,39 @@ def test_source_fetch_http_swaps_only_the_fetch_adapter():
 
 
 def test_real_mode_has_the_http_fetch_adapter():
-    from config.adapters import REAL_ADAPTERS
-
     assert REAL_ADAPTERS["fetch"] == "adapters.crawl.http.HttpFetchAdapter"
+
+
+def test_real_mode_has_the_ics_calendar_adapter():
+    """One adapter for all three providers: they all publish iCalendar."""
+    assert REAL_ADAPTERS["calendar"] == "adapters.calendar.ics.IcsCalendarAdapter"
+
+
+def test_the_real_calendar_adapter_implements_the_port():
+    from django.utils.module_loading import import_string
+
+    from ports.calendar import CalendarPort
+
+    adapter = import_string(REAL_ADAPTERS["calendar"])
+
+    assert issubclass(adapter, CalendarPort)
+
+
+def test_real_mode_has_the_header_geo_adapter():
+    """The real geo adapter reads the edge's header — no vendor, no lookup.
+
+    The `real` mode is not yet selectable (four ports still have no real adapter), so
+    the real table is checked here one entry at a time rather than by reaching the
+    `return dict(REAL_ADAPTERS)` line.
+    """
+    assert REAL_ADAPTERS["geo"] == "adapters.geo.header.HeaderGeoAdapter"
+
+
+def test_the_real_geo_adapter_implements_the_port():
+    from django.utils.module_loading import import_string
+
+    from ports.geo import GeoPort
+
+    adapter = import_string(REAL_ADAPTERS["geo"])
+
+    assert issubclass(adapter, GeoPort)

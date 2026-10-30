@@ -15,7 +15,9 @@ from ports.calendar import CalendarPort
 from ports.email import EmailPort
 from ports.embedding import EmbeddingPort
 from ports.fetch import SourceFetchPort
+from ports.geo import GeoPort
 from ports.llm import LLMPort
+from ports.throttle import ThrottlePort
 
 # settings.ADAPTERS key for each port.
 PORT_KEYS: dict[type, str] = {
@@ -25,6 +27,8 @@ PORT_KEYS: dict[type, str] = {
     BillingPort: "billing",
     CalendarPort: "calendar",
     SourceFetchPort: "fetch",
+    GeoPort: "geo",
+    ThrottlePort: "throttle",
 }
 
 
@@ -66,3 +70,11 @@ def get_calendar_port() -> CalendarPort:
 
 def get_fetch_port() -> SourceFetchPort:
     return get_adapter(SourceFetchPort)
+
+
+def get_geo_port() -> GeoPort:
+    return get_adapter(GeoPort)
+
+
+def get_throttle_port() -> ThrottlePort:
+    return get_adapter(ThrottlePort)

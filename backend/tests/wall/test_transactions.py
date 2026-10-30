@@ -15,10 +15,11 @@ def test_catalog_rollback_does_not_undo_personal_write():
 
     with pytest.raises(RuntimeError), transaction.atomic(using=CATALOG):
         Thing.objects.create(name="discarded")
-        User.objects.create(username="kept")  # default alias: outside the catalog transaction
+        # Default alias: outside the catalog transaction.
+        User.objects.create(email="kept@example.test")
         raise RuntimeError("abort the catalog transaction")
 
-    assert User.objects.filter(username="kept").exists()
+    assert User.objects.filter(email="kept@example.test").exists()
     assert not Thing.objects.exists()
 
 

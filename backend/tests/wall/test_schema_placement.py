@@ -37,6 +37,7 @@ INGESTION_TABLES = {
     "ingestion_venue",
     "ingestion_event",
     "ingestion_extractedrecord",
+    "ingestion_eventfit",
     "ingestion_eventstatechange",
     "ingestion_ingestionauditentry",
 }

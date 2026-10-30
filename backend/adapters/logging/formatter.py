@@ -10,7 +10,7 @@ from adapters.logging.context import current_trace_id
 from adapters.logging.redaction import ALLOWED_FIELDS, REDACTED, scrub, scrub_value
 
 # Loggers in our own code: their messages must be constant, so args are never interpolated.
-PROJECT_LOGGER_ROOTS = ("apps", "domain", "adapters", "config", "worker", "shared")
+PROJECT_LOGGER_ROOTS = ("apps", "domain", "adapters", "config", "worker", "shared", "formats")
 
 _RECORD_ATTRIBUTES = frozenset(
     set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime"}

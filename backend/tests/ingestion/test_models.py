@@ -337,13 +337,15 @@ def test_audit_entry_user_actor_allowed():
 INGESTION_MODELS = list(apps.get_app_config("ingestion").get_models())
 
 
-def test_ingestion_has_the_seven_designed_models():
+def test_ingestion_has_the_eight_designed_models():
+    # The seven from catalog-data-model-design.md, plus EventFit (AD-10, FR-26).
     assert {m.__name__ for m in INGESTION_MODELS} == {
         "Source",
         "TosReview",
         "Venue",
         "Event",
         "ExtractedRecord",
+        "EventFit",
         "EventStateChange",
         "IngestionAuditEntry",
     }
@@ -370,6 +372,7 @@ def test_ingestion_retention_categories():
         "Venue": RetentionCategory.SOURCE_REGISTRY,
         "Event": RetentionCategory.SOURCE_REGISTRY,
         "ExtractedRecord": RetentionCategory.SOURCE_REGISTRY,
+        "EventFit": RetentionCategory.SOURCE_REGISTRY,
         "EventStateChange": RetentionCategory.SOURCE_REGISTRY,
         "IngestionAuditEntry": RetentionCategory.AUDIT_LOG,
     }

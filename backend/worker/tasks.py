@@ -11,6 +11,7 @@ from uuid import UUID
 from celery import shared_task
 from django.utils import timezone
 
+from apps.ingestion.event_fit.writes import refresh_stale_event_fits
 from apps.ingestion.services import outbox, scheduling
 from apps.ingestion.services.ingest_source import ingest_source as run_ingest
 from apps.ingestion.services.source_registry import (
@@ -18,7 +19,14 @@ from apps.ingestion.services.source_registry import (
     SourceNotFoundError,
     SourcePausedError,
 )
-from shared.constants import OUTBOX_RECONCILE_EVERY_MINUTES
+from apps.personalization.services import calendar_sync
+from ports.registry import get_calendar_port
+from shared.actor import Actor
+from shared.constants import (
+    EVENT_FIT_REFRESH_BATCH_SIZE,
+    EVENT_FIT_REFRESH_EVERY_MINUTES,
+    OUTBOX_RECONCILE_EVERY_MINUTES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +44,47 @@ def tick() -> None:
     """The periodic tick (AD-7): the only beat entry. It enqueues and never touches the
     database, so a slow query can't delay the next tick.
 
-    Every tick: `schedule_sources`. When the UTC minute is a multiple of 5: `reconcile_outbox`
-    (the tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent).
+    Every tick: `schedule_sources` and `schedule_calendars`. When the UTC minute is a multiple of 5:
+    `reconcile_outbox` (the tick keeps no state, so the 5-minute cadence is approximate; both jobs
+    are idempotent). When the minute is a multiple of 15: `refresh_event_fits`, which
+    recomputes the Event Fit rows so that "tonight" does not go stale (AD-10).
+
+    The two cadences nest — every multiple of 15 is also a multiple of 5 — so the refresh
+    always lands on a reconciler minute. That is a consequence of the numbers, not a
+    design: the refresh's cadence is a divisor of the reconciler's, and if the two are
+    ever made independent, the tick test that pins the enqueue order will say so.
     """
     _enqueue(schedule_sources)
+    _enqueue(schedule_calendars)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
+    if _now().minute % EVENT_FIT_REFRESH_EVERY_MINUTES == 0:
+        _enqueue(refresh_event_fits)
     logger.info("Tick", extra={"job": "tick"})
+
+
+@shared_task(name="worker.tasks.refresh_event_fits")
+def refresh_event_fits() -> None:
+    """Recompute every published event's Event Fit row (AD-10, FR-26).
+
+    **This is the staleness refresh.** "Tonight" is a statement about *now*, so a
+    persisted tag goes stale as the clock moves — not only when the event changes. The
+    refresh is a **writer**: it recomputes the rows and persists them, so the read path
+    serves them as they stand and computes nothing (AD-10: "never recomputed at render").
+
+    It runs on a cadence, so a tag can be up to one interval out of date. That is the
+    trade-off, and it is stated in the plan rather than hidden: the alternative —
+    computing at read — is what AD-10 forbids.
+
+    The work is bounded: one pass over the published events, in batches, each batch in its
+    own transaction.
+    """
+    written = refresh_stale_event_fits(
+        now=_now(),
+        actor=Actor.system("event_fit_refresh"),
+        batch_size=EVENT_FIT_REFRESH_BATCH_SIZE,
+    )
+    logger.info("Event fits refreshed", extra={"job": "refresh_event_fits", "count": written})
 
 
 @shared_task(name="worker.tasks.schedule_sources")
@@ -91,6 +133,72 @@ def propagate_state_change(state_change_id: str) -> None:
     it until that consumer arrives.
     """
     logger.debug("State change not propagated yet", extra={"state_change_id": state_change_id})
+
+
+@shared_task(name="worker.tasks.schedule_calendars")
+def schedule_calendars() -> None:
+    """Claim the due calendar connections and enqueue one sync job per claim (D8).
+
+    This mirrors `schedule_sources` exactly: the tick enqueues the dispatcher, the
+    dispatcher claims what is due, and each claim becomes one job. The claim is atomic
+    (`FOR UPDATE SKIP LOCKED`), so two overlapping ticks never sync the same connection
+    twice, and a claim older than `CALENDAR_CLAIM_TTL` is a lost job and becomes claimable
+    again.
+
+    A connection that could not be enqueued has its claim released, so the next tick
+    retries it rather than leaving it claimed until the TTL expires.
+    """
+    now = _now()
+    claimed = calendar_sync.claim_due_connections(now=now)
+    enqueued = 0
+    for connection_id in claimed:
+        try:
+            _enqueue(sync_calendar, str(connection_id))
+            enqueued += 1
+        except Exception as exc:  # broker down: free the claim so the next tick retries
+            calendar_sync.release_claim(connection_id)
+            logger.warning(
+                "Calendar sync not enqueued",
+                extra={"connection_id": str(connection_id), "error_type": type(exc).__name__},
+            )
+    logger.info("Calendars scheduled", extra={"job": "schedule_calendars", "count": enqueued})
+
+
+@shared_task(name="worker.tasks.sync_calendar")
+def sync_calendar(connection_id: str) -> None:
+    """Sync one connected calendar and release its claim, whatever happens (D8).
+
+    The sync's own failures are recorded on the connection — a revoked credential marks the
+    connection `needs_reconnect` and keeps the imported events (D6) — so they do not reach
+    Celery as a retry. A revoked credential will not become valid by trying again.
+
+    **An unexpected failure is recorded too.** The four failures the sync handles each
+    write the next poll time. An error it does not handle would skip that, and the
+    connection would be due again on the very next 60-second tick — and on every tick
+    after that, forever, fetching the user's calendar 1,440 times a day. So the error is
+    recorded on the row before the claim is released, and the connection is retried at the
+    poll cadence rather than the tick cadence.
+    """
+    identifier = UUID(connection_id)
+    try:
+        calendar_sync.sync_calendar(
+            connection_id=identifier,
+            port=get_calendar_port(),
+            now=_now(),
+        )
+    except Exception as exc:
+        calendar_sync.record_unexpected_failure(
+            connection_id=identifier,
+            error_kind=f"unexpected:{type(exc).__name__}",
+            now=_now(),
+        )
+        logger.warning(
+            "Calendar sync failed unexpectedly",
+            extra={"connection_id": str(identifier), "error_type": type(exc).__name__},
+        )
+        raise
+    finally:
+        calendar_sync.release_claim(identifier)
 
 
 @shared_task(name="worker.tasks.reconcile_outbox")

@@ -15,6 +15,8 @@ the save-race protocol) belongs to the commands.
 from django.db import models
 from django.utils import timezone
 
+from apps.personalization.fields import EncryptedTextField
+from shared.constants import ONBOARDING_STEP_COUNT
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -35,7 +37,8 @@ class PersonalEvent(UUIDv7Model):
         """Where a personal event came from. FR-18 fixes the first value."""
 
         USER_CREATED = "user_created"
-        # AD-18's calendar import will add its own value when FR-50 lands.
+        # AD-18 / FR-50: an event imported from a connected calendar.
+        CALENDAR_IMPORT = "calendar_import"
 
     retention_category = RetentionCategory.ACCOUNT_CONTENT
 
@@ -51,6 +54,30 @@ class PersonalEvent(UUIDv7Model):
     location = models.CharField(max_length=300, null=True, blank=True)
     notes = models.TextField(null=True, blank=True)
     source = models.CharField(max_length=16, choices=Source.choices, default=Source.USER_CREATED)
+    # AD-18: the connection an imported event came from, **by value** — no foreign key.
+    # `CalendarConnection` is in the same schema (`personal`), so this does not cross the
+    # AD-3 wall, but the project holds every relation by value (OQ-8), and a foreign key
+    # would couple the purge of a connection to the purge of its events. Disconnect
+    # destroys the credential first and purges the events second (D7), which is two
+    # explicit steps rather than a cascade.
+    # Null for a user-created event; the check constraint below ties the two together.
+    calendar_connection_id = models.UUIDField(null=True, blank=True)
+    # The provider's own identifier for the event (the ICS UID). Null for a user-created
+    # event. Together with the connection id it makes a re-sync an upsert rather than a
+    # duplicate.
+    source_uid = models.CharField(max_length=255, null=True, blank=True)
+    # Whether the **user** has edited this row (D2 of the calendar-sync design).
+    #
+    # An imported event is a mirror of somebody else's agenda, and the user may disagree
+    # with it. This flag decides who owns a row when the feed and the row disagree: the
+    # feed owns an untouched import, the user owns an edited one.
+    #
+    # It is a stored flag rather than a heuristic ("does the row differ from the feed?"),
+    # because that heuristic's answer depends on which side you look from — and because a
+    # user's edit must survive the feed disagreeing with it.
+    #
+    # Always False for a user-created event (the user made it; there is no feed).
+    user_modified = models.BooleanField(default=False)
     # Rises with every mutation. AD-7's send key uses it, so it only ever goes up; the
     # command layer owns the increment (the model cannot know which write is legitimate).
     version = models.PositiveIntegerField(default=1)
@@ -67,6 +94,37 @@ class PersonalEvent(UUIDv7Model):
             models.CheckConstraint(
                 condition=models.Q(version__gte=1), name="personal_event_version_positive_ck"
             ),
+            # AD-18: an imported event always names its connection, and a user-created
+            # event never does. The database holds this, so a bug in the import path
+            # cannot leave an imported event orphaned.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(source="calendar_import")
+                    & models.Q(calendar_connection_id__isnull=False)
+                )
+                | (
+                    ~models.Q(source="calendar_import")
+                    & models.Q(calendar_connection_id__isnull=True)
+                ),
+                name="personal_event_source_connection_ck",
+            ),
+            # D2: only an imported event can be "user-modified". A user-created event has
+            # no feed to disagree with, so the flag would be meaningless on it — and a
+            # stray True would tell the sync that the user owns a row the sync never
+            # touches. The database holds this, so the flag cannot drift onto the wrong
+            # kind of row.
+            models.CheckConstraint(
+                condition=(~models.Q(source="calendar_import") & ~models.Q(user_modified=True))
+                | models.Q(source="calendar_import"),
+                name="personal_event_user_modified_import_only_ck",
+            ),
+            # AD-18 / FR-50: a re-sync upserts on (connection, uid) instead of duplicating.
+            # Postgres treats NULLs as distinct, so the many user-created rows with no
+            # source_uid do not collide.
+            models.UniqueConstraint(
+                fields=["calendar_connection_id", "source_uid"],
+                name="personal_event_connection_uid_uq",
+            ),
         ]
         indexes = [
             # The Timeline (FR-32) and the Pulse Digest (FR-19) both scan one user's
@@ -76,6 +134,136 @@ class PersonalEvent(UUIDv7Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class CalendarConnection(UUIDv7Model):
+    """One connected calendar and its encrypted credential (AD-18, FR-50).
+
+    The secret ICS/webcal address **is** the credential: Google classifies it as a secret
+    and offers a reset for it. So the stored value is ciphertext, produced by
+    `EncryptedTextField` (AD-18's application-level key, separate from `SECRET_KEY`).
+
+    The user is held **by value** (OQ-8): no relation to `User`, no `GenericForeignKey`.
+
+    The status is the connection's health, which is a fact about the last interaction with
+    the provider — not something derivable from the stored credential — so it is persisted
+    and a poll sets it. `disconnected` means the user disconnected it: the credential has
+    been destroyed (the column is `NULL`) and the row is waiting for the retention sweep.
+    It is never a row that still holds a live secret (D7).
+
+    `last_error_kind` holds a **slug**, never a message: an `httpx` exception message
+    contains the full request URL, which is the credential (AD-13).
+
+    Design: .specs-fire/intents/onboarding-and-account/work-items/
+    calendar-connection-model-design.md (decisions D7, D8).
+    """
+
+    class Provider(models.TextChoices):
+        """Which provider the address came from.
+
+        The MVP connects all three the same way — by pasting an ICS/webcal address
+        (Amendment A-9) — so the provider is a label on the connection, not a different
+        code path. OAuth and CalDAV arrive later behind the same port.
+        """
+
+        GOOGLE = "google"
+        APPLE = "apple"
+        OUTLOOK = "outlook"
+
+    class Status(models.TextChoices):
+        """The connection's state (D7)."""
+
+        ACTIVE = "active"
+        # The provider said the address is no longer valid (401/403/404/410), or the
+        # credential could not be read. The user is prompted to reconnect.
+        NEEDS_RECONNECT = "needs_reconnect"
+        # The user disconnected it. The credential is gone; the row awaits the sweep.
+        DISCONNECTED = "disconnected"
+
+    retention_category = RetentionCategory.ACCOUNT_IDENTITY
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    provider = models.CharField(max_length=16, choices=Provider.choices)
+    # The encrypted credential. `NULL` means it has been destroyed (D7). The field
+    # encrypts on write and decrypts on read; the column never holds plaintext.
+    credential = EncryptedTextField(null=True, blank=True)
+    # A keyed HMAC of the normalised address (D6). It makes "is this calendar already
+    # connected?" one indexed lookup instead of decrypting every row, and it cannot be
+    # computed by anyone without the application key.
+    credential_fingerprint = models.CharField(max_length=64)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.ACTIVE)
+    # When the last poll finished, and when the next one is due (AD-18: the poll interval
+    # is ours to choose — `shared.constants.CALENDAR_POLL_INTERVAL`).
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    next_poll_at = models.DateTimeField(null=True, blank=True)
+    # AD-7 scheduling: when the dispatcher claimed this connection for a sync. A claim
+    # older than `CALENDAR_CLAIM_TTL` is a lost job (a worker died) and the connection
+    # becomes claimable again. Null means "not claimed".
+    #
+    # The claim is what stops two overlapping ticks syncing the same connection twice.
+    sync_claimed_at = models.DateTimeField(null=True, blank=True)
+    # The provider's opaque cache validators (AD-18). They are sent back as conditional
+    # headers on the next fetch, so an unchanged feed costs one 304 instead of a full
+    # download.
+    #
+    # They are per-connection state and are not secrets — but they are never logged
+    # either, on the same principle as the address: they identify the connection to
+    # whoever holds the provider's log.
+    etag = models.CharField(max_length=255, null=True, blank=True)
+    last_modified = models.CharField(max_length=255, null=True, blank=True)
+    # A slug such as "revoked" or "transient", never a message and never a URL.
+    last_error_kind = models.CharField(max_length=32, null=True, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    # A user-supplied *name* for the calendar ("Work", "Family") — not the URL, and not a
+    # secret. It is shown in the UI so two calendars can be told apart.
+    display_label = models.CharField(max_length=120, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # One **live** calendar per address, per user. The fingerprint is keyed, so
+            # this also means the same address cannot be connected twice (D6).
+            #
+            # **Partial, so a disconnected row does not squat the address.** A
+            # disconnected connection has had its credential destroyed, but the
+            # fingerprint — a keyed HMAC of the old address — is still on the row, and
+            # the row waits for the retention sweep (D7). Under an unpartial constraint
+            # that fingerprint would still occupy the address, and a user who
+            # disconnected a calendar and then re-added the same one would hit the
+            # constraint and get a 500 for an ordinary, everyday sequence. Excluding the
+            # disconnected rows says what the constraint means: *one live connection per
+            # address*. The same shape as `ingestion`'s `event_live_source_item_uq`.
+            models.UniqueConstraint(
+                fields=["user_id", "credential_fingerprint"],
+                condition=~models.Q(status="disconnected"),
+                name="calendar_connection_user_credential_uq",
+            ),
+            # D7's state machine, held by the database: a connection that is not
+            # disconnected must have a credential, and a disconnected one must not.
+            models.CheckConstraint(
+                condition=(models.Q(status="disconnected") & models.Q(credential__isnull=True))
+                | (~models.Q(status="disconnected") & models.Q(credential__isnull=False)),
+                name="calendar_connection_status_credential_ck",
+            ),
+        ]
+        indexes = [
+            # The poll scan: one user's connections by status.
+            models.Index(fields=["user_id", "status"], name="calendar_conn_user_status_idx"),
+            # The due-time query: the connections whose next poll is due. Partial, because
+            # only an active connection is ever due.
+            models.Index(
+                fields=["next_poll_at"],
+                name="calendar_connection_due_idx",
+                condition=models.Q(status="active"),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # The provider and nothing else. Django's `Model.__repr__` uses `__str__`, so this
+        # is also what `repr(conn)` shows — and what the admin's list column shows (AD-13).
+        return f"{self.provider} calendar"
 
 
 class SavedEvent(UUIDv7Model):
@@ -253,6 +441,139 @@ class ConflictPair(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"{self.kind} conflict {self.status}"
+
+
+class Interest(UUIDv7Model):
+    """One interest chip the user picked (FR-1).
+
+    The user is held **by value** (OQ-8): no relation to `User`, no `GenericForeignKey`.
+
+    One row per chip, with the unique constraint on `(user_id, chip_key)` — so the
+    "same chip twice" rule is held by the **database**, not merely by the service. A
+    concurrent double-write would be caught by the constraint even if the service's
+    replace were not atomic.
+
+    `chip_key` is a stable slug from `shared.constants.INTEREST_CHIPS` — e.g.
+    `"tech_meetups"`. The display label is **not** stored: the label is prose and may
+    change, and a stored label would orphan the key the day it did.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # A stable key from `shared.constants.INTEREST_CHIPS`.
+    chip_key = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            # The same chip cannot be held twice. This is the acceptance criterion's
+            # "DB constraint", held by the database so it holds under a race.
+            models.UniqueConstraint(fields=["user_id", "chip_key"], name="interest_user_chip_uq"),
+        ]
+        indexes = [
+            # The digest reads one user's chips.
+            models.Index(fields=["user_id"], name="interest_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.chip_key
+
+
+class OnboardingProgress(UUIDv7Model):
+    """Where the user is in the 3-step onboarding flow (FR-1).
+
+    One row per user. The row holds the *position* (`current_step`, 1–3) rather than the
+    step's name, because the resume rule is about the position: "resumed at the same
+    step" means the same place in the flow. The name is resolved through
+    `shared.constants.ONBOARDING_STEPS`, so the two cannot drift.
+
+    `last_advanced_at` is the moment the user last advanced, completed or skipped a step.
+    It is what the resume window is measured against — a user who leaves mid-step and
+    comes back within `ONBOARDING_RESUME_WINDOW` resumes at the same step; after the
+    window, the onboarding restarts at step 1.
+
+    `completed_at` makes completion **terminal**: a completed user is never sent back
+    into onboarding, whatever the clock says.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # 1..3 — the index into `shared.constants.ONBOARDING_STEPS`.
+    current_step = models.PositiveSmallIntegerField(default=1)
+    # The moment the user last advanced, completed or skipped a step.
+    last_advanced_at = models.DateTimeField()
+    # Set when onboarding ends. A completed user is never sent back into it.
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user_id"], name="onboarding_progress_user_uq"),
+            # FR-1's three-step cap, held by the database. The constant
+            # `ONBOARDING_STEP_COUNT` is the source of truth; this is the backstop for a
+            # row written by anything other than the command layer.
+            models.CheckConstraint(
+                condition=models.Q(current_step__gte=1)
+                & models.Q(current_step__lte=ONBOARDING_STEP_COUNT),
+                name="onboarding_progress_step_ck",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="onboarding_progress_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        if self.completed_at is not None:
+            return "onboarding complete"
+        return f"onboarding step {self.current_step}"
+
+
+class DigestPreference(UUIDv7Model):
+    """When and where the Pulse Digest should arrive (FR-1, step 3).
+
+    The user is held **by value** (OQ-8): no relation to `User`.
+
+    **The delivery time is a local wall clock, not an instant.** It is paired with an
+    IANA zone, and the pair is the whole preference. Storing a UTC instant instead would
+    be wrong in a way that only shows up twice a year: the user says "9am", and a UTC
+    instant is "9am once, then 8am or 10am after a DST change". A wall clock plus a zone
+    is what the user actually meant, and it is what `delivery` will read when it computes
+    the next send time.
+
+    **This is a small dedicated model, not a `PREFERENCE_GRAPH`.** A graph is a structure
+    for a *set* of preferences with edges between them; a delivery time and a zone are a
+    single value with two parts, read as a unit and written as a unit. A graph would add a
+    node type, an edge type and a traversal for one row. The shape is reconsidered when a
+    second, genuinely separate preference arrives — and the reason is recorded here so the
+    next reader knows the decision was deliberate, not accidental.
+
+    The zone is validated by the command, not by a check constraint: a database check
+    cannot see the timezone database.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # A local wall clock (HH:MM), NOT an instant. Paired with `timezone`.
+    delivery_time = models.TimeField()
+    # An IANA zone name, e.g. "America/Los_Angeles". Validated by the command.
+    timezone = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user_id"], name="digest_preference_user_uq"),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="digest_preference_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"digest at {self.delivery_time} {self.timezone}"
 
 
 class PersonalizationAuditEntry(AuditEntry):

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-ROOT_PACKAGES = ("domain", "apps", "ports", "adapters", "config", "worker", "shared")
+ROOT_PACKAGES = ("domain", "apps", "ports", "adapters", "config", "worker", "shared", "formats")
 
 # domain may import the stdlib, itself, and these two stdlib-only shared modules.
 DOMAIN_ALLOWED_PROJECT_MODULES = ("domain", "shared.constants", "shared.ids")

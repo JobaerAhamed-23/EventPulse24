@@ -26,7 +26,7 @@ User = get_user_model()
 
 
 def test_a_signed_in_request_resolves_to_that_user():
-    user = User.objects.create_user(username="sam", password="pw")
+    user = User.objects.create_user(email="sam@example.test", password="pw")
     request = RequestFactory().get("/api/personal/events")
     request.user = user
 
@@ -52,7 +52,7 @@ def test_a_user_with_no_session_is_still_a_user():
     So the seam checks `is_authenticated`, not whether a session row exists — a request that
     reached the endpoint at all has already been through the session middleware.
     """
-    user = User.objects.create_user(username="guest", password="pw")
+    user = User.objects.create_user(email="guest@example.test", password="pw")
     request = RequestFactory().get("/api/personal/events")
     request.user = user
 

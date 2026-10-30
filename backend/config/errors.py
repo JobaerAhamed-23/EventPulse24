@@ -16,9 +16,12 @@ from ninja.errors import ValidationError as NinjaValidationError
 
 from domain.errors import (
     ConflictError,
+    CsrfError,
     DomainError,
+    NotAuthenticatedError,
     NotFoundError,
     PermissionDeniedError,
+    ThrottledError,
     ValidationError,
 )
 
@@ -29,7 +32,17 @@ STATUS_BY_ERROR: dict[type[DomainError], int] = {
     NotFoundError: 404,
     ValidationError: 422,
     PermissionDeniedError: 403,
+    # A refused request, not a permission problem. It has its own code so the frontend
+    # can tell the two apart: a CSRF failure means "fetch a fresh token and retry".
+    CsrfError: 403,
     ConflictError: 409,
+    # A refusal, not a malformed request: the credentials did not work, or there was no
+    # session. `AuthenticationFailedError` is a `NotAuthenticatedError`, so it is a 401
+    # here — which is what the frontend branches on.
+    NotAuthenticatedError: 401,
+    # Too many attempts. A 429 is a distinct status from the 400 a generic domain error
+    # gets: the caller can act on it — wait and retry — and the frontend branches on it.
+    ThrottledError: 429,
     DomainError: 400,
 }
 

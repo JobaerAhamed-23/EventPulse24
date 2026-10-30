@@ -9,12 +9,13 @@ import zlib
 import httpx
 import pytest
 
-from adapters.crawl.http import GuardedBackend, GuardedTransport
+from adapters.crawl.http import Deadline, GuardedBackend, GuardedTransport
 from ports.fetch import (
     FetchBlockedError,
     FetchContentError,
     FetchError,
     FetchHTTPError,
+    FetchLimits,
     FetchNetworkError,
     FetchRedirectError,
     FetchTimeoutError,
@@ -566,3 +567,135 @@ def test_logs_carry_ids_and_counts_but_never_a_url_host_or_ip(net, caplog):
         assert HOST not in rendered and PUBLIC not in rendered and "token" not in rendered
     [ours] = [r for r in caplog.records if r.name == "adapters.crawl.http"]
     assert (ours.job, ours.status_code, ours.byte_count) == ("fetch", 200, len(RSS))
+
+
+# --- The credential flag (AD-18) ---------------------------------------------------------------
+
+
+def test_a_credential_fetch_writes_no_httpx_url_line(fixture_server, caplog):
+    """A credential fetch produces no httpx record, because httpx records the URL.
+
+    **httpx logs the request URL at INFO**, and for a calendar that URL *is* the
+    credential. So a caller holding a credential says so, and the transport stops the
+    HTTP client from writing the URL.
+
+    The end-to-end proof found this: its credential-leak sweep lowered the `httpx`
+    logger, and the sweep failed on the calendar's own request URL.
+
+    **The real fixture server is used, not the scripted network.** The scripted
+    connector answers at the httpcore layer and never reaches httpx's own logger, so
+    it would produce no httpx record whatever the code did — the test would pass for
+    the wrong reason. The fixture is a real socket, so httpx really does log it.
+    """
+    from adapters.crawl.http import FetchLimits, HttpFetchAdapter
+    from ports.fetch_policy import allow_loopback_fetch
+
+    with allow_loopback_fetch():
+        adapter = HttpFetchAdapter(
+            FetchLimits(
+                user_agent="EventPulse24-Test/1.0",
+                allowed_ports=frozenset({fixture_server.port}),
+            ),
+            ssl_context=fixture_server.ssl_context(),
+        )
+        caplog.set_level(logging.DEBUG, logger="httpx")
+
+        adapter.fetch(fixture_server.url("/feed.ics"), credential=True)
+
+        httpx_records = [record for record in caplog.records if record.name == "httpx"]
+        assert not httpx_records, (
+            "the credential fetch wrote an httpx record, and httpx records carry the "
+            f"request URL. Found: {[r.getMessage() for r in httpx_records]}"
+        )
+
+
+def test_an_ordinary_fetch_still_logs_its_url(fixture_server, caplog):
+    """A source fetch keeps httpx's URL logging exactly as it had it.
+
+    The credential flag is opt-in, so the deployment's own diagnostics — which URL was
+    fetched — are unchanged for the fetches where the URL is an identifier rather
+    than a secret.
+
+    This is the **positive counterpart**: without it, the test above would pass on a
+    build where httpx never logs at all.
+    """
+    from adapters.crawl.http import FetchLimits, HttpFetchAdapter
+    from ports.fetch_policy import allow_loopback_fetch
+
+    with allow_loopback_fetch():
+        adapter = HttpFetchAdapter(
+            FetchLimits(
+                user_agent="EventPulse24-Test/1.0",
+                allowed_ports=frozenset({fixture_server.port}),
+            ),
+            ssl_context=fixture_server.ssl_context(),
+        )
+        caplog.set_level(logging.DEBUG, logger="httpx")
+
+        url = fixture_server.url("/feed.ics")
+        adapter.fetch(url)
+
+        httpx_records = [record for record in caplog.records if record.name == "httpx"]
+        assert httpx_records, (
+            "no httpx record was captured, so the credential test above would pass "
+            "for the wrong reason — httpx really does log the URL."
+        )
+        assert url in httpx_records[0].getMessage()
+
+
+# --- The SSL context (AD-18) -------------------------------------------------------------------
+
+
+def test_an_ssl_context_that_does_not_verify_is_refused():
+    """A caller-supplied context that disables verification is refused.
+
+    The `ssl_context` parameter exists so that a test can trust a fixture server's
+    self-signed certificate. It is an *addition* to the trust store, and the module
+    says so — but a statement in a docstring is not a property of the code.
+
+    **The code review found the gap**: the context was passed straight through to
+    httpcore, so a caller could have passed one with `verify_mode = CERT_NONE` and
+    `check_hostname = False` and silently disabled certificate verification for
+    every fetch that used it.
+
+    So the module checks the context it is given, and refuses one that does not
+    verify.
+    """
+    untrusting = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    untrusting.check_hostname = False
+    untrusting.verify_mode = ssl.CERT_NONE
+
+    with pytest.raises(ValueError, match="verify the peer certificate"):
+        GuardedTransport(
+            GuardedBackend(FetchLimits(user_agent="EventPulse24-Test/1.0"), Deadline(30.0)),
+            ssl_context=untrusting,
+        )
+
+
+def test_an_ssl_context_that_skips_the_hostname_check_is_refused():
+    """The hostname check is required as well as the certificate check.
+
+    Either one alone is enough to make a fetch interceptable: a context that verifies
+    the certificate but not the name would accept a valid certificate for the wrong
+    host.
+    """
+    no_hostname = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    no_hostname.check_hostname = False
+
+    with pytest.raises(ValueError, match="check the hostname"):
+        GuardedTransport(
+            GuardedBackend(FetchLimits(user_agent="EventPulse24-Test/1.0"), Deadline(30.0)),
+            ssl_context=no_hostname,
+        )
+
+
+def test_a_verifying_ssl_context_is_accepted():
+    """The normal case: a context that verifies is accepted unchanged."""
+    verifying = ssl.create_default_context()
+
+    transport = GuardedTransport(
+        GuardedBackend(FetchLimits(user_agent="EventPulse24-Test/1.0"), Deadline(30.0)),
+        ssl_context=verifying,
+    )
+
+    assert transport is not None

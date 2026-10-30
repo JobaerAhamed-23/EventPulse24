@@ -17,6 +17,7 @@ import { PersonalEventsSection } from "@/components/personal-events-section";
 
 const GET = vi.fn();
 const apiBaseUrl = vi.fn();
+const sessionHeaders = vi.fn();
 
 vi.mock("@/lib/backend-client", () => ({
   api: { GET: (...args: unknown[]) => GET(...args) },
@@ -24,6 +25,10 @@ vi.mock("@/lib/backend-client", () => ({
 
 vi.mock("@/lib/api-base-url", () => ({
   apiBaseUrl: (...args: unknown[]) => apiBaseUrl(...args),
+}));
+
+vi.mock("@/lib/session", () => ({
+  sessionHeaders: () => sessionHeaders(),
 }));
 
 const EVENT = {
@@ -42,6 +47,8 @@ beforeEach(() => {
   apiBaseUrl.mockReset();
   // A base URL is present by default: the "no base URL" case is the one that opts out.
   apiBaseUrl.mockReturnValue("http://127.0.0.1:8000");
+  sessionHeaders.mockReset();
+  sessionHeaders.mockResolvedValue({ cookie: "sessionid=abc; csrftoken=tok" });
 });
 
 describe("PersonalEventsSection", () => {
@@ -50,8 +57,23 @@ describe("PersonalEventsSection", () => {
 
     render(await PersonalEventsSection());
 
-    expect(GET).toHaveBeenCalledWith("/api/personal/events");
+    expect(GET).toHaveBeenCalledWith("/api/personal/events", {
+      headers: { cookie: "sessionid=abc; csrftoken=tok" },
+    });
     expect(screen.getByText("Dinner with Rahul")).toBeInTheDocument();
+  });
+
+  it("carries the visitor's session, so a signed-in user sees their own events", async () => {
+    // This read runs on the Next.js server, which has no session of its own. Without the
+    // forwarded cookie the API answers 401, the quiet-failure path turns that into an
+    // empty list, and a signed-in user is told they have no personal events while the
+    // same read from their browser lists them.
+    GET.mockResolvedValue({ data: { items: [EVENT] }, error: undefined });
+
+    render(await PersonalEventsSection());
+
+    const [, options] = GET.mock.calls[0];
+    expect(options?.headers?.cookie).toBe("sessionid=abc; csrftoken=tok");
   });
 
   it("shows an empty list rather than an error when the read fails", async () => {

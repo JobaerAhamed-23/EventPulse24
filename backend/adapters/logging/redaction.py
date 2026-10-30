@@ -44,6 +44,11 @@ ALLOWED_FIELDS = frozenset(
         "rejected_count",
         "ambiguous_count",
         "failed_count",
+        # calendar_fetch (AD-18): integer counts, and a reason-slug -> count map. A slug is
+        # one of our own names ("no_event_start"), never a title, a uid or a zone.
+        "entry_count",
+        "skipped_count",
+        "skipped",
     }
 )
 

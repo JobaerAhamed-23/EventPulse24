@@ -40,9 +40,7 @@ def editor():
     return (
         get_user_model()
         .objects.db_manager(PERSONAL)
-        .create_superuser(
-            username="editor", email="editor@example.test", password="not-used-in-tests"
-        )
+        .create_superuser(email="editor@example.test", password="not-used-in-tests")
     )
 
 
@@ -133,7 +131,7 @@ def _staff(*codenames):
     user = (
         get_user_model()
         .objects.db_manager(PERSONAL)
-        .create_user(username="staff", password="not-used-in-tests", is_staff=True)
+        .create_user(email="staff@example.test", password="not-used-in-tests", is_staff=True)
     )
     user.user_permissions.set(
         Permission.objects.using(PERSONAL).filter(
@@ -402,24 +400,24 @@ def test_history_admin_change_page_is_view_only(client, model, factory):
     assert post.status_code == 403
 
 
-def test_audit_changelist_shows_username_and_system_job(client, editor):
+def test_audit_changelist_shows_the_actor_and_system_job(client, editor):
     client.post(reverse("admin:ingestion_source_add"), _source_form())
     IngestionAuditEntryFactory(actor_label="ingest_pipeline")
 
     response = client.get(reverse("admin:ingestion_ingestionauditentry_changelist"))
 
     content = response.content.decode()
-    assert '<td class="field-who">editor</td>' in content
+    assert '<td class="field-who">editor@example.test</td>' in content
     assert "ingest_pipeline (system job)" in content
 
 
-def test_audit_change_page_shows_username(client, editor):
+def test_audit_change_page_shows_the_actor(client, editor):
     client.post(reverse("admin:ingestion_source_add"), _source_form())
     entry = IngestionAuditEntry.objects.using(CATALOG).get()
 
     response = client.get(reverse("admin:ingestion_ingestionauditentry_change", args=[entry.pk]))
 
-    assert '<div class="readonly">editor</div>' in response.content.decode()
+    assert '<div class="readonly">editor@example.test</div>' in response.content.decode()
 
 
 @pytest.mark.parametrize(

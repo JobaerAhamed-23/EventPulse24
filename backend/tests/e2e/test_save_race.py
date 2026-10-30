@@ -26,12 +26,12 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import Client
 
 from apps.ingestion.models import Event, Source
 from apps.personalization.models import SavedEvent
 from apps.personalization.services import saved_events as saved_events_service
 from shared.db import CATALOG, PERSONAL
+from tests.csrf import CsrfClient
 from worker import tasks
 
 pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
@@ -62,9 +62,14 @@ def seeded(enqueued):
 
 
 def _signed_in():
-    """A client whose session identifies a real user."""
-    client = Client()
-    client.force_login(User.objects.create_user(username="sam", password="pw"))
+    """A client whose session identifies a real user.
+
+    It is a `CsrfClient`: the personal endpoints resolve their user through `identity`'s
+    resolver, and the resolver checks CSRF on every unsafe method (D13). The token is
+    fetched on the first unsafe request and travels in the `X-CSRFToken` header.
+    """
+    client = CsrfClient()
+    client.force_login(User.objects.create_user(email="sam@example.test", password="pw"))
     return client
 
 

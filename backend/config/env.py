@@ -26,6 +26,31 @@ class Settings(BaseSettings):
     django_debug: bool = False
     django_allowed_hosts: Annotated[list[str], NoDecode] = []
 
+    # AD-13 (D13): the origins allowed to make a cross-origin request to the API. The
+    # frontend's own origin is here because the browser calls the frontend, which proxies
+    # to this API; Django's CSRF origin check compares `Origin` with its own host.
+    csrf_trusted_origins: Annotated[list[str], NoDecode] = []
+
+    # The frontend's base URL. The reset link points at the frontend's route, not at the
+    # API, because the frontend is a different origin from this runtime.
+    frontend_base_url: str = "http://localhost:3000"
+
+    # Whether the caller's IP may be read from the `X-Forwarded-For` header.
+    #
+    # The header is **attacker-controlled** unless something in front of this runtime
+    # overwrites it. Next's `NextResponse.rewrite` forwards the browser's headers as they
+    # arrived and only *adds* `x-forwarded-host`, so a browser that sets
+    # `X-Forwarded-For` has that value reach Django unchanged. Trusting it unconditionally
+    # let any caller mint a fresh throttle bucket per request by varying the header, which
+    # defeated the per-IP limit entirely.
+    #
+    # So it is off by default, and the per-IP throttle falls back to the socket address —
+    # every caller through the proxy shares one bucket, which is coarse but cannot be
+    # spoofed. Turning it on is only correct when a trusted edge overwrites the header
+    # with the real client address (a load balancer in `proxy_set_header` mode, or the
+    # Next proxy itself rewriting it).
+    trust_forwarded_for: bool = False
+
     # runtime: the app connects as the DML-only roles. owner: migrations and tests (DDL).
     django_db_role: Literal["runtime", "owner"] = "runtime"
 
@@ -37,6 +62,16 @@ class Settings(BaseSettings):
     redis_url: str
     smtp_host: str = "127.0.0.1"
     smtp_port: int = 1025
+
+    # AD-18: the application-level key the calendar credential is encrypted with. It is
+    # **separate from DJANGO_SECRET_KEY** on purpose: SECRET_KEY signs sessions and is
+    # frequently shared across environments, so using it to encrypt data at rest would
+    # mean one leaked key decrypts every credential.
+    #
+    # Required, with no default and no fallback. A missing or malformed value aborts the
+    # boot (settings are loaded at startup), rather than leaving an app that boots healthy
+    # and fails later, when a user connects a calendar.
+    calendar_credential_key: str
 
     adapter_mode: Literal["fake", "real"] = "fake"
 
@@ -57,7 +92,18 @@ class Settings(BaseSettings):
     # The fake fetch adapter's fixtures (index.json + files). Not needed when fetching over http.
     source_fixtures_dir: Path = REPO_ROOT / "backend" / "tests" / "fixtures" / "sources"
 
-    @field_validator("django_allowed_hosts", mode="before")
+    # FR-2: the city the **fake** geo adapter reports. The fake is the local and CI default
+    # (ADAPTER_MODE=fake), and the work item asks for it to be "configurable to return a
+    # chosen city" — so this is where the chosen city comes from.
+    #
+    # Unset or empty: the fake reports **no location**, which is the geo-miss branch. Set it
+    # to a supported city and every request resolves to that city; set it to an unsupported
+    # one and the endpoint takes the fallback branch.
+    #
+    # This is the *fake's* configuration, so it has no effect when ADAPTER_MODE=real.
+    geo_fake_city: str | None = None
+
+    @field_validator("django_allowed_hosts", "csrf_trusted_origins", mode="before")
     @classmethod
     def split_comma_separated(cls, value: object) -> object:
         # Env values arrive as "a,b,c"; NoDecode stops pydantic-settings parsing them as JSON.
@@ -91,6 +137,25 @@ class Settings(BaseSettings):
         if self.django_db_role == "owner" and not self.database_url_owner:
             raise ValueError("DATABASE_URL_OWNER is required when DJANGO_DB_ROLE=owner")
         return self
+
+    @field_validator("calendar_credential_key")
+    @classmethod
+    def credential_key_is_well_formed(cls, value: str) -> str:
+        """The key must parse, and it must be the application-level key.
+
+        Validated here, at settings-load time, so a malformed key aborts the boot with a
+        message naming the variable. The parser itself lives in `shared.credential_key`,
+        which is stdlib-only, so there is exactly one definition of the format — the
+        system check and this validator cannot disagree — and `config` never reaches the
+        cipher (the `crypto-library` import contract).
+        """
+        from shared.credential_key import InvalidCredentialKey, parse_key
+
+        try:
+            parse_key(value)
+        except InvalidCredentialKey as exc:
+            raise ValueError(str(exc)) from exc
+        return value
 
 
 env = Settings()

@@ -26,6 +26,7 @@ from ports.fetch import (
     FetchContentError,
     FetchError,
     FetchHTTPError,
+    FetchLimits,
     FetchNetworkError,
     FetchRedirectError,
     FetchResult,
@@ -131,7 +132,14 @@ class FakeFetchAdapter(SourceFetchPort):
         etag: str | None = None,
         last_modified: str | None = None,
         source_id: UUID | None = None,
+        allow_cross_host_redirect: bool = False,
+        limits: FetchLimits | None = None,
+        credential: bool = False,
     ) -> FetchResult:
+        # `allow_cross_host_redirect` and `limits` are accepted and ignored: a fixture is
+        # served directly, so there is no redirect chain to relax and no body to bound.
+        # `credential` is accepted and ignored for the same reason: a fixture is read
+        # from disk, so no URL is ever written to a log here.
         fixture = self._index.get(url)
         if fixture is None:
             raise FetchHTTPError(404)

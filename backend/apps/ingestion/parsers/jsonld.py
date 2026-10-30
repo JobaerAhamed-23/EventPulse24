@@ -11,7 +11,6 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 
 from apps.ingestion.parsers.text import absolute_iri, derived_id, http_url, item_id, plain_text
-from apps.ingestion.parsers.times import all_day_span, parse_iso, roll_overnight
 from apps.ingestion.parsers.types import (
     MAX_CITY,
     MAX_DESCRIPTION,
@@ -22,6 +21,7 @@ from apps.ingestion.parsers.types import (
     SourceContext,
     StatusHint,
 )
+from formats.times import all_day_span, parse_iso, roll_overnight
 from shared.ids import series_id
 
 # schema.org Event and its subtypes (https://schema.org/Event, "More specific Types").

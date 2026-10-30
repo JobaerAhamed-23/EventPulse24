@@ -28,6 +28,7 @@ from django.test import Client
 from apps.personalization.models import ConflictPair, PersonalEvent
 from shared.constants import DEFAULT_REMINDER_PLAN
 from shared.db import PERSONAL
+from tests.csrf import CsrfClient
 from tests.personalization.factories import PersonalEventFactory
 
 pytestmark = pytest.mark.django_db(databases=[PERSONAL])
@@ -42,9 +43,9 @@ TZ = "America/Los_Angeles"
 User = get_user_model()
 
 
-def make_user(username="sam"):
+def make_user(email="sam@example.test"):
     """A real user with a real pk — the session resolves to this one."""
-    return User.objects.create_user(username=username, password="pw")
+    return User.objects.create_user(email=email, password="pw")
 
 
 def make_event(user, *, name="Coffee with Sam", start=START, hours=2, **extra):
@@ -64,8 +65,13 @@ def make_event(user, *, name="Coffee with Sam", start=START, hours=2, **extra):
 
 
 def signed_in(user=None):
-    """A client whose session identifies `user`."""
-    client = Client()
+    """A client whose session identifies `user`.
+
+    It is a `CsrfClient`, because these endpoints resolve their user through `identity`'s
+    resolver and the resolver checks CSRF on every unsafe method (D13). The token is
+    fetched on the first unsafe request and travels in the `X-CSRFToken` header.
+    """
+    client = CsrfClient()
     client.force_login(user or make_user())
     return client
 
@@ -129,7 +135,10 @@ def test_the_response_carries_only_the_contracted_fields():
         "location",
         "notes",
         "version",
+        "calendar_connection_id",
     }
+    # The row the user typed came from no calendar.
+    assert payload["calendar_connection_id"] is None
 
 
 def test_creating_an_event_without_a_timezone_is_refused():
@@ -401,6 +410,26 @@ def test_listing_returns_only_the_signed_in_users_events():
     names = [item["name"] for item in payload["items"]]
     assert names == ["Mine"]
     assert str(mine.id) in [item["id"] for item in payload["items"]]
+
+
+def test_an_imported_event_carries_the_connection_that_brought_it_in():
+    """The list says which calendar an event came from — the id, and nothing more.
+
+    Onboarding step 1 shows what a calendar just imported, and it can only do that if the
+    event says which connection it belongs to. The **id** is the whole of it: the secret
+    address is not in this shape and cannot be (AD-18).
+    """
+    user = make_user()
+    connection = uuid4()
+    make_event(user, name="Standup", source="calendar_import", calendar_connection_id=connection)
+    make_event(user, name="Dinner I typed myself")
+    client = signed_in(user)
+
+    payload = client.get("/api/personal/events").json()
+
+    by_name = {item["name"]: item for item in payload["items"]}
+    assert by_name["Standup"]["calendar_connection_id"] == str(connection)
+    assert by_name["Dinner I typed myself"]["calendar_connection_id"] is None
 
 
 def test_listing_orders_by_start_time():

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from ports.calendar import CalendarEntry, CalendarFeed, CalendarPort
+from ports.calendar import CalendarEntry, CalendarFeed, CalendarPort, CalendarResult
 
 _DAY = datetime(2026, 11, 2, tzinfo=UTC)
 
@@ -25,5 +25,5 @@ FAKE_ENTRIES = (
 
 
 class FakeCalendarAdapter(CalendarPort):
-    def fetch_entries(self, feed: CalendarFeed) -> list[CalendarEntry]:
-        return list(FAKE_ENTRIES)
+    def fetch_entries(self, feed: CalendarFeed) -> CalendarResult:
+        return CalendarResult(entries=list(FAKE_ENTRIES))

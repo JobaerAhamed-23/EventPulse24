@@ -24,10 +24,55 @@ def _at(monkeypatch, when: datetime) -> None:
 @pytest.mark.parametrize(
     ("minute", "jobs"),
     [
-        (0, ["worker.tasks.schedule_sources", "worker.tasks.reconcile_outbox"]),
-        (5, ["worker.tasks.schedule_sources", "worker.tasks.reconcile_outbox"]),
-        (1, ["worker.tasks.schedule_sources"]),
-        (4, ["worker.tasks.schedule_sources"]),
+        (
+            0,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+                "worker.tasks.refresh_event_fits",
+            ],
+        ),
+        (
+            5,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+            ],
+        ),
+        (
+            15,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+                "worker.tasks.refresh_event_fits",
+            ],
+        ),
+        (1, ["worker.tasks.schedule_sources", "worker.tasks.schedule_calendars"]),
+        (4, ["worker.tasks.schedule_sources", "worker.tasks.schedule_calendars"]),
+        # Minute 30 is a multiple of 15 and of 5, so both the refresh and the reconciler run.
+        (
+            30,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+                "worker.tasks.refresh_event_fits",
+            ],
+        ),
+        # Every multiple of 15 is also a multiple of 5, so the refresh always lands on a
+        # reconciler minute. The two cadences nest; the refresh never runs alone.
+        (
+            45,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.reconcile_outbox",
+                "worker.tasks.refresh_event_fits",
+            ],
+        ),
     ],
 )
 def test_tick_enqueues_scheduling_every_time_and_the_reconciler_every_5_minutes(
@@ -37,6 +82,31 @@ def test_tick_enqueues_scheduling_every_time_and_the_reconciler_every_5_minutes(
 
     assert tasks.tick() is None
     assert [name for name, _ in enqueued] == jobs
+
+
+def test_the_event_fit_refresh_runs_every_fifteen_minutes(monkeypatch):
+    """The refresh cadence is what keeps "tonight" from going stale (AD-10).
+
+    The tick keeps no state, so the cadence is approximate — the same way the
+    reconciler's five minutes is. What matters is that the refresh happens, and often
+    enough that a tag is not a quarter of an evening out of date.
+    """
+    sent: list[str] = []
+
+    def record(task, *args):
+        sent.append(task.name)
+
+    monkeypatch.setattr(tasks, "_enqueue", record)
+
+    ran_at = []
+    for minute in range(0, 60):
+        sent.clear()
+        _at(monkeypatch, NOW.replace(minute=minute))
+        tasks.tick()
+        if "worker.tasks.refresh_event_fits" in sent:
+            ran_at.append(minute)
+
+    assert ran_at == [0, 15, 30, 45], "the refresh runs four times an hour, every 15 minutes"
 
 
 def test_enqueue_seam_uses_delay(monkeypatch):
@@ -54,6 +124,44 @@ def test_enqueue_seam_uses_delay(monkeypatch):
 
 def test_now_is_aware_utc():
     assert tasks._now().utcoffset() == timedelta(0)
+
+
+# --- refresh_event_fits: the staleness refresh (AD-10) -------------------------------
+
+
+@pytest.mark.django_db(databases=[CATALOG])
+def test_the_refresh_task_recomputes_the_fits(caplog):
+    """The tick's answer to "tonight" going stale: a writer, not a render-time
+    computation.
+
+    The task writes the rows; the read serves them. AD-10's rule is that the *render*
+    never computes, and this is the other half of it — something has to.
+    """
+    from apps.ingestion.models import EventFit
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory(start_time_utc=timezone.now() + timedelta(hours=2))
+    EventFit.objects.using(CATALOG).create(
+        event=event,
+        city=event.venue.city,
+        score=1,
+        tags=[],
+        event_version=event.event_version,
+        computed_at=timezone.now(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="worker.tasks"):
+        assert tasks.refresh_event_fits() is None
+
+    refreshed = EventFit.objects.using(CATALOG).get(event=event)
+    assert refreshed.score == 5, "the fit was recomputed, not served stale"
+    [record] = [r for r in caplog.records if r.name == "worker.tasks"]
+    assert record.job == "refresh_event_fits"
+
+
+@pytest.mark.django_db(databases=[CATALOG])
+def test_the_refresh_task_survives_an_empty_catalog():
+    assert tasks.refresh_event_fits() is None
 
 
 # --- schedule_sources ---------------------------------------------------------------------------

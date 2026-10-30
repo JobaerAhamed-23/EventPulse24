@@ -131,14 +131,18 @@ class Command(BaseCommand):
     # --- the operator and the editorial group --------------------------------------------------
 
     def _operator(self, spec: dict):
-        """The local operator: staff, never superuser, and a member of `editorial`."""
+        """The local operator: staff, never superuser, and a member of `editorial`.
+
+        The account is keyed on its email: AD-18 makes the email the login, and there is
+        no `username` column any more.
+        """
         user_model = get_user_model()
         manager = user_model.objects.db_manager(PERSONAL)
-        user = manager.filter(username=spec["username"]).first()
+        email = spec["email"]
+        user = manager.filter(email=email).first()
         if user is None:
             user = manager.create_user(
-                username=spec["username"],
-                email=spec.get("email", ""),
+                email=email,
                 password=spec["password"],
                 is_staff=True,
                 is_superuser=False,
@@ -234,7 +238,7 @@ class Command(BaseCommand):
     # --- listing -------------------------------------------------------------------------------
 
     def _list(self, config: dict) -> None:
-        self.stdout.write(f"Operator: {config['operator']['username']} (staff, not superuser)")
+        self.stdout.write(f"Operator: {config['operator']['email']} (staff, not superuser)")
         for venue in config["venues"]:
             self.stdout.write(f"Venue: {venue['name']}, {venue['city']} ({venue['tz']})")
         for feed in config["feeds"]:

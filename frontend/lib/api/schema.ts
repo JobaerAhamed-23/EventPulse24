@@ -4,6 +4,146 @@
  */
 
 export interface paths {
+    "/api/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a CSRF token
+         * @description The CSRF token the frontend sends back on every state-changing request, in the `X-CSRFToken` header. The token is also set as the `csrftoken` cookie on this response, so the frontend can read it from there. This is a safe request, so it is not itself checked for a token.
+         */
+        get: operations["apps_identity_api_get_csrf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user
+         * @description The signed-in user's id, email and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
+         */
+        get: operations["apps_identity_api_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a password reset
+         * @description Asks for a reset link. A known address gets one, by transactional email; an unknown address gets nothing. The answer is the same either way, so the endpoint cannot be used to find out who has an account.
+         */
+        post: operations["apps_identity_api_password_reset_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password
+         * @description Consumes a reset token and sets a new password. The token is single-use and short-lived: a token that was already used, revoked or expired is refused, and the refusal does not say which of the three it was. The account's other sessions end, so a stolen session does not survive the password change.
+         */
+        post: operations["apps_identity_api_password_reset_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in
+         * @description Authenticates an email and a password and establishes the session. A wrong password and an unknown address are answered identically — the same status and the same body — so neither can be used to find out who has an account.
+         */
+        post: operations["apps_identity_api_signin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out
+         * @description Ends the session the request carries. The session cookie is cleared, so the next request is anonymous.
+         */
+        post: operations["apps_identity_api_signout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account
+         * @description Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.
+         */
+        post: operations["apps_identity_api_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/events": {
         parameters: {
             query?: never;
@@ -55,6 +195,74 @@ export interface paths {
         get: operations["config_health_health"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's calendar connections
+         * @description The user's own calendar connections: the provider, the status, when it last synced and whether a sync is running. The calendar address is **never** returned — it is the credential, and it is write-only. No one else's connections are listed.
+         */
+        get: operations["apps_personalization_api_list_calendars"];
+        put?: never;
+        /**
+         * Connect a calendar
+         * @description Connects a calendar by its secret ICS/webcal address. The address is stored encrypted and is never returned. The first sync is **enqueued, not run inline** — the response comes back immediately with the connection's status, and the import lands a moment later. A Free account may hold one calendar; a second connection is refused with a calm upgrade prompt.
+         */
+        post: operations["apps_personalization_api_post_calendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/calendars/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one of the signed-in user's calendar connections
+         * @description One of the user's own calendar connections and its sync state, so onboarding step 1 can show the imported events without leaving the flow. A connection that belongs to somebody else reads as not found.
+         */
+        get: operations["apps_personalization_api_get_calendar"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a calendar
+         * @description Disconnects one of the user's calendars. The credential is destroyed and the events that calendar imported are purged, along with their conflict pairs and their reminder plans. The user's own events are untouched.
+         */
+        delete: operations["apps_personalization_api_delete_calendar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/calendars/{connection_id}/reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconnect a calendar whose access was revoked
+         * @description Replaces a revoked calendar's address and brings it back to life. The events it already imported are kept — the provider revoked the address, not the events. A connection that is already active is refused: there is nothing to reconnect, and silently replacing a working credential would change which calendar the user is looking at without them asking.
+         */
+        post: operations["apps_personalization_api_post_reconnect_calendar"];
         delete?: never;
         options?: never;
         head?: never;
@@ -133,6 +341,146 @@ export interface paths {
         patch: operations["apps_personalization_api_edit_event"];
         trace?: never;
     };
+    "/api/personal/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's onboarding state
+         * @description Where the user is in the 3-step onboarding flow, their interest picks and their digest delivery preference. A user who left mid-step is resumed at the same step within 7 days; after that the flow restarts at step 1. A user who has finished onboarding is never sent back into it.
+         */
+        get: operations["apps_personalization_api_read_onboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/digest-preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the digest delivery time and timezone
+         * @description Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.
+         */
+        put: operations["apps_personalization_api_put_digest_preference"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/interest-chips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The interest chips on offer
+         * @description The ten interest chips, in the order the flow shows them. This list comes from the server, so the frontend holds no second copy of it. Each chip carries a stable `key` and a display `label` — send the key back, not the label.
+         */
+        get: operations["apps_personalization_api_read_interest_chips"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the user's interest picks
+         * @description Replaces the user's interest picks with the given set. At most 3 chips may be picked, and every key must be one the chips endpoint offers. An empty list is valid — that is how the step is skipped, and it clears the set.
+         */
+        put: operations["apps_personalization_api_put_interests"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/skip-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip the whole onboarding flow
+         * @description Skips every step and finishes the onboarding. A user who skips everything has still finished onboarding — the default digest preference is written, so the digest has a delivery time to work with.
+         */
+        post: operations["apps_personalization_api_post_skip_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance to the next onboarding step
+         * @description Moves the user to the next step. Advancing past the last step finishes the onboarding — there is no fourth step. A user who has already finished is not moved again.
+         */
+        post: operations["apps_personalization_api_post_advance_step"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/onboarding/step/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip the current onboarding step
+         * @description Skips the current step. No step requires any input, so every one of them can be skipped. Skipping the interests step clears the picks; skipping the digest step writes the default delivery preference. Skipping the last step finishes the onboarding.
+         */
+        post: operations["apps_personalization_api_post_skip_step"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/saved-events": {
         parameters: {
             query?: never;
@@ -177,10 +525,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Pulse Preview for a city
+         * @description Up to three Pulse Cards for a city, each with its Event Fit score and Why-this tags and its Source Badge. With no `city` parameter the city is inferred from the edge's geo header; an explicit `city` overrides it; `use_geo=false` is the visitor's 'Don't use my location' choice and the location is then not consulted at all. The response says which city was resolved and how it was resolved. No session is used and none is set.
+         */
+        get: operations["apps_catalog_preview_api_preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/preview/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cities the Pulse Preview can serve
+         * @description The supported cities, alphabetically, for the one-tap city picker. A city is supported when the catalog has at least one upcoming public event with an Event Fit for it. No session is used and none is set.
+         */
+        get: operations["apps_catalog_preview_api_preview_cities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CalendarConnectIn
+         * @description A provider and the secret address to connect.
+         *
+         *     The `address` is the secret ICS/webcal address. It is **write-only**: it goes in
+         *     and it is never handed back, in whole or in part, in any response.
+         */
+        CalendarConnectIn: {
+            /** Address */
+            address: string;
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
+         * CalendarConnectionListOut
+         * @description The user's calendar connections.
+         */
+        CalendarConnectionListOut: {
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["CalendarConnectionOut"][];
+        };
+        /**
+         * CalendarConnectionOut
+         * @description One calendar connection, as it is shown to the user.
+         *
+         *     There is no `address` field and no `fingerprint` field. The fingerprint is a keyed
+         *     HMAC and so is not a secret, but it is not the user's business either, and a digest
+         *     in a response body is one more thing to leak in a screenshot.
+         *
+         *     `last_error_kind` is a **slug** (`revoked`, `transient`, …), never a message and
+         *     never a URL: an `httpx` exception message contains the full request URL, which *is*
+         *     the credential (AD-13).
+         */
+        CalendarConnectionOut: {
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error Kind */
+            last_error_kind?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Next Sync At */
+            next_sync_at?: string | null;
+            /** Provider */
+            provider: string;
+            /** Status */
+            status: string;
+            /**
+             * Sync In Progress
+             * @default false
+             */
+            sync_in_progress: boolean;
+        };
+        /**
+         * CalendarReconnectIn
+         * @description A new address for a connection the provider revoked.
+         *
+         *     The provider revoked the old secret, so the address the user pastes now is a *new*
+         *     one. The connection's row is reused rather than a second row being created.
+         */
+        CalendarReconnectIn: {
+            /** Address */
+            address: string;
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+        };
         /** ComponentOut */
         ComponentOut: {
             /** Reason */
@@ -287,6 +759,71 @@ export interface components {
              * Format: date-time
              */
             start_time_utc: string;
+        };
+        /**
+         * CsrfTokenOut
+         * @description The CSRF token the frontend sends back on every unsafe request.
+         *
+         *     The token is also set as the `csrftoken` cookie on the same response; the frontend
+         *     reads the cookie and echoes the value in the `X-CSRFToken` header. Sending both is
+         *     Django's own convention, and it is the one `CsrfViewMiddleware` checks.
+         */
+        CsrfTokenOut: {
+            /** Csrf Token */
+            csrf_token: string;
+        };
+        /**
+         * CurrentUserOut
+         * @description The signed-in user.
+         *
+         *     The id and the email are what the frontend needs. There is no password field, no
+         *     permission field and no catch-all, so nothing internal can ride along.
+         *
+         *     The **onboarding status** is here, and it is here because the frontend needs it to
+         *     decide between the onboarding flow and the home. It says only whether the onboarding
+         *     is finished and which step the user is on — it carries no interests and no digest
+         *     preference, because `me` is about *who* the user is and a settings blob there would
+         *     grow without bound. The full state lives at `/api/personal/onboarding`.
+         *
+         *     It is read through `personalization`'s **published interface** — the service, never
+         *     the model — because `identity` may not reach into another app's tables (AD-2). The
+         *     import contract `models-personalization` proves it.
+         */
+        CurrentUserOut: {
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            onboarding: components["schemas"]["OnboardingStatusOut"];
+        };
+        /**
+         * DigestPreferenceIn
+         * @description The digest delivery time and timezone.
+         *
+         *     The delivery time is a **local wall clock** — "09:00" means nine in the morning where
+         *     the user is, not nine in the morning UTC. The zone says where that is.
+         */
+        DigestPreferenceIn: {
+            /**
+             * Delivery Time
+             * Format: time
+             */
+            delivery_time: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /**
+         * DigestPreferenceOut
+         * @description The stored digest delivery time and timezone.
+         */
+        DigestPreferenceOut: {
+            /** Delivery Time */
+            delivery_time?: string | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /**
          * ErrorOut
@@ -412,6 +949,141 @@ export interface components {
             message: string;
         };
         /**
+         * InterestChipOut
+         * @description One interest chip: its stable key and its display label.
+         *
+         *     The **key** is what the API accepts and what is stored; the **label** is what the UI
+         *     shows. They are separate because a renamed label must not invalidate a stored pick.
+         */
+        InterestChipOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * InterestChipsOut
+         * @description The ten interest chips, in the order the flow shows them.
+         */
+        InterestChipsOut: {
+            /** Items */
+            items: components["schemas"]["InterestChipOut"][];
+        };
+        /**
+         * InterestsIn
+         * @description The user's interest picks.
+         *
+         *     The list **replaces** the user's set: it is the whole set, not a delta. An empty list
+         *     is valid — that is how the step is skipped, and it clears the set.
+         *
+         *     The keys are what is sent, never the labels: a label may be renamed, a key may not.
+         */
+        InterestsIn: {
+            /**
+             * Chip Keys
+             * @default []
+             */
+            chip_keys: string[];
+        };
+        /**
+         * InterestsOut
+         * @description The user's stored interest picks.
+         */
+        InterestsOut: {
+            /** Chip Keys */
+            chip_keys: string[];
+        };
+        /**
+         * OnboardingStateOut
+         * @description The whole onboarding state: the progress, the interests and the digest preference.
+         *
+         *     The interests and the digest preference are the **stored** values, so a skipped step
+         *     shows what the skip wrote (an empty set, the default preference) rather than nothing.
+         */
+        OnboardingStateOut: {
+            /** Completed */
+            completed: boolean;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Current Step */
+            current_step?: number | null;
+            /**
+             * @default {
+             *       "delivery_time": null,
+             *       "timezone": null
+             *     }
+             */
+            digest: components["schemas"]["DigestPreferenceOut"];
+            /**
+             * Interests
+             * @default []
+             */
+            interests: string[];
+            /** Last Advanced At */
+            last_advanced_at?: string | null;
+            /** Step Name */
+            step_name?: string | null;
+        };
+        /**
+         * OnboardingStatusOut
+         * @description How far through the onboarding the user is.
+         *
+         *     This is what `GET /api/auth/me` carries. It says **only** whether the onboarding is
+         *     finished and which step the user is on — enough for the frontend to choose between the
+         *     onboarding flow and the home. It carries no interests and no digest preference: `me`
+         *     is about *who* the user is, and a settings blob there would grow without bound.
+         */
+        OnboardingStatusOut: {
+            /** Completed */
+            completed: boolean;
+            /** Current Step */
+            current_step?: number | null;
+        };
+        /**
+         * PasswordResetConfirmIn
+         * @description The reset confirmation: the token from the reset link, and the new password.
+         */
+        PasswordResetConfirmIn: {
+            /** New Password */
+            new_password: string;
+            /** Token */
+            token: string;
+        };
+        /**
+         * PasswordResetConfirmOut
+         * @description The reset-confirmation answer.
+         *
+         *     The password has been changed and the account's other sessions have ended.
+         */
+        PasswordResetConfirmOut: {
+            /**
+             * Status
+             * @default password_reset
+             */
+            status: string;
+        };
+        /**
+         * PasswordResetRequestIn
+         * @description The reset request: the address to reset.
+         */
+        PasswordResetRequestIn: {
+            /** Email */
+            email: string;
+        };
+        /**
+         * PasswordResetRequestOut
+         * @description The reset-request answer. The same for a known address and an unknown one.
+         *
+         *     It says the request was received, and nothing about whether there is an account.
+         */
+        PasswordResetRequestOut: {
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
+        };
+        /**
          * PersonalEventCreateIn
          * @description The body of a create.
          *
@@ -466,8 +1138,17 @@ export interface components {
          * @description One personal event.
          *
          *     `version` rises by one on every edit (AD-7's send key uses it, so it may only go up).
+         *
+         *     `calendar_connection_id` says where the event came from: a connection's id for a row a
+         *     calendar imported, `None` for one the user entered. It is the **id** and nothing else
+         *     — the secret address never appears in any response shape (AD-18), and this field does
+         *     not change that. Onboarding step 1 needs it to show what a calendar just brought in,
+         *     and Settings → Sources will need it to say what a connection owns before it is
+         *     disconnected.
          */
         PersonalEventOut: {
+            /** Calendar Connection Id */
+            calendar_connection_id?: string | null;
             /** End Time Utc */
             end_time_utc?: string | null;
             /**
@@ -512,6 +1193,65 @@ export interface components {
             start_time_tz?: string | null;
             /** Start Time Utc */
             start_time_utc?: string | null;
+        };
+        /**
+         * PreviewCardOut
+         * @description One card in the Pulse Preview.
+         */
+        PreviewCardOut: {
+            /** City */
+            city: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Score */
+            score: number;
+            /** Slug */
+            slug: string;
+            /** Source Badge */
+            source_badge: string;
+            /** Source Name */
+            source_name: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Tags */
+            tags: string[];
+            /** Title */
+            title: string;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * PreviewCitiesOut
+         * @description The supported cities, for the one-tap city picker.
+         */
+        PreviewCitiesOut: {
+            /** Cities */
+            cities: string[];
+        };
+        /**
+         * PreviewOut
+         * @description The preview for a city.
+         *
+         *     **`city` is always present**, even when `items` is empty: the empty case is a city
+         *     the catalog does not cover, and the frontend shows "No preview available in {city}
+         *     yet." — it needs the name to say it. It is never another city's name: an
+         *     unsupported explicit city returns an empty preview carrying **that** city's name.
+         */
+        PreviewOut: {
+            /** City */
+            city: string;
+            /** City Source */
+            city_source: string;
+            /** Items */
+            items: components["schemas"]["PreviewCardOut"][];
         };
         /**
          * SavedEventListOut
@@ -631,6 +1371,69 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * SignInIn
+         * @description The sign-in request: an address and a password.
+         */
+        SignInIn: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * SignInOut
+         * @description The sign-in answer. The same for a wrong password and an unknown address.
+         *
+         *     The status is the only field. A body that named the account, or said which half of
+         *     the pair was wrong, would be the enumeration leak the services are careful to avoid.
+         */
+        SignInOut: {
+            /**
+             * Status
+             * @default signed_in
+             */
+            status: string;
+        };
+        /**
+         * SignOutOut
+         * @description The sign-out answer. The session is over; nothing else is said.
+         */
+        SignOutOut: {
+            /**
+             * Status
+             * @default signed_out
+             */
+            status: string;
+        };
+        /**
+         * SignUpIn
+         * @description The sign-up request: an address and a password.
+         *
+         *     The password is a plain string here and is never echoed back. It goes to
+         *     `apps.identity.services.sign_up`, which validates it against Django's configured
+         *     password validators and hashes it.
+         */
+        SignUpIn: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * SignUpOut
+         * @description The sign-up answer. The same for a new address and an existing one.
+         *
+         *     There is no `created` flag, and no account id: either would say whether the address
+         *     was taken. The account holder of an existing address is told by email instead.
+         */
+        SignUpOut: {
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -640,6 +1443,270 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    apps_identity_api_get_csrf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsrfTokenOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_password_reset_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetRequestOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_password_reset_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetConfirmOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_signin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_signout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignOutOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignUpIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignUpOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_catalog_api_list_events: {
         parameters: {
             query?: {
@@ -722,6 +1789,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthUnavailableOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_list_calendars: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionListOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarConnectIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_get_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_delete_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_reconnect_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarReconnectIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };
@@ -930,6 +2163,199 @@ export interface operations {
             };
         };
     };
+    apps_personalization_api_read_onboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_put_digest_preference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DigestPreferenceIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_read_interest_chips: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestChipsOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_put_interests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterestsIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestsOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_skip_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_advance_step: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_skip_step: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_personalization_api_list_saved: {
         parameters: {
             query?: {
@@ -1013,6 +2439,67 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_preview_api_preview: {
+        parameters: {
+            query?: {
+                city?: string | null;
+                use_geo?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_preview_api_preview_cities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewCitiesOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

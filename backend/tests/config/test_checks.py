@@ -14,6 +14,7 @@ from config.checks import (
     check_uuid7_primary_keys,
     find_cross_alias_relations,
     find_fake_fetch_fixture_errors,
+    find_missing_credential_key_errors,
     find_models_without_retention,
     find_models_without_uuid7_pk,
     find_unmapped_apps,
@@ -257,3 +258,47 @@ def test_broken_fake_fetch_fixtures_reported_as_e006(tmp_path):
 
 def test_fixtures_not_checked_when_fetching_over_http(tmp_path):
     assert find_fake_fetch_fixture_errors(HTTP, tmp_path) == []
+
+
+# ─── E007: the credential key ─────────────────────────────────────────────────
+
+
+VALID_KEY = "k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieXQ"
+
+
+def test_a_valid_credential_key_reports_nothing():
+    assert find_missing_credential_key_errors([VALID_KEY]) == []
+
+
+def test_a_missing_credential_key_is_reported_as_e007():
+    [error] = find_missing_credential_key_errors([""])
+
+    assert error.id == "eventpulse.E007"
+
+
+def test_a_malformed_credential_key_is_reported_as_e007():
+    [error] = find_missing_credential_key_errors(["not-a-key"])
+
+    assert error.id == "eventpulse.E007"
+
+
+def test_the_e007_hint_names_the_variable():
+    [error] = find_missing_credential_key_errors([""])
+
+    assert "CALENDAR_CREDENTIAL_KEY" in error.hint
+
+
+def test_the_e007_hint_says_there_is_no_fallback():
+    """The credential key is separate from `SECRET_KEY` on purpose (AD-18)."""
+    [error] = find_missing_credential_key_errors([""])
+
+    assert "DJANGO_SECRET_KEY" in error.hint
+    assert "no fallback" in error.hint
+
+
+def test_the_e007_error_never_repeats_the_key():
+    """The error is visible to an operator, and a malformed value may still be secret."""
+    [error] = find_missing_credential_key_errors(["k1.not-valid-base64!!LEAKEDVALUE"])
+
+    assert "LEAKEDVALUE" not in str(error)
+    assert "LEAKEDVALUE" not in error.hint

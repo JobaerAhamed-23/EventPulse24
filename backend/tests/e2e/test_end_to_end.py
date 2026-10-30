@@ -175,7 +175,7 @@ def test_the_operator_is_staff_and_not_a_superuser_and_uses_the_group():
 
     from django.contrib.auth import get_user_model
 
-    operator = get_user_model().objects.db_manager(PERSONAL).get(username="operator")
+    operator = get_user_model().objects.db_manager(PERSONAL).get(email="operator@example.test")
     assert operator.is_staff is True
     assert operator.is_superuser is False
     assert operator.groups.filter(name="editorial").exists()
@@ -190,13 +190,13 @@ def test_an_operator_who_became_a_superuser_is_demoted_on_the_next_run():
 
     call_command("seed_local_stack", stdout=None)
     manager = get_user_model().objects.db_manager(PERSONAL)
-    operator = manager.get(username="operator")
+    operator = manager.get(email="operator@example.test")
     operator.is_superuser = True
     operator.save(using=PERSONAL, update_fields=["is_superuser"])
 
     call_command("seed_local_stack", stdout=None)
 
-    assert manager.get(username="operator").is_superuser is False
+    assert manager.get(email="operator@example.test").is_superuser is False
 
 
 def test_a_stale_grant_is_removed_from_the_editorial_group():
@@ -326,7 +326,7 @@ def test_a_corrected_venue_timezone_re_resolves_its_events(seeded, enqueued):
     }
     assert before, "the JSON-LD events should name the proof venue"
 
-    operator = get_user_model().objects.db_manager(PERSONAL).get(username="operator")
+    operator = get_user_model().objects.db_manager(PERSONAL).get(email="operator@example.test")
     venue = Venue.objects.using(CATALOG).get(name="Proof Fixture Venue")
     set_venue_timezone(actor=Actor.user(operator.id), venue_id=venue.id, tz="America/Chicago")
 

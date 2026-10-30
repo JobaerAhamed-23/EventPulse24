@@ -103,6 +103,70 @@ VIOLATIONS = {
         {"http-client"},
     ),
     "worker imports requests": ({"worker/_planted.py": "import requests\n"}, {"http-client"}),
+    # AD-18: the cipher and the credential key handling belong to `apps.personalization`
+    # alone. A *direct* import from another module is the violation — the indirect reach
+    # through Django's model registry is the app's own code doing the encrypting.
+    "app imports the cryptography library": (
+        {"apps/catalog/_planted.py": "import cryptography\n"},
+        {"crypto-library"},
+    ),
+    "domain imports the cryptography library": (
+        {"domain/_planted.py": "from cryptography.hazmat.primitives.ciphers.aead import AESGCM\n"},
+        {"crypto-library"},
+    ),
+    "another app borrows the credential module": (
+        {"apps/catalog/_planted.py": "from apps.personalization import credentials\n"},
+        {"credential-key"},
+    ),
+    "shared borrows the credential module": (
+        {"shared/_planted.py": "from apps.personalization.credentials import encrypt\n"},
+        # `shared` must not import an app either, so the layers contract breaks as well.
+        {"credential-key", "layers"},
+    ),
+    # AD-2: there is one ICS parser, in `formats.ics`. A second module that reaches for
+    # `icalendar` is a fork — two places for the same bug, and they would drift.
+    "an app forks the ICS parser": (
+        {"apps/catalog/_planted.py": "import icalendar\n"},
+        {"single-ics-parser"},
+    ),
+    "the catalog's ICS parser forks the shared one": (
+        {"apps/ingestion/_planted.py": "from icalendar import Calendar\n"},
+        {"single-ics-parser"},
+    ),
+    "the calendar adapter forks the ICS parser": (
+        {"adapters/calendar/_planted.py": "from icalendar import Calendar\n"},
+        {"single-ics-parser"},
+    ),
+    # A module *beside* the parser, in the same package, is still a fork.
+    "a sibling format module forks the ICS parser": (
+        {"formats/ics/_planted.py": "from icalendar import Calendar\n"},
+        {"single-ics-parser"},
+    ),
+    # AD-10: the two kinds of explanation never cross.
+    "personalization reaches the Event Fit read": (
+        {"apps/personalization/_planted.py": "import apps.ingestion.event_fit.reads\n"},
+        {"event-fit-separation"},
+    ),
+    "personalization reaches the Event Fit writer": (
+        {"apps/personalization/_planted.py": "from apps.ingestion.event_fit.writes import x\n"},
+        {"event-fit-separation"},
+    ),
+    # The wall is the **package**, so importing the package itself is the violation —
+    # and so is importing any module inside it, including one that does not exist yet.
+    # This is what makes the wall default-safe: a new Event Fit module is inside it
+    # without anybody having to add its name to a list.
+    "personalization reaches the Event Fit package": (
+        {"apps/personalization/_planted.py": "import apps.ingestion.event_fit\n"},
+        {"event-fit-separation"},
+    ),
+    "personalization reaches a module inside the Event Fit package": (
+        {"apps/personalization/_planted.py": "from apps.ingestion.event_fit import reads\n"},
+        {"event-fit-separation"},
+    ),
+    "ingestion reaches for personalization": (
+        {"apps/ingestion/_planted.py": "import apps.personalization.services.saved_events\n"},
+        {"event-fit-catalog-only"},
+    ),
 }
 
 
@@ -153,6 +217,44 @@ def test_every_backend_package_is_a_root_package():
     assert _packages(BACKEND_DIR) - {"tests"} == set(CONFIG["root_packages"])
 
 
+def test_the_ics_parser_exception_is_narrow():
+    """`single-ics-parser` allows exactly one import: the shared parser's own.
+
+    The exception is an *import expression*, not a module, so a sibling module in
+    `formats` importing `icalendar` still breaks the contract — the plant above proves
+    it. This test pins the other half: the exception names the parser, and nothing else.
+    """
+    contract = CONTRACTS["single-ics-parser"]
+
+    assert contract["forbidden_modules"] == ["icalendar"]
+    assert contract["ignore_imports"] == ["formats.ics.parser -> icalendar"]
+    assert "formats" in contract["source_modules"]
+
+
+def test_the_event_fit_wall_is_a_package_and_not_a_list_of_names():
+    """`event-fit-separation` forbids the Event Fit **package**, not its modules.
+
+    AD-10 says the two kinds of explanation never cross. The first version of this
+    contract named two leaves, and a third module that re-exported the read — two
+    lines — gave `personalization` the Event Fit with the contract **green**. A wall
+    made of names is opened by adding a name.
+
+    So the contract names the package *and* its contents. Pinning it here is what
+    makes that structural choice testable: without this assertion the contract could
+    be narrowed back to two module names and nothing in the suite would notice. The
+    architecture test in `test_event_fit_separation.py` carries a hard-coded prefix,
+    so it keeps passing under a narrowed contract — which is precisely the hole this
+    assertion closes.
+    """
+    contract = CONTRACTS["event-fit-separation"]
+
+    assert contract["forbidden_modules"] == [
+        "apps.ingestion.event_fit",
+        "apps.ingestion.event_fit.*",
+    ]
+    assert contract["source_modules"] == ["apps.personalization"]
+
+
 def test_every_adapter_is_covered_by_the_sdk_contracts():
     adapters = _packages(BACKEND_DIR / "adapters")
     for contract_id, owner in (
@@ -163,6 +265,15 @@ def test_every_adapter_is_covered_by_the_sdk_contracts():
         sources = set(CONTRACTS[contract_id]["source_modules"])
         assert {f"adapters.{a}" for a in adapters - {owner}} <= sources, contract_id
         assert f"adapters.{owner}" not in sources
+
+
+def test_only_the_throttle_adapter_and_the_health_check_talk_to_redis():
+    """The redis-sdk contract: the Redis client is reached from two places, by name."""
+    contract = CONTRACTS["redis-sdk"]
+
+    assert contract["forbidden_modules"] == ["redis"]
+    assert "adapters.throttle" not in contract["source_modules"]
+    assert "config" not in contract["source_modules"]
 
 
 def test_every_app_has_a_protected_models_contract():

@@ -15,6 +15,7 @@ dependencies = [
     "httpx==0.28.1",
     "icalendar==7.3.0",
     "defusedxml==0.7.1",
+    "cryptography==46.0.3",
 ]
 
 [dependency-groups]
@@ -45,7 +46,16 @@ select = ["E", "F", "I", "B", "UP", "S", "DTZ", "G", "LOG", "TID"]
 "os.getenvb".msg = "Read configuration through config.env (pydantic-settings), not os.getenvb."
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "domain", "apps", "ports", "adapters", "worker", "shared"]
+known-first-party = [
+    "config",
+    "domain",
+    "apps",
+    "ports",
+    "adapters",
+    "worker",
+    "shared",
+    "formats",
+]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use fake secrets in fixtures, run subprocesses with fixed, trusted arguments,
@@ -55,6 +65,11 @@ known-first-party = ["config", "domain", "apps", "ports", "adapters", "worker", 
 # config/ is the only reader of the environment; manage.py bootstraps DJANGO_SETTINGS_MODULE.
 "config/**" = ["TID251"]
 "manage.py" = ["TID251"]
+# ports/fetch_policy.py reads DJANGO_SETTINGS_MODULE to learn WHICH settings file is in
+# use — that is the test-only loopback allowance's whole mechanism, and it is the
+# bootstrap variable Django itself sets before any settings module is imported. It is
+# not deployment configuration, so it does not belong in config.env.
+"ports/fetch_policy.py" = ["TID251"]
 # Generated migrations carry Django's long built-in help_text strings.
 "**/migrations/*" = ["E501"]
 
@@ -69,6 +84,7 @@ root_packages = [
     "config",
     "worker",
     "shared",
+    "formats",
 ]
 include_external_packages = true
 
@@ -79,6 +95,7 @@ type = "layers"
 layers = [
     "config | worker",
     "apps | adapters",
+    "formats",
     "ports",
     "domain",
     "shared",
@@ -175,7 +192,9 @@ source_modules = [
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
+    "adapters.geo",
     "adapters.logging",
+    "adapters.throttle",
 ]
 forbidden_modules = [
     "anthropic",
@@ -200,8 +219,10 @@ source_modules = [
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
+    "adapters.geo",
     "adapters.llm",
     "adapters.logging",
+    "adapters.throttle",
 ]
 forbidden_modules = ["stripe"]
 allow_indirect_imports = true
@@ -217,14 +238,189 @@ source_modules = [
     "config",
     "worker",
     "shared",
+    "formats",
     "adapters.billing",
     "adapters.calendar",
+    "adapters.email",
+    "adapters.geo",
+    "adapters.llm",
+    "adapters.logging",
+    "adapters.throttle",
+]
+forbidden_modules = ["httpx", "httpcore", "requests", "urllib3"]
+# Wiring the adapter in (config -> adapters.crawl -> httpx) is the intended path.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "redis-sdk"
+name = "Only adapters.throttle and config.health talk to Redis"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "worker",
+    "shared",
+    "adapters.billing",
+    "adapters.calendar",
+    "adapters.crawl",
     "adapters.email",
     "adapters.llm",
     "adapters.logging",
 ]
-forbidden_modules = ["httpx", "httpcore", "requests", "urllib3"]
-# Wiring the adapter in (config -> adapters.crawl -> httpx) is the intended path.
+forbidden_modules = ["redis"]
+# config.health checks the broker, and adapters.throttle counts in it. Both are the
+# intended paths; nothing else may reach the Redis client.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "crypto-library"
+name = "AD-18 only apps.personalization imports the cryptography library"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps.catalog",
+    "apps.delivery",
+    "apps.editorial",
+    "apps.identity",
+    "apps.ingestion",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters",
+    "formats",
+]
+forbidden_modules = ["cryptography"]
+# `apps.personalization` owns CALENDAR_CONNECTION and is therefore the only module that
+# encrypts a credential (AD-16). It is deliberately absent from source_modules.
+#
+# `allow_indirect_imports` is true because the *model layer* must encrypt: Django's
+# registry makes `config.api -> apps.personalization.api -> ... -> models -> fields ->
+# credentials` an unavoidable chain, and it is the same app's own code doing the
+# encrypting. What must never happen is another module reaching the cipher **directly**,
+# and that is what this forbids.
+#
+# The rule that actually protects the key is `credential-key`, below.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "credential-key"
+name = "AD-18 only apps.personalization reads the credential key"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps.catalog",
+    "apps.delivery",
+    "apps.editorial",
+    "apps.identity",
+    "apps.ingestion",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters",
+]
+forbidden_modules = ["apps.personalization.credentials"]
+# The key handling is the thing to protect: a second module that could parse
+# `CALENDAR_CREDENTIAL_KEY`, encrypt with it, or fingerprint with it would be a second
+# place where the credential key is in reach. `shared.credential_key` holds only the
+# *format* — it cannot encrypt — so `config` may validate a key with it without being
+# able to read a credential.
+#
+# `allow_indirect_imports` is true for the same reason as `crypto-library`: Django's
+# model registry makes `config.api -> ... -> models -> fields -> credentials` an
+# unavoidable chain, and it is the app's own code doing the encrypting. A *direct*
+# import from another module is the violation, and that is what this forbids.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "single-ics-parser"
+name = "AD-2 only formats.ics parses iCalendar files"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters",
+    "formats",
+]
+forbidden_modules = ["icalendar"]
+# The catalog pipeline parses ICS sources and the calendar adapter parses a user's
+# ICS calendar. Two implementations would be two places for the same bug, and they
+# would drift — so there is one, in `formats.ics`, and this contract makes the fork
+# structurally impossible rather than merely discouraged.
+#
+# `formats` is the source *package*, so every module in it is covered — including
+# `formats.ics.events`, which is a plain dataclass and must never reach for the
+# library. The one exception is spelled out below.
+ignore_imports = ["formats.ics.parser -> icalendar"]
+# The one module allowed to reach for `icalendar` is the shared parser itself. The
+# exception is an *import expression*, not a module: it names the parser's own import
+# and nothing else, so a second module in `formats` importing the library still
+# breaks this contract.
+unmatched_ignore_imports_alerting = "none"
+# Indirect imports are allowed: the point is that only the parser *directly* imports
+# the library, not that only the parser's callers may depend on it.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "event-fit-separation"
+name = "AD-10 personalization never reaches the Event Fit"
+type = "forbidden"
+source_modules = [
+    "apps.personalization",
+]
+forbidden_modules = [
+    "apps.ingestion.event_fit",
+    "apps.ingestion.event_fit.*",
+]
+# AD-10 names two kinds of explanation and says they are never substituted for one
+# another: **Event Fit** (per `(event, city)`, on `catalog`, owned by `ingestion`) and the
+# **Relevance Pulse** (per user, on `personal`, owned by `personalization`). "Two
+# indicators that look identical must never be silently substituted for one another —
+# that is the trust-collapse failure PRD Risk 11 calls company-ending."
+#
+# The rule is enforced on a **package**, not on import names, because `personalization`
+# is allowed to read the public catalog (saving an event needs its public facts) and the
+# Event Fit is its own package for exactly that reason.
+#
+# **The package is load-bearing, and it exists because a name-only wall was
+# bypassable.** The first version of this contract named two leaves
+# (`...services.event_fit` and `...services.event_fit_read`). A third module that
+# re-exported the read — `event_fit_preview.py`, say — gave `personalization` the Event
+# Fit with both this contract and the architecture test **green**: the wall was two
+# names wide, and adding a name opened it. That is the trust-collapse failure this
+# contract exists to prevent, reached by a two-line file.
+#
+# So the Event Fit is a **package** and the wall is that package. The package name is a
+# single name that covers everything inside it, and the `.*` wildcard covers the modules
+# within it, so a new Event Fit module is inside the wall by default rather than
+# outside it until somebody notices.
+#
+# `allow_indirect_imports` is true because the point is that `personalization` does not
+# import the Event Fit **directly**; a chain through Django's model registry is the
+# catalog app's own code doing its own work.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "event-fit-catalog-only"
+name = "AD-10 the Event Fit is computed on the catalog side, from catalog facts"
+type = "forbidden"
+source_modules = [
+    "apps.ingestion",
+]
+forbidden_modules = [
+    "apps.personalization",
+]
+# The other half of the same rule. The Event Fit is the explanation for a stranger: it is
+# computed from an Event's start time, its extraction confidence and its venue's city. If
+# computing it read a user's preferences, the score would be a personal one wearing a
+# public label, and the same row would mean two different things depending on who
+# looked at it.
 allow_indirect_imports = true
 
 [tool.pytest.ini_options]
@@ -235,7 +431,7 @@ python_files = ["test_*.py"]
 # Coverage of the application code only (not the tests). `make coverage-backend` and CI apply
 # two gates: this overall floor, then 100% for domain/ (testing-standards).
 [tool.coverage.run]
-source = ["domain", "apps", "ports", "adapters", "config", "worker", "shared"]
+source = ["domain", "apps", "ports", "adapters", "config", "worker", "shared", "formats"]
 
 [tool.coverage.report]
 fail_under = 80
