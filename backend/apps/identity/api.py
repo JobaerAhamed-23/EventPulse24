@@ -156,14 +156,22 @@ def get_csrf(request):
         "Creates an account. The answer is the same whether the address was new or "
         "already taken: an existing account holder is told by email instead. This "
         "endpoint does not sign anyone in — call `/api/auth/signin` for that — so the "
-        "response is byte-identical and header-identical whichever case it was."
+        "response is byte-identical and header-identical whichever case it was.\n\n"
+        "`city` is optional: the visitor's home city, carried across from the preview "
+        "choice. A city the catalog does not cover is stored as the fallback, and the "
+        "response says nothing about it either way."
     ),
 )
 def signup(request, body: SignUpIn):
     """Create an account. The answer never says whether the address was taken."""
     require_csrf(request)
 
-    sign_up(email=body.email, password=body.password, ip_address=_client_ip(request))
+    sign_up(
+        email=body.email,
+        password=body.password,
+        ip_address=_client_ip(request),
+        city=body.city,
+    )
 
     # **No session is established here, and that is deliberate.**
     #

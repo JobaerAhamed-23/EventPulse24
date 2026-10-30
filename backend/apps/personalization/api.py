@@ -432,21 +432,33 @@ def put_interests(request, body: InterestsIn):
 @router.put(
     "/onboarding/digest-preference",
     response={200: OnboardingStateOut, 422: ErrorOut},
-    summary="Set the digest delivery time and timezone",
+    summary="Set the digest delivery time, timezone, home city and personal-events opt-out",
     description=(
         "Sets when and where the Pulse Digest should arrive. The delivery time is a "
         "local wall clock, so it means nine in the morning where the user is. The "
-        "timezone must be an IANA zone name."
+        "timezone must be an IANA zone name.\n\n"
+        "`city` is the user's home city, in the catalog's own spelling. A city the "
+        "catalog does not cover is stored as the fallback and reported back with "
+        "`city_source` set to `fallback`, so the client can say \"we don't have your "
+        "city yet\" rather than implying it is the user's city.\n\n"
+        "`include_personal_events` defaults to included — personal events are in the "
+        "digest unless the user opts out. Both fields are optional, and **leaving one "
+        'out does not change it**: an omitted field (and a `null` city) means "leave it '
+        'alone", so a client that only wants to change the delivery time does not reset '
+        "the city. This endpoint cannot clear the city — a `null` and an omitted field "
+        "are the same value, and a shape that cannot tell them apart must not guess."
     ),
 )
 def put_digest_preference(request, body: DigestPreferenceIn):
-    """Set the digest delivery time and timezone."""
+    """Set the digest delivery time and timezone, and optionally the city and opt-out."""
     state = set_digest_preference(
         user_id=request.user.pk,
         delivery_time=body.delivery_time,
         timezone_name=body.timezone,
         actor=_actor(request),
         now=timezone.now(),
+        city=body.city,
+        include_personal_events=body.include_personal_events,
     )
     return OnboardingStateOut.from_state(state)
 

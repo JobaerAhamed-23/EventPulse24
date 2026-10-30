@@ -23,10 +23,14 @@ from django.test import Client
 
 from apps.personalization.models import DigestPreference, Interest, OnboardingProgress
 from shared.constants import ONBOARDING_RESUME_WINDOW
-from shared.db import PERSONAL
+from shared.db import CATALOG, PERSONAL
 from tests.csrf import CsrfClient
 
-pytestmark = pytest.mark.django_db(databases=[PERSONAL])
+# The catalog is in the list because the digest-preference endpoint resolves the city
+# against the catalog's covered cities (FR-2's rule, reused). Without it, a request
+# that names a city cannot be answered — and the answer would be wrong rather than
+# absent, which is worse.
+pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 User = get_user_model()
 
@@ -93,7 +97,13 @@ def test_the_state_endpoint_returns_the_whole_state():
     assert payload["current_step"] == 1
     assert payload["step_name"] == "calendar"
     assert payload["interests"] == []
-    assert payload["digest"] == {"delivery_time": None, "timezone": None}
+    assert payload["digest"] == {
+        "delivery_time": None,
+        "timezone": None,
+        "city": None,
+        "city_source": None,
+        "include_personal_events": True,
+    }
 
 
 def test_the_state_endpoint_requires_a_session():
@@ -231,10 +241,87 @@ def test_putting_the_digest_preference_stores_it():
     assert response.json()["digest"] == {
         "delivery_time": "09:30:00",
         "timezone": "America/Los_Angeles",
+        "city": None,
+        "city_source": None,
+        "include_personal_events": True,
     }
     preference = DigestPreference.objects.using(PERSONAL).get()
     assert preference.delivery_time.hour == 9
     assert preference.delivery_time.minute == 30
+
+
+def test_putting_the_digest_preference_carries_the_city_and_the_opt_out():
+    """The two settings that arrived later ride along with the delivery time."""
+    client = signed_in()
+
+    response = client.put(
+        "/api/personal/onboarding/digest-preference",
+        {
+            "delivery_time": "09:30",
+            "timezone": "America/Los_Angeles",
+            "city": "Brooklyn",
+            "include_personal_events": False,
+        },
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    digest = response.json()["digest"]
+    # An unsupported city is stored as the fallback, and says so.
+    assert digest["city"] == "New York City"
+    assert digest["city_source"] == "fallback"
+    assert digest["include_personal_events"] is False
+    preference = DigestPreference.objects.using(PERSONAL).get()
+    assert preference.include_personal_events is False
+
+
+def test_omitting_the_city_does_not_clear_the_stored_one():
+    """A client that has not been updated to know about the city must not lose it.
+
+    This is the "omission means leave it alone" rule, and it is the one a naive
+    implementation gets wrong: a `None` field written on every request clears the city
+    the first time an old client sends its next request.
+    """
+    client = signed_in()
+
+    client.put(
+        "/api/personal/onboarding/digest-preference",
+        {"delivery_time": "09:30", "timezone": "America/Los_Angeles", "city": "Brooklyn"},
+        content_type="application/json",
+    )
+    response = client.put(
+        "/api/personal/onboarding/digest-preference",
+        {"delivery_time": "10:00", "timezone": "America/Los_Angeles"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    digest = response.json()["digest"]
+    assert digest["city"] == "New York City"
+    assert digest["city_source"] == "fallback"
+
+
+def test_omitting_the_opt_out_does_not_re_include_personal_events():
+    """The opt-out survives a request that never mentions it."""
+    client = signed_in()
+
+    client.put(
+        "/api/personal/onboarding/digest-preference",
+        {
+            "delivery_time": "09:30",
+            "timezone": "America/Los_Angeles",
+            "include_personal_events": False,
+        },
+        content_type="application/json",
+    )
+    response = client.put(
+        "/api/personal/onboarding/digest-preference",
+        {"delivery_time": "10:00", "timezone": "America/Los_Angeles"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["digest"]["include_personal_events"] is False
 
 
 def test_putting_a_non_iana_timezone_is_refused():

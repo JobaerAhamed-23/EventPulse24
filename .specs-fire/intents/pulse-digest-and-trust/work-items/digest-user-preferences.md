@@ -4,7 +4,7 @@ title: The user's home city and the personal-events opt-out
 intent: pulse-digest-and-trust
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-10-30
 ---

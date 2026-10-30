@@ -350,21 +350,51 @@ class InterestsOut(Schema):
 
 
 class DigestPreferenceIn(Schema):
-    """The digest delivery time and timezone.
+    """The digest delivery time and timezone, and the two content preferences.
 
     The delivery time is a **local wall clock** — "09:00" means nine in the morning where
     the user is, not nine in the morning UTC. The zone says where that is.
+
+    **The two new fields are optional, and omission means "leave it alone".** The city
+    and the opt-out are separate settings, and a client that only wants to change the
+    delivery time must not silently clear the city or silently re-include personal
+    events.
+
+    **`city` is the user's home city, in the catalog's spelling.** A city the catalog
+    does not cover is stored as the fallback with `city_source` `fallback`, so the digest
+    can say "we don't have your city yet" rather than passing the fallback off as the
+    user's city.
+
+    **A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an
+    omitted field are the same value here, so "leave it alone" and "clear it" cannot be
+    told apart — and a shape that cannot say which one it means must not guess. Guessing
+    "clear" would wipe the city of every client that sends the field as `null`, and
+    guessing "leave alone" would make the value unreachable. So a `null` city is
+    **left alone**, and clearing is not offered here at all: the service can clear the
+    city (`set_home_city(city=None)`), and a future settings endpoint may expose it
+    through a shape that *can* distinguish the two. Until then, "no city" is reached by
+    the sign-up path or by the backfill, not by this request.
     """
 
     delivery_time: time
     timezone: str
+    city: str | None = None
+    include_personal_events: bool | None = None
 
 
 class DigestPreferenceOut(Schema):
-    """The stored digest delivery time and timezone."""
+    """The stored digest delivery time and timezone, and the two content preferences.
+
+    `city_source` says how the city was arrived at — `geo`, `choice`, `fallback` or
+    `backfill`. A client can show "we don't have your city yet" for a fallback rather
+    than implying New York City is the user's city.
+    """
 
     delivery_time: time | None = None
     timezone: str | None = None
+    city: str | None = None
+    city_source: str | None = None
+    include_personal_events: bool = True
 
 
 class OnboardingStatusOut(Schema):
@@ -406,6 +436,9 @@ class OnboardingStateOut(Schema):
             digest=DigestPreferenceOut(
                 delivery_time=state.digest_delivery_time,
                 timezone=state.digest_timezone,
+                city=state.digest_city,
+                city_source=state.digest_city_source,
+                include_personal_events=state.digest_include_personal_events,
             ),
             last_advanced_at=state.last_advanced_at,
             completed_at=state.completed_at,

@@ -23,15 +23,28 @@ from apps.personalization.schemas import OnboardingStatusOut
 
 
 class SignUpIn(Schema):
-    """The sign-up request: an address and a password.
+    """The sign-up request: an address, a password, and optionally a home city.
 
     The password is a plain string here and is never echoed back. It goes to
     `apps.identity.services.sign_up`, which validates it against Django's configured
     password validators and hashes it.
+
+    **`city` is optional, and it is the visitor's preview choice carried across
+    sign-up.** The preview choice lives in a **session cookie** read in the browser
+    only — deliberately, because a server-side choice would make `/preview` vary per
+    visitor and break AD-12's cacheability. So the carry is a **request field**: the
+    frontend reads the cookie and sends the city here.
+
+    A city the catalog does not cover is stored as the fallback with `city_source`
+    `fallback`, so the digest can say "we don't have your city yet" rather than passing
+    the fallback off as the user's city. The sign-up **response** says nothing about
+    it either way — a city is not an account-existence oracle, but the response shape
+    carries nothing beyond `status` in any case.
     """
 
     email: str
     password: str
+    city: str | None = None
 
 
 class SignUpOut(Schema):

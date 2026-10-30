@@ -370,12 +370,34 @@
         "type": "object"
       },
       "DigestPreferenceIn": {
-        "description": "The digest delivery time and timezone.\n\nThe delivery time is a **local wall clock** — \"09:00\" means nine in the morning where\nthe user is, not nine in the morning UTC. The zone says where that is.",
+        "description": "The digest delivery time and timezone, and the two content preferences.\n\nThe delivery time is a **local wall clock** — \"09:00\" means nine in the morning where\nthe user is, not nine in the morning UTC. The zone says where that is.\n\n**The two new fields are optional, and omission means \"leave it alone\".** The city\nand the opt-out are separate settings, and a client that only wants to change the\ndelivery time must not silently clear the city or silently re-include personal\nevents.\n\n**`city` is the user's home city, in the catalog's spelling.** A city the catalog\ndoes not cover is stored as the fallback with `city_source` `fallback`, so the digest\ncan say \"we don't have your city yet\" rather than passing the fallback off as the\nuser's city.\n\n**A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an\nomitted field are the same value here, so \"leave it alone\" and \"clear it\" cannot be\ntold apart — and a shape that cannot say which one it means must not guess. Guessing\n\"clear\" would wipe the city of every client that sends the field as `null`, and\nguessing \"leave alone\" would make the value unreachable. So a `null` city is\n**left alone**, and clearing is not offered here at all: the service can clear the\ncity (`set_home_city(city=None)`), and a future settings endpoint may expose it\nthrough a shape that *can* distinguish the two. Until then, \"no city\" is reached by\nthe sign-up path or by the backfill, not by this request.",
         "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
           "delivery_time": {
             "format": "time",
             "title": "Delivery Time",
             "type": "string"
+          },
+          "include_personal_events": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Personal Events"
           },
           "timezone": {
             "title": "Timezone",
@@ -390,8 +412,30 @@
         "type": "object"
       },
       "DigestPreferenceOut": {
-        "description": "The stored digest delivery time and timezone.",
+        "description": "The stored digest delivery time and timezone, and the two content preferences.\n\n`city_source` says how the city was arrived at — `geo`, `choice`, `fallback` or\n`backfill`. A client can show \"we don't have your city yet\" for a fallback rather\nthan implying New York City is the user's city.",
         "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "city_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City Source"
+          },
           "delivery_time": {
             "anyOf": [
               {
@@ -403,6 +447,11 @@
               }
             ],
             "title": "Delivery Time"
+          },
+          "include_personal_events": {
+            "default": true,
+            "title": "Include Personal Events",
+            "type": "boolean"
           },
           "timezone": {
             "anyOf": [
@@ -795,7 +844,10 @@
               }
             ],
             "default": {
+              "city": null,
+              "city_source": null,
               "delivery_time": null,
+              "include_personal_events": true,
               "timezone": null
             }
           },
@@ -1550,8 +1602,19 @@
         "type": "object"
       },
       "SignUpIn": {
-        "description": "The sign-up request: an address and a password.\n\nThe password is a plain string here and is never echoed back. It goes to\n`apps.identity.services.sign_up`, which validates it against Django's configured\npassword validators and hashes it.",
+        "description": "The sign-up request: an address, a password, and optionally a home city.\n\nThe password is a plain string here and is never echoed back. It goes to\n`apps.identity.services.sign_up`, which validates it against Django's configured\npassword validators and hashes it.\n\n**`city` is optional, and it is the visitor's preview choice carried across\nsign-up.** The preview choice lives in a **session cookie** read in the browser\nonly — deliberately, because a server-side choice would make `/preview` vary per\nvisitor and break AD-12's cacheability. So the carry is a **request field**: the\nfrontend reads the cookie and sends the city here.\n\nA city the catalog does not cover is stored as the fallback with `city_source`\n`fallback`, so the digest can say \"we don't have your city yet\" rather than passing\nthe fallback off as the user's city. The sign-up **response** says nothing about\nit either way — a city is not an account-existence oracle, but the response shape\ncarries nothing beyond `status` in any case.",
         "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -1849,7 +1912,7 @@
     },
     "/api/auth/signup": {
       "post": {
-        "description": "Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.",
+        "description": "Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.\n\n`city` is optional: the visitor's home city, carried across from the preview choice. A city the catalog does not cover is stored as the fallback, and the response says nothing about it either way.",
         "operationId": "apps_identity_api_signup",
         "parameters": [],
         "requestBody": {
@@ -2629,7 +2692,7 @@
     },
     "/api/personal/onboarding/digest-preference": {
       "put": {
-        "description": "Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.",
+        "description": "Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.\n\n`city` is the user's home city, in the catalog's own spelling. A city the catalog does not cover is stored as the fallback and reported back with `city_source` set to `fallback`, so the client can say \"we don't have your city yet\" rather than implying it is the user's city.\n\n`include_personal_events` defaults to included — personal events are in the digest unless the user opts out. Both fields are optional, and **leaving one out does not change it**: an omitted field (and a `null` city) means \"leave it alone\", so a client that only wants to change the delivery time does not reset the city. This endpoint cannot clear the city — a `null` and an omitted field are the same value, and a shape that cannot tell them apart must not guess.",
         "operationId": "apps_personalization_api_put_digest_preference",
         "parameters": [],
         "requestBody": {
@@ -2664,7 +2727,7 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "Set the digest delivery time and timezone",
+        "summary": "Set the digest delivery time, timezone, home city and personal-events opt-out",
         "tags": [
           "personal"
         ]

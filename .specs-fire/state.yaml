@@ -400,10 +400,13 @@ intents:
         run_id: run-eventpulse24-021
         completed_at: 2026-10-30T15:05:00Z
       - id: digest-user-preferences
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
+        design_doc: digest-user-preferences-design.md
         depends_on: []
+        run_id: run-eventpulse24-021
+        completed_at: 2026-10-30T16:20:00Z
       - id: digest-candidate-reads
         status: pending
         complexity: medium
@@ -488,10 +491,11 @@ runs:
         - id: digest-user-preferences
           intent: pulse-digest-and-trust
           mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
           current_checkpoint: plan
+          completed_at: 2026-10-30T16:20:00Z
         - id: digest-candidate-reads
           intent: pulse-digest-and-trust
           mode: confirm

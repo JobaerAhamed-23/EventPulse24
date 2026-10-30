@@ -2,7 +2,7 @@
 explicit IANA zones, seeded Faker, sequences for every unique value.
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 import factory
@@ -13,6 +13,7 @@ from apps.personalization.models import (
     CalendarConnection,
     ConflictPair,
     DigestComposition,
+    DigestPreference,
     PersonalEvent,
     PersonalizationAuditEntry,
     PulseDigest,
@@ -117,6 +118,26 @@ class CalendarConnectionFactory(PersonalFactory):
     credential_fingerprint = factory.Sequence(lambda n: f"{n:064x}")
     status = CalendarConnection.Status.ACTIVE
     display_label = "Work"
+
+
+class DigestPreferenceFactory(PersonalFactory):
+    """One user's digest preference: when, where, and what.
+
+    **No city by default.** `NULL` is a real state — "we do not know where this user
+    is" — and a factory that defaulted to a city would make every test that did not care
+    about the city depend on it. The opt-out defaults to *included*, which is PRD
+    `[ASSUMPTION-7]`.
+    """
+
+    class Meta:
+        model = DigestPreference
+
+    user_id = factory.LazyFunction(uuid7)
+    delivery_time = factory.LazyFunction(lambda: time(9, 0))
+    timezone = TZ
+    city = None
+    city_source = None
+    include_personal_events = True
 
 
 class PulseDigestFactory(PersonalFactory):

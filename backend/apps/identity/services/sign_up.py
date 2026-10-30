@@ -22,6 +22,7 @@ API edge").
 
 import hashlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -30,6 +31,7 @@ from django.db import IntegrityError, transaction
 from apps.identity.models import User
 from apps.identity.services import audit as audit_service
 from apps.identity.services.throttle import is_throttled
+from apps.personalization.services.digest_preferences import SOURCE_CHOICE, set_home_city
 from domain.errors import ThrottledError, ValidationError
 from ports.email import EmailMessage, Stream
 from ports.registry import get_email_port
@@ -49,7 +51,13 @@ class SignUpOutcome:
     accepted: bool = True
 
 
-def sign_up(*, email: str, password: str, ip_address: str | None = None) -> SignUpOutcome:
+def sign_up(
+    *,
+    email: str,
+    password: str,
+    ip_address: str | None = None,
+    city: str | None = None,
+) -> SignUpOutcome:
     """Create an account, or accept the attempt without revealing a duplicate.
 
     Args:
@@ -57,6 +65,9 @@ def sign_up(*, email: str, password: str, ip_address: str | None = None) -> Sign
         password: The plain password. It is hashed by Django and never stored, logged or
             returned.
         ip_address: The caller's IP, used only for the throttle. Never logged.
+        city: The visitor's home city, carried across from the preview choice. Optional,
+            and stored by `personalization`'s published service — `identity` does not
+            reach into another app's tables (AD-2).
 
     Raises:
         ThrottledError: Too many attempts.
@@ -108,6 +119,33 @@ def sign_up(*, email: str, password: str, ip_address: str | None = None) -> Sign
             target_type="User",
             target_id=user.pk,
             details={"method": "password"},
+        )
+
+    # The city is stored **after** the account commits, and only when the account was
+    # actually created. A duplicate sign-up returns above, before this line — so a
+    # duplicate never overwrites the real account holder's city. That matters: the
+    # duplicate path is the one an attacker reaches, and it must not be able to change
+    # another account's stored preferences.
+    #
+    # **The city is outside the account's transaction on purpose.** The account is the
+    # thing that must not be half-made: an account that exists without its audit row is
+    # a hole, and one that exists without a city is merely a user whose city we do not
+    # know yet — a state the digest already handles, and one the backfill fills. So if
+    # the city write fails, the account stands and the city is missing; the opposite
+    # trade — rolling the account back because a city could not be stored — would lose
+    # a real sign-up over a preference, and would leave the caller with a 500 for an
+    # account that might or might not exist.
+    #
+    # The city is optional, and a caller that sends none stores none. "We do not know
+    # where this user is" is a real state, and it is what an account has when the visitor
+    # made no preview choice.
+    if city is not None:
+        set_home_city(
+            user_id=user.pk,
+            city=city,
+            source=SOURCE_CHOICE,
+            actor=Actor.user(user.pk),
+            now=datetime.now(UTC),
         )
 
     return SignUpOutcome()

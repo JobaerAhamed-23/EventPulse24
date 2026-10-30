@@ -537,7 +537,7 @@ class OnboardingProgress(UUIDv7Model):
 
 
 class DigestPreference(UUIDv7Model):
-    """When and where the Pulse Digest should arrive (FR-1, step 3).
+    """When, where, and what the Pulse Digest should contain (FR-1, step 3; FR-19).
 
     The user is held **by value** (OQ-8): no relation to `User`.
 
@@ -549,15 +549,73 @@ class DigestPreference(UUIDv7Model):
     the next send time.
 
     **This is a small dedicated model, not a `PREFERENCE_GRAPH`.** A graph is a structure
-    for a *set* of preferences with edges between them; a delivery time and a zone are a
-    single value with two parts, read as a unit and written as a unit. A graph would add a
-    node type, an edge type and a traversal for one row. The shape is reconsidered when a
-    second, genuinely separate preference arrives — and the reason is recorded here so the
-    next reader knows the decision was deliberate, not accidental.
+    for a *set* of preferences with edges between them; these are a single value with
+    three parts, read as a unit and written as a unit. A graph would add a node type, an
+    edge type and a traversal for one row. The shape is reconsidered when a second,
+    genuinely separate preference arrives — and the reason is recorded here so the next
+    reader knows the decision was deliberate, not accidental.
+
+    **The reconsideration came, and the answer was three columns on one row.** The home
+    city and the personal-events opt-out arrived together, and neither is *genuinely
+    separate*: the city is a third coordinate of the same question this row already
+    answers — where and when the digest arrives — and the opt-out says what goes *into*
+    this user's digest. Both are one row per user, read together by the composition
+    service and written together by one settings command. A separate table would add an
+    owner, a retention category, a backfill and a second lookup for information that
+    belongs in the same row.
+
+    **`city` is nullable, and `NULL` means "we do not know where this user is".** That is
+    a real, reachable state — it is what an account has before this item, and what a user
+    who declined location inference has (the personal-events opt-out is about personal
+    *events*; the city is a separate choice). It is *not* the same as "the user is in
+    New York City", and the difference is the whole point of the fallback: a digest that
+    ranks on NYC for a user who declined inference would be showing them a city's events
+    under a city they did not choose.
+
+    **`city_source` says how the city was arrived at**, and it is what makes the
+    fallback honest rather than invisible. Without it, a user whose city was inferred
+    and a user whose city they chose look identical — and the digest would show
+    "Brooklyn, NY" for both. A fallback the user did not pick must be *labelled* as one,
+    not passed off as their city.
+
+    **The city is not encrypted.** The email address is encrypted because it is a
+    *credential* — it authenticates. A city is not a credential and authenticates
+    nothing; encrypting it would make it unqueryable and unindexable for no gain. It is
+    in the `personal` schema, readable only by `ep_personal`, and purged with the
+    account.
+
+    **`include_personal_events` defaults to `True`**: personal events are included unless
+    the user opts out. That is PRD `[ASSUMPTION-7]` — and it is an *assumption*, still
+    open as PRD Open Question #13 (owner: Product). The default **is** the assumption,
+    so a reader who changes it is changing the product's default behaviour, and the
+    docstring says so where they will see it.
+
+    **The city is never in `__str__`.** It is weak location data about a real person,
+    and `__str__` reaches every log line and every admin list column (AD-13). The
+    delivery time and the zone are shown; the city is not.
 
     The zone is validated by the command, not by a check constraint: a database check
-    cannot see the timezone database.
+    cannot see the timezone database. The city is validated against the catalog's
+    covered cities by the command, for the same reason — the database cannot know which
+    cities the catalog serves.
     """
+
+    class CitySource(models.TextChoices):
+        """How the home city was arrived at.
+
+        Not decoration: a fallback the user did not pick must be *labelled* as one, and
+        the digest says "we don't have your city yet" for a fallback rather than
+        implying New York City is the user's city.
+        """
+
+        # The edge's geo header, at sign-up.
+        GEO = "geo"
+        # The visitor's explicit choice on the preview, carried across sign-up.
+        CHOICE = "choice"
+        # The catalog does not cover the city we were given, so the fallback was stored.
+        FALLBACK = "fallback"
+        # The backfill command filled it, because the account predates this item.
+        BACKFILL = "backfill"
 
     retention_category = RetentionCategory.PREFERENCE_SIGNALS
 
@@ -567,16 +625,36 @@ class DigestPreference(UUIDv7Model):
     delivery_time = models.TimeField()
     # An IANA zone name, e.g. "America/Los_Angeles". Validated by the command.
     timezone = models.CharField(max_length=64)
+    # The user's home city, in the **catalog's own spelling** — the spelling the events
+    # are filed under. Null means "not known"; see the class docstring.
+    city = models.CharField(max_length=64, null=True, blank=True)
+    # How the city was arrived at. Null exactly when `city` is null.
+    city_source = models.CharField(max_length=16, choices=CitySource.choices, null=True, blank=True)
+    # FR-19 / PRD [ASSUMPTION-7]: personal events are included unless the user opts out.
+    include_personal_events = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["user_id"], name="digest_preference_user_uq"),
+            # A city and a source travel together. A city with no source is a claim
+            # about where the user is with no record of how we learned it; a source with
+            # no city is a record of a decision about a city we do not have. Neither is
+            # a state anything should produce, so the database holds it.
+            models.CheckConstraint(
+                condition=(models.Q(city__isnull=True) & models.Q(city_source__isnull=True))
+                | (models.Q(city__isnull=False) & models.Q(city_source__isnull=False)),
+                name="digest_preference_city_source_ck",
+            ),
         ]
         indexes = [
             models.Index(fields=["user_id"], name="digest_preference_user_idx"),
         ]
 
     def __str__(self) -> str:
+        # The delivery time and the zone — and **not the city**. The city is weak
+        # location data about a real person; this string reaches every log line and every
+        # admin list column (AD-13). Django's `__repr__` delegates to `__str__`, so
+        # `repr()` is safe for free.
         return f"digest at {self.delivery_time} {self.timezone}"
 
 
