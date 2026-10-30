@@ -317,20 +317,23 @@ does not exist yet.
 
 | Category | Passed | Failed | Skipped | Coverage |
 |----------|--------|--------|---------|----------|
-| Item-scoped | 79 | 0 | 0 | 99% (`test_digest_models.py`) |
-| **Total (whole backend)** | **3471** | **0** | **0** | **98.95%** |
+| Item-scoped | 86 | 0 | 0 | 99% (`test_digest_models.py`) |
+| **Total (whole backend)** | **3480** | **0** | **0** | **99.08%** |
 
-The item-scoped 79 are 46 in `test_digest_models.py`, 20 in `test_model_structure.py`
+The item-scoped 86 are 53 in `test_digest_models.py`, 20 in `test_model_structure.py`
 (the shared structural file, 3 of them new) and 13 in `test_grants.py` (3 of them new).
 
-> **These are the pre-review figures.** The code review for this item has not yet run;
-> see [§11](#11-what-the-code-review-changed) below once it has.
+> **These are the post-review figures.** The code review for this item found six things
+> — one missing database constraint, two false claims in the design doc, and three tests
+> that could not fail for the reason they claimed to check — and all six are fixed.
+> See [§11](#11-what-the-code-review-changed) and the
+> [review report](review-report.md).
 
 ### The item-scoped files, and what each is for
 
 | File | Tests | What it proves |
 |------|-------|----------------|
-| `backend/tests/personalization/test_digest_models.py` | 46 | The fields, the constraints, the immutability, and the indexes |
+| `backend/tests/personalization/test_digest_models.py` | 53 | The fields, the constraints, the immutability, and the indexes |
 | `backend/tests/personalization/test_model_structure.py` | 20 (3 new) | No relation crosses the AD-3 wall; every relation is held by value |
 | `backend/tests/personalization/test_grants.py` | 13 (3 new) | The runtime role may not rewrite or delete a composition, and the migration's own assertion is not decorative |
 
@@ -354,10 +357,9 @@ uv run python manage.py makemigrations --check --dry-run
 ## Results
 
 ```
-79 passed  (the three item-scoped files)
-1272 passed  (tests/architecture/ + tests/personalization/)
-3471 passed, 0 failed  (whole backend)
-Coverage: 98.95% overall, 100.00% on domain/
+86 passed  (the three item-scoped files)
+3480 passed, 0 failed  (whole backend)
+Coverage: 99.08% overall, 100.00% on domain/
 Contracts: 19 kept, 0 broken
 System check identified no issues (1 silenced).
 No changes detected  (makemigrations --check --dry-run)
@@ -439,13 +441,18 @@ through the parent.
 
 ## 4. The check constraints hold the shapes, at the database
 
-Three constraints, and each is tested with the row that violates it:
+Four constraints, and each is tested with the row that violates it:
 
 | Constraint | Rule | The violating row the test builds |
 |---|---|---|
 | `digest_composition_bucket_ck` | `1 <= bucket <= 5` | bucket `0` and bucket `6` |
+| `digest_composition_slot_ck` | the slot is one of FR-5's three | `slot='bogus_slot'` |
 | `digest_composition_kind_shape_ck` | public ⇒ has a version **and** a badge; personal ⇒ has **neither** | a public composition with no badge, and a personal one with a badge |
 | `digest_composition_digest_event_uq` | no duplicate event in one digest | the same `(digest_id, event_id)` twice |
+
+**The slot constraint was added by the code review** — the model declared
+`choices=Slot.choices`, and Django's `choices` are **not** a database constraint, so a
+row with a fourth slot was writable. See [§11](#11-what-the-code-review-changed).
 
 The kind-shape constraint is the one worth reading twice, because it encodes AD-10's
 two explanation kinds in a single expression: a **public** composition carries the
@@ -600,7 +607,78 @@ explanation kinds, while `ingestion` keeps Event Fit.
 
 ## 11. What the code review changed
 
-*To be filled in by the code-review step for this item.*
+The code review found six things, and three of them were **tests that could not fail
+for the reason they claimed to check**. Those are the ones that mattered most: a test
+that cannot fail is not evidence, and this item's whole claim is that the *database*
+holds the rules.
+
+| # | Finding | Fix |
+|---|---------|-----|
+| 1 | **Architecture** — `slot` was writable with any value; Django's `choices` are not a DB constraint | Added `digest_composition_slot_ck` + migration `0008` + 3 tests |
+| 2 | **Architecture** — D12 named `Slot.ORDER`, which does not exist | Design doc corrected to `DIGEST_SLOT_ORDER`, with why it lives outside the enum |
+| 3 | **Architecture** — D3's reason for `base_manager_name` was false for this model (no related-object paths) | Design doc corrected to what is actually true |
+| 4 | **Testing** — the slot-order test could not detect an added slot | Unfiltered enum walk; list equality for coverage |
+| 5 | **Testing** — the enum-pinning test asserted a substring, so a stale literal passed | Exact-token assertions, plus a count check on the slot constraint |
+| 6 | **Testing** — the `__str__` leak test conflated the slot with the tag | Slot pinned explicitly; both directions asserted |
+
+### The missing constraint was a real hole
+
+`slot` was declared `choices=Slot.choices`, and Django's `choices` are **not** a
+database constraint. The model had check constraints on `bucket` and on the
+`event_kind`/`event_version`/`source_badge` shape — but none on `slot`. Verified
+against the live database before the fix:
+
+```
+INSERT ... slot='bogus_slot' ...  ->  WROTE bogus_slot -> ('bogus_slot',)
+```
+
+A fourth slot was accepted. That row would then be **invisible to the digest read**:
+the read sorts against `DIGEST_SLOT_ORDER` (D12), and a slot outside that tuple has
+nowhere to sort, so the card would silently vanish rather than fail loudly.
+
+The fix is the same argument D5 makes for the bucket — "a check constraint is what
+makes a sixth one impossible at the database" — applied to the field that had been
+left unenforced. Migration `0008` adds it, and three tests come with it.
+
+### The three test fixes were each verified by mutation
+
+A test that cannot fail is not evidence, so each fix was checked by breaking the
+code it covers and confirming the test catches it.
+
+| Mutation | Test that caught it |
+|---|---|
+| A fourth slot added to the `Slot` enum | `test_digest_composition_slot_order_matches_the_enum_declaration_order` |
+| The kind constraint's literal changed to `"pub"` | `test_digest_composition_kind_values_match_the_constraint` |
+| `__str__` made to leak `self.tags` | `test_digest_composition_str_leaks_no_event_content` |
+
+The first is the sharpest illustration. The **old** slot-order test filtered the enum
+by membership in the constant, so a slot the constant did not name was simply
+*skipped* — and the test passed:
+
+```
+OLD filtered assertion passes? True -> ('must_know', 'nearby', 'serendipity')
+  (a fourth slot was silently skipped)
+NEW unfiltered assertion passes? False
+```
+
+And the old enum-pin test, on the exact drift it existed to prevent:
+
+```
+Simulated: enum value = 'pub'  constraint literal left stale as public
+  "public" in rendered -> True  <- PASSES (wrong!)
+  "pub" in rendered    -> True  <- PASSES (wrong!)
+  => OLD TEST PASSES AGAINST A BROKEN CONSTRAINT
+```
+
+The substring `"pub"` is inside `"public"`. The pin was decorative; it is now an exact
+token, which does not match.
+
+### The probe row was cleaned up
+
+The review's `bogus_slot` insert was deleted inside the retention-purge escape hatch
+(`SET LOCAL eventpulse.retention_purge = 'on'`). A plain `DELETE` was correctly
+refused by the append-only trigger first — which is a second, unplanned confirmation
+that the trigger works.
 
 ## What this item does not test
 
@@ -618,5 +696,7 @@ explanation kinds, while `ingestion` keeps Event Fit.
 
 ## Verdict
 
-**Passing.** 79 item-scoped tests, all green, with every architectural gate intact and
-the whole backend at 3471 passed, 0 failed.
+**Passing.** 86 item-scoped tests, all green, with every architectural gate intact and
+the whole backend at 3480 passed, 0 failed. The code review's six findings are all
+fixed, and the three test fixes were each verified by mutation — the test that covers
+each one was confirmed to fail when the code it covers was broken.

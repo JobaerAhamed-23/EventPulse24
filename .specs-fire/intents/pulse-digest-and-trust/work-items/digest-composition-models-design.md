@@ -98,8 +98,13 @@ which is exactly right for a fully immutable table. The new migration reuses tha
 function and adds only the trigger.
 
 This makes `DigestComposition` the first non-audit `AppendOnlyModel` in the `personal`
-schema, and the first table in the app that needs `Meta.base_manager_name = "objects"`
-so that related-object paths use the guarded queryset too.
+schema, and it declares `Meta.base_manager_name = "objects"` like every other
+append-only model in the codebase (`EventStateChange`, `IngestionAuditEntry`,
+`PersonalizationAuditEntry`) — so `_base_manager` is the guarded queryset if a relation
+is ever added. (Today there is **no** related-object path: every relation is held by
+value per D2, so `related_objects` is empty and the setting changes nothing about this
+model. It is declared for consistency with the other append-only tables, not because
+something depends on it yet.)
 
 **The consequence for the immutability test.** `AppendOnlyModel.save()` raises
 `AppendOnlyViolation` (a `RuntimeError`), **not** an `IntegrityError`. A test that
@@ -316,8 +321,12 @@ principle is the same, and the alternative (ordering by a `CASE` expression or a
 lives.
 
 **Consequence:** `DigestComposition.slot` is a `CharField` with `choices=Slot.choices`,
-and the *order* comes from `Slot.ORDER`. The `slot` values are stored as their slugs,
-so a reader can see "must_know" in the database without a join.
+and the *order* comes from the module-level `DIGEST_SLOT_ORDER`. The `slot` values are
+stored as their slugs, so a reader can see "must_know" in the database without a join.
+
+The constant lives **outside** the enum class, beside it, because a `TextChoices` member
+holds a scalar — a tuple attribute inside the class would be read as an enum member and
+fail at import. So the order is a module constant, not `Slot.ORDER`.
 
 ## The models
 
@@ -356,6 +365,10 @@ Constraints:
 
 - unique `(digest_id, event_id)` — no duplicate event in one digest.
 - check `1 <= bucket <= 5`.
+- check `slot in (must_know, nearby, serendipity)` — FR-5's three slots and no fourth.
+  `choices` is Python-level only, so without this a row with `slot='bogus_slot'` is
+  writable and the digest read would silently drop it (the read sorts against
+  `DIGEST_SLOT_ORDER`, and a slot outside it has nowhere to sort).
 - check `event_kind`/`event_version`/`source_badge` agree: a public composition has a
   version and a badge; a personal one has neither.
 

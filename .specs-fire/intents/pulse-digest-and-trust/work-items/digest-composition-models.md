@@ -4,7 +4,7 @@ title: PULSE_DIGEST and DIGEST_COMPOSITION models
 intent: pulse-digest-and-trust
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-10-30
 ---

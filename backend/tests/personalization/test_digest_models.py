@@ -231,6 +231,14 @@ def test_digest_composition_kind_values_match_the_constraint():
     executes, so neither name is bound there and the literal is used instead. This test
     pins the two together, so renaming the enum's value without changing the constraint
     fails here rather than at the first insert (D7).
+
+    **The assertion is on an exact token, not a substring.** A substring check is
+    satisfied by a *stale* literal: if `EventKind.PUBLIC` were renamed to `"pub"`, the
+    old literal `"public"` would still be in the rendered constraint, and both the
+    substring `"public" in rendered` and the substring `"pub" in rendered` would be
+    true — so the pin would hold against a constraint that no longer matched the enum.
+    Django renders the comparison as `('event_kind', 'public')`, so the exact-token
+    form is `('event_kind', 'pub')`, which does not match `('event_kind', 'public')`.
     """
     constraint = next(
         c
@@ -239,8 +247,59 @@ def test_digest_composition_kind_values_match_the_constraint():
     )
     rendered = str(constraint.condition)
 
-    assert DigestComposition.EventKind.PUBLIC.value in rendered
-    assert DigestComposition.EventKind.PERSONAL.value in rendered
+    for member in DigestComposition.EventKind:
+        assert f"('event_kind', '{member.value}')" in rendered
+
+    # The constraint has exactly two branches, one per kind. A third value added to the
+    # enum must not silently widen the constraint to accept it.
+    assert len(DigestComposition.EventKind) == 2
+
+
+def test_digest_composition_slot_values_match_the_constraint():
+    """The slot check constraint compares the slots as literal strings, like the kind.
+
+    Same reasoning as the kind: the enum is not bound while the constraint's body
+    executes, so the literals stand in for it and are pinned here by exact token.
+
+    Django renders an `__in` lookup as a **list**, `('slot__in', ['must_know', ...])`,
+    so each value is matched with its own quotes rather than as a substring.
+    """
+    constraint = next(
+        c for c in DigestComposition._meta.constraints if c.name == "digest_composition_slot_ck"
+    )
+    rendered = str(constraint.condition)
+
+    for member in DigestComposition.Slot:
+        assert f"'{member.value}'" in rendered
+
+    assert len(DigestComposition.Slot) == 3
+
+    # Each slot appears exactly once, and no fourth value is present. A stale literal
+    # left over from a removed slot would push the count above three and fail here.
+    assert rendered.count("'must_know'") == 1
+    assert rendered.count("'nearby'") == 1
+    assert rendered.count("'serendipity'") == 1
+
+
+def test_digest_composition_rejects_a_slot_outside_the_enum():
+    """FR-5 has three slots and no fourth — held by the database (D8).
+
+    Django's `choices` are a Python-level convenience and are **not** a database
+    constraint, so without this check a row with `slot='bogus_slot'` is perfectly
+    writable. That row would then be invisible to the digest read: the read sorts
+    against `DIGEST_SLOT_ORDER`, and a slot outside it has nowhere to sort, so the card
+    would silently vanish from the digest.
+    """
+    with pytest.raises(IntegrityError), transaction.atomic(using=PERSONAL):
+        DigestCompositionFactory.create(slot="bogus_slot")
+
+
+@pytest.mark.parametrize("slot", ["must_know", "nearby", "serendipity"])
+def test_digest_composition_accepts_every_slot_in_the_enum(slot):
+    """The three slots FR-5 names are all writable, and all three are legal."""
+    composition = DigestCompositionFactory.create(slot=slot)
+
+    assert composition.slot == slot
 
 
 def test_digest_composition_stores_the_score_as_an_exact_decimal():
@@ -314,13 +373,25 @@ def test_digest_composition_str_leaks_no_event_content():
     """The event's title is untrusted source text and must not reach a log line (AD-9, AD-13).
 
     The `__str__` is what `repr()` shows, and what the admin's list column shows.
+
+    **The slot is pinned to `must_know` on purpose.** The tags include `"nearby"`, which
+    is also a *slot* value, and `__str__` legitimately names the slot. If the factory's
+    default slot were ever `"nearby"`, the `"nearby" not in rendered` assertion would
+    fail because the slot leaked — not because a tag leaked — and the test would be
+    asserting something it never set up. Pinning the slot makes the assertion mean what
+    it says: the *tag* "nearby" is absent, while the slot "must_know" is present.
     """
-    composition = DigestCompositionFactory.create(tags=["nearby", "matches_arts_culture"])
+    composition = DigestCompositionFactory.create(
+        slot=DigestComposition.Slot.MUST_KNOW,
+        tags=["nearby", "matches_arts_culture"],
+    )
 
     rendered = f"{composition!r} {composition}"
 
     assert "arts_culture" not in rendered
     assert "nearby" not in rendered
+    # The slot *is* named — the assertion above is about tags, not about the whole row.
+    assert "must_know" in rendered
 
 
 def test_digest_composition_slot_order_is_must_know_then_nearby_then_serendipity():
@@ -338,19 +409,28 @@ def test_digest_composition_slot_order_matches_the_enum_declaration_order():
 
     A `TextChoices` member holds a scalar, so the order cannot live inside the enum
     class; it is a module constant beside it. This test is what keeps the two in step.
+
+    **The enum is walked unfiltered.** A filtered walk — one that kept only the members
+    the constant already names — would pass even after a fourth slot was added to the
+    enum, because the new member would simply be skipped and the two would still look
+    equal. An unadded slot is exactly the drift this test exists to catch: the read
+    sorts against `DIGEST_SLOT_ORDER`, and a slot outside it has nowhere to sort.
     """
-    declared = tuple(
-        member.value for member in DigestComposition.Slot if member.value in DIGEST_SLOT_ORDER
-    )
+    declared = tuple(member.value for member in DigestComposition.Slot)
 
     assert declared == DIGEST_SLOT_ORDER
 
 
 def test_digest_composition_slot_order_covers_every_slot():
-    """Every slot the model accepts appears in the order — no slot is unreachable."""
-    accepted = {value for value, _ in DigestComposition.Slot.choices}
+    """Every slot the model accepts appears in the order — no slot is unreachable.
 
-    assert set(DIGEST_SLOT_ORDER) == accepted
+    **List equality, not set equality.** A set comparison would pass against an extra
+    slot in the constant *or* a missing one, because a set forgets both order and
+    multiplicity. The list pins the count and the order together.
+    """
+    accepted = [value for value, _ in DigestComposition.Slot.choices]
+
+    assert list(DIGEST_SLOT_ORDER) == accepted
 
 
 # --- The immutability -----------------------------------------------------------------------

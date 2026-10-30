@@ -390,12 +390,17 @@ intents:
         run_id: run-eventpulse24-021
         completed_at: 2026-10-30T13:02:28.917Z
       - id: digest-composition-models
-        status: in_progress
+        status: completed
         complexity: high
         mode: validate
+        design_doc: digest-composition-models-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-10-30T13:20:00Z
         depends_on: []
+        run_id: run-eventpulse24-021
+        completed_at: 2026-10-30T15:05:00Z
       - id: digest-user-preferences
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on: []
@@ -475,17 +480,18 @@ runs:
         - id: digest-composition-models
           intent: pulse-digest-and-trust
           mode: validate
-          status: in_progress
+          status: completed
           current_phase: review
           checkpoint_state: approved
           current_checkpoint: plan
+          completed_at: 2026-10-30T15:05:00Z
         - id: digest-user-preferences
           intent: pulse-digest-and-trust
           mode: confirm
-          status: pending
-          current_phase: null
+          status: in_progress
+          current_phase: plan
           checkpoint_state: none
-          current_checkpoint: null
+          current_checkpoint: plan
         - id: digest-candidate-reads
           intent: pulse-digest-and-trust
           mode: confirm
@@ -549,7 +555,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: digest-composition-models
+      current_item: digest-user-preferences
       started: 2026-10-30T12:40:28.978Z
   completed:
     - id: run-eventpulse24-001

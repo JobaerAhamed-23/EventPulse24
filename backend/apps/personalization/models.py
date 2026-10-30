@@ -787,6 +787,22 @@ class DigestComposition(AppendOnlyModel, UUIDv7Model):
                 condition=models.Q(bucket__gte=1) & models.Q(bucket__lte=5),
                 name="digest_composition_bucket_ck",
             ),
+            # FR-5's three slots, and no fourth — the same argument D5 makes for the
+            # bucket.
+            #
+            # `choices` is a Python-level convenience only: Django does not turn it into
+            # a database constraint, so without this a row with `slot='bogus_slot'` is
+            # perfectly writable and the digest read would silently drop it (the read
+            # sorts against `DIGEST_SLOT_ORDER`, and a slot outside it has nowhere to
+            # sort). The check constraint is what makes the fourth slot impossible at
+            # the database, exactly as the bucket's makes a sixth bucket impossible.
+            #
+            # The literals are the enum's values, pinned to the enum by
+            # `test_digest_composition_slot_values_match_the_constraint`.
+            models.CheckConstraint(
+                condition=models.Q(slot__in=["must_know", "nearby", "serendipity"]),
+                name="digest_composition_slot_ck",
+            ),
             # A public event has a source and a version; a personal one has neither (D7).
             #
             # The kind is compared as a literal string, not as `EventKind.PUBLIC`: the

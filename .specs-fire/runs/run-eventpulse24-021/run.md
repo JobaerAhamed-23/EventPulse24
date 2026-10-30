@@ -12,17 +12,17 @@ work_items:
   - id: digest-composition-models
     intent: pulse-digest-and-trust
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: digest-user-preferences
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: digest-candidate-reads
     intent: pulse-digest-and-trust
     mode: confirm
@@ -99,8 +99,8 @@ wide (12 work items)
 
 ## Work Items
 1. **digest-ranking-domain** (validate) — completed
-2. **digest-composition-models** (validate) — in_progress
-3. **digest-user-preferences** (confirm) — pending
+2. **digest-composition-models** (validate) — completed
+3. **digest-user-preferences** (confirm) — in_progress
 4. **digest-candidate-reads** (confirm) — pending
 5. **digest-composition-service** (validate) — pending
 6. **digest-read-api** (confirm) — pending
@@ -113,13 +113,29 @@ wide (12 work items)
 
 
 ## Current Item
-digest-composition-models (validate)
+digest-user-preferences (confirm)
 
 ## Files Created
-(none yet)
+- `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
+- `backend/apps/personalization/migrations/0008_digestcomposition_digest_composition_slot_ck.py`
+- `backend/tests/personalization/test_digest_models.py`
 
 ## Files Modified
-(none yet)
+- `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
+- `backend/tests/personalization/factories.py` — the two factories
+- `backend/tests/personalization/test_model_structure.py`
+- `backend/tests/personalization/test_grants.py`
 
 ## Decisions
-(none yet)
+- **D4 — retention category `ACCOUNT_CONTENT`** for both tables. It is the only category
+  under which AD-10's "most recent composition for that `(user, event)` pair" promise
+  holds: `PREFERENCE_SIGNALS`' 12-month rolling window would delete an event's only
+  explanation while the user is still looking at it. **No source states a window for
+  this table** — the gap is recorded, not resolved.
+- **The `slot` check constraint** (added by the code review). Django's `choices` are not
+  a database constraint, so a row with a fourth slot was writable; the read sorts
+  against `DIGEST_SLOT_ORDER`, and a slot outside it would silently vanish from the
+  digest.
+- **The slot order lives once**, as the module-level `DIGEST_SLOT_ORDER` — a
+  `TextChoices` member holds a scalar, so a tuple inside the enum class would be read
+  as an enum member and fail at import.
