@@ -359,6 +359,62 @@ unmatched_ignore_imports_alerting = "none"
 # the library, not that only the parser's callers may depend on it.
 allow_indirect_imports = true
 
+[[tool.importlinter.contracts]]
+id = "event-fit-separation"
+name = "AD-10 personalization never reaches the Event Fit"
+type = "forbidden"
+source_modules = [
+    "apps.personalization",
+]
+forbidden_modules = [
+    "apps.ingestion.event_fit",
+    "apps.ingestion.event_fit.*",
+]
+# AD-10 names two kinds of explanation and says they are never substituted for one
+# another: **Event Fit** (per `(event, city)`, on `catalog`, owned by `ingestion`) and the
+# **Relevance Pulse** (per user, on `personal`, owned by `personalization`). "Two
+# indicators that look identical must never be silently substituted for one another —
+# that is the trust-collapse failure PRD Risk 11 calls company-ending."
+#
+# The rule is enforced on a **package**, not on import names, because `personalization`
+# is allowed to read the public catalog (saving an event needs its public facts) and the
+# Event Fit is its own package for exactly that reason.
+#
+# **The package is load-bearing, and it exists because a name-only wall was
+# bypassable.** The first version of this contract named two leaves
+# (`...services.event_fit` and `...services.event_fit_read`). A third module that
+# re-exported the read — `event_fit_preview.py`, say — gave `personalization` the Event
+# Fit with both this contract and the architecture test **green**: the wall was two
+# names wide, and adding a name opened it. That is the trust-collapse failure this
+# contract exists to prevent, reached by a two-line file.
+#
+# So the Event Fit is a **package** and the wall is that package. The package name is a
+# single name that covers everything inside it, and the `.*` wildcard covers the modules
+# within it, so a new Event Fit module is inside the wall by default rather than
+# outside it until somebody notices.
+#
+# `allow_indirect_imports` is true because the point is that `personalization` does not
+# import the Event Fit **directly**; a chain through Django's model registry is the
+# catalog app's own code doing its own work.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "event-fit-catalog-only"
+name = "AD-10 the Event Fit is computed on the catalog side, from catalog facts"
+type = "forbidden"
+source_modules = [
+    "apps.ingestion",
+]
+forbidden_modules = [
+    "apps.personalization",
+]
+# The other half of the same rule. The Event Fit is the explanation for a stranger: it is
+# computed from an Event's start time, its extraction confidence and its venue's city. If
+# computing it read a user's preferences, the score would be a personal one wearing a
+# public label, and the same row would mean two different things depending on who
+# looked at it.
+allow_indirect_imports = true
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings_test"
 testpaths = ["tests"]

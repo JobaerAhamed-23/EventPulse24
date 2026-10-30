@@ -4,9 +4,11 @@ title: Event Fit (session-free score and tags)
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-30T01:38:21.917Z
 ---
 
 # Work Item: Event Fit (session-free score and tags)

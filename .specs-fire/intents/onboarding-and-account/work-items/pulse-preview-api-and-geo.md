@@ -4,7 +4,7 @@ title: Pulse Preview API & Geo Port
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - event-fit
 created: 2026-10-29

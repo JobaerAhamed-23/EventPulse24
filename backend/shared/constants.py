@@ -67,6 +67,17 @@ OUTBOX_RECONCILE_AFTER = timedelta(minutes=5)
 OUTBOX_RECONCILE_BATCH = 500
 OUTBOX_RECONCILE_EVERY_MINUTES = 5  # the tick enqueues the reconciler when minute % 5 == 0
 
+# AD-10 / FR-26: how often the Event Fit rows are recomputed. "Tonight" is a statement about
+# now, so a persisted tag goes stale as the clock moves — not only when the event changes.
+# The refresh is a **writer's** job (the tick enqueues it), so the read path never computes.
+#
+# The cadence is a trade-off: a tag can be up to one interval out of date. Fifteen minutes
+# is short enough that "tonight" is right for all but the last quarter-hour of the
+# evening, and long enough that a refresh is a cheap pass over the published events.
+EVENT_FIT_REFRESH_EVERY_MINUTES = 15
+# Events per transaction in the refresh, so a run never holds one long transaction open.
+EVENT_FIT_REFRESH_BATCH_SIZE = 200
+
 # AD-4: namespace for deterministic series ids (`shared.ids.series_id`). Never change it: every
 # existing series would silently split.
 SERIES_ID_NAMESPACE = UUID("cbd88e48-d511-4f1b-a595-2f31c0067ad4")
@@ -246,3 +257,65 @@ ONBOARDING_STEP_COUNT = len(ONBOARDING_STEPS)
 # delivery time — reads one row rather than branching on "was it set?".
 DEFAULT_DIGEST_DELIVERY_TIME = time(9, 0)
 DEFAULT_DIGEST_TIMEZONE = "UTC"
+
+# ── Event Fit (AD-10, FR-26) ───────────────────────────────────────────────────────
+#
+# Event Fit is the **session-free** explanation: a non-personalized 1–5 score and generic
+# Why-this Tags per `(event, city)`. It is the only indicator a visitor without an account
+# is allowed to see, because there is no user for a personal explanation to be *about*
+# (AD-10). The Relevance Pulse is the other kind, and the two must never be substituted
+# for one another.
+#
+# The score has **two** inputs, both of which already exist on an Event: how soon it
+# starts, and how well we know its facts. There is no price field and FR-16 source
+# reliability is not built, so there is no "free" tag and no source weighting — the work
+# item says so explicitly, and those wait until the fields they need exist.
+
+# The proximity bands, in order: how soon the event starts, relative to now.
+#
+# Each band is an **inclusive** upper bound on the time until the start. The bands are
+# written as windows rather than as a single threshold so the boundaries are readable:
+# "today", "within two days", "within a week", "within a fortnight", "later".
+EVENT_FIT_TODAY = timedelta(days=1)
+EVENT_FIT_TWO_DAYS = timedelta(days=2)
+EVENT_FIT_ONE_WEEK = timedelta(days=7)
+EVENT_FIT_TWO_WEEKS = timedelta(days=14)
+
+# The confidence bands, in the same order. Each is an **inclusive** lower bound.
+#
+# These deliberately echo `EXTRACTION_CONFIDENCE_PUBLISH` (0.70) and the reject edge
+# (0.50) rather than inventing new numbers: the same extraction confidence that decides
+# whether an event publishes at all decides how much the fit trusts it.
+EVENT_FIT_CONFIDENCE_HIGH = Decimal("0.90")
+EVENT_FIT_CONFIDENCE_GOOD = Decimal("0.70")
+EVENT_FIT_CONFIDENCE_FAIR = Decimal("0.50")
+
+# The score is 1..5, and 5 is the best. A preview shows three cards, so the top of the
+# range has to be reachable by something ordinary.
+EVENT_FIT_SCORE_MIN = 1
+EVENT_FIT_SCORE_MAX = 5
+
+# "Tonight" starts at this local hour.
+#
+# A tag called "tonight" on an event at 09:00 is wrong, so the hour is a constant rather
+# than an implicit "the rest of today". 17:00 is the hour a listing starts to mean
+# "this evening". It is a **local** hour: the boundary is read in the event's own zone.
+EVENT_FIT_EVENING_HOUR = 17
+
+# The tag keys. Stable slugs — the server states facts, the client speaks the user's
+# language, so the label is the frontend's business.
+#
+# The place tag is a prefix, not a key: `in_brooklyn`, `in_san_francisco`. The prefix is
+# a constant so a reader can tell a place tag from a time tag without a lookup table.
+EVENT_FIT_TAG_TONIGHT = "tonight"
+EVENT_FIT_TAG_TOMORROW = "tomorrow"
+EVENT_FIT_TAG_THIS_WEEKEND = "this_weekend"
+EVENT_FIT_TAG_CITY_PREFIX = "in_"
+
+# The tag order. Fixed, so two events carrying the same tags always list them the same
+# way — an unordered set would make the rendered card depend on the database's mood.
+EVENT_FIT_TAG_ORDER = (
+    EVENT_FIT_TAG_TONIGHT,
+    EVENT_FIT_TAG_TOMORROW,
+    EVENT_FIT_TAG_THIS_WEEKEND,
+)

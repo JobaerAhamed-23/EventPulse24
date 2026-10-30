@@ -340,6 +340,61 @@ class ExtractedRecord(UUIDv7Model):
         ]
 
 
+class EventFit(UUIDv7Model):
+    """One Event's fit for one city: a 1–5 score and the tag keys (AD-10, FR-26).
+
+    **Event Fit** is the non-personalized half of AD-10's two kinds of explanation. It is
+    keyed by `(event, city)` — the same event fits a Brooklyn preview and a New York one
+    differently, and "tonight" is the same for both but "in_brooklyn" is not.
+
+    The row is **persisted and served as it stands** (AD-10: "never recomputed at render").
+    `event_version` is the Event version the fit was computed from: a row whose
+    `event_version` no longer matches its Event is **stale** and is never served. The
+    staleness check is the read's job, not a trigger's, because the refresh is a writer's
+    work.
+
+    `tags` is a JSON array of tag keys, in the fixed order the domain function produces.
+    It is an array rather than a table because the set is small, closed, and always read
+    whole — there is no query that asks "which events are tagged 'tonight'?".
+
+    `retention_category` is `SOURCE_REGISTRY`: this row holds no user-derived data. It is
+    catalog content about a catalog event.
+    """
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    event = models.ForeignKey(Event, on_delete=models.PROTECT, related_name="event_fits")
+    # The venue's city, as written on the Venue row. The Event Fit row exists per city, so
+    # an event with no venue city has no row at all (work item: "an event without a venue
+    # city gets no Event Fit row and doesn't appear in the preview, rather than being
+    # guessed").
+    city = models.CharField(max_length=100)
+    score = models.PositiveSmallIntegerField()
+    tags = models.JSONField(default=list, encoder=DjangoJSONEncoder)
+    # The Event version this fit was computed from. A mismatch means stale.
+    event_version = models.PositiveIntegerField()
+    computed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["event", "city"], name="event_fit_event_city_uq"),
+            models.CheckConstraint(
+                condition=Q(score__gte=1) & Q(score__lte=5), name="event_fit_score_range_ck"
+            ),
+            models.CheckConstraint(
+                condition=Q(event_version__gte=1), name="event_fit_version_positive_ck"
+            ),
+            models.CheckConstraint(condition=~Q(city=""), name="event_fit_city_nonempty_ck"),
+        ]
+        indexes = [
+            # The preview reads by city, ordered by score then start time.
+            models.Index(fields=["city", "score"], name="event_fit_city_score_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_id} in {self.city}: {self.score}"
+
+
 class EventStateChange(AppendOnlyModel, ActorColumns, UUIDv7Model):
     """One entry of an Event's `state_history` and the AD-17 outbox row for it.
 

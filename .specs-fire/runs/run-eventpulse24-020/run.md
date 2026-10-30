@@ -54,17 +54,17 @@ work_items:
   - id: event-fit
     intent: onboarding-and-account
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: pulse-preview-api-and-geo
     intent: onboarding-and-account
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: frontend-auth-surfaces
     intent: onboarding-and-account
     mode: confirm
@@ -93,7 +93,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: event-fit
+current_item: pulse-preview-api-and-geo
 status: in_progress
 started: 2026-10-29T06:25:40.374Z
 completed: null
@@ -112,8 +112,8 @@ wide (13 work items)
 5. **auth-api-and-session-seam** (confirm) — completed
 6. **onboarding-state-and-interests** (confirm) — completed
 7. **calendar-connect-api** (confirm) — completed
-8. **event-fit** (confirm) — in_progress
-9. **pulse-preview-api-and-geo** (confirm) — pending
+8. **event-fit** (confirm) — completed
+9. **pulse-preview-api-and-geo** (confirm) — in_progress
 10. **frontend-auth-surfaces** (confirm) — pending
 11. **frontend-onboarding-flow** (confirm) — pending
 12. **frontend-pulse-preview** (confirm) — pending
@@ -121,7 +121,7 @@ wide (13 work items)
 
 
 ## Current Item
-event-fit (confirm)
+pulse-preview-api-and-geo (confirm)
 
 ## Files Created
 (none yet)

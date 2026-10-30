@@ -16,6 +16,7 @@ from uuid import UUID
 from django.db import connections, transaction
 from django.db.models import Q
 
+from apps.ingestion.event_fit.writes import write_event_fit
 from apps.ingestion.models import Event, ExtractedRecord, Source, Venue
 from apps.ingestion.parsers import ParsedCandidate
 from apps.ingestion.services.event_writes import (
@@ -215,6 +216,23 @@ def _flags(incoming: IncomingEvent) -> list[str]:
     return flags
 
 
+def _write_fit(run: IngestRun, event_id: UUID) -> None:
+    """Recompute the event's Event Fit row, after the event's own write.
+
+    The event is **re-read** rather than taken from the caller, because the writes above
+    bump `event_version` in the database with `F()` and the in-memory instance still
+    holds the old number. A fit stamped with a stale version would be skipped by the
+    read as stale — which is exactly what it is — and the event would never appear in
+    the preview.
+
+    This runs inside the caller's `atomic(using=CATALOG)`, so the fit and the event it
+    describes commit together. A fit that committed apart from its event could describe
+    a version that never existed.
+    """
+    event = Event.objects.using(CATALOG).select_related("venue").get(pk=event_id)
+    write_event_fit(event=event, now=run.now, actor=run.actor)
+
+
 def ingest_item(run: IngestRun, candidate: ParsedCandidate) -> list[str]:
     """Resolve and write one candidate; returns the count keys for the run's audit row."""
     venue = _venue_for(run, candidate)
@@ -307,6 +325,7 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
             now=run.now,
         )
         _save_record(run, record, candidate, resolution="resolved", event_id=event.pk, **save)
+        _write_fit(run, event.pk)  # a new event has a fit from the moment it exists
         return ["new", *_flags(incoming)]
 
     notes = {
@@ -327,6 +346,7 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
             old=event, incoming=incoming, record_id=record.pk, actor=run.actor, now=run.now
         )
         _save_record(run, record, candidate, event_id=new.pk, **resolved)
+        _write_fit(run, new.pk)  # the replacement gets its own fit; the old one is retired
         return ["superseded", *_flags(incoming)]
     if change is not None and change.is_lifecycle:
         apply_lifecycle_change(
@@ -338,4 +358,9 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
         apply_silent_update(event=event, incoming=incoming, now=run.now)
         outcome = "silent_updated" if change is not None else "unchanged"
     _save_record(run, record, candidate, event_id=event.pk, **resolved)
+    if outcome != "unchanged":
+        # A lifecycle change moved the event, so its fit is recomputed against the new
+        # facts. A silent update changed only the text and the gates — and the gates can
+        # change the confidence band, so the fit is recomputed for those too.
+        _write_fit(run, event.pk)
     return [outcome] if outcome == "unchanged" else [outcome, *_flags(incoming)]

@@ -11,6 +11,7 @@ from uuid import UUID
 from celery import shared_task
 from django.utils import timezone
 
+from apps.ingestion.event_fit.writes import refresh_stale_event_fits
 from apps.ingestion.services import outbox, scheduling
 from apps.ingestion.services.ingest_source import ingest_source as run_ingest
 from apps.ingestion.services.source_registry import (
@@ -20,7 +21,12 @@ from apps.ingestion.services.source_registry import (
 )
 from apps.personalization.services import calendar_sync
 from ports.registry import get_calendar_port
-from shared.constants import OUTBOX_RECONCILE_EVERY_MINUTES
+from shared.actor import Actor
+from shared.constants import (
+    EVENT_FIT_REFRESH_BATCH_SIZE,
+    EVENT_FIT_REFRESH_EVERY_MINUTES,
+    OUTBOX_RECONCILE_EVERY_MINUTES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +46,45 @@ def tick() -> None:
 
     Every tick: `schedule_sources` and `schedule_calendars`. When the UTC minute is a multiple of 5:
     `reconcile_outbox` (the tick keeps no state, so the 5-minute cadence is approximate; both jobs
-    are idempotent).
+    are idempotent). When the minute is a multiple of 15: `refresh_event_fits`, which
+    recomputes the Event Fit rows so that "tonight" does not go stale (AD-10).
+
+    The two cadences nest — every multiple of 15 is also a multiple of 5 — so the refresh
+    always lands on a reconciler minute. That is a consequence of the numbers, not a
+    design: the refresh's cadence is a divisor of the reconciler's, and if the two are
+    ever made independent, the tick test that pins the enqueue order will say so.
     """
     _enqueue(schedule_sources)
     _enqueue(schedule_calendars)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
+    if _now().minute % EVENT_FIT_REFRESH_EVERY_MINUTES == 0:
+        _enqueue(refresh_event_fits)
     logger.info("Tick", extra={"job": "tick"})
+
+
+@shared_task(name="worker.tasks.refresh_event_fits")
+def refresh_event_fits() -> None:
+    """Recompute every published event's Event Fit row (AD-10, FR-26).
+
+    **This is the staleness refresh.** "Tonight" is a statement about *now*, so a
+    persisted tag goes stale as the clock moves — not only when the event changes. The
+    refresh is a **writer**: it recomputes the rows and persists them, so the read path
+    serves them as they stand and computes nothing (AD-10: "never recomputed at render").
+
+    It runs on a cadence, so a tag can be up to one interval out of date. That is the
+    trade-off, and it is stated in the plan rather than hidden: the alternative —
+    computing at read — is what AD-10 forbids.
+
+    The work is bounded: one pass over the published events, in batches, each batch in its
+    own transaction.
+    """
+    written = refresh_stale_event_fits(
+        now=_now(),
+        actor=Actor.system("event_fit_refresh"),
+        batch_size=EVENT_FIT_REFRESH_BATCH_SIZE,
+    )
+    logger.info("Event fits refreshed", extra={"job": "refresh_event_fits", "count": written})
 
 
 @shared_task(name="worker.tasks.schedule_sources")

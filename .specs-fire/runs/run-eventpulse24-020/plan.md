@@ -2644,3 +2644,387 @@ the payload's key set is pinned by a test so it cannot grow a modal-shaped field
 - **The `settings/sources` surface.** The same router serves it later; the item only
   requires the endpoints to exist.
 
+
+---
+
+# Implementation Plan: Event Fit (session-free score and tags)
+
+**Work Item:** event-fit
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Complexity:** medium
+
+## The Problem
+
+FR-26's Pulse Preview shows a visitor with **no account** three events for their city,
+each with Why-this Tags and a 1–5 indicator. AD-12 forbids that surface from depending on
+a session, and AD-10 forbids it from borrowing a personal explanation — there is no user
+for a personal explanation to be *about*.
+
+So there are two kinds of explanation (AD-10's table), and this item builds the first:
+
+| Kind | Computed | Persisted on | Serves | Owner |
+| --- | --- | --- | --- | --- |
+| **Event Fit** ← this item | per `(event, city)`, on ingest/refresh | catalog | SEO pages, Pulse Preview — anonymous, cacheable | `ingestion` |
+| Relevance Pulse (later) | at digest composition | personal | card, detail screen, email | `personalization` |
+
+The two indicators **look identical** and must never be silently substituted for one
+another — that is the trust-collapse failure AD-10 names. So the separation has to be
+structural, not a naming convention.
+
+## The Design
+
+### 1. A pure function in `domain/event_fit.py` (stdlib only)
+
+```python
+compute_event_fit(
+    *,
+    start_time_utc: datetime,
+    end_time_utc: datetime | None,
+    start_time_tz: str,
+    extraction_confidence: Decimal,
+    city: str,
+    now: datetime,
+) -> EventFit
+```
+
+Returns a frozen dataclass: `score: int` (1–5) and `tags: tuple[str, ...]` (ordered).
+No randomness, no clock read, no database. The same inputs always give the same output,
+and `now` is an explicit parameter like everywhere else in this codebase — so every
+boundary is testable at the exact second.
+
+**The score is two inputs, both of which already exist on an Event:**
+
+- **Start-time proximity** — how soon it is, relative to `now`. A preview shows what is
+  worth attention *now*, so an event tonight outranks one in three weeks.
+- **Extraction confidence** — how well we know the event's facts. A confidently
+  extracted event is a better fit than a guess.
+
+**The bands** (thresholds as named constants in `shared/constants.py`):
+
+| Score | Proximity | Confidence |
+|-------|-----------|------------|
+| 5 | starts within 24 hours | ≥ 0.90 |
+| 4 | starts within 2 days | ≥ 0.70 |
+| 3 | starts within 7 days | ≥ 0.50 |
+| 2 | starts within 14 days | any |
+| 1 | later, or past | any |
+
+**The proximity band is a *duration*, not a calendar day.** An earlier draft of this
+table said "starts today", which is calendar language, and it disagreed with the
+implementation at the edges: an event at 00:30 on Saturday, seen at 23:50 on Friday, is
+"tomorrow" by the tag rule and "within 24 hours" by the band rule, and it scored 5.
+
+The **duration** is the rule, for two reasons. A duration is the same quantity in
+every timezone, so the band does not need a second local-day computation to be correct
+— the local day already has to be computed for the tags, and a second calendar rule
+beside it would be a second thing to get wrong. And "how soon" is what the preview
+answers: "what is worth attention *now*". An event forty minutes away is worth
+attention now, whatever day it falls on.
+
+The score and the tags are still consistent where a reader would notice: the "tonight"
+tag's evening boundary keeps "today" out of the top band in the ordinary case, and the
+one place the two rules speak at different lengths — a small number of hours either
+side of midnight — is a case where either answer is defensible and the score is the
+one that decides.
+
+**The combination rule.** The score is the **lower** of the two bands, then floored at 1.
+Taking the lower is the honest rule: a badly-extracted event happening tonight is not a
+good fit, however soon it is. An event with no extraction confidence still scores — it
+scores on proximity alone.
+
+**Why not a weighted sum.** A weighted sum would need weights that no one can justify
+without labelled data, and a score that came out of an unexplainable blend is exactly
+what AD-10 is against. Two bands and a min is a rule a person can state out loud.
+
+### 2. Tags: generic, time- and place-based
+
+Tag **keys** are stable slugs; the frontend maps them to labels. The keys are generic
+because they describe the event to a stranger: they never say anything about the user.
+
+| Key | Meaning |
+|-----|---------|
+| `tonight` | the local day is today, and the local hour is evening |
+| `tomorrow` | the local day is the next calendar day |
+| `this_weekend` | the local day is in the **one weekend in view** (see below) |
+| `in_<city>` | the venue's city — the slugified city, e.g. `in_brooklyn` |
+
+**The day boundaries are computed in the event's own IANA timezone**, never UTC. An event
+at 23:30 local on Friday is "Tonight" on Friday, not on Saturday. This is the rule the
+work item calls out, and it is the one place the implementation is most likely to be
+wrong, so it gets the most tests.
+
+**There is exactly one "this weekend".** A definite article means one weekend, and which
+one depends on the day the tag was computed on:
+
+* On a **weekday**, the coming weekend — the next Saturday and the Sunday after it. On a
+  Thursday that is Saturday and Sunday; on a Monday it is the Saturday five days out.
+* On a **Saturday or Sunday**, the weekend **under way** — today, or yesterday's
+  Saturday and today. The weekend after it is not "this weekend".
+
+Each weekend is named after its **Saturday** and the comparison is made between dates,
+never between ISO week numbers: the week number wraps at the year boundary (2027-01-01
+is ISO week 53 of 2026), and a week-number comparison loses a New Year weekend
+entirely.
+
+*A plain "within the next seven days" bound is wrong in both directions*, and both
+directions are pinned by tests: from a Thursday it tags the weekend *after* next, and
+from a Saturday it tags the Saturday exactly seven days out — which is a different
+weekend. Seven days from a Saturday is a Saturday, and that Saturday belongs to the
+weekend after this one.
+
+**The tags are ordered** by a fixed precedence — `tonight`, `tomorrow`, `this_weekend`,
+`in_<city>` — so two events with the same tags always list them the same way.
+
+**The city slug is ASCII.** "São Paulo" becomes `in_sao_paulo`, not `in_são_paulo`. A tag
+key has to survive a JSON round-trip, a URL segment and a CSS selector unchanged, and a
+key with a non-ASCII character in it eventually breaks in one of those three places. The
+tag is shown to a stranger, so it has to be plain.
+
+**An event that has already started scores 1.** Not "soon" — *already*. The past check
+comes before the "under a day" check, because an event that began an hour ago is under a
+day away in one sense and in the past in the one that matters. A preview shows what is
+coming, and an event in progress is not coming.
+
+**"Tonight" needs an evening boundary.** `tonight` applies when the local hour is at or
+after `EVENT_FIT_EVENING_HOUR` (17:00) on the local day of the event, and the event is
+still ahead. Before that hour an event today is not "tonight" — it is later today, and
+the preview's own headline is what tells the visitor that.
+
+### 3. The staleness problem — and why this design complies with AD-10
+
+AD-10 says explanations are **persisted, never recomputed at render**. But "Tonight" goes
+stale as time passes: an event that was "Tonight" at 18:00 is still tagged "Tonight" at
+23:00, and at 00:01 it is *yesterday*.
+
+The work item asks me to state the choice and why it complies. Four options were
+considered:
+
+**(a) Recompute at render.** Rejected — it is exactly what AD-10 forbids, and it puts
+the same computation in three surfaces that would then disagree.
+
+**(b) Store the tags as absolute date anchors, and render them relatively at read time.**
+This is the tempting one, and it is the one that **violates** the rule in spirit: the
+*decision* ("this is tonight") was made at persist time, and the label shown to the
+visitor would then be a render-time computation of a relative phrase. The preview and
+the SEO page could disagree, because "tonight" depends on when each page is rendered.
+That is AD-10's failure mode exactly.
+
+**(c) Store absolute date anchors and let the *client* render them relatively.** Also
+rejected, for the same reason.
+
+**(d) Recompute the Event Fit row on a cadence, from the tick.** **This is the choice.**
+
+The Event Fit row is **refreshed periodically**, not just on ingest. The tick already
+exists, already runs on a cadence, and already owns "time has passed" work. The refresh
+is a **write** to the Event Fit row — the same row, with a new `computed_at` and a new
+tag set — and it happens **in the worker, never at render**.
+
+**Why this complies with AD-10:** AD-10's rule is that the explanation is *persisted
+with the decision* and *not recomputed at render*. The refresh is a recomputation, but
+it is a **recomputation at write time, by a writer, in the catalog schema** — the same
+place and the same discipline as the original computation. The read path serves the
+persisted row and does nothing but read it. Nothing is computed where it is displayed.
+
+**The cost, stated honestly:** a tag can be up to one refresh interval out of date. The
+refresh interval is therefore short — the same tick cadence the ingest uses. This is a
+deliberate trade: a tag that is briefly stale is better than two surfaces disagreeing
+about what "tonight" means, and far better than a render-time computation that no
+review can audit.
+
+**The stale-row guard is separate from this.** A row whose `event_version` no longer
+matches the event's is **never served** — that is a correctness failure, not a staleness
+one, and it is handled at read time by refusing the row, not by rendering around it.
+
+### 4. The `EventFit` model — catalog side, written only by `ingestion`
+
+```python
+class EventFit(UUIDv7Model):
+    event = FK(Event, PROTECT, related_name="fits")
+    city = CharField(max_length=100)
+    score = PositiveSmallIntegerField()   # 1..5
+    tags = JSONField(list)                # ordered tag keys
+    event_version = PositiveIntegerField()  # the version this was computed from
+    computed_at = DateTimeField()
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+```
+
+- **Keyed by `(event, city)`** — a unique constraint on `(event, city)`. The spine's ERD
+  says `EVENT ||--o{ EVENT_FIT : per_city`.
+- **AD-15 retention:** `SOURCE_REGISTRY` — it holds no user-derived data, and it is
+  catalog content, so it lives and dies with the source registry.
+- **The score has a check constraint** (`1 <= score <= 5`) and the tags have a shape
+  check — a row with a score of 0 or 6 is refused by the database, not just by the code.
+- **Written only by `ingestion`** — the `models-ingestion` contract already forbids
+  anyone else importing the model, and an architecture test asserts it.
+
+### 5. Recompute on ingest, inside the existing transaction
+
+The recompute happens in `ingest_item.py`, in the **same `transaction.atomic(using=CATALOG)`**
+that wrote the event, so an Event Fit row is never visible for an event that was rolled
+back. Three hooks:
+
+| The ingest did | The fit does |
+|----------------|--------------|
+| `create_event` | compute and insert |
+| `apply_lifecycle_change` (version bumped) | recompute and update |
+| `supersede_event` | compute for the **new** event; the superseded one's row is left, and the read skips superseded events anyway |
+
+The write is skipped when nothing changed — a `silent_update` does not bump the version
+and does not change the fit, so no recompute happens. That keeps the common path
+(an unchanged re-ingest) free.
+
+### 6. The backfill command
+
+`manage.py backfill_event_fit` — walks the published, non-superseded events that have a
+venue city, computes each one's fit, and writes it. **Idempotent**: re-running it
+produces the same rows, and a row that already matches is not rewritten (the
+`computed_at` does not move, so a test can assert that).
+
+**Batched**, as the work item asks — the same discipline as `schedule_sources`. The
+command takes `--batch-size` and loops, so a large catalog does not load in one query.
+
+### 7. The published read — `list_event_fit_for_city`
+
+In **`apps/ingestion/event_fit/reads.py`** — the Event Fit's own package, not
+`catalog_read`:
+
+```python
+list_event_fit_for_city(*, city: str, now: datetime, limit: int = 3) -> list[EventFitPreviewEntry]
+```
+
+Returns the **top N (default 3)** upcoming public events for a city, **ordered by fit
+score then start time**, each with its persisted score and tags.
+
+**Why its own module, and later its own package.** `personalization` legitimately reads
+`catalog_read` — saving an event to your calendar needs the event's public facts — so
+the Event Fit cannot live there without a name-level wall. A name-level wall is opened
+by adding a name: the first version of this plan put the read in `event_fit_read.py`
+and forbade two module names, and a third module that re-exported the read gave
+`personalization` the Event Fit with the contract **green**. The Event Fit is therefore
+a **package**, `apps.ingestion.event_fit`, and the wall names the package — one name
+that covers everything inside it.
+
+**It never reads `personal`** — it is on the catalog schema, and the `personal` schema
+is not even reachable from `apps.ingestion` (AD-3).
+
+**A stale row is never served.** The read joins the fit to the event and requires
+`fit.event_version == event.event_version`; a row that does not match is skipped, not
+served. The skip happens **before** the limit is applied, so stale rows cannot starve
+the result.
+
+### 8. The separation from Relevance Pulse — an architecture test
+
+AD-10: "an authenticated surface never falls back to Event Fit to fill a missing
+Relevance Pulse, and a public surface never reads `personal`."
+
+The architecture test asserts that **`apps.personalization` does not import the Event
+Fit read**. The `personalization` app has no `EventFit` import path at all — it cannot
+use Event Fit as a Relevance Pulse substitute, because it cannot reach it. The digest
+intent will need Event Fit to hold that line, so the test is written now, before
+anything tries to cross it.
+
+**The check is on the package PREFIX, not on a list of names.** `personalization` may
+import `catalog_read`; it may not import anything whose name starts with
+`apps.ingestion.event_fit`. A prefix catches a direct import, an alias, and a
+re-export alike — and a re-export module *outside* the package
+(`apps.ingestion.event_fit_preview`) carries the prefix too, which is how the bypass
+that broke the first wall is caught.
+
+**Two guards, each honest about its scope.** The import contract catches every
+**direct** import of the package or anything inside it; it cannot catch a module
+outside the package that re-exports what is inside, because a `forbidden` contract
+matches on import names and has no data-flow analysis. The AST test is what catches
+that one, and the bypass is **planted** in `test_the_wall_catches_a_re_export` so the
+claim is checked rather than asserted.
+
+**The contract's shape is pinned too.** `test_the_event_fit_wall_is_a_package_and_not_a_list_of_names`
+asserts the contract's `forbidden_modules` exactly, the way `single-ics-parser` and
+`redis-sdk` are already pinned. Without that pin, narrowing the wall back to two
+module names would leave the whole suite green — the wall would be load-bearing and
+the suite would not be able to tell.
+
+A second architecture test asserts that `apps.ingestion` never imports
+`apps.personalization` — the reverse direction, so the public read cannot start reading
+the personal schema.
+
+## The Files
+
+### Created
+
+| File | Purpose |
+|------|---------|
+| `backend/domain/event_fit.py` | The pure function. Stdlib only (AD-2) |
+| `backend/apps/ingestion/event_fit/__init__.py` | The package: the wall is this name |
+| `backend/apps/ingestion/event_fit/writes.py` | The command: compute and persist. The only writer |
+| `backend/apps/ingestion/event_fit/reads.py` | The published read: the top N for a city |
+| `backend/apps/ingestion/migrations/0004_eventfit.py` | The table and its constraints |
+| `backend/config/management/commands/backfill_event_fit.py` | The idempotent backfill |
+| `backend/revert_event_fit_check.sh` | The revert harness: twenty-one rules, each watched to fail |
+| `backend/tests/domain/test_event_fit.py` | The pure function's rules — every tag boundary, every band, DST, the date line |
+| `backend/tests/ingestion/test_event_fit.py` | The writer, the recompute hook, the read, the backfill, the refresh |
+| `backend/tests/ingestion/test_event_fit_command.py` | The backfill command: idempotence, batching, the skipped-event report |
+| `backend/tests/architecture/test_event_fit_separation.py` | The AD-10 separation, both directions |
+
+### Modified
+
+| File | Change |
+|------|--------|
+| `backend/shared/constants.py` | The thresholds and weights |
+| `backend/apps/ingestion/models.py` | The `EventFit` model |
+| `backend/apps/ingestion/services/ingest_item.py` | The recompute hook |
+| `backend/apps/ingestion/services/catalog_read.py` | The published read |
+| `backend/worker/` | The periodic refresh from the tick |
+
+## The Tests
+
+| Rule | Test |
+|------|------|
+| Each tag rule at its boundaries | the boundary is **exactly** the constant, and one second either side |
+| The score bands | each band's lower edge is in the band and one unit below is not |
+| Local-day computation across DST | an event on the DST transition day, in the event's own zone |
+| The date line | an event on the far side of the date line from the reader |
+| Determinism | the same inputs twice give the same output, and the function reads no clock |
+| Recompute on version change | a lifecycle change bumps the version, and the fit is recomputed in the same transaction |
+| No stale row served | a fit whose `event_version` is behind is **skipped**, not served |
+| The backfill is idempotent | running it twice leaves `computed_at` unmoved on the second run |
+| The top-N ordering | ordered by score, then start time; the default is 3 |
+| No city, no fit | an event without a venue city gets no row and does not appear |
+| The AD-10 separation | `personalization` does not import the Event Fit read |
+
+## The Revert Verification
+
+Every rule is verified by **reverting it and watching the test fail**, in the harness
+style the previous items established. A regression test that passes against the broken
+code is not a regression test.
+
+## The Decisions, and Why
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| The score's combination rule | The **lower** of the two bands, floored at 1 | A badly-extracted event tonight is not a good fit. A min is a rule a person can state; a weighted sum is not |
+| The score's bands | 5 bands over proximity (24h / 2d / 7d / 14d / later), by **duration** | The preview answers "what's worth attention now", so proximity dominates. Five bands matches the 1–5 indicator. A duration rather than a calendar day: one rule for the score, and the local day is already computed for the tags |
+| The evening boundary | 17:00 local, a named constant | "Tonight" at 09:00 is wrong. The hour is a constant so it can be tuned without touching the logic |
+| The staleness handling | A **periodic refresh** from the tick, writing the row | The only option that keeps the read path pure. AD-10 forbids a render-time computation, and a render-time *rendering* of a stale relative phrase is the same failure in a different costume |
+| The tag keys | Stable slugs, labels on the client | The server states facts; the client speaks the user's language |
+| The city's tag | `in_<city>`, slugified | Place-based and generic |
+| The tag order | A fixed precedence | Two events with the same tags must list them the same way |
+| The fit's schema | `catalog`, owned by `ingestion` | AD-16 lists `EVENT_FIT` under `ingestion`; the spine puts it in the `catalog` schema |
+| The fit's retention | `SOURCE_REGISTRY` | It holds no user-derived data, and it is catalog content |
+| The read's location | `apps.ingestion.event_fit.reads` | The published read interface over the catalog. `catalog` calls it and never imports the model |
+| The wall's shape | A **package** (`apps.ingestion.event_fit`), forbidden by name | A wall made of module names is opened by adding a name — a third module that re-exported the read walked through the first version of this plan with the contract **green**. A package is one name that covers everything inside it |
+| The default N | 3 | The Pulse Preview shows three cards |
+| The refresh's cost | Batched, on the existing tick | "Mind the refresh cost" — the work item's own note |
+
+## What This Item Does Not Cover
+
+- **The Pulse Preview endpoint** — `pulse-preview-api-and-geo` owns it. This item
+  builds the read it will call.
+- **The Relevance Pulse** — a later intent. This item's job is to make sure it never
+  gets confused with this one.
+- **The frontend rendering** — the tag labels, the dot indicator and the "3 of 5"
+  aria-label are the frontend's work. This item ships the keys and the number.
+- **Source reliability and price** — the work item says so explicitly: "There is no
+  price field and FR-16 source reliability isn't built, so 'Free' tags and reliability
+  weighting wait until those exist." So there is no `free` tag and no source weighting
+  in the score.

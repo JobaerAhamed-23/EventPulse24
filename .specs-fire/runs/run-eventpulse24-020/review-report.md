@@ -2,9 +2,9 @@
 
 **Run**: run-eventpulse24-020
 **Intent**: onboarding-and-account
-**Work item**: calendar-connect-api
-**Reviewed**: 2026-10-29
-**Files Reviewed**: 12
+**Work item**: event-fit
+**Reviewed**: 2026-10-30
+**Files Reviewed**: 14
 
 ---
 
@@ -12,32 +12,21 @@
 
 | Category | Auto-Fixed | Applied | Skipped |
 |----------|------------|---------|---------|
-| Correctness | 0 | 4 | 0 |
+| Correctness | 0 | 2 | 0 |
 | Contract / Architecture | 0 | 1 | 0 |
-| Security | 0 | 2 | 0 |
-| Observability | 0 | 0 | 0 |
-| Code Quality | 0 | 2 | 0 |
 | Documentation | 0 | 1 | 0 |
-| **Total** | **0** | **10** | **0** |
+| **Total** | **0** | **4** | **0** |
 
-**Tests Status**: Passing — 2909 passed, 0 failed; 98.98% coverage; 17/17 import contracts kept.
+**Tests Status**: Passing — 3098 passed, 0 failed; 99.01% coverage; 19/19 import contracts
+kept.
 
-Ten findings, from two independent adversarial review agents reading the item
-independently. Eight came from one agent, four from the other, and the two sets
-converged on four root causes — which is itself the strongest signal in the report:
-two reviewers, working separately, found the same four defects.
+Four findings. Every one was **reproduced against the code as it stood** before it was
+acted on — a review finding is a claim, not a fact, and a finding that cannot be
+reproduced is a finding that cannot be fixed. Every one is fixed and **verified by a
+revert case that fails**.
 
-Every finding was a **defect**, not a style preference, and every one was fixed in the
-same pass rather than deferred. Each was **reproduced with a failing test before it was
-acted on** — a review finding is a claim, not a fact, and a finding that cannot be
-reproduced is a finding that cannot be fixed.
-
-The findings share a shape worth naming: **they are all cases where the code did not
-fail — it failed to be safe.** Nothing here threw in the single-user, sequential case.
-One was a *500 on an everyday sequence*, one was a *count read without a lock*, one was
-*a bare exception escaping to the 500 handler*, and one was *a read that decrypted a
-secret it had no use for*. All four are invisible to a sequential test suite, which is
-exactly why they survived the first pass.
+Two of the four were resolved in the **plan** rather than the code, because the plan
+and the code disagreed and the plan was the one that was wrong.
 
 ---
 
@@ -47,274 +36,217 @@ exactly why they survived the first pass.
 
 | File | Purpose |
 |------|---------|
-| `backend/domain/address_policy.py` | The SSRF pre-flight — scheme, host and port rules, shared by the connect and the fetch |
-| `backend/apps/personalization/migrations/0006_remove_calendarconnection_calendar_connection_user_credential_uq_and_more.py` | The unique constraint becomes **partial** |
-| `backend/tests/personalization/test_calendar_connect_api.py` | The five endpoints' contract |
-| `backend/tests/personalization/test_calendar_connection_reads.py` | The read projections and their guarantees |
-| `backend/tests/personalization/test_calendar_connect_concurrency.py` | The commands under concurrency |
-| `backend/tests/personalization/test_review_repro.py` | The twelve defect reproductions |
+| `backend/domain/event_fit.py` | The pure function — score and tags, stdlib only |
+| `backend/apps/ingestion/event_fit/__init__.py` | The package — the wall itself |
+| `backend/apps/ingestion/event_fit/writes.py` | The only writer of the `EventFit` rows |
+| `backend/apps/ingestion/event_fit/reads.py` | The published read for a city |
+| `backend/apps/ingestion/migrations/0004_eventfit.py` | The `EventFit` table |
+| `backend/config/management/commands/backfill_event_fit.py` | The idempotent backfill |
+| `backend/tests/domain/test_event_fit.py` | The pure function's rules and boundaries |
+| `backend/tests/ingestion/test_event_fit.py` | The write, the read, and the staleness guard |
+| `backend/tests/ingestion/test_event_fit_command.py` | The backfill command |
+| `backend/tests/architecture/test_event_fit_separation.py` | The AD-10 wall, both directions |
+| `backend/revert_event_fit_check.sh` | The revert harness — 21 cases |
 
 ### Modified
 
 | File | Change |
 |------|--------|
-| `backend/apps/personalization/api.py` | The five endpoints, on the `current_user` resolver |
-| `backend/apps/personalization/schemas.py` | The wire shapes — **no field for the address** |
-| `backend/apps/personalization/services/calendar_connections.py` | The commands and queries |
-| `backend/apps/personalization/models.py` | The constraint became partial |
-| `backend/domain/errors.py` | Three typed errors |
-| `backend/adapters/crawl/address_policy.py` | The policy moved to `domain`; the adapter now reads it |
+| `backend/apps/ingestion/models.py` | The `EventFit` model |
+| `backend/apps/ingestion/services/ingest_item.py` | The fit is written on create and on change |
+| `backend/worker/tasks.py` | The fifteen-minute staleness refresh |
+| `backend/shared/constants.py` | The thresholds and the tag keys |
+| `backend/pyproject.toml` | The `event-fit-separation` contract |
+| `backend/tests/architecture/test_import_contracts.py` | The contract's shape is now pinned |
 
 ---
 
 ## Findings
 
-### V1 — A disconnected connection squatted the address, so re-adding it was a 500 (Correctness, HIGH)
+### D3 — The AD-10 wall was two names wide, and a third name opened it (Contract / Architecture, HIGH)
 
-**Found by**: reading the unique constraint against the disconnect command.
+**Found by**: testing the wall rather than reading it.
 
-The constraint was `UniqueConstraint(fields=["user_id", "credential_fingerprint"])` —
-**without** a status qualifier. The disconnect command destroys the credential but leaves
-the fingerprint on the row (a keyed HMAC of the old address), and the row waits for the
-retention sweep (D7). So the fingerprint kept occupying the address, and the ordinary
-everyday sequence —
+AD-10 names two kinds of explanation and says they never cross: the **Event Fit** (per
+`(event, city)`, on `catalog`, owned by `ingestion`) and the **Relevance Pulse** (per
+user, on `personal`, owned by `personalization`). A Relevance Pulse that falls back to
+an Event Fit tells a signed-in reader that a thing is a great match when nothing
+personal was ever computed. AD-10 calls that the trust-collapse failure PRD Risk 11
+calls company-ending.
 
-> connect a calendar → disconnect it → connect the same calendar again
+The first version of the wall named two leaves:
 
-— hit the constraint and answered **500**. The user had lost a working calendar and
-could not get it back.
-
-**Reproduced first**: the second connect raised `IntegrityError`.
-
-**Fixed** by making the constraint **partial**, which is what it always meant:
-
-```python
-models.UniqueConstraint(
-    fields=["user_id", "credential_fingerprint"],
-    condition=~models.Q(status="disconnected"),
-    name="calendar_connection_user_credential_uq",
-)
+```toml
+forbidden_modules = ["apps.ingestion.services.event_fit", "apps.ingestion.services.event_fit_read"]
 ```
 
-The same shape as `ingestion`'s `event_live_source_item_uq`
-(`apps/ingestion/models.py:246`), so the repo has one precedent and one meaning:
-*one **live** connection per address, per user.*
+**That wall was open.** A module `apps/ingestion/services/event_fit_preview.py` that
+re-exported the read — two lines — gave `personalization` the Event Fit with the
+import contract **green** and the architecture test **green**.
 
-**Pinned by** `test_reconnecting_the_same_address_after_a_disconnect_does_not_raise` and
-`test_a_disconnected_connection_does_not_squat_the_address`.
+**Why it was open.** `import-linter`'s `forbidden` contract matches on *import names*.
+It has no notion of "this module re-exports that module"; there is no data-flow
+analysis anywhere in the contract. A wall made of names is opened by adding a name, and
+adding a name is the most ordinary thing a developer does.
 
-**A note on how the revert is verified.** The first version of the revert case patched
-the **model** — and the test still passed, because the test database is rebuilt from the
-**migrations**, so the partial index was still in place. The revert now patches the
-migration file, and the case fails as it should. A revert case that cannot distinguish
-the two states is not a revert case.
+**Fixed** by making the Event Fit a **package** — `apps/ingestion/event_fit/`, with
+`writes.py` and `reads.py` inside it — and naming the package in the contract:
 
-### V2 — The `needs_reconnect` reuse path skipped the cap (Correctness, HIGH)
-
-**Found by**: reading the cap check against the reuse branch.
-
-The cap check short-circuited on `existing is None`:
-
-```python
-if existing is None and occupying >= FREE_TIER_CALENDAR_PROVIDER_CAP:
+```toml
+forbidden_modules = [
+    "apps.ingestion.event_fit",
+    "apps.ingestion.event_fit.*",
+]
 ```
 
-A `needs_reconnect` row **still occupies the user's slot** — it is a live calendar whose
-credential was revoked. But a connect that *reused* that row skipped the cap entirely,
-so a user already at their cap could reuse a revoked row and turn a second live row
-into a third.
+A package is **one name that covers everything inside it**. A new Event Fit module is
+inside the wall by default rather than outside it until somebody notices.
 
-**This one needed care, and the honest version is recorded here.** Under the Free cap
-of one, the over-cap state is *not reachable through the API* — a user with one active
-calendar plus one revoked row is already at the cap, and the reuse path does not add a
-slot. The difference only shows at the **Pro tier** (a cap of three) or under a race.
-The test therefore lifts the cap to one and builds the over-cap state directly with the
-ORM, and the **rule** is pinned, not the Free tier's number.
+**What the fix does *not* do, and why the second guard exists.** The package contract
+catches every **direct** import of the package or anything in it. It does **not** catch
+a module *outside* the package that re-exports what is inside —
+`apps.ingestion.event_fit_preview` is not a descendant of the forbidden package, so the
+contract does not see it. That is a property of how a `forbidden` contract works, not a
+gap in how it was configured, so **the contract is not asked to catch it**.
 
-**Fixed**:
+The second guard is the AST architecture test, and it checks the **package prefix**:
 
 ```python
-occupying = _slot_count(user_id)
-if existing is not None:
-    # The row being reused is already counted, so it does not add a slot.
-    occupying -= 1
-if occupying >= FREE_TIER_CALENDAR_PROVIDER_CAP:
+assert not any(name.startswith(EVENT_FIT_PACKAGE) for name in imported)
 ```
 
-The `existing is not None` branch is not a free pass — it *subtracts the row it is
-reusing* and then goes through the same check. The reuse path is one row, so it does not
-buy a second slot, and it does not wave the user past the cap.
+`apps.ingestion.event_fit_preview` starts with `apps.ingestion.event_fit`, so it is
+caught. The two guards are complementary, and each is honest about its scope:
 
-**Pinned by** `test_a_needs_reconnect_row_does_not_buy_a_second_slot` and
-`test_reusing_a_needs_reconnect_row_does_not_take_a_second_slot` — the first pins the
-rule, the second pins the legitimate case that must **not** be refused.
+| Bypass | Import contract | AST prefix test |
+| --- | --- | --- |
+| `import apps.ingestion.event_fit.reads` | caught | caught |
+| `import apps.ingestion.event_fit` | caught | caught |
+| `from apps.ingestion.event_fit import reads` | caught | caught |
+| `import apps.ingestion.event_fit_preview` (a re-export) | **not caught — by design** | caught |
 
-### V3 — The cap was counted outside the lock (Correctness, HIGH)
+**Pinned by** `test_the_wall_catches_a_re_export`, which writes the bypass in **both**
+halves — the module that re-exports, and the module that imports it by name — and
+asserts the wall sees the name. The contract's scope is pinned by
+`test_the_event_fit_wall_is_a_package_and_not_a_list_of_names`, which asserts the
+contract's `forbidden_modules` exactly.
 
-**Found by**: reading the cap check against the transaction boundary.
+**This finding produced the most important result of the review.** The *first*
+implementation of the package fix did **not** hold: reverting the contract to name-only
+left all 212 tests **passing**. The wall was load-bearing and **the suite could not
+tell**. The contract-shape pin was added because of it, and the revert case V3 now
+fails.
 
-The cap is a **count**. A count read without a lock is a race: two concurrent connects
-both read zero, both pass the check, and both write a row — leaving a Free account with
-**two** calendars, silently, against a rule the endpoint enforces.
+### D1 — A venue that changes city left the event in two previews (Correctness, MEDIUM)
 
-**Fixed** by serialising the user's calendar commands with a **transaction-scoped
-advisory lock** — `pg_advisory_xact_lock`, the pattern already established at
-`apps/personalization/services/onboarding.py:99-114`. The key is derived with `blake2b`
-under a dedicated personalisation (`b"eventpulse24-cal"`), so it cannot collide with
-the onboarding lock keys, and it is stable across processes — never the per-process-salted
-`hash()`.
+**Found by**: reading the upsert against the `(event, city)` key.
 
-The lock is taken **before** the cap is decided, inside the same transaction that writes
-the row. `pg_advisory_xact_lock` is transaction-scoped, so a worker that dies mid-command
-releases the lock on rollback and a user's calendar cannot be left wedged by a crash.
+`EventFit` is keyed by `(event, city)`. When a venue's city changes, the write upserted
+a row for the **new** city and left the **old** row in place. The event then appeared in
+**two** previews — and the row in the old city still carried the old place tag.
 
-**Pinned by** `test_two_concurrent_connects_cannot_both_take_the_only_slot`, which
-races two connects released by a `threading.Barrier` — no sleeps, no timing assumptions.
+Nothing else would have caught it. A venue edit does not bump the event's
+`event_version`, so the old row's version still matches the event's, and the read's
+staleness guard passes it straight through. A preview that shows an event in a city it
+has left is worse than one that leaves it out.
 
-### V4 — A reconnect onto an address the user already holds was a 500 (Correctness, HIGH)
-
-**Found by**: comparing `connect_calendar` against `reconnect_calendar`.
-
-`connect_calendar` guards the duplicate case with `_refused_duplicate`. `reconnect_calendar`
-**did not** — so a reconnect onto an address the user already holds fell through to the
-unique constraint and answered 500, for an input the user can correct in one step.
-
-**Fixed** by giving `reconnect_calendar` the same guard, with an `exclude_pk` so the row
-being reconnected is exempt from counting as a duplicate of itself:
+**Fixed** by retiring every row for the event under a *different* city, after the
+upsert:
 
 ```python
-_refused_duplicate(user_id=locked.user_id, digest=digest, exclude_pk=locked.pk)
+EventFit.objects.using(CATALOG).filter(event_id=event.pk).exclude(city__iexact=city).delete()
 ```
 
-**Pinned by** `test_reconnecting_onto_an_address_already_connected_is_refused_calmly`.
+The comparison is case-insensitive because the read is: "Brooklyn" and "brooklyn" are
+the same city, and two rows for the same city spelled two ways would put the event in
+that city's preview twice.
 
-### V5 — The reconnect trusted the caller's copy of the status (Correctness, MEDIUM)
+**Pinned by** `test_a_fit_is_retired_when_the_venue_moves_city` and
+`test_a_fit_is_not_duplicated_by_a_city_spelled_differently`.
 
-**Found by**: reading the reconnect's status checks against the transaction boundary.
+### D2 — The backfill rewrote rows that had not changed (Correctness, MEDIUM)
 
-The status was checked **before** the transaction opened, from the row the caller had
-already fetched. A disconnect that committed in between was silently overwritten by the
-reconnect — which would resurrect a calendar the user had just removed, and re-arm a
-credential they had asked to destroy.
+**Found by**: reading the write against the plan's own words.
 
-The row could also *vanish* between the lookup and the lock (the retention sweep removes
-disconnected rows), and the second read found nothing — an `AttributeError` on `None`
-where the answer should have been "not found".
+The plan said:
 
-**Fixed** by re-reading the row **under a row lock** inside the transaction:
+> "a row that already matches is not rewritten (the `computed_at` does not move, so a
+> test can assert that)"
+
+The first implementation always called `update_or_create`, so every backfill run moved
+`computed_at` on every row. That is a lie about when the fit was last computed, and it
+means the refresh writes the whole published catalog every fifteen minutes whether or
+not anything about it changed. It was idempotent only in the weak sense — the row
+*count* does not grow — rather than in the strong sense the plan asked for: *nothing
+about the row changes*.
+
+**Fixed** by comparing before writing:
 
 ```python
-locked = (
-    CalendarConnection.objects.using(PERSONAL)
-    .select_for_update()
-    .filter(pk=connection.pk)
-    .first()
-)
-if locked is None:
-    raise CalendarConnectionNotFoundError(details={"connection_id": str(connection.pk)})
+if (
+    existing is not None
+    and existing.score == score
+    and list(existing.tags) == list(tags)
+    and existing.event_version == event.event_version
+):
+    row = existing          # including its `computed_at`
+else:
+    row, _created = EventFit.objects.using(CATALOG).update_or_create(...)
 ```
 
-**Pinned by** `test_a_row_that_vanishes_before_the_lock_is_not_found` and
-`test_a_disconnect_committed_first_is_not_overwritten_by_a_reconnect`.
+**Pinned by** `test_the_backfill_does_not_move_the_computed_at_of_a_row_that_did_not_change`
+and `test_a_fit_whose_tags_changed_is_rewritten` — the second pins the other
+direction, so the "don't rewrite" branch cannot become "never rewrite".
 
-### V6 — A malformed host escaped as a 500 (Correctness, MEDIUM)
+### D4 — The plan and the code disagreed about the score bands (Documentation, LOW)
 
-**Found by**: reading `urlsplit`'s error behaviour against the service's error handling.
+**Found by**: reading the plan's band table against the implementation.
 
-`urlsplit` raises a bare `ValueError` on a malformed bracketed IPv6 host
-(`https://[not-an-ip]/feed.ics`). It is not a `DomainError`, so it escaped to the 500
-handler — a server fault for what is a **typo**. Every other bad address gets a calm
-422; this one did not.
+The plan's band table said the top band was an event that "**starts today**". The code
+says "starts within 24 hours", measured as a duration from `now`.
 
-**Fixed** by catching it and refusing calmly, like every other bad address.
+**The code is right and the plan was wrong**, for three reasons:
 
-**Pinned by** `test_a_malformed_bracketed_host_is_refused_calmly`.
+1. A duration is **timezone-independent**. "Starts today" needs a day boundary, and a
+   day boundary is exactly the thing this work item requires to be computed in the
+   event's *own* IANA timezone — so the band would have needed a second, different
+   local-day rule from the one the tags use.
+2. The local day is **already** computed for the tags. The band should not invent a
+   second definition of "day".
+3. "How soon" is what the preview answers. "Starts today" reads as a calendar fact
+   ("is it on today's page?"), which is not what the score says.
 
-### V7 — An address on a port the fetch would refuse was accepted (Security, MEDIUM)
+**Fixed in the plan**: it now says "starts within 24 hours", with the reasoning
+recorded, and the decisions table was updated to match. The implementation's semantics
+were already correct and are well covered —
+`test_an_event_already_underway_scores_in_the_last_band` and
+`test_an_event_starting_exactly_now_is_in_the_last_band` pin the boundaries.
 
-**Found by**: reading the pre-flight against the fetch client's actual policy.
+---
 
-The hardened fetch client only connects to the ports in `SOURCE_FETCH["allowed_ports"]`
-(80 and 443) and refuses any other one — on every hop. So an address like
-`https://example.com:8443/feed.ics` was **accepted at connect time**, stored with a live
-encrypted credential, and shown to the user as **connected** — and then refused on
-**every single poll**, with the only evidence a slug in the connection's error field.
+## The harness itself had a bug, and it was a bad one
 
-That is precisely the "invisible at connect time" failure the SSRF pre-flight exists to
-prevent. The pre-flight checked the host and not the port.
+**Found while running the revert cases, and worth recording because it nearly
+invalidated the whole verification.**
 
-**Fixed** by adding `_refused_port`, which refuses a port the fetch adapter would not
-allow, and which treats a malformed or out-of-range port as a typo rather than a crash
-(`urlsplit`'s `port` property raises for both).
+The harness backed each file up to `/tmp/revert_backup_$(basename "$file")` — keyed on
+the **basename** alone. Three cases target `writes.py` (R7, R13, V1), so they shared
+one backup path. Case A's restore overwrote case B's backup, and from that point the
+file was left **reverted** for every case that followed.
 
-**Pinned by** `test_an_address_on_a_port_the_fetch_would_refuse_is_refused_calmly`,
-`test_a_malformed_port_is_refused_calmly`, and
-`test_an_address_on_an_allowed_port_is_accepted` — the last one matters, because a
-pre-flight that refuses the ports the fetch really allows would be worse than none.
+The symptom was visible: R7 reported `PATTERN NOT FOUND — the revert did not apply`,
+and the final `git diff --stat` showed `writes.py` still holding `get_or_create`
+instead of `update_or_create`. The harness was silently corrupting the tree it was
+supposed to be verifying.
 
-### V8 — The reads decrypted every credential (Security, MEDIUM)
+Two fixes:
 
-**Found by**: reading the read path against the projection.
+1. **A unique backup per case** (`/tmp/revert_backup_${CASE_NO}_...`).
+2. **The restore is verified, not assumed** — each case compares the restored file
+   against its backup byte for byte and aborts the run if they differ.
 
-`EncryptedTextField.from_db_value` decrypts every row it fetches. The read loaded the
-whole row — so a read **decrypted every address it touched**, for a projection that has
-no field for it.
-
-The security consequence is a **denial of service the user could not remedy**: one row
-whose envelope cannot be read (a rotated key id, a corrupted ciphertext, a truncated
-envelope) raised from the read and took down the **whole list**. And because the same
-lookup backed the disconnect, the user could not disconnect the broken row either —
-**the remedy refused itself**.
-
-**Fixed** by naming the columns a read needs, and leaving `credential` out of them:
-
-```python
-_READ_COLUMNS = (
-    "id", "provider", "status", "display_label",
-    "last_polled_at", "next_poll_at", "sync_claimed_at", "last_error_kind", "created_at",
-)
-```
-
-**Pinned by** `test_the_reads_do_not_decrypt_the_credentials` and
-`test_a_user_can_disconnect_a_connection_whose_credential_cannot_be_read`.
-
-Both tests write the corrupt envelope **straight to the column**. Without it, the old
-code decrypted every credential successfully and the test passed **vacuously** — the
-first version of this test was not a test at all.
-
-### V9 — The ownership lookup decrypted the credential (Security, MEDIUM)
-
-**Found by**: the same reading, applied to the ownership lookup.
-
-`_owned_connection` loaded the whole row, so the lookup the **disconnect** depends on
-also decrypted the credential. The consequence is the same one as V8, and it is the
-more serious half of it: a row the user cannot disconnect is a row they cannot remove.
-
-**Fixed** by restricting the lookup to the ownership columns.
-
-**Pinned by** `test_a_user_can_disconnect_a_connection_whose_credential_cannot_be_read`.
-
-### V10 — The CSRF check was duplicated, and the test could not tell (Code Quality, MEDIUM)
-
-**Found by**: the revert verification, failing to fail.
-
-The connect, reconnect and disconnect endpoints each called `require_csrf(request)`
-explicitly, **and** the router declared `auth=current_user` — and `current_user` calls
-`require_csrf(request)` itself. So the check ran **twice**, and the first version of
-the revert case removed the explicit calls and **all 72 tests still passed**.
-
-That was not a passing test. It was a test that **could not distinguish the two things
-it was supposed to distinguish**. A duplicate mechanism with a test that cannot see
-either copy is worse than one mechanism: it reads as defence in depth and provides
-none.
-
-**Fixed** by removing the three redundant calls and keeping the resolver's check — one
-mechanism is easier to reason about than two — and by **re-aiming the revert case** at
-the resolver, where it now fails the three CSRF-refusal tests.
-
-The general lesson is worth stating, because it is the same lesson the review's first
-pass over the cap made: **a revert case that does not fail is not a revert case.** It is
-a hole in the suite wearing a harness's clothes.
+The second fix is the important one. A restore that silently fails is worse than no
+restore: it makes every later result a claim about a tree that does not exist.
 
 ---
 
@@ -323,119 +255,145 @@ a hole in the suite wearing a harness's clothes.
 Every fix was verified by **reverting it and watching the test fail**. A regression test
 that passes against the broken code is not a regression test.
 
-The review's fixes have their own harness, `backend/revert_review_check.sh` — separate
-from the item's own `backend/revert_check.sh`, because the two sets of rules are
-different rules.
+The harness is `backend/revert_event_fit_check.sh` — the item's own rules and the
+review's fixes in one set, because the two sets are about the same wall and the same
+writer.
 
-| Fix | Reverted | Result |
+**All 21 cases fail**, with no skips and no restore failures:
+
+| Case | What it breaks | Result |
 |-----|----------|--------|
-| V1 — a disconnected row does not squat the address | the **migration**'s partial condition removed | **2 tests fail**: `test_reconnecting_the_same_address_after_a_disconnect_does_not_raise`, `test_a_disconnected_connection_does_not_squat_the_address` |
-| V2 — the cap applies on the reuse path | the `occupying -= 1` removed | **1 test fails**: `test_a_needs_reconnect_row_does_not_buy_a_second_slot` |
-| V3 — the cap is decided under the lock | `_lock_user(user_id)` removed | **2 tests fail**: both concurrency tests |
-| V4 — the reconnect refuses a held address | `_refused_duplicate` removed from the reconnect | **1 test fails**: `test_reconnecting_onto_an_address_already_connected_is_refused_calmly` |
-| V5 — the reconnect re-reads under a row lock | `select_for_update()` replaced by the unlocked row | **1 test fails**: `test_a_row_that_vanishes_before_the_lock_is_not_found` |
-| V6 — a malformed host is refused calmly | `except ValueError` → `except ZeroDivisionError` | **1 test fails**: `test_a_malformed_bracketed_host_is_refused_calmly` |
-| V7 — a refused port is refused | `_refused_port(parts)` removed | **2 tests fail**: the port tests |
-| V8 — the reads do not decrypt | `.only(*_READ_COLUMNS)` removed | **1 test fails**: `test_the_reads_do_not_decrypt_the_credentials` |
-| V9 — the lookup does not decrypt | `.only(...)` removed from `_owned_connection` | **1 test fails**: `test_a_user_can_disconnect_a_connection_whose_credential_cannot_be_read` |
+| R1 | the day boundary is the event's own local day, not UTC's | **16 tests fail** |
+| R2 | an event that has already started is in the last band | **2** |
+| R3 | the score is the LOWER of the two bands | **18** |
+| R4 | the confidence band is a band, not a pass-through | **7** |
+| R5 | the weekend is the one weekend in view | **4** |
+| R6 | the place tag is the venue's city, slugged | **2** |
+| R7 | the fit row records the version it was computed from | **2** |
+| R8 | a stale fit is never served | **1** |
+| R9 | the read serves the persisted score and tags | **2** |
+| R10 | the preview is ordered by score, then start time | **1** |
+| R11 | the ingest path recomputes the fit when the event changes | **2** |
+| R12 | the ingest hook re-reads the event for the new version | **3** |
+| R13 | the backfill is an upsert, so it is idempotent | **5** |
+| R14 | the fit is written when the event is created | **1** |
+| R15 | the tick refreshes the fits every fifteen minutes | **5** |
+| R16 | the read never reaches the personal schema | **1** |
+| V1 | a fit for a city the event has left is retired | **1** |
+| V2 | a row that already matches is not rewritten | **2** |
+| V3 | the Event Fit is a package, so the wall cannot be opened with a third name | **3** |
+| V4 | the wall checks the package PREFIX, not a list of names | **1** |
+| V5 | the wall test can read a planted module outside the backend tree | **58** |
 
-**All nine caught.** And the item's own rules still hold after the review's fixes — the
-original harness was re-run end to end and **R1 through R9 are all caught** as well:
+### Three cases that did not fail, and what they taught
 
-```
-R1 — the address never reaches the response body      1 test fails
-R2 — the Free cap is a 409, not a 400                  1 test fails
-R3 — the cap payload carries no modal semantics         1 test fails
-R4 — the SSRF pre-flight refuses a denied address      5 tests fail
-R5 — another user's connection is a 404, not a 403     4 tests fail
-R6 — a stale claim is not a sync in progress           2 tests fail
-R7 — the reads never write                             5 tests fail
-R8 — the provider is validated against the known set   2 tests fail
-R9 — the connect endpoint requires a CSRF token        3 tests fail
-```
+**R10 did not fail at first.** The test that was supposed to pin score-ordering had
+the better-fit event as the *sooner* one, so score-ordering and time-ordering gave the
+same answer. A test that cannot distinguish two candidate implementations pins
+nothing. The test was rewritten so the better-fit event is the later one.
 
-R7's pattern needed updating during this pass: the review's V8 fix rewrote the list
-query with `.only(*_READ_COLUMNS)`, so the old patch no longer matched and the case
-reported `SKIPPED (pattern not found)`. It was re-aimed at the rewritten query, and
-the case now fails as it should.
+**V3 did not fail at first — and this is the one worth remembering.** The package
+contract was in place, the architecture test was in place, and reverting the contract
+to name-only left the whole suite green. The wall was load-bearing and **the suite
+could not tell**. The fix was to pin the contract's *shape* in
+`test_import_contracts.py` — the same way `single-ics-parser` and `redis-sdk` are
+already pinned there — so that narrowing the wall is now an observable failure.
+
+**V4 did not fail at first either.** The planted re-export imported
+`apps.ingestion.event_fit.reads`, which a name-list would also catch. The real bypass
+is the *name of the module that does the re-exporting* — `personalization` importing
+`apps.ingestion.event_fit_preview`. The plant was rewritten to model both hops, and
+the assertion now fails as it should.
 
 ---
 
 ## Notes
 
-1. **The address is the credential.** That single fact drives most of this item. It is
-   why the response shape has no field for it (not masked, not a fragment — **no
-   field**), why the address is excluded from the request body in the logs, why another
-   user's connection id is a **404** rather than a 403, and why the port check exists.
+1. **The staleness problem is a writer's problem, not a render's.** "Tonight" is a
+   statement about *now*, so a persisted tag goes stale as time passes — not only when
+   the event changes. The answer is a **refresh on a cadence, by a writer**, and the
+   read path serves the persisted row and computes nothing. AD-10's rule is that the
+   *render* never computes; a writer that recomputes on a schedule is the opposite of
+   that.
 
-2. **The provider value changes no server behaviour.** The work item says so, and the
-   code holds to it: the provider is validated against the known set and then carried.
-   The port and host rules come from the fetch adapter's policy, not from a
-   per-provider table.
+2. **`event_version` is the staleness check.** Every fit records the Event version it
+   was computed from, and a row whose version no longer matches its Event is never
+   served. The check lives in the **read**, not in a trigger — because the refresh is a
+   writer's work, and a trigger cannot decide that a row *should* be refreshed; it can
+   only say a row is now out of date, which the read already knows how to skip.
 
-3. **The first sync is enqueued, not run inline** (AD-11). The connect returns with the
-   connection's status and sync state; the polling happens on the tick, in the worker.
-   The endpoint's job is to tell the user "we're importing your calendar" — which is
-   what onboarding step 1 needs, without leaving the flow (FR-3).
+3. **An event with no venue city gets no row at all.** The city is not guessed from the
+   source, the title, or the source's city. An event in an unknown city is not in any
+   city's preview, and a preview that puts it in the wrong one is worse than one that
+   leaves it out.
 
-4. **The upgrade copy comes from EXPERIENCE.md/DESIGN.md.** It was not written fresh.
-   The payload carries the copy and no modal semantics (R3) — the client decides
-   whether to show a prompt, a banner, or a card.
+4. **The refresh cost is bounded.** The published events are walked **by primary key**,
+   not by offset — the first batch of a run has to move forward, or the second read
+   would return the first batch again and the loop would never end — and each batch is
+   written in its own transaction, so a run over a large catalog does not hold one long
+   transaction open.
 
-5. **The SSRF policy moved to `domain`.** The pre-flight is a policy, not an adapter
-   detail: both the connect path and the fetch path need it, and `domain` is where
-   shared policy belongs. The import contracts are unchanged.
-
-6. **One ruff error was found and fixed in this pass** — an unused local in the repro
-   file (`F841`). The gate is clean.
+5. **The score and the Confidence Pulse share a visual vocabulary, and they mean
+   different things.** The 1–5 indicator says "this event is a good fit for this
+   city, right now"; the Confidence Pulse says "we are this sure we extracted it
+   correctly". They are never substituted for one another — that is the whole of D3.
 
 ---
 
 ## The Final Gate
 
 ```
-pytest tests/ -q --cov --cov-report=term-missing
-2909 passed in 85.87s (0:01:25)
-TOTAL                                             6402     65    99%
-157 files skipped due to complete coverage.
-Required test coverage of 80.0% reached. Total coverage: 98.98%
+make lint-backend
+Contracts: 19 kept, 0 broken.
 
 ruff check .
 All checks passed!
 
 ruff format --check .
-356 files already formatted
-
-lint-imports
-Contracts: 17 kept, 0 broken.
+366 files already formatted
 
 manage.py check
 System check identified no issues (1 silenced).
 
-manage.py makemigrations --check --dry-run
-No changes detected
+make coverage-backend
+3098 passed in 83.72s (0:01:23)
+TOTAL                                             6662     66    99%
+Required test coverage of 80.0% reached. Total coverage: 99.01%
 
-make client
-lib/api/openapi.json → lib/api/schema.ts
-
-pytest tests/api/test_contract.py -q
-1 passed
-
-pnpm --dir frontend test
-149 passed (16 files)
-
-frontend tsc --noEmit
-clean
+coverage report --include='domain/*' --fail-under=100
+TOTAL     619      0   100%
 ```
 
-**The item's own service is at 100%** —
-`apps/personalization/services/calendar_connections.py` and `domain/address_policy.py`
-are both in the "skipped due to complete coverage" set.
+**Every event-fit module is at 100%** — `domain/event_fit.py`,
+`apps/ingestion/event_fit/__init__.py`, `apps/ingestion/event_fit/writes.py`,
+`apps/ingestion/event_fit/reads.py` and
+`config/management/commands/backfill_event_fit.py` are all in the "skipped due to
+complete coverage" set.
 
 ---
 
 ## Test Result
 
-**Passing.** 2909 passed, 0 failed, 98.98% coverage, ruff clean, format clean, 17/17
-import contracts kept, no migration drift, the frontend suite green (149 tests), the
-frontend typecheck clean, and the committed OpenAPI schema matches the live API.
+**Passing.** 3098 passed, 0 failed, 99.01% coverage, `domain/` at 100%, ruff clean,
+format clean, 19/19 import contracts kept, no issues from the Django system check, and
+all 21 revert cases caught.
+
+---
+
+## A housekeeping note
+
+`backend/tests/personalization/test_zz_probe.py` — an untracked scratch probe from the
+**previous** item (auth-api-and-session-seam) — was failing the lint gate. It printed
+debug output, used one-line `for` statements, and duplicated
+`test_onboarding_concurrency.py`, which is the proper committed version of the same
+concurrency checks. It was removed. It is not part of this item's diff.
+
+---
+
+## What this review does not cover
+
+- The **front end** does not exist yet; the Pulse Preview page that will consume this
+  read is a later work item (`frontend-pulse-preview`).
+- The **public API surface** for the preview is a later work item
+  (`pulse-preview-api-and-geo`). This item ships the catalog-side read it will serve.
+- The **session seam** is a separate item and was reviewed on its own.

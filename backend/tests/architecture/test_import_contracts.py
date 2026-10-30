@@ -142,6 +142,31 @@ VIOLATIONS = {
         {"formats/ics/_planted.py": "from icalendar import Calendar\n"},
         {"single-ics-parser"},
     ),
+    # AD-10: the two kinds of explanation never cross.
+    "personalization reaches the Event Fit read": (
+        {"apps/personalization/_planted.py": "import apps.ingestion.event_fit.reads\n"},
+        {"event-fit-separation"},
+    ),
+    "personalization reaches the Event Fit writer": (
+        {"apps/personalization/_planted.py": "from apps.ingestion.event_fit.writes import x\n"},
+        {"event-fit-separation"},
+    ),
+    # The wall is the **package**, so importing the package itself is the violation —
+    # and so is importing any module inside it, including one that does not exist yet.
+    # This is what makes the wall default-safe: a new Event Fit module is inside it
+    # without anybody having to add its name to a list.
+    "personalization reaches the Event Fit package": (
+        {"apps/personalization/_planted.py": "import apps.ingestion.event_fit\n"},
+        {"event-fit-separation"},
+    ),
+    "personalization reaches a module inside the Event Fit package": (
+        {"apps/personalization/_planted.py": "from apps.ingestion.event_fit import reads\n"},
+        {"event-fit-separation"},
+    ),
+    "ingestion reaches for personalization": (
+        {"apps/ingestion/_planted.py": "import apps.personalization.services.saved_events\n"},
+        {"event-fit-catalog-only"},
+    ),
 }
 
 
@@ -204,6 +229,30 @@ def test_the_ics_parser_exception_is_narrow():
     assert contract["forbidden_modules"] == ["icalendar"]
     assert contract["ignore_imports"] == ["formats.ics.parser -> icalendar"]
     assert "formats" in contract["source_modules"]
+
+
+def test_the_event_fit_wall_is_a_package_and_not_a_list_of_names():
+    """`event-fit-separation` forbids the Event Fit **package**, not its modules.
+
+    AD-10 says the two kinds of explanation never cross. The first version of this
+    contract named two leaves, and a third module that re-exported the read — two
+    lines — gave `personalization` the Event Fit with the contract **green**. A wall
+    made of names is opened by adding a name.
+
+    So the contract names the package *and* its contents. Pinning it here is what
+    makes that structural choice testable: without this assertion the contract could
+    be narrowed back to two module names and nothing in the suite would notice. The
+    architecture test in `test_event_fit_separation.py` carries a hard-coded prefix,
+    so it keeps passing under a narrowed contract — which is precisely the hole this
+    assertion closes.
+    """
+    contract = CONTRACTS["event-fit-separation"]
+
+    assert contract["forbidden_modules"] == [
+        "apps.ingestion.event_fit",
+        "apps.ingestion.event_fit.*",
+    ]
+    assert contract["source_modules"] == ["apps.personalization"]
 
 
 def test_every_adapter_is_covered_by_the_sdk_contracts():
