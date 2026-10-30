@@ -4,11 +4,13 @@ title: Calendar Connect API
 intent: onboarding-and-account
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - auth-api-and-session-seam
   - calendar-sync-and-polling
 created: 2026-10-29
+run_id: run-eventpulse24-020
+completed_at: 2026-10-29T17:29:46.273Z
 ---
 
 # Work Item: Calendar Connect API

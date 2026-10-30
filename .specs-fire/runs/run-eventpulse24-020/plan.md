@@ -2378,3 +2378,269 @@ The plan sketched `DigestPreferenceOut` as a sibling schema. It is nested inside
 `OnboardingStateOut` as the `digest` field, so the digest preference's shape lives in
 one place — it is always read as part of the state, and is never a response body of its
 own.
+
+---
+
+# Implementation Plan: Calendar Connect API (FR-50, AD-18, AD-19)
+
+**Work item:** `calendar-connect-api`  **Mode:** confirm  **Checkpoint:** plan
+**Depends on:** `auth-api-and-session-seam`, `calendar-sync-and-polling`
+
+## Approach
+
+The HTTP surface over the calendar commands that already exist. The work item is
+mostly a **projection problem**: `apps/personalization/services/calendar_connections.py`
+already publishes `connect_calendar`, `reconnect_calendar` and `disconnect_calendar`,
+and the model already holds every field the wire shape needs. What does **not** exist
+yet is the read side and the wire shapes.
+
+### The one thing that has to be built: a read service
+
+The API layer may not import `apps.personalization.models` — the `models-personalization`
+import contract forbids it — so a list endpoint cannot query the ORM itself. There is
+currently **no** read service for connections: `calendar_connections.py` holds only the
+three write commands, and `calendar_sync.py` holds the worker's own lookups. So this
+item adds a read service, in `calendar_connections.py`, next to the commands that write
+the rows it reads. It is the same shape as `onboarding.get_onboarding_state`: a plain
+dataclass of plain data, and no ORM types escape the module.
+
+The read service returns **only** what is safe to show: the id, the provider, the
+status, the times and the sync state. It never touches `credential`, and it never
+touches `credential_fingerprint` either — the fingerprint is a keyed HMAC, so it is not
+a secret, but it is not the user's business either, and a digest in a response body is
+one more thing to leak in a screenshot.
+
+### The address is the credential, and it never leaves the service
+
+The secret ICS/webcal address **is** the credential (Google classifies it as one and
+offers a reset for it). Three rules follow, and each gets a test:
+
+1. **No response body contains it.** Not in full, not masked, not as a fragment. The
+   projection simply has no field for it, so the guarantee is structural rather than
+   careful: there is nowhere for the address to go.
+2. **No error message echoes it.** The existing `InvalidCalendarCredentialError` already
+   never echoes the address (`details={"field": "url"}` only), and
+   `CalendarProviderCapReached` carries only `{"cap": 1}`. The new SSRF refusal
+   follows the same rule.
+3. **No log line carries it.** Django's request logging logs the path and the query
+   string, never the body — but the body is not the only risk. The address can appear
+   in a `repr` of a validation error, in a pydantic error's `input`, or in an
+   unhandled exception's traceback. The API layer will therefore never include the
+   address in a raised error's `details`, and the test proves it with log capture on a
+   *failing* request.
+
+### The Free cap: a typed refusal with the approved copy
+
+The cap is enforced in the **service**, not the API — `connect_calendar` raises
+`CalendarProviderCapReached` when the user already holds a slot. The API's job is to
+let that error through as a **calm, typed** refusal.
+
+The copy comes from the approved UX spine, not from fresh writing:
+
+| Source | Copy |
+|---|---|
+| `EXPERIENCE.md` §3 microcopy, "Free-tier save-cap prompt" | *"You saved one event today. Save more with Pro."* |
+| `EXPERIENCE.md` §4, Browse save-quota-exceeded (inline, not modal) | *"You've used your 1 free save today. Upgrade for unlimited."* + a quiet `Text.Meta` "Upgrade" link |
+| `domain/errors.py`, `CalendarProviderCapReached.default_message` | *"You've connected the calendars your plan allows."* |
+
+The **shape** the approved copy implies: an inline prompt with a quiet "Upgrade" link,
+**not** a modal. So the payload carries a code and a message and a plain data detail —
+and **no modal semantics**: no `"modal": true`, no `"title"`, no `"actions"`, no
+`"dismissable"`. A test asserts the payload's key set exactly, so a future edit that
+adds a modal-shaped field fails.
+
+The status is a **409 Conflict**, not a 400. The request is well-formed — the address
+is a valid address — it conflicts with the state of the account. This mirrors the
+decision already taken for `OnboardingAlreadyCompleteError` in the previous item: a
+conflict with the flow's state is a 409. `CalendarProviderCapReached` currently extends
+`DomainError`, which `config/errors.py` maps to **400**; it will be re-based on
+`ConflictError`.
+
+### The SSRF policy
+
+The acceptance criteria name "an address the SSRF policy refuses" as one of the invalid
+addresses. The SSRF policy lives in `adapters/crawl/address_policy.py` — a **deny
+table** of IP ranges — and it is enforced today at *connect time*, inside
+`GuardedBackend.connect_tcp`, on every redirect hop. That is the right place for it:
+a deny table needs to see the *resolved* address, or DNS rebinding defeats it.
+
+But a connect-time refusal is invisible at connect time. The user pastes an address,
+the row is created, and the first poll — up to a minute later, in a worker, with no
+user watching — fails. So the API has a **pre-flight** check: the address's host is
+resolved *before* the row is created, and a host that resolves to a denied address is
+refused with a calm message. This is a **convenience**, not the policy: the connect-time
+check in `GuardedBackend` still runs and still refuses, so the pre-flight cannot be
+bypassed by a rebind between the check and the fetch.
+
+The pre-flight lives in the **service**, not the API — the same rule as the cap: a
+policy that only one caller enforces is a policy another caller walks past. It is
+implemented in `calendar_connections.py` as a shape check over the host, reusing
+`adapters.crawl.address_policy.is_denied`.
+
+### The provider is a label, not a branch
+
+The work item's technical note is explicit: *"The provider value doesn't change any
+server behaviour... Keep provider-specific logic out of the services."* So `provider` is
+stored, echoed back and validated against the model's `Provider` choices — and nothing
+branches on it. The API layer does not know what Google is.
+
+### The first sync is enqueued, not run inline
+
+`connect_calendar` already sets `next_poll_at = now`, which is the durable expression
+of "sync this soon": the dispatcher's tick picks it up within 60 seconds. AD-11 forbids
+long work in a request, and a calendar fetch can take 30 seconds and download
+megabytes. So the connect endpoint returns immediately with the connection's status and
+sync state, and the response says the first sync is **pending** — never "done", and
+never "failed".
+
+### The sync state the client needs
+
+Onboarding step 1 has to show imported events "without leaving the onboarding flow"
+(FR-3), so the wire shape carries the sync state explicitly:
+
+| Field | Meaning |
+|---|---|
+| `status` | `active` / `needs_reconnect` / `disconnected` — the connection's health |
+| `last_synced_at` | when the last poll finished; null if it never has |
+| `sync_in_progress` | a worker holds the claim right now |
+| `next_sync_at` | when the next poll is due |
+| `last_error_kind` | a **slug** (`revoked`, `transient`, …) — never a message, never a URL |
+
+`last_error_kind` is a slug because an `httpx` exception message contains the full
+request URL, which **is** the credential (AD-13). The model already stores only slugs;
+the projection keeps that discipline.
+
+`sync_in_progress` is `sync_claimed_at is not null` **and** the claim is fresh — a
+claim older than `CALENDAR_CLAIM_TTL` is a lost job (a worker died), and showing it as
+"in progress" forever would be a lie. The projection compares the claim against `now`,
+so it needs the clock; the read service takes `now` explicitly, like every other
+service in this codebase.
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `backend/tests/personalization/test_calendar_connect_api.py` | The endpoint contract: list, connect, the cap, each invalid-address refusal, reconnect, disconnect, cross-user 404, and that no response or log carries the address |
+| `backend/tests/personalization/test_calendar_connection_reads.py` | The read service: the projection, the sync-in-progress flag, the expired-claim case, and that the address and the fingerprint never appear in what it returns |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `backend/apps/personalization/services/calendar_connections.py` | Add the read service (`list_calendar_connections`, `get_calendar_connection`), the SSRF pre-flight, and the `CalendarConnectionNotFoundError`; add `CalendarConnectionNotFoundError` to `domain/errors.py` |
+| `backend/domain/errors.py` | Add `CalendarConnectionNotFoundError(NotFoundError)`; re-base `CalendarProviderCapReached` on `ConflictError` so the cap is a 409 |
+| `backend/apps/personalization/schemas.py` | `CalendarConnectionOut`, `CalendarConnectionListOut`, `CalendarConnectIn`, `CalendarReconnectIn` |
+| `backend/apps/personalization/api.py` | The five endpoints under `/calendars` |
+| `backend/config/api.py` | The router is already mounted under `/personal` — no change needed (verified) |
+| `backend/tests/personalization/test_calendar_connection_commands.py` | The cap's status changes 400 → 409, so the existing assertions move with it |
+
+## Tests
+
+| Test File | Coverage |
+|-----------|----------|
+| `backend/tests/personalization/test_calendar_connect_api.py` | The five endpoints: the list, the connect, the cap's status and code and payload shape, the three invalid-address refusals, the reconnect, the disconnect, the cross-user 404, the CSRF refusal, and the log-capture proof that a failing request never writes the address |
+| `backend/tests/personalization/test_calendar_connection_reads.py` | The read service's projection and the sync-state rules |
+
+## Technical Details
+
+### The wire shapes
+
+```python
+class CalendarConnectIn(Schema):
+    provider: str            # one of the model's Provider choices
+    address: str             # the secret ICS/webcal address — never echoed
+    display_label: str = ""  # the user's own name for the calendar
+
+
+class CalendarReconnectIn(Schema):
+    address: str
+    display_label: str = ""
+
+
+class CalendarConnectionOut(Schema):
+    id: UUID
+    provider: str
+    status: str
+    display_label: str
+    last_synced_at: datetime | None
+    next_sync_at: datetime | None
+    sync_in_progress: bool
+    last_error_kind: str | None
+
+
+class CalendarConnectionListOut(Schema):
+    items: list[CalendarConnectionOut]
+```
+
+`CalendarConnectionOut` has **no** `address` field and **no** `fingerprint` field. The
+guarantee is structural: the shape cannot carry the address, so no endpoint in this
+router can leak it by accident.
+
+### The endpoints
+
+| Method | Path | Answers |
+|---|---|---|
+| `GET` | `/api/personal/calendars` | The user's connections, never the address |
+| `POST` | `/api/personal/calendars` | Connect a provider; the first sync is enqueued |
+| `GET` | `/api/personal/calendars/{id}` | One connection and its sync state |
+| `POST` | `/api/personal/calendars/{id}/reconnect` | A new address for a `needs_reconnect` connection |
+| `DELETE` | `/api/personal/calendars/{id}` | Disconnect, and purge that connection's events |
+
+All five share the router's `auth=current_user`, and **none** accepts a user id as
+input — the scoping comes from the session and cannot be talked out of by a payload.
+
+**Cross-user is 404, not 403.** Another user's connection id reads as *not found*: a 403
+confirms that the record exists, so a 403 would let a caller probe for other users'
+connection ids. The read service filters by `user_id` and the endpoint never sees
+whether the row exists for somebody else.
+
+### The CSRF rule
+
+`require_csrf` is applied to the three unsafe methods (the connect, the reconnect and
+the delete) and not to the two reads — the same rule `apps/identity/api.py` uses, for
+the same reason: Django Ninja exempts every view it builds from Django's
+`CsrfViewMiddleware`, so the check is explicit.
+
+### The provider check
+
+`provider` is validated against `CalendarConnection.Provider.choices`. An unknown
+provider is a 422 with the same shape as any other validation error. The check is a
+*set membership* test, not a branch: it does not make Apple behave differently from
+Google.
+
+### The status codes
+
+| Situation | Status | Code |
+|---|---|---|
+| A successful connect | 201 | — |
+| A successful reconnect | 200 | — |
+| The Free cap | **409** | `calendar_cap_reached` |
+| A bad scheme, a bad shape, an SSRF-refused host, an already-connected address | 422 | `invalid_calendar_credential` |
+| Another user's connection id, or an unknown id | 404 | `calendar_connection_not_found` |
+| Reconnecting a connection that is already `active` | 422 | `invalid_calendar_credential` |
+
+### The upgrade payload
+
+```json
+{
+  "code": "calendar_cap_reached",
+  "message": "You've connected the calendars your plan allows.",
+  "details": {"cap": 1, "upgrade_hint": "Save more with Pro."}
+}
+```
+
+`details` is plain data — `domain` is pure stdlib and cannot import an app's schemas.
+There is **no modal semantics**: no `modal`, no `title`, no `actions`, no
+`dismissable`, no `cta`. The approved copy is an *inline* prompt with a quiet link, and
+the payload's key set is pinned by a test so it cannot grow a modal-shaped field.
+
+### What the plan does not cover
+
+- **OAuth.** All three providers connect by pasting an address (Amendment A-9). The
+  provider value is a label.
+- **The dispatcher's tick.** The connect endpoint enqueues by setting `next_poll_at`;
+  the worker that picks it up is `calendar-sync-and-polling`'s, already built.
+- **The frontend.** The onboarding step-1 UI is `frontend-onboarding-flow`'s.
+- **The `settings/sources` surface.** The same router serves it later; the item only
+  requires the endpoints to exist.
+

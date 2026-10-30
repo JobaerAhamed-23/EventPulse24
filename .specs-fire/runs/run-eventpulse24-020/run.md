@@ -47,17 +47,17 @@ work_items:
   - id: calendar-connect-api
     intent: onboarding-and-account
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: event-fit
     intent: onboarding-and-account
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: pulse-preview-api-and-geo
     intent: onboarding-and-account
     mode: confirm
@@ -93,7 +93,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: calendar-connect-api
+current_item: event-fit
 status: in_progress
 started: 2026-10-29T06:25:40.374Z
 completed: null
@@ -111,8 +111,8 @@ wide (13 work items)
 4. **calendar-sync-and-polling** (validate) — completed
 5. **auth-api-and-session-seam** (confirm) — completed
 6. **onboarding-state-and-interests** (confirm) — completed
-7. **calendar-connect-api** (confirm) — in_progress
-8. **event-fit** (confirm) — pending
+7. **calendar-connect-api** (confirm) — completed
+8. **event-fit** (confirm) — in_progress
 9. **pulse-preview-api-and-geo** (confirm) — pending
 10. **frontend-auth-surfaces** (confirm) — pending
 11. **frontend-onboarding-flow** (confirm) — pending
@@ -121,7 +121,7 @@ wide (13 work items)
 
 
 ## Current Item
-calendar-connect-api (confirm)
+event-fit (confirm)
 
 ## Files Created
 (none yet)

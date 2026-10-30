@@ -832,3 +832,497 @@ in an outer atomic and nothing is ever committed — so the second thread cannot
 first thread's rows, and the test passes vacuously. This is the same trap the calendar
 polling test hit, and the reason the concurrency tests assert on the *outcome* (one row,
 one whole set) and not only on the absence of an exception.
+
+---
+
+# Implementation Walkthrough: Calendar Connect API (FR-50)
+
+**Work Item:** calendar-connect-api
+**Intent:** onboarding-and-account
+**Mode:** confirm
+**Generated:** 2026-10-29
+
+## Summary
+
+Five endpoints that let a user connect a calendar, watch it sync, replace it when the
+provider revokes it, and remove it — over a service that treats the ICS address as a
+**credential** rather than as a label.
+
+The item's central problem is that **the address is the secret**. A Google Calendar's
+ICS URL contains a token; pasting it into a field is pasting a password. Every design
+decision below follows from that one fact: the response shape has **no field** for the
+address (not masked, not a fragment), the address never reaches a log, another user's
+connection id answers 404 rather than 403, and the endpoint's errors name the *problem*
+without echoing the input.
+
+The second problem was quieter, and the code review found all of it: **a constraint that
+squatted an address, a cap counted outside a lock, a reconnect that trusted a stale
+status, and reads that decrypted secrets they had no use for.** Ten findings, each
+reproduced with a failing test before it was fixed.
+
+## Structure Overview
+
+```
+backend/
+├── apps/personalization/
+│   ├── api.py                    ← the five endpoints
+│   ├── schemas.py                ← the wire shapes (no field for the address)
+│   ├── models.py                 ← CalendarConnection; the constraint is PARTIAL
+│   ├── migrations/0006_…         ← the constraint becomes partial
+│   └── services/calendar_connections.py
+│                                    ← the commands and queries
+├── domain/
+│   ├── address_policy.py         ← the SSRF pre-flight: scheme, host, port
+│   └── errors.py                 ← three typed errors
+├── adapters/crawl/address_policy.py  ← a re-export of the domain policy
+└── tests/personalization/
+    ├── test_calendar_connect_api.py        (56)
+    ├── test_calendar_connection_reads.py    (16)
+    ├── test_calendar_connect_concurrency.py ( 3)
+    └── test_review_repro.py                 (12)  ← the review's reproductions
+```
+
+The request flow, and where each guarantee lives:
+
+```
+POST /api/personal/calendars  {provider, address}
+   │
+   ▼
+current_user(request)              ← the session; the user id comes from nowhere else
+   │
+   ▼
+connect_calendar(user_id, provider, url, actor)
+   │
+   ├─▶ _validated_url()            ← scheme · host · port  (domain/address_policy)
+   │     └─ refuses calmly: 422, and the message never echoes the address
+   │
+   ├─▶ transaction.atomic(using=PERSONAL)
+   │     ├─▶ _lock_user(user_id)   ← pg_advisory_xact_lock; the cap is decided HERE
+   │     ├─▶ _slot_count(user_id)  ← the cap
+   │     ├─▶ _refused_duplicate()  ← the address is already held
+   │     └─▶ write the row         ← the credential is encrypted at rest
+   │
+   └─▶ enqueue the first sync      ← NOT inline (AD-11)
+
+The response shape has no `address` field, so no endpoint can leak it by accident.
+```
+
+## Architecture
+
+### Pattern Used
+
+**Service layer with a command/query split** — the same shape the onboarding item
+established, and the same rules (AD-5): each command takes an explicit `Actor` and an
+explicit `now`, opens one `transaction.atomic(using=PERSONAL)`, and returns plain data
+rather than a model instance. The API layer never imports `apps.personalization.models`
+— the `models-personalization` contract enforces it — so the endpoint calls the service
+and the service does the scoping.
+
+### Layer Structure
+
+```text
+┌───────────────────────────────────────────────────────────┐
+│  HTTP edge — apps/personalization/api.py                   │
+│  five endpoints, thin; the shape is the projection         │
+├───────────────────────────────────────────────────────────┤
+│  Application — apps/personalization/services/              │
+│  calendar_connections.py                                   │
+│    · connect · disconnect · reconnect · list · get          │
+│    · per-user advisory lock; the cap decided under it      │
+├───────────────────────────────────────────────────────────┤
+│  Domain — domain/address_policy.py, domain/errors.py       │
+│  the SSRF pre-flight · three typed errors                  │
+├───────────────────────────────────────────────────────────┤
+│  Infrastructure — the personal schema, the encrypted column │
+└───────────────────────────────────────────────────────────┘
+```
+
+## The Five Endpoints
+
+| Method | Path | Answers |
+|--------|------|---------|
+| `GET` | `/api/personal/calendars` | The user's connections, oldest first |
+| `POST` | `/api/personal/calendars` | Connect one; `201` with the connection and its state |
+| `GET` | `/api/personal/calendars/{id}` | One of the user's own connections; `404` for anyone else's |
+| `POST` | `/api/personal/calendars/{id}/reconnect` | A new address for a `needs_reconnect` connection |
+| `DELETE` | `/api/personal/calendars/{id}` | Disconnect, and purge that connection's events |
+
+The projection carries the id, the provider, the status, the display label, the last and
+next sync times, the sync-in-progress flag, and a last-error **slug**. It carries no
+address and no fingerprint.
+
+## Domain Model
+
+### `CalendarConnection` — one calendar the user has connected
+
+| Property | Rule |
+|----------|------|
+| `user_id` | Held **by value** (OQ-8) — no FK to `User` |
+| `provider` | `google` / `apple` / `outlook` — validated against the model's own enum |
+| `credential` | The address, **encrypted at rest**; destroyed on disconnect |
+| `credential_fingerprint` | A keyed HMAC of the address — how "the same address" is recognised |
+| `status` | `active` / `needs_reconnect` / `disconnected` |
+| — | constraint | `UNIQUE (user_id, credential_fingerprint)` **WHERE status ≠ 'disconnected'`** |
+
+**The constraint is partial, and that is the whole point.** A disconnected row keeps its
+fingerprint until the retention sweep removes it. Under an unpartial constraint that
+fingerprint kept occupying the address, so the everyday sequence — connect, disconnect,
+connect the same calendar again — hit the constraint and answered **500**. The user had
+lost a working calendar and could not get it back. The partial form says what the
+constraint always meant: *one **live** connection per address, per user*. It is the
+same shape as `ingestion`'s `event_live_source_item_uq`.
+
+## Key Implementation Details
+
+### 1. The address never leaves the server — structurally, not carefully
+
+The response shape has **no field** for the address. Not masked, not a fragment, not a
+host. There is nothing to leak, because there is nowhere to put it.
+
+`test_no_endpoint_in_the_router_returns_the_address` is the sweep the acceptance
+criterion asks for: it calls the list, the one-connection GET, a failing connect and a
+reconnect, one after the other, and asserts that not one response body carries the
+secret segment or the host. A endpoint added later is covered by the same assertion.
+
+The **fingerprint** is a keyed HMAC and so is not a secret — but it is not the user's
+business either, and a digest in a response body is one more thing to leak in a
+screenshot. It has no field either.
+
+### 2. The errors name the problem and never echo the input
+
+A refused address answers 422 with a typed code and a message about **what was wrong** —
+the scheme, the network, the port — and the message never contains the address. The
+same rule applies to the *already connected* refusal: the user already knows what they
+pasted, and echoing it back would put it in the response body, in the browser history,
+and in any screenshot of the error.
+
+Three refusals, three calm answers:
+
+| The problem | The answer |
+|-------------|-----------|
+| A bad scheme, a denied host, a refused port, a malformed host or port | 422 `invalid_calendar_credential` |
+| The address is already connected | 422 `invalid_calendar_credential`, same code, same calmness |
+| The plan's cap is reached | **409** `calendar_cap_reached`, with the upgrade copy |
+
+**The cap is a 409, not a 400.** The address the user pasted is perfectly good; it is
+the *state of the account* that refuses it, because the account already holds the one
+calendar its plan allows. The request was well-formed and conflicts with the account,
+which is what a 409 means. A 400 would say "your request was wrong", and it was not.
+This is the same reasoning already applied to `OnboardingAlreadyCompleteError`.
+
+### 3. The cap payload carries the copy and no modal semantics
+
+The error's `details` are exactly `{"cap", "upgrade_hint"}` — the approved copy, taken
+from the UX spine rather than written fresh. The key set is pinned **exactly**, so a
+future edit cannot grow a modal-shaped field without failing a test. The client decides
+whether to show a prompt, a banner, or a card; the server states the fact.
+
+### 4. The cap is a count, so the count needs a lock
+
+The Free cap is one calendar per account. The check is:
+
+```python
+occupying = _slot_count(user_id)
+if existing is not None:
+    # The row being reused is already counted, so it does not add a slot.
+    occupying -= 1
+if occupying >= FREE_TIER_CALENDAR_PROVIDER_CAP:
+    raise CalendarProviderCapReached(...)
+```
+
+Three details, each of which was a defect before the review found it:
+
+- **The reuse path is not a free pass.** A `needs_reconnect` row still occupies the
+  user's slot, so the reuse path goes through the same check — it *subtracts the row it
+  is reusing* and then checks. The review's first version short-circuited on
+  `existing is None`, which let a user at their cap reuse a revoked row and turn a
+  second live row into a third.
+- **The count is read under a lock.** A count read without a lock is a race: two
+  concurrent connects both read zero, both pass, and both write — leaving a Free
+  account with two calendars, silently, against a rule the endpoint enforces. The lock
+  is a `pg_advisory_xact_lock` on a `blake2b`-derived key, taken **before** the cap is
+  decided and inside the same transaction that writes the row.
+- **The lock is transaction-scoped.** A worker that dies mid-command releases it on
+  rollback, so a crash cannot leave a user's calendar wedged.
+
+### 5. The reconnect re-reads the status under a row lock
+
+The reconnect used to check the row's status **before** its transaction opened, from the
+row the caller had already fetched. Two things could go wrong in the gap: a disconnect
+that committed in between was silently overwritten — resurrecting a calendar the user
+had just removed and re-arming a credential they had asked to destroy — and a row that
+**vanished** (the retention sweep removes disconnected rows) left the second read
+holding `None`.
+
+Both are fixed by re-reading the row under `select_for_update()` inside the
+transaction, and answering "not found" when it is gone.
+
+### 6. The reads do not decrypt the credential
+
+`EncryptedTextField.from_db_value` decrypts every row it fetches. The reads used to
+load the whole row — so a read **decrypted every address it touched**, for a projection
+that has no field for it.
+
+The consequence is a denial of service the user could not remedy: one row whose
+envelope cannot be read (a rotated key id, a corrupted ciphertext) raised from the read
+and took down the **whole list**. And because the same ownership lookup backed the
+disconnect, the user could not disconnect the broken row either — **the remedy refused
+itself**.
+
+So the reads name the columns they need, and `credential` is not among them:
+
+```python
+_READ_COLUMNS = (
+    "id", "provider", "status", "display_label",
+    "last_polled_at", "next_poll_at", "sync_claimed_at", "last_error_kind", "created_at",
+)
+```
+
+This is a performance fix and a safety fix at once, and the safety half is the one that
+matters.
+
+### 7. The pre-flight checks the port, not just the host
+
+The real SSRF enforcement is `adapters.crawl.http.GuardedBackend`, which resolves the
+host itself and refuses any denied address **on every redirect hop**, so DNS rebinding
+cannot bypass it. That check was not weakened.
+
+The pre-flight exists because a connect-time refusal is **invisible at connect time**:
+the user pastes an address, the row is created, and the first poll — up to a minute
+later, in a worker, with nobody watching — fails. The pre-flight refuses the obvious
+problems at the moment the user would still be looking at the screen.
+
+It refuses the denied network families, a bad scheme, embedded credentials, a malformed
+bracketed IPv6 host (`urlsplit` raises a bare `ValueError` on those, which is not a
+`DomainError` and would have escaped to the 500 handler), and **a port the fetch
+adapter would not allow**. That last one was a review finding: the hardened fetch
+client only connects to 80 and 443, so an address on `:8443` was accepted, stored with
+a live encrypted credential, shown to the user as *connected* — and then refused on
+**every single poll**, with the only evidence a slug in the error field. Precisely the
+"invisible at connect time" failure the pre-flight exists to prevent.
+
+### 8. The first sync is enqueued, not run inline
+
+The connect returns with the connection's status and its sync state. The polling
+happens on the tick, in the worker. The endpoint's job is to tell the user "we're
+importing your calendar" — which is what onboarding step 1 needs, without leaving the
+flow (FR-3). `test_connect_does_not_fetch_the_calendar` pins it: a slow or unreachable
+provider cannot hold the request open.
+
+### 9. Another user's connection is 404, not 403
+
+Both the reads and the writes answer **404**, with the same body, for another user's
+connection id and for an id that does not exist. A 403 would confirm the record exists,
+so a caller could probe for other users' connection ids by watching for 403 instead of
+404. The ownership lookup lives in the **service**, because the API layer may not import
+the model — the API calls `reconnect_calendar_for_user` / `disconnect_calendar_for_user`
+and the service does the `user_id` filter.
+
+### 10. The address is excluded from the logs
+
+The request body carries the address, so the body must never be logged. The test proves
+it on a **failing** request, because that is where a log line is most likely: an
+unhandled exception's traceback carries the arguments, and a validation error's `input`
+carries the submitted value.
+
+The same reason keeps the URL out of the error field: an `httpx` exception message
+contains the full request URL, which **is** the credential. So `last_error_kind` is a
+slug (`revoked`, `transient`), never a message and never a URL.
+
+## Security Considerations
+
+| Concern | Approach |
+|---------|----------|
+| **The address is a credential** | It is encrypted at rest, write-only in the API, and absent from every response shape and every log |
+| **Enumeration** | Another user's connection id answers 404 — the same status and the same body as an id that does not exist |
+| **SSRF** | The pre-flight refuses denied networks, bad schemes, embedded credentials and refused ports at connect time; `GuardedBackend` refuses on every redirect hop at fetch time |
+| **CSRF** | Every unsafe method is checked by `require_csrf`, through the `current_user` resolver — one mechanism, not two |
+| **Cross-site writes** | The reads never write. A write behind a `GET` is a cross-site write, because Ninja exempts every view from Django's CSRF middleware and the check runs on unsafe methods only |
+| **Forged scoping** | The user id comes from the session alone; no endpoint accepts one as input |
+| **The cap cannot be raced** | The count is read under a transaction-scoped advisory lock, in the same transaction that writes |
+| **A revoked credential** | The reconnect re-reads the status under a row lock, so a disconnect that committed first is not overwritten |
+
+## Performance Considerations
+
+| Requirement | Implementation |
+|-------------|----------------|
+| The list must not decrypt secrets | `.only(*_READ_COLUMNS)` — the credential column is never fetched |
+| The list must not write | No transaction, no lock, no `UPDATE` — a read on a hot path |
+| The connect must not hold the request open | The first sync is enqueued, not fetched inline |
+| The cap check must not be a hot path | One advisory lock per connect; the count is one indexed query |
+| A slow provider must not block | The endpoint never touches the network |
+
+## Decisions Made
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Whether the response carries the address | **No field at all** | The address is a credential. A masked form or a fragment is still a leak, and a shape that cannot carry it cannot leak it by accident |
+| The cap's status | **409**, not 400 | The request was well-formed; it conflicts with the state of the account |
+| Where the cap payload's shape stops | `{"cap", "upgrade_hint"}` | The server states the fact; the client decides the presentation. A modal-shaped field is a UI decision made on the server |
+| Where the SSRF deny table lives | `domain/address_policy.py`, adapter re-exports it | An app may not reach into an adapter (AD-2). The policy is knowledge, not machinery — and there is still exactly one table |
+| How the cap is serialised | A transaction-scoped advisory lock, before the count is read | The cap is a count, and a count read without a lock is a race |
+| The unique constraint | **Partial** — the disconnected rows are excluded | It says what it means: one *live* connection per address, per user |
+| Whether the reconnect trusts the caller's status | No — it re-reads under a row lock | The caller's copy is stale by definition; a disconnect that committed in between would be silently overwritten |
+| Whether the reads decrypt the credential | No | A read that decrypts a secret it has no use for can be taken down by one corrupt row — and the remedy (disconnect) reads the same way |
+| Where the CSRF check lives | Only in the `current_user` resolver | The router already declares `auth=current_user`; the endpoint-level calls were redundant duplicates, and a test cannot tell a duplicate from the thing it duplicates |
+| The provider value | Carried, not branched on | The work item says the provider changes no server behaviour. The port and host rules come from the fetch adapter's policy, not from a per-provider table |
+
+## Deviations from Plan
+
+1. **The unique constraint became partial.** The plan did not mention it; the code review
+   found that connect → disconnect → connect was a 500 for an everyday sequence. The
+   migration `0006_…` makes the change.
+
+2. **The concurrency guarantee was added.** The plan did not mention concurrent requests.
+   The review found that the cap was counted outside a lock, so two concurrent connects
+   could both take the only slot. A new test file
+   (`test_calendar_connect_concurrency.py`, 3 tests) and the per-user advisory lock were
+   added.
+
+3. **The port pre-flight was added.** The review found that an address on a port the
+   fetch adapter refuses was accepted at connect time and failed on every poll. The
+   pre-flight now checks the port as well as the host.
+
+4. **The reads stopped decrypting.** Not a plan deviation so much as a correction: the
+   reads never had a use for the credential, and the ownership lookup's use of it was
+   what made a corrupt row un-disconnectable.
+
+5. **The redundant CSRF calls were removed.** The plan's shape had each endpoint calling
+   `require_csrf` in its body; the router's resolver already does it. One mechanism is
+   easier to reason about than two, and the review's revert case could not tell them
+   apart — which is itself the argument for removing one.
+
+## Dependencies Added
+
+**None.** No new Python packages, no new npm packages, no new infrastructure. The
+advisory lock uses Postgres, which the project already depends on, through the same
+pattern `apps.personalization.services.onboarding` already uses.
+
+## How to Verify
+
+### The commands
+
+```bash
+cd backend
+
+# The item's own tests
+.venv/bin/python -m pytest \
+    tests/personalization/test_calendar_connect_api.py \
+    tests/personalization/test_calendar_connection_reads.py \
+    tests/personalization/test_review_repro.py \
+    tests/personalization/test_calendar_connect_concurrency.py -q
+
+# The whole suite, with coverage
+.venv/bin/python -m pytest tests/ -q --cov --cov-report=term-missing
+
+# The linter, the contracts, and the migration drift
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/lint-imports
+.venv/bin/python manage.py check
+.venv/bin/python manage.py makemigrations --check --dry-run
+
+# AD-19: the client regenerates with no drift
+make client && git status --short frontend/lib/api/
+
+# The frontend
+pnpm --dir frontend test
+cd frontend && ./node_modules/.bin/tsc --noEmit
+```
+
+**Expected:** 87 item-scoped tests pass; 2909 backend tests pass; 98.98% coverage with
+157 files at 100%; ruff clean; 17/17 contracts kept; no migration drift; the committed
+schema matches the regenerated one; 149 frontend tests pass; the typecheck is clean.
+
+### Manual scenarios
+
+**The list carries the state and never the address.** Sign in, connect a calendar, then
+`GET /api/personal/calendars` → 200 with the id, the provider, the status, the display
+label, the sync times, and `sync_in_progress`. The address appears **nowhere** — not in
+full, not masked, not as a fragment.
+
+**The cap.** On a Free account, connect one calendar → 201. Connect a second → **409**
+`calendar_cap_reached`, with `details` exactly `{"cap", "upgrade_hint"}` and no
+`modal`, `title` or `actions` anywhere in the payload.
+
+**A refused address never echoes itself.** `POST` with `https://127.0.0.1/feed.ics` →
+422. The body names the problem; the body does **not** contain `127.0.0.1`.
+
+**A port the fetch would refuse.** `POST` with `https://example.com:8443/feed.ics` → 422,
+at connect time — not a connection that fails silently on every poll.
+
+**Connect, disconnect, connect again.** The everyday sequence. All three answer 201/204/
+201, and the re-add is **not** a 500.
+
+**Another user's connection.** `GET`/`POST`/`DELETE` with someone else's connection id →
+404, byte-identical to an id that does not exist.
+
+**The log.** Connect with an address that will be refused, with the logs captured. The
+address appears in **none** of them.
+
+## Test Coverage
+
+- Tests added: 87 (56 API, 16 reads, 12 review reproductions, 3 concurrency)
+- Coverage: **100%** on `apps/personalization/services/calendar_connections.py` and
+  `domain/address_policy.py`; 98.98% across the backend
+- Status: passing — 2909 backend, 149 frontend, 0 failures
+- Revert verification: **nine** item rules (R1–R9) and **nine** review rules (V1–V9) —
+  every one reverted and watched to fail
+
+## Ready for Review
+
+- [x] All acceptance criteria met
+- [x] Tests passing
+- [x] No critical issues remaining — the review's ten findings are all fixed and
+      revert-verified
+- [x] Documentation updated — the module docstrings state the new guarantees
+- [x] Developer notes captured
+
+## Developer Notes
+
+**A partial unique constraint is `Q(status=...)` negated, and it is worth knowing why.**
+`condition=~Q(status="disconnected")` means "the constraint applies to every row whose
+status is *not* disconnected". The alternative — keeping the constraint total and
+deleting the disconnected row — would have lost the audit trail and broken the
+"disconnect then reconnect" sequence in a different way. The repo's precedent is
+`apps/ingestion/models.py:246`.
+
+**The test database is rebuilt from the migrations, not from the models.** This bit the
+review's first revert case: patching the model's constraint left the *database* with the
+partial index, so the test still passed and the case reported nothing. A revert case
+that patches a model has to patch the migration, or it is not testing anything.
+
+**A count is not a lock.** The Free cap is one calendar per account. The check was
+`if existing is None and occupying >= CAP`. Two concurrent connects both read zero, both
+passed, and both wrote — two calendars on a Free account, with no error anywhere. The
+count has to be read under a lock, in the same transaction that writes the row. This is
+the same lesson the onboarding item's races taught, in a different table.
+
+**`urlsplit` raises a bare `ValueError`, and `.port` raises one too.** On a malformed
+bracketed IPv6 host, and on a non-numeric or out-of-range port. Neither is a
+`DomainError`, so both escaped to the 500 handler — a server fault for what is a typo.
+Every other bad address gets a calm 422; these two did not, until the review found them.
+When you wrap a stdlib parser, catch its `ValueError` explicitly.
+
+**A read that decrypts a secret it does not use is a liability, not a cost.** The reads
+loaded the whole row, and `EncryptedTextField` decrypts on the way out. One corrupt
+envelope took down the whole list — and because the disconnect used the same lookup,
+the user could not remove the broken row either. The remedy refused itself. `.only(*_READ_COLUMNS)`
+is the fix, and it is worth noticing that it makes the read *cheaper* too.
+
+**A test that passes against the broken code is not a test.** The review's V8 and V9
+cases both passed against the unfixed code, because every credential in the fixture
+decrypted cleanly — the tests were vacuous. They now write a corrupt envelope straight
+to the column, so the decryption genuinely fails. The same lesson, in a different
+shape, stopped the review's R9 case: the first version removed the explicit
+`require_csrf` call and **all 72 tests still passed**, because the router's resolver
+already does the check and no test can tell a duplicate from the thing it duplicates.
+
+**A stale claim is a lost job, not a sync in progress.** The `sync_in_progress` flag is
+a **fresh** claim — one whose `sync_claimed_at` is inside `CALENDAR_CLAIM_TTL`. A claim
+older than that belongs to a worker that died holding it, and the connection becomes
+claimable again. Showing a stale claim as "syncing" is a lie the user can see: the
+spinner would never stop.
+
+---
+*Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-020*
