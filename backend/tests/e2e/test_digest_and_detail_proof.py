@@ -51,8 +51,8 @@ import pytest
 
 from apps.ingestion.services.source_badges import SOURCE_BADGE_OFFICIAL
 from apps.personalization.models import DigestComposition, Interest
-from apps.personalization.services.digest_composition import compose_digest
 from apps.personalization.services.detail_read import read_event_detail
+from apps.personalization.services.digest_composition import compose_digest
 from apps.personalization.services.digest_read import read_digest
 from shared.actor import Actor
 from shared.db import CATALOG, PERSONAL
@@ -227,8 +227,7 @@ def test_a_user_who_skipped_everything_still_gets_a_digest():
         # **No preference is not every preference.** An interest tag would be a claim
         # that the event matched something the user picked, and they picked nothing.
         assert not any(tag.startswith("matches_") for tag in row.tags), (
-            f"the composition claims an interest match for a user with no interests: "
-            f"{row.tags}"
+            f"the composition claims an interest match for a user with no interests: {row.tags}"
         )
 
     # And the digest read serves it.
@@ -302,9 +301,7 @@ def test_composing_twice_produces_the_same_rows_and_the_same_digest():
 
     first = compose(user_id)
     rows_before = list(
-        DigestComposition.objects.using(PERSONAL)
-        .filter(digest_id=first.digest_id)
-        .order_by("slot")
+        DigestComposition.objects.using(PERSONAL).filter(digest_id=first.digest_id).order_by("slot")
     )
     digest_before = read_digest(user_id=user_id, now=NOW)
 

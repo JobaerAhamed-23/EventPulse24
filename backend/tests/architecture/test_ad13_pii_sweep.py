@@ -291,8 +291,7 @@ def test_the_city_does_not_reach_the_sink(sink, user_with_personal_data):
     # meaningfulness comes from the sink's own calibration (see the fixture), not
     # from the paths being noisy.
     assert CITY not in sink.raw, (
-        f"the user's city {CITY!r} reached the log sink. AD-13: no city reaches a "
-        "log-sink."
+        f"the user's city {CITY!r} reached the log sink. AD-13: no city reaches a log-sink."
     )
 
     # And the audit sink, which is the other place a city could go.
@@ -323,8 +322,7 @@ def test_the_event_title_does_not_reach_the_sink(sink, user_with_personal_data):
     # meaningfulness comes from the sink's own calibration (see the fixture), not
     # from the paths being noisy.
     assert TITLE not in sink.raw, (
-        f"the event title {TITLE!r} reached the log sink. AD-13: no event title reaches "
-        "a log-sink."
+        f"the event title {TITLE!r} reached the log sink. AD-13: no event title reaches a log-sink."
     )
 
     # And the audit sink. A title in an audit row is a title in the database forever.
