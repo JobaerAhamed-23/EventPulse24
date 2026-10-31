@@ -4,7 +4,7 @@ title: Composition scheduling from the single tick
 intent: pulse-digest-and-trust
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: [digest-composition-service]
 created: 2026-10-30
 ---
@@ -19,16 +19,16 @@ It also covers the **first digest**: FR-1 promises an authenticated Pulse Digest
 
 ## Acceptance Criteria
 
-- [ ] **`beat_schedule` still has exactly one entry.** `tests/worker/test_tick.py` passes unchanged, with no new beat entry and no platform cron (AD-7: "the sweep must not be a platform cron").
-- [ ] **A claiming dispatcher**, following the shape `schedule_sources` and `schedule_calendars` already use: find users whose digest is due, claim them with `SELECT … FOR UPDATE SKIP LOCKED`, enqueue one composition job per claim, and **release the claim whatever happens** — the run-016 pattern the existing tasks already follow.
-- [ ] **Horizontal worker replicas are safe by construction.** Two workers ticking at once must not compose the same user's digest twice; the claim and the `(user_id, local_date)` uniqueness together make the second attempt a no-op. A test exercises the concurrent path rather than assuming the constraint covers it.
-- [ ] **Due time respects the user's stored delivery time and timezone.** `DigestPreference` already holds a local wall clock paired with an IANA zone, and its docstring says `delivery` "will read it when it computes the next send time". This item composes *at or before* that local time so the digest exists when the user arrives — **it does not send anything.** The send is the delivery intent's.
-- [ ] **The first digest is composed immediately on onboarding completion**, so the signed-in home is never empty for a new user. The job is enqueued from the existing onboarding-completion path, not polled for.
-- [ ] **The job is idempotent.** Re-running it for a user whose digest already exists for that local date is a no-op, which falls out of the composition service's determinism rather than being re-implemented here.
-- [ ] **A failed composition does not wedge the user.** A claim that errors is released, the failure is logged with its job name and no PII (AD-13), and the next tick retries. A permanently failing user does not block any other user's digest.
-- [ ] **A management command composes on demand** for one user or a backfill set, idempotent, for operating and for local development.
-- [ ] **Nothing long happens in a request** (AD-11). A test asserts no request handler calls the composition service directly.
-- [ ] Tests cover: the tick enqueueing the dispatcher without changing the pinned beat schedule; the claim/release cycle including the error path; two concurrent dispatchers producing one digest; the due-time computation across a DST transition; the first-digest enqueue on onboarding completion; and the management command's idempotency.
+- [x] **`beat_schedule` still has exactly one entry.** `tests/worker/test_tick.py` passes unchanged, with no new beat entry and no platform cron (AD-7: "the sweep must not be a platform cron"). — *The beat schedule is untouched; the tick's enqueue list grew a row, and `test_the_tick_still_uses_exactly_one_static_beat` pins it.*
+- [x] **A claiming dispatcher**, following the shape `schedule_sources` and `schedule_calendars` already use: find users whose digest is due, claim them with `SELECT … FOR UPDATE SKIP LOCKED`, enqueue one composition job per claim, and **release the claim whatever happens** — the run-016 pattern the existing tasks already follow. — *`schedule_digests` in `worker/tasks.py`, with `digest_scheduling.claim_due_digests` and `release_claim`.*
+- [x] **Horizontal worker replicas are safe by construction.** Two workers ticking at once must not compose the same user's digest twice; the claim and the `(user_id, local_date)` uniqueness together make the second attempt a no-op. A test exercises the concurrent path rather than assuming the constraint covers it. — *`tests/personalization/test_digest_scheduling_concurrency.py`: two real threads over a committed row, and the test was checked against a broken implementation.*
+- [x] **Due time respects the user's stored delivery time and timezone.** `DigestPreference` already holds a local wall clock paired with an IANA zone, and its docstring says `delivery` "will read it when it computes the next send time". This item composes *at or before* that local time so the digest exists when the user arrives — **it does not send anything.** The send is the delivery intent's. — *`digest_scheduling.is_due` compares the local wall clock inclusively; the DST test pins the two 9ams as different instants.*
+- [x] **The first digest is composed immediately on onboarding completion**, so the signed-in home is never empty for a new user. The job is enqueued from the existing onboarding-completion path, not polled for. — *All three completion paths register the enqueue on `on_commit(using=PERSONAL, robust=True)`.*
+- [x] **The job is idempotent.** Re-running it for a user whose digest already exists for that local date is a no-op, which falls out of the composition service's determinism rather than being re-implemented here. — *Not re-implemented; the composition service returns `created=False` and writes nothing.*
+- [x] **A failed composition does not wedge the user.** A claim that errors is released, the failure is logged with its job name and no PII (AD-13), and the next tick retries. A permanently failing user does not block any other user's digest. — *The release is in a `finally`; a broker outage releases the claim too.*
+- [x] **A management command composes on demand** for one user or a backfill set, idempotent, for operating and for local development. — *`manage.py compose_digest --user-id <uuid>` / `--all`; `--all` asks the scheduler's own rule and releases its claims.*
+- [x] **Nothing long happens in a request** (AD-11). A test asserts no request handler calls the composition service directly. — *An AST, call-based check over the nine discovered API modules, plus a test that the worker still composes.*
+- [x] Tests cover: the tick enqueueing the dispatcher without changing the pinned beat schedule; the claim/release cycle including the error path; two concurrent dispatchers producing one digest; the due-time computation across a DST transition; the first-digest enqueue on onboarding completion; and the management command's idempotency. — *73 new tests across five files.*
 
 ## Technical Notes
 

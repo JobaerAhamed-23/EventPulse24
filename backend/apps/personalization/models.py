@@ -632,6 +632,18 @@ class DigestPreference(UUIDv7Model):
     city_source = models.CharField(max_length=16, choices=CitySource.choices, null=True, blank=True)
     # FR-19 / PRD [ASSUMPTION-7]: personal events are included unless the user opts out.
     include_personal_events = models.BooleanField(default=True)
+    # When the scheduler's claim on this user's daily digest is held (AD-7).
+    #
+    # **Null means unclaimed.** The dispatcher takes the claim with `FOR UPDATE SKIP
+    # LOCKED`, so two overlapping ticks never claim the same user: the second tick's
+    # `SKIP LOCKED` skips the row the first one is holding. A claim older than
+    # `DIGEST_CLAIM_TTL` is a lost job (a worker died) and becomes claimable again.
+    #
+    # **The claim lives here, on the preference, and not on the digest.** The thing
+    # being scheduled is the *user's daily digest*, and the two facts that decide when
+    # it is due — the local date and the delivery time — are both on this row. It is
+    # also one row per user, so claiming it claims the user's daily composition.
+    digest_claimed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [

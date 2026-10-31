@@ -428,11 +428,14 @@ intents:
         run_id: run-eventpulse24-021
         completed_at: 2026-10-30T18:40:00Z
       - id: digest-scheduling
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
+        design_doc: digest-scheduling-design.md
         depends_on:
           - digest-composition-service
+        run_id: run-eventpulse24-021
+        completed_at: 2026-10-31T09:00:00Z
       - id: digest-read-api
         status: completed
         complexity: medium
@@ -543,10 +546,11 @@ runs:
         - id: digest-scheduling
           intent: pulse-digest-and-trust
           mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-31T09:00:00Z
         - id: frontend-pulse-card
           intent: pulse-digest-and-trust
           mode: confirm
@@ -575,7 +579,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: digest-scheduling
+      current_item: frontend-pulse-card
       started: 2026-10-30T12:40:28.978Z
   completed:
     - id: run-eventpulse24-001

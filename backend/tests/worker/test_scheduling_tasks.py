@@ -29,6 +29,7 @@ def _at(monkeypatch, when: datetime) -> None:
             [
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -38,6 +39,7 @@ def _at(monkeypatch, when: datetime) -> None:
             [
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
                 "worker.tasks.reconcile_outbox",
             ],
         ),
@@ -46,18 +48,34 @@ def _at(monkeypatch, when: datetime) -> None:
             [
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
         ),
-        (1, ["worker.tasks.schedule_sources", "worker.tasks.schedule_calendars"]),
-        (4, ["worker.tasks.schedule_sources", "worker.tasks.schedule_calendars"]),
+        (
+            1,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
+            ],
+        ),
+        (
+            4,
+            [
+                "worker.tasks.schedule_sources",
+                "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
+            ],
+        ),
         # Minute 30 is a multiple of 15 and of 5, so both the refresh and the reconciler run.
         (
             30,
             [
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -69,6 +87,7 @@ def _at(monkeypatch, when: datetime) -> None:
             [
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
+                "worker.tasks.schedule_digests",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -78,6 +97,15 @@ def _at(monkeypatch, when: datetime) -> None:
 def test_tick_enqueues_scheduling_every_time_and_the_reconciler_every_5_minutes(
     monkeypatch, enqueued, minute, jobs
 ):
+    """The tick's enqueue list, pinned minute by minute.
+
+    **The digest dispatcher runs on every beat, and it does not nest.** The
+    reconciler's cadence is a divisor of the tick's; the digest dispatcher's is not,
+    because "due" is a per-user *local wall clock* comparison — a minute-modulo rule
+    would compose everyone at the same instant regardless of the hour they asked for.
+    So the digest dispatcher appears in every row above, and the two cadences that
+    nest (the reconciler's and the refresh's) are the ones that vary.
+    """
     _at(monkeypatch, NOW.replace(minute=minute))
 
     assert tasks.tick() is None

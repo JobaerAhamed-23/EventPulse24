@@ -50,6 +50,7 @@ where the caller should have got an answer.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time
+from functools import partial
 from hashlib import blake2b
 from uuid import UUID
 
@@ -57,6 +58,7 @@ from django.db import connections, transaction
 
 from apps.personalization.models import DigestPreference, Interest, OnboardingProgress
 from apps.personalization.services.audit import write_audit
+from apps.personalization.services.digest_enqueue import enqueue_digest_composition
 from apps.personalization.services.digest_preferences import SOURCE_CHOICE, set_home_city
 from domain.errors import (
     InvalidTimezoneError,
@@ -422,6 +424,30 @@ def get_onboarding_state(*, user_id: UUID, now: datetime) -> OnboardingState:
     return _state_for(user_id=user_id, now=now, progress=progress)
 
 
+def _enqueue_first_digest(user_id: UUID) -> None:
+    """Ask the worker to compose this user's first digest — **after** the transaction commits.
+
+    **The enqueue is registered, not performed.** The composition reads the digest
+    preference, and a job enqueued *inside* the transaction would run before the commit
+    and find no preference — it would compose nothing. So the enqueue is registered with
+    `transaction.on_commit`, which runs it once the command's work is durable.
+
+    **`robust=True` means a broker outage does not fail the onboarding.** The user has
+    finished onboarding either way; what they have not got is a digest. And the
+    scheduler is the backstop: the dispatcher finds users whose delivery time has
+    arrived and who have no digest for the local date, so the digest arrives on its
+    next pass. **The scheduler is the backstop, and the enqueue is the fast path.**
+
+    **Only the user id travels.** No email, no city, no delivery time — the worker
+    reads what it needs from the rows (AD-13).
+    """
+    transaction.on_commit(
+        partial(enqueue_digest_composition, user_id),
+        using=PERSONAL,
+        robust=True,
+    )
+
+
 def advance_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingState:
     """Move to the next step.
 
@@ -454,6 +480,9 @@ def advance_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingSta
                 "at": now.isoformat(),
             },
         )
+
+        if progress.completed_at is not None:
+            _enqueue_first_digest(user_id)
 
     return _state_for(user_id=user_id, now=now)
 
@@ -522,6 +551,9 @@ def skip_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingState:
             },
         )
 
+        if progress.completed_at is not None:
+            _enqueue_first_digest(user_id)
+
     return _state_for(user_id=user_id, now=now)
 
 
@@ -567,6 +599,8 @@ def skip_all(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingState:
             target_id=progress.id,
             details={"at": now.isoformat()},
         )
+
+        _enqueue_first_digest(user_id)
 
     return _state_for(user_id=user_id, now=now)
 

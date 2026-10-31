@@ -381,6 +381,35 @@ ONBOARDING_STEP_COUNT = len(ONBOARDING_STEPS)
 DEFAULT_DIGEST_DELIVERY_TIME = time(9, 0)
 DEFAULT_DIGEST_TIMEZONE = "UTC"
 
+# ── Digest composition scheduling (FR-1, FR-5, AD-7, AD-11) ─────────────────────
+#
+# AD-7 scheduling: at most this many users' digests are claimed per dispatcher run.
+#
+# **Its own number, not `SCHEDULE_BATCH` reused by name.** `SCHEDULE_BATCH` paces
+# per-*source* ingestion and `CALENDAR_SYNC_BATCH` paces per-*connection* calendar
+# fetches. This paces per-*user* digest composition — a different unit of work, with a
+# different cost (three candidate pools and a scoring pass, against one source or one
+# calendar fetch). Two schedulers pacing different work must not share a number, or a
+# change to one silently changes the other.
+DIGEST_DISPATCH_BATCH = 100
+
+# AD-7 scheduling: a digest claim older than this is a lost job (a worker died), so the
+# user becomes claimable again.
+#
+# **Not `INGEST_CLAIM_TTL` or `CALENDAR_CLAIM_TTL` reused by name.** An ingestion run can
+# take a long time; a calendar fetch is bounded by a 30 s timeout; a digest composition
+# reads three candidate pools and scores them — minutes, not hours. 15 minutes is
+# comfortably longer than a composition's worst case and comfortably shorter than the
+# 24-hour gap between one digest and the next, so a lost claim is recovered well before
+# the next day's digest is due.
+DIGEST_CLAIM_TTL = timedelta(minutes=15)
+
+# AD-8: the scheduler's own label, for the audit row and the log line.
+#
+# **It is a job name, not a user's name.** AD-13 forbids PII in logs, and an audit row
+# crosses into `catalog` (AD-3), so the actor names the *job* that acted.
+DIGEST_SCHEDULER_ACTOR = "digest_scheduler"
+
 # ── Event Fit (AD-10, FR-26) ───────────────────────────────────────────────────────
 #
 # Event Fit is the **session-free** explanation: a non-personalized 1–5 score and generic

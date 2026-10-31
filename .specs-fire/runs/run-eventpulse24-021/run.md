@@ -54,10 +54,10 @@ work_items:
   - id: digest-scheduling
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: frontend-pulse-card
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: digest-scheduling
+current_item: frontend-pulse-card
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -105,7 +105,7 @@ wide (12 work items)
 5. **digest-composition-service** (validate) — completed
 6. **digest-read-api** (confirm) — completed
 7. **event-detail-api** (confirm) — completed
-8. **digest-scheduling** (confirm) — pending
+8. **digest-scheduling** (confirm) — completed
 9. **frontend-pulse-card** (confirm) — pending
 10. **frontend-digest-home** (confirm) — pending
 11. **frontend-event-detail** (confirm) — pending
@@ -113,7 +113,7 @@ wide (12 work items)
 
 
 ## Current Item
-digest-scheduling (confirm)
+frontend-pulse-card (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -179,6 +179,24 @@ digest-scheduling (confirm)
   — D1–D13, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-event-detail-api.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-event-detail-api.md`
+- `backend/apps/personalization/services/digest_scheduling.py` — the selection rule:
+  `is_due` (the local wall-clock comparison), `claim_due_digests` (the bounded,
+  ordered, locked selection) and `release_claim`
+- `backend/apps/personalization/services/digest_enqueue.py` — the enqueue seam: sends
+  `worker.tasks.compose_digest` by dotted name, carrying only the user id
+- `backend/config/management/commands/compose_digest.py` — `manage.py compose_digest
+  --user-id <uuid>` / `--all`, idempotent and claim-releasing
+- `backend/apps/personalization/migrations/0011_digestpreference_digest_claimed_at.py`
+- `backend/tests/personalization/test_digest_scheduling.py` — 31 tests
+- `backend/tests/personalization/test_digest_scheduling_concurrency.py` — 5 tests
+- `backend/tests/personalization/test_digest_enqueue.py` — 10 tests
+- `backend/tests/worker/test_digest_tasks.py` — 14 tests
+- `backend/tests/architecture/test_digest_composition_separation.py` — 5 functions,
+  13 cases
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/digest-scheduling-design.md`
+  — D1–D10, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-digest-scheduling.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-digest-scheduling.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -231,6 +249,15 @@ digest-scheduling (confirm)
   `personalization_eventdetailopen` added to `TABLE_OWNERS`
 - `backend/tests/personalization/factories.py` — `EventDetailOpenFactory`
 - `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` — the regenerated contract
+- `backend/apps/personalization/models.py` — `DigestPreference.digest_claimed_at`
+- `backend/apps/personalization/services/onboarding.py` — the three completion paths
+  register the first-digest enqueue on `on_commit(using=PERSONAL, robust=True)`
+- `backend/shared/constants.py` — `DIGEST_DISPATCH_BATCH`, `DIGEST_CLAIM_TTL`,
+  `DIGEST_SCHEDULER_ACTOR`
+- `backend/worker/tasks.py` — `schedule_digests` and `compose_digest_task`; the tick
+  also enqueues the dispatcher
+- `backend/tests/worker/test_scheduling_tasks.py` — the tick's pinned enqueue table
+  grows a row in every case
 
 ## Decisions
 - **D4 — retention category `ACCOUNT_CONTENT`** for both tables. It is the only category
@@ -540,3 +567,98 @@ digest-scheduling (confirm)
   the request, not to the Detail Screen's read. What is counted is the read's own work
   — the composition, the save and the count's two signal reads — and that is at most
   four, whatever the neighbour count is.
+
+---
+
+## The `digest-scheduling` item's decisions
+
+- **The claim lives on `DigestPreference`, not on `PulseDigest`.** The local date and
+  the delivery time are both on the preference row, and it is one row per user — so
+  claiming it *is* claiming the user's daily composition. A digest is per
+  `(user, local_date)`, which would make the claim's lifetime depend on the date.
+- **The row lock is the correctness mechanism; `SKIP LOCKED` is the liveness half.**
+  *(Corrected by the code review — the design said the opposite.)* The concurrency
+  test was checked against a broken implementation: removing the **row lock** makes it
+  fail (the user is claimed twice), while removing only `SKIP LOCKED` leaves it
+  passing. So the guarantee is the lock — the second dispatcher waits, then re-reads
+  and finds the row claimed. `SKIP LOCKED` is what stops it *blocking* on the row the
+  first dispatcher is holding.
+- **"Due" is a local wall clock, compared inclusively.** A user is due when the local
+  time-of-day in their zone has reached their `delivery_time`, **and** they have no
+  digest for the local date yet. The second half is the real guard: a user who
+  already has today's digest is never claimed again, so the dispatcher does not
+  re-claim them on every tick of the day.
+- **The converted local time must be *naive*.** *(The one bug a passing test would
+  not have caught on its own.)* `_local_time` used `timetz()`, which returns an
+  **aware** time carrying the zone's offset. Python does **not** raise when an aware
+  time is compared with a naive one — it orders them by their UTC equivalents and
+  answers. So the comparison returned the **wrong answer, quietly**, for every user in
+  every non-UTC zone: a Los Angeles user asking for 09:00 read as due only from 17:00
+  UTC. The fix is `.time()` instead of `.timetz()` — the conversion already accounts
+  for the offset, and carrying it into the comparison applies it twice.
+- **The test's `NOW` was chosen to be 09:00 *local*, and that is why it caught the
+  bug.** A test that had used a fixed UTC hour would have agreed with the broken
+  implementation. The first `NOW` was also simply wrong — 16:00 UTC described as
+  "09:00 in Los Angeles" (PST is UTC−8, so it is 17:00 UTC), and the spring-forward
+  example used 2026-03-08, whose 02:00 local transition means that morning was
+  already PDT.
+- **The DST property that matters is that the two 9ams are different instants.**
+  A rule that added 24 hours to a UTC instant would give the user 10am the day after
+  the change. `after − before == 2 days − 1 hour` is the assertion that catches it.
+- **An unknown timezone falls back to UTC rather than failing.** The zone is validated
+  at write time, so an unknown name means hand-edited data. One user composed in the
+  fallback zone is a better failure mode than a stopped scheduler that leaves every
+  user without a digest.
+- **The dispatcher's cadence does not nest.** The reconciler's five minutes and the
+  refresh's fifteen are minute-modulo rules and vary by minute; "due" is a per-user
+  local comparison, so `schedule_digests` runs on **every** tick — and the tick's
+  pinned enqueue table grows a row in every case.
+- **The dispatch is bounded by `DIGEST_DISPATCH_BATCH` and ordered by user id.** The id
+  is a UUIDv7, so it *is* the creation time — the oldest preference is claimed first,
+  and a user who has just finished onboarding is never starved behind a backlog. The
+  constant is its own, not shared with `SCHEDULE_BATCH` or `CALENDAR_SYNC_BATCH`:
+  those pace per-source and per-connection work, this paces per-user composition.
+- **The claim is released in a `finally`, whatever happens.** A job that crashes, a
+  job that is refused, and a job that cannot be enqueued all release it, and the next
+  tick retries. A claim older than `DIGEST_CLAIM_TTL` is a lost job (a worker died)
+  and becomes claimable again.
+- **The first digest is enqueued from all three onboarding-completion paths, after
+  the commit.** A job enqueued inside the transaction would find no preference yet —
+  the worker's transaction would not see it — so the enqueue is registered on
+  `transaction.on_commit(..., using=PERSONAL, robust=True)`. `robust=True` means a
+  broker outage does not fail the onboarding; the dispatcher is the backstop. Only
+  the user id travels (AD-13).
+- **The enqueue is sent by dotted name, because `personalization` cannot import
+  `worker`.** `current_app.send_task("worker.tasks.compose_digest", args=[user_id])`
+  — the pattern `apps.ingestion.services.outbox` already uses.
+- **The management command's `--all` asks the scheduler's own rule.** It calls
+  `claim_due_digests`, so "everyone due" means exactly what the dispatcher means by
+  it, in the user's own local wall clock. A second, looser idea of "due" in the
+  command is exactly the drift `local_date_for` was promoted out to prevent. It also
+  releases the claims it takes, in a `finally`.
+- **`--user-id` composes whether or not the user is due.** The point of the command
+  is to answer *this* user's request, not to test the schedule.
+- **The boundary check is on the *call*, not on the import.** *(Revised by the code
+  review — the design said "grep the API modules".)* An import-based rule would need
+  an exemption list (the worker legitimately imports the composition), and it would
+  flag the enqueue seam for its own function name. The check is **AST-based and
+  call-based** over a **discovered** module list — every `api.py` and `*_api.py` under
+  `apps`, plus `config/api.py` — so a new API module is covered the moment it exists.
+- **The boundary is a direction, not an absence.** A rule that forbade the
+  composition *everywhere* would be satisfied by a tree where no digest was ever
+  composed. So a second test pins that the worker **must** still compose it.
+- **The concurrency test was checked against a broken implementation, and the result
+  is recorded in the test's own docstring** — because it corrected the design's claim
+  about which line is the guarantee. The test uses `transaction=True`: without a
+  commit, the second thread cannot see the first thread's rows and the test would
+  pass **vacuously** (both threads would find nothing to claim, and "one digest"
+  would be true because there were no digests at all).
+- **The threads close every alias, not just `personal`.** A worker thread that leaves
+  a connection open holds a session on the test database, and the suite's teardown
+  cannot drop a database that still has users on it.
+- **The audit row names a *job*, never a user** (AD-13). The actor is
+  `system` / `digest_scheduler`; the row carries the claim time and the user id, and
+  nothing else — no email, no city, no delivery time.
+- **The item adds no endpoint.** The enqueue is a background job, not a route, and
+  the command is a management command, so the OpenAPI schema did not change and the
+  regenerated contract was a no-op.
