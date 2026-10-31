@@ -50,6 +50,7 @@ where the caller should have got an answer.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time
+from functools import partial
 from hashlib import blake2b
 from uuid import UUID
 
@@ -57,6 +58,8 @@ from django.db import connections, transaction
 
 from apps.personalization.models import DigestPreference, Interest, OnboardingProgress
 from apps.personalization.services.audit import write_audit
+from apps.personalization.services.digest_enqueue import enqueue_digest_composition
+from apps.personalization.services.digest_preferences import SOURCE_CHOICE, set_home_city
 from domain.errors import (
     InvalidTimezoneError,
     OnboardingAlreadyCompleteError,
@@ -143,6 +146,10 @@ class OnboardingState:
 
     `interests` and `digest` are the *stored* values, so a skipped step shows the value
     the skip wrote (an empty set, the default preference) rather than nothing at all.
+
+    The digest fields are the *whole* preference: when, where and what. The city and
+    the opt-out are part of the same row and are read together with it — the digest
+    service reads one row, not three.
     """
 
     completed: bool
@@ -151,6 +158,9 @@ class OnboardingState:
     interests: tuple[str, ...]
     digest_delivery_time: time | None
     digest_timezone: str | None
+    digest_city: str | None
+    digest_city_source: str | None
+    digest_include_personal_events: bool
     last_advanced_at: datetime | None
     completed_at: datetime | None
 
@@ -327,12 +337,29 @@ def set_digest_preference(
     timezone_name: str,
     actor: Actor,
     now: datetime,
+    city: str | None = None,
+    include_personal_events: bool | None = None,
 ) -> OnboardingState:
-    """Set the digest delivery time and timezone.
+    """Set the digest delivery time and timezone, and optionally the city and opt-out.
 
     The zone is validated by `domain.timezones.canonical_zone` — the same validator
     personal events use — and the **canonical** name is stored, so "Etc/UTC" is stored as
     "UTC".
+
+    **The city and the opt-out are optional here, and omission means "leave it
+    alone".** The delivery time and the zone are the point of this command; the other two
+    are settings that arrived later, and a client that has not been updated to know
+    about them must not have them cleared by a request that never mentioned them.
+
+    **All three writes land in one transaction.** A request that sets the delivery time
+    *and* the city is one decision by one user, and a half-applied decision is worse
+    than a failed one: the delivery time would say "8am" while the city says nothing
+    changed, and neither half would be wrong on its own. So the city is written inside
+    this transaction, not after it.
+
+    **The city still gets its own audit row**, because it is a separate decision with a
+    different privacy rule: the city never appears in an audit row's details (AD-13), and
+    the flag does.
     """
     zone = _validated_zone(timezone_name)
     wall_clock = _validated_delivery_time(delivery_time)
@@ -340,6 +367,9 @@ def set_digest_preference(
     with transaction.atomic(using=PERSONAL):
         _lock_user(user_id)
         preference = _write_digest(user_id=user_id, delivery_time=wall_clock, zone=zone)
+        if include_personal_events is not None:
+            preference.include_personal_events = include_personal_events
+            preference.save(using=PERSONAL, update_fields=["include_personal_events"])
         write_audit(
             actor=actor,
             action="onboarding.digest_preference_set",
@@ -351,6 +381,18 @@ def set_digest_preference(
                 "at": now.isoformat(),
             },
         )
+
+        if city is not None:
+            # The city is resolved **inside** the transaction, so the coverage check and
+            # the write see one consistent catalog, and the write joins this
+            # transaction rather than opening a second one.
+            set_home_city(
+                user_id=user_id,
+                city=city,
+                source=SOURCE_CHOICE,
+                actor=actor,
+                now=now,
+            )
 
     return _state_for(user_id=user_id, now=now)
 
@@ -380,6 +422,30 @@ def get_onboarding_state(*, user_id: UUID, now: datetime) -> OnboardingState:
     """
     progress = _read_progress(user_id)
     return _state_for(user_id=user_id, now=now, progress=progress)
+
+
+def _enqueue_first_digest(user_id: UUID) -> None:
+    """Ask the worker to compose this user's first digest — **after** the transaction commits.
+
+    **The enqueue is registered, not performed.** The composition reads the digest
+    preference, and a job enqueued *inside* the transaction would run before the commit
+    and find no preference — it would compose nothing. So the enqueue is registered with
+    `transaction.on_commit`, which runs it once the command's work is durable.
+
+    **`robust=True` means a broker outage does not fail the onboarding.** The user has
+    finished onboarding either way; what they have not got is a digest. And the
+    scheduler is the backstop: the dispatcher finds users whose delivery time has
+    arrived and who have no digest for the local date, so the digest arrives on its
+    next pass. **The scheduler is the backstop, and the enqueue is the fast path.**
+
+    **Only the user id travels.** No email, no city, no delivery time — the worker
+    reads what it needs from the rows (AD-13).
+    """
+    transaction.on_commit(
+        partial(enqueue_digest_composition, user_id),
+        using=PERSONAL,
+        robust=True,
+    )
 
 
 def advance_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingState:
@@ -414,6 +480,9 @@ def advance_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingSta
                 "at": now.isoformat(),
             },
         )
+
+        if progress.completed_at is not None:
+            _enqueue_first_digest(user_id)
 
     return _state_for(user_id=user_id, now=now)
 
@@ -482,6 +551,9 @@ def skip_step(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingState:
             },
         )
 
+        if progress.completed_at is not None:
+            _enqueue_first_digest(user_id)
+
     return _state_for(user_id=user_id, now=now)
 
 
@@ -527,6 +599,8 @@ def skip_all(*, user_id: UUID, actor: Actor, now: datetime) -> OnboardingState:
             target_id=progress.id,
             details={"at": now.isoformat()},
         )
+
+        _enqueue_first_digest(user_id)
 
     return _state_for(user_id=user_id, now=now)
 
@@ -652,6 +726,14 @@ def _state_for(
         interests=_read_interest_keys(user_id),
         digest_delivery_time=digest.delivery_time if digest is not None else None,
         digest_timezone=digest.timezone if digest is not None else None,
+        digest_city=digest.city if digest is not None else None,
+        digest_city_source=digest.city_source if digest is not None else None,
+        # Personal events are included unless the user opted out — PRD
+        # `[ASSUMPTION-7]`. A user with no preference row at all has not opted out, so
+        # the default is the same one the row's own column carries.
+        digest_include_personal_events=(
+            digest.include_personal_events if digest is not None else True
+        ),
         last_advanced_at=progress.last_advanced_at if progress is not None else None,
         completed_at=progress.completed_at if progress is not None else None,
     )

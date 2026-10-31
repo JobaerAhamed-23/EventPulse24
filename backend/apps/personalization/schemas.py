@@ -17,7 +17,7 @@ A conflict payload carries **no internal field**: no reminder-plan state, no cat
 no field the client has no use for.
 """
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Literal
 from uuid import UUID
 
@@ -38,6 +38,19 @@ ConflictAction = Literal["keep_both", "edit_new", "update_existing", "delete_new
 #: The actions a request may ask for. The service refuses a pairing that is illegal for the
 #: pair's kind, so the union is accepted here and narrowed there.
 ConflictResolutionValue = Literal["keep_both", "edit_new", "update_existing", "delete_new"]
+
+#: The three states a digest read can report, as a closed set.
+#:
+#: **They are three different facts, not two.** `composed` means there is a digest and it
+#: has cards; `empty` means there is a digest and it has none ("we looked and there was
+#: nothing"); `not_composed` means there is **no** digest — the composition job has not
+#: run yet. The last one is not the second one: a user who arrives before the worker has
+#: composed would be shown "nothing on the pulse today", which is a **lie**, because
+#: something might be on the pulse and the system simply has not looked yet.
+#:
+#: A `Literal` rather than a plain string, because the client has to tell the three apart
+#: and a generated type is worth more than the convenience of a `str`.
+DigestStatus = Literal["composed", "empty", "not_composed"]
 
 
 class PersonalEventOut(Schema):
@@ -350,21 +363,271 @@ class InterestsOut(Schema):
 
 
 class DigestPreferenceIn(Schema):
-    """The digest delivery time and timezone.
+    """The digest delivery time and timezone, and the two content preferences.
 
     The delivery time is a **local wall clock** — "09:00" means nine in the morning where
     the user is, not nine in the morning UTC. The zone says where that is.
+
+    **The two new fields are optional, and omission means "leave it alone".** The city
+    and the opt-out are separate settings, and a client that only wants to change the
+    delivery time must not silently clear the city or silently re-include personal
+    events.
+
+    **`city` is the user's home city, in the catalog's spelling.** A city the catalog
+    does not cover is stored as the fallback with `city_source` `fallback`, so the digest
+    can say "we don't have your city yet" rather than passing the fallback off as the
+    user's city.
+
+    **A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an
+    omitted field are the same value here, so "leave it alone" and "clear it" cannot be
+    told apart — and a shape that cannot say which one it means must not guess. Guessing
+    "clear" would wipe the city of every client that sends the field as `null`, and
+    guessing "leave alone" would make the value unreachable. So a `null` city is
+    **left alone**, and clearing is not offered here at all: the service can clear the
+    city (`set_home_city(city=None)`), and a future settings endpoint may expose it
+    through a shape that *can* distinguish the two. Until then, "no city" is reached by
+    the sign-up path or by the backfill, not by this request.
     """
 
     delivery_time: time
     timezone: str
+    city: str | None = None
+    include_personal_events: bool | None = None
 
 
 class DigestPreferenceOut(Schema):
-    """The stored digest delivery time and timezone."""
+    """The stored digest delivery time and timezone, and the two content preferences.
+
+    `city_source` says how the city was arrived at — `geo`, `choice`, `fallback` or
+    `backfill`. A client can show "we don't have your city yet" for a fallback rather
+    than implying New York City is the user's city.
+    """
 
     delivery_time: time | None = None
     timezone: str | None = None
+    city: str | None = None
+    city_source: str | None = None
+    include_personal_events: bool = True
+
+
+class DigestCardOut(Schema):
+    """One Pulse Card on the digest (FR-6).
+
+    **The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;
+    the card shows 1-5 dots. Sending the score would invite the frontend to re-bucket it
+    — which is the "recomputed at render" failure wearing a different hat, and would break
+    the no-flicker rule, since the bucket the user saw this morning is a **persisted fact
+    about their day**. The Detail Screen's own read carries the score; the card's
+    contract is the card's.
+
+    **The tags are the persisted keys, in the persisted order.** They are not recomputed
+    and not re-sorted — the order is the priority order, and it is what the card and the
+    Detail Screen must agree on (AD-10). The client owns the labels.
+
+    **The times are instants plus the IANA zone.** AD-6: "display-time conversion happens
+    at the presentation edge, never in domain logic". The API does not send a
+    pre-formatted local string.
+
+    **The display facts are optional.** They live in the catalog (for a public event) or
+    in the user's own agenda (for a personal one), and either place may have moved on
+    since the composition. When they have, `catalog_event_missing` says so and the
+    *explanation* is still there — the composition is a fact about the day, and its
+    explanation must not change because a source moved.
+
+    **`source_badge` is the variant key, or `None`.** A personal event has no source, so
+    it has no badge; `None` here means "there is no source", not "unknown". The client
+    owns the label and the glyph.
+    """
+
+    event_id: UUID
+    #: Which slot the event fills — `must_know`, `nearby` or `serendipity`.
+    slot: str
+    #: `public` or `personal`. FR-19 requires the "Personal" label, so the client needs
+    #: to know which kind it is looking at.
+    event_kind: str
+    #: The event's name. `None` when the display facts are gone — there is no name to
+    #: show, and the card does not invent one.
+    title: str | None = None
+    canonical_url: str | None = None
+    start_time_utc: datetime | None = None
+    end_time_utc: datetime | None = None
+    start_time_tz: str | None = None
+    #: A public event's place is a venue.
+    venue_name: str | None = None
+    venue_city: str | None = None
+    #: A personal event's place is free text ("2 Example Street"). It is **not** matched
+    #: against a city and it is **not** turned into a venue.
+    location: str | None = None
+    #: The persisted Why-this Tag keys, in the persisted order.
+    tags: list[str] = []
+    #: FR-22's Confidence Pulse: 1 to 5.
+    bucket: int
+    #: The Source Badge variant key, or `None` for a personal event.
+    source_badge: str | None = None
+    #: Whether the event's timezone is still under review — the time is approximated and
+    #: the client marks it as such.
+    tz_review_pending: bool = False
+    #: Whether the event's display facts are gone. The card is still valid and still
+    #: explained; the client marks it rather than hiding it.
+    catalog_event_missing: bool = False
+    #: Whether the event is in an open conflict pair (FR-58). A **live** condition of the
+    #: user's own calendar, read from the persisted pairs — so the indicator on a card
+    #: and the one on the Timeline cannot disagree.
+    conflict: bool = False
+
+
+class DigestOut(Schema):
+    """The signed-in user's Pulse Digest for their local day (FR-5, FR-8, FR-6).
+
+    **`status` says which of the three states this is**, and all three answer **200**.
+    A 404 would mean "there is no such digest", which is true of `not_composed` and false
+    of `empty` — and the client would have to map a status code onto "nothing happening"
+    versus "not ready", which is exactly the interpretation the API is supposed to
+    remove.
+
+    **The city carries its `city_source`,** because the fallback city is not the user's
+    city: FR-8's copy is "No qualifying events in **{city}**", and if the city is the
+    server's fallback rather than the user's, the copy is misleading.
+
+    **`timezone` is on the response.** The digest row stores the zone it was composed in,
+    and the client needs it to render the local date it was given. Without it, a client
+    showing "Wednesday" has no way to know which Wednesday.
+    """
+
+    status: DigestStatus
+    local_date: date
+    timezone: str
+    city: str | None = None
+    city_source: str | None = None
+    #: The three slots, in slot order. Empty for the `empty` and `not_composed` states.
+    cards: list[DigestCardOut] = []
+
+
+class WhyThisOut(Schema):
+    """The persisted why-this breakdown (FR-24, AD-10).
+
+    **This is a persisted fact, not a computation.** The tags, the bucket and the badge
+    are the `DigestComposition` row's own values, read back from the most recent
+    composition for that `(user, event)` pair. AD-10 says an explanation "is never
+    generated at view time", and this is where that either holds or is quietly broken.
+
+    **The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;
+    the screen shows 1–5 dots. Sending the score would invite the frontend to re-bucket
+    it — the "recomputed at render" failure wearing a different hat.
+
+    **The tags are the persisted keys, in the persisted order.** The client owns the
+    labels; the server states the facts.
+
+    **The Source Badge is the variant key, or `None`.** A personal event has no source,
+    so it has no badge; `None` here means "there is no source", not "unknown".
+    """
+
+    #: The persisted Why-this Tag keys, in the persisted order.
+    tags: list[str] = []
+    #: FR-22's Confidence Pulse: 1 to 5.
+    bucket: int
+    #: The Source Badge variant key, or `None` for a personal event.
+    source_badge: str | None = None
+    #: When the explanation was composed.
+    composed_at: datetime
+    #: The slot the event occupied in that composition.
+    slot: str
+
+
+class DetailPersonalOut(Schema):
+    """The signed-in user's own state for an event (FR-24).
+
+    **Three independent facts, and none of them implies another.** "There is no
+    explanation" and "you have not saved this" are different, and a client that cannot
+    tell them apart renders the wrong thing.
+
+    **`why_this` is `None` when no composition exists** for this `(user, event)` pair.
+    That is an **explicit absence**: not an empty breakdown, not a zero bucket, and not
+    a recomputed one. AD-10 says the screen "renders no explanation rather than
+    recomputing one if none exists".
+    """
+
+    #: The persisted breakdown, or `None` when there is no composition for this event.
+    why_this: WhyThisOut | None = None
+    #: Whether the signed-in user has saved this event.
+    saved: bool = False
+    #: FR-24's neighbor count, **already bucketed** and never exact.
+    #:
+    #: The keys are `few` (5–9), `some` (10–24), `many` (25–99) and `a_lot` (100+).
+    #: `None` means the count is **below the k-anonymity threshold and suppressed** —
+    #: there is no key for "suppressed", because a key would tell the client the count
+    #: was computed and discarded, which is itself a signal.
+    #:
+    #: **There is no count field, and there is no number anywhere in this contract.**
+    #: FR-24: "Exact counts are never exposed." The count is bucketed inside the
+    #: service, before it becomes a number the response-building code could log or
+    #: leak.
+    neighbor_bucket: str | None = None
+
+
+class EventDetailFactsOut(Schema):
+    """The event's public facts, as the Detail Screen shows them.
+
+    **These are the catalog's own fields**, read through the published read interface.
+    The description is the *stripped* field — `formats.text.plain_text` removed the
+    markup, decoded the entities and truncated it before it was stored — so it is
+    display content, not raw source payload (AD-9).
+
+    **The times are instants plus the IANA zone.** AD-6: "display-time conversion happens
+    at the presentation edge, never in domain logic".
+    """
+
+    id: UUID
+    slug: str
+    title: str
+    #: The stripped description. Empty when the source had none.
+    description: str = ""
+    canonical_url: str
+    start_time_utc: datetime
+    start_time_tz: str
+    end_time_utc: datetime | None = None
+    venue_name: str | None = None
+    venue_city: str | None = None
+    venue_country_code: str | None = None
+    status: str
+    event_version: int
+    source_name: str
+    #: Whether the event's timezone is still under review — the time is approximated and
+    #: the client marks it as such.
+    tz_review_pending: bool = False
+    #: A-15 / FR-53: the event is sold out.
+    is_sold_out: bool = False
+
+
+class EventDetailOut(Schema):
+    """One event's Detail Screen (FR-24).
+
+    **The public facts are the catalog's,** read through `catalog_read`'s published
+    interface — never from `apps.ingestion.models` directly, and never through the
+    Event Fit.
+
+    **`personal` is `None` for an anonymous caller.** It is `None` rather than an empty
+    `DetailPersonalOut` because "you are not signed in, so we looked up nothing" and
+    "you are signed in and have nothing here" are different claims — and the anonymous
+    path never queries the `personal` schema at all.
+
+    **Reviews and similar-events are absent from this contract**, not present and empty.
+    Reviews are ASSUM-6, deferred to Phase 3+. Similar-events needs attendance data that
+    does not exist — there is no attendance record anywhere in the codebase. An empty
+    `similar_events: []` would say "we looked and there are none", which is a lie for a
+    user who *has* attended events the app does not know about.
+
+    **"Same area" is city equality, and the deviation is named.** FR-24 defines it as
+    "haversine distance ≤ 2 km OR same city-zip-cluster", and neither is computable:
+    `Venue` has no coordinates and there is no zip data. The count is the qualifying
+    users of *this* event, whose area is the event's own city. FR-24's country rule is
+    not applied either: the user's home country is not recorded.
+    """
+
+    #: The event's public facts.
+    event: EventDetailFactsOut
+    #: The signed-in user's own state, or `None` for an anonymous caller.
+    personal: DetailPersonalOut | None = None
 
 
 class OnboardingStatusOut(Schema):
@@ -406,6 +669,9 @@ class OnboardingStateOut(Schema):
             digest=DigestPreferenceOut(
                 delivery_time=state.digest_delivery_time,
                 timezone=state.digest_timezone,
+                city=state.digest_city,
+                city_source=state.digest_city_source,
+                include_personal_events=state.digest_include_personal_events,
             ),
             last_advanced_at=state.last_advanced_at,
             completed_at=state.completed_at,
@@ -505,8 +771,14 @@ __all__ = [
     "ConflictResolutionOut",
     "ConflictResolutionValue",
     "ConflictSideOut",
+    "DetailPersonalOut",
+    "DigestCardOut",
+    "DigestOut",
     "DigestPreferenceIn",
     "DigestPreferenceOut",
+    "DigestStatus",
+    "EventDetailFactsOut",
+    "EventDetailOut",
     "InterestChipOut",
     "InterestChipsOut",
     "InterestsIn",
@@ -523,4 +795,5 @@ __all__ = [
     "SavedEventOut",
     "SchedulingConflictDetails",
     "SchedulingConflictOut",
+    "WhyThisOut",
 ]

@@ -101,9 +101,12 @@ describe("the page", () => {
   it("mounts the preview, which does its own reading in the browser", async () => {
     render(<PreviewPage />);
 
-    expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent(
-      "Next 3 days in Brooklyn",
-    );
+    // The heading is queried by its name, not by its level alone. A level-only query
+    // throws if the document ever carries a second `h2`, and the preview's own shell
+    // is free to grow one — the assertion should be about *this* heading.
+    expect(
+      await screen.findByRole("heading", { level: 2, name: /Next 3 days in Brooklyn/ }),
+    ).toBeInTheDocument();
     expect(GET).toHaveBeenCalledWith("/api/public/preview", { params: { query: {} } });
   });
 });

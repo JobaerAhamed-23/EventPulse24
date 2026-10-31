@@ -18,6 +18,17 @@ from shared.constants import (
     EXTRACTION_CONFIDENCE_PUBLISH,
     EXTRACTION_CONFIDENCE_REJECT,
     POSTPONEMENT_WINDOW,
+    RANKING_BUCKET_2,
+    RANKING_BUCKET_3,
+    RANKING_BUCKET_4,
+    RANKING_BUCKET_5,
+    RANKING_HYSTERESIS_DELTA,
+    RANKING_MAX_TAGS,
+    RANKING_WEIGHT_CITY,
+    RANKING_WEIGHT_CONFIDENCE,
+    RANKING_WEIGHT_INTEREST,
+    RANKING_WEIGHT_RECENCY,
+    RANKING_WEIGHT_SUM,
     REMINDER_SLOT_OFFSET,
     SEND_KEY_SEPARATOR,
     SERIES_ID_NAMESPACE,
@@ -109,3 +120,35 @@ def test_identity_thresholds_match_the_prd():
 def test_each_tz_score_and_cap_lands_in_its_intended_gate(score, gate):
     assert type(score) is Decimal
     assert tz_gate(score) is gate
+
+
+def test_ranking_weights_are_pinned():
+    """FR-22 says a weight change without a PRD amendment is a CI-level failure.
+
+    The published formula (0.40 preference_graph / 0.25 source_reliability /
+    0.20 recency / 0.15 novelty) has two terms with no computable input in this
+    codebase, so the surviving four are redistributed to still sum to 1.0. If
+    any weight moves, the PRD must be amended in the same commit.
+    """
+    assert RANKING_WEIGHT_INTEREST == Decimal("0.45")
+    assert RANKING_WEIGHT_RECENCY == Decimal("0.25")
+    assert RANKING_WEIGHT_CITY == Decimal("0.20")
+    assert RANKING_WEIGHT_CONFIDENCE == Decimal("0.10")
+    assert RANKING_WEIGHT_SUM == Decimal("1.00")
+
+
+def test_ranking_bucket_boundaries_are_pinned():
+    """FR-22's boundaries, verbatim. An exact boundary takes the lower bucket."""
+    assert RANKING_BUCKET_5 == Decimal("0.85")
+    assert RANKING_BUCKET_4 == Decimal("0.65")
+    assert RANKING_BUCKET_3 == Decimal("0.45")
+    assert RANKING_BUCKET_2 == Decimal("0.25")
+
+
+def test_ranking_hysteresis_delta_is_pinned():
+    """EXPERIENCE.md: the bucket holds unless the raw score moves by at least 0.10."""
+    assert RANKING_HYSTERESIS_DELTA == Decimal("0.10")
+
+
+def test_ranking_tag_cap_is_pinned():
+    assert RANKING_MAX_TAGS == 3

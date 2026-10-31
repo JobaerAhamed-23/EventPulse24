@@ -64,6 +64,14 @@ TABLE_OWNERS = {
     "personalization_calendarconnection": "personalization",
     "personalization_onboardingprogress": "personalization",
     "personalization_digestpreference": "personalization",
+    # AD-16: `personalization` owns `PULSE_DIGEST` and `DIGEST_COMPOSITION` — the
+    # per-user half of AD-10's two explanation kinds. `ingestion` keeps Event Fit.
+    "personalization_pulsedigest": "personalization",
+    "personalization_digestcomposition": "personalization",
+    # AD-16: `personalization` owns `EVENT_DETAIL_OPEN` — the qualifying signal behind
+    # FR-24's neighbor count. It is a personal record about the user's own behaviour,
+    # so it belongs to the personal side and to its commands.
+    "personalization_eventdetailopen": "personalization",
     # AD-16: `ingestion` owns the catalog entities. `EVENT_FIT` is the one this intent
     # added — the public, per-(event, city) explanation (AD-10).
     "ingestion_source": "ingestion",

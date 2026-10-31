@@ -36,6 +36,8 @@ from apps.personalization.schemas import (
     ConflictOut,
     ConflictResolutionIn,
     ConflictResolutionOut,
+    DigestCardOut,
+    DigestOut,
     DigestPreferenceIn,
     InterestChipOut,
     InterestChipsOut,
@@ -61,6 +63,7 @@ from apps.personalization.services.calendar_connections import (
 )
 from apps.personalization.services.conflict_resolutions import resolve_conflict
 from apps.personalization.services.conflicts import PERSONAL_EVENT_SIDE
+from apps.personalization.services.digest_read import read_digest
 from apps.personalization.services.onboarding import (
     advance_step,
     get_onboarding_state,
@@ -362,6 +365,82 @@ def list_saved(request, filters: SavedEventListQuery = EVENT_LIST_QUERY):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# The Pulse Digest (FR-5, FR-6, FR-8)
+#
+# One endpoint. It is a **read of persisted rows and nothing else** — no scoring, no
+# ranking, no tag generation. AD-10 says an explanation is persisted at composition time
+# and never recomputed at render, and this is where that rule either holds or is quietly
+# broken: a read that recomputed would be a read that could disagree with the card the
+# user saw that morning, and the disagreement would be silent.
+#
+# **All three states answer 200**, and the body's `status` says which one it is:
+# `composed`, `empty` (we looked and there was nothing) or `not_composed` (the
+# composition job has not run yet). The last two are different facts — showing a user
+# "nothing on the pulse today" before the worker has looked would be a lie.
+#
+# **There is no date parameter.** The endpoint serves *today's* digest, and a
+# date-parameterised endpoint is a digest *history* endpoint — a different surface, and
+# not this one.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/digest",
+    response={200: DigestOut},
+    summary="The signed-in user's Pulse Digest for today",
+    description=(
+        "The user's Pulse Digest for their local day, as it was composed.\n\n"
+        "The response always says which state it is in: `composed` (there is a digest "
+        "and it has cards), `empty` (there is a digest and it has none — nothing "
+        "qualifying near you today), or `not_composed` (the digest has not been built "
+        "yet). The last two are different facts and the client shows different things "
+        "for them.\n\n"
+        "Each card carries the event's name, time and place, up to three Why-this Tag "
+        "keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The "
+        "bucket is sent rather than the raw score: the bucket the user saw this "
+        "morning is a persisted fact about their day, and a client that re-bucketed it "
+        "could flicker.\n\n"
+        "The times are instants plus an IANA timezone; converting them for display is "
+        "the client's job. `catalog_event_missing` marks a card whose event the "
+        "catalog no longer holds — the explanation is still there, because a "
+        "composition is a fact about the day."
+    ),
+)
+def read_digest_endpoint(request):
+    """The signed-in user's Pulse Digest for their local day."""
+    digest = read_digest(user_id=request.user.pk, now=timezone.now())
+    return DigestOut(
+        status=digest.status,
+        local_date=digest.local_date,
+        timezone=digest.timezone,
+        city=digest.city,
+        city_source=digest.city_source,
+        cards=[
+            DigestCardOut(
+                event_id=card.event_id,
+                slot=card.slot,
+                event_kind=card.event_kind,
+                title=card.title,
+                canonical_url=card.canonical_url,
+                start_time_utc=card.start_time_utc,
+                end_time_utc=card.end_time_utc,
+                start_time_tz=card.start_time_tz,
+                venue_name=card.venue_name,
+                venue_city=card.venue_city,
+                location=card.location,
+                tags=list(card.tags),
+                bucket=card.bucket,
+                source_badge=card.source_badge,
+                tz_review_pending=card.tz_review_pending,
+                catalog_event_missing=card.catalog_event_missing,
+                conflict=card.conflict,
+            )
+            for card in digest.cards
+        ],
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # The onboarding flow (FR-1)
 #
 # Seven endpoints under `/api/personal/onboarding`. They share the router's
@@ -432,21 +511,33 @@ def put_interests(request, body: InterestsIn):
 @router.put(
     "/onboarding/digest-preference",
     response={200: OnboardingStateOut, 422: ErrorOut},
-    summary="Set the digest delivery time and timezone",
+    summary="Set the digest delivery time, timezone, home city and personal-events opt-out",
     description=(
         "Sets when and where the Pulse Digest should arrive. The delivery time is a "
         "local wall clock, so it means nine in the morning where the user is. The "
-        "timezone must be an IANA zone name."
+        "timezone must be an IANA zone name.\n\n"
+        "`city` is the user's home city, in the catalog's own spelling. A city the "
+        "catalog does not cover is stored as the fallback and reported back with "
+        "`city_source` set to `fallback`, so the client can say \"we don't have your "
+        "city yet\" rather than implying it is the user's city.\n\n"
+        "`include_personal_events` defaults to included — personal events are in the "
+        "digest unless the user opts out. Both fields are optional, and **leaving one "
+        'out does not change it**: an omitted field (and a `null` city) means "leave it '
+        'alone", so a client that only wants to change the delivery time does not reset '
+        "the city. This endpoint cannot clear the city — a `null` and an omitted field "
+        "are the same value, and a shape that cannot tell them apart must not guess."
     ),
 )
 def put_digest_preference(request, body: DigestPreferenceIn):
-    """Set the digest delivery time and timezone."""
+    """Set the digest delivery time and timezone, and optionally the city and opt-out."""
     state = set_digest_preference(
         user_id=request.user.pk,
         delivery_time=body.delivery_time,
         timezone_name=body.timezone,
         actor=_actor(request),
         now=timezone.now(),
+        city=body.city,
+        include_personal_events=body.include_personal_events,
     )
     return OnboardingStateOut.from_state(state)
 

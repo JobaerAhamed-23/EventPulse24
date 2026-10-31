@@ -38,12 +38,35 @@
   --color-ink-inverse: #faf8f4;
   --color-surface-paper-darker: #f4f0e8;
   --color-warm-personal: #a8765c;
-  --color-warn-amber: #b8893d;
+  /* **The two ambers are darkened from the design's `#B8893D`/`#B8893A`.**
+   *
+   * `DESIGN.md` ASSUM-1 asks for exactly this: *"re-verify AA contrast for
+   * `color.ink.*`, `color.warn.amber`, and the terracotta focus ring against
+   * `color.surface.paper` in dark and light modes."* The re-verification was done, and
+   * the design's light values **fail**: `#B8893A` is **2.96:1** on `#FAF8F4` — under
+   * the 3:1 that WCAG 1.4.11 requires of a meaningful graphic, and far under the
+   * 4.5:1 that WCAG 1.4.3 requires of text. And `color.signal.warn` *is* text in seven
+   * places (the auth field errors, the reset and sign-out alerts, the onboarding
+   * errors), so 2.96:1 was a live text failure on every error message in the product.
+   *
+   * `#8A5A1C` is the darkened amber. It is **4.79:1 at its worst** across all four
+   * light surfaces (`paper`, `elevated`, `subtle`, `inset`), so it clears WCAG AA as
+   * text everywhere it appears and as a graphic everywhere it appears, and it keeps the
+   * warm amber hue the palette is built on. The dark theme is unchanged: `#D8A86A` is
+   * 7.25:1 at its worst, which was never in question.
+   *
+   * The terracotta is **not** darkened, and the reason matters: it is a *sanctioned*
+   * accent (the today dot, the primary CTA, the verified source badge, the focus
+   * ring), and the design fixes its hex. It clears 3:1 as a graphic on every light
+   * surface it is used on, so it is used as a graphic — the badge's glyph — and never
+   * as body text.
+   */
+  --color-warn-amber: #8a5a1c;
   --color-accent-terracotta: #c4502b;
   --color-accent-slate: #5b6b7e;
   --color-accent-amber: #c77a2c;
   --color-signal-success: #4a7a4a;
-  --color-signal-warn: #b8893a;
+  --color-signal-warn: #8a5a1c;
   --color-signal-error: #8e2a1f;
   --color-border-subtle: rgba(26, 24, 20, 0.08);
   --color-border-strong: rgba(26, 24, 20, 0.16);

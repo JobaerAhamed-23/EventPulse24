@@ -61,6 +61,19 @@ INGEST_CLAIM_TTL = timedelta(hours=1)
 # FR-13: a source with no successful ingestion within this many cadences is flagged stale.
 STALE_AFTER_CADENCES = 2
 
+# FR-14: an Event older than this many times its source's `freshness_ttl_hours` is not
+# surfaced in a fresh Pulse Digest.
+#
+# This is **not** `STALE_AFTER_CADENCES`, though the number is the same: a cadence is how
+# often a source is polled, a TTL is how long its facts are treated as current. Two
+# different quantities with two different meanings get two different names — AD-8 says a
+# threshold lives in one place, not that two thresholds may share one name.
+#
+# The bound is measured from `Event.last_seen_at` — when the catalog last saw the event at
+# the source — not from `updated_at`, which moves whenever *we* touch the row and would
+# keep a stale event alive.
+DIGEST_STALE_TTL_MULTIPLIER = 2
+
 # AD-17: the reconciler re-enqueues state changes unpropagated for longer than this, oldest
 # first, at most this many per run.
 OUTBOX_RECONCILE_AFTER = timedelta(minutes=5)
@@ -223,6 +236,116 @@ INTEREST_CHIPS = (
 # FR-1: "up to 3 picks". A fourth is refused, not silently dropped.
 MAX_INTEREST_PICKS = 3
 
+#: The keywords that put an **event** into an interest chip.
+#:
+#: The user's side of the overlap is the chip keys they picked at onboarding (FR-1), and
+#: that exists. The **event's** side does not: `Event` has no category field, and the
+#: Relevance Pulse's interest term — the largest weight in the formula — needs the
+#: event's chips to compute anything at all. Without them the term is pinned to zero,
+#: which the ranking domain calls an *inert weight*: "the published formula would stay
+#: arithmetically checkable and still produce a different number from the one on the
+#: card, which is a worse trust failure than a reduced formula because it looks
+#: verifiable."
+#:
+#: **This table is that missing half.** It is deliberately small and hand-written: four
+#: to eight unambiguous keywords per chip, matched as whole words against the event's
+#: title and description. It is not a classifier and does not pretend to be one — a
+#: keyword broad enough to match the wrong things is worse than no keyword at all,
+#: because a false match inflates the interest term and puts a card in a category the
+#: user never asked about.
+#:
+#: **Why whole words, and not substrings.** "art" must not match "start", and "market"
+#: must not match "marketing" — a substring match would file part of a city's calendar
+#: under "Arts & culture" on the strength of a word that merely contains another.
+#:
+#: Note that this table lists **both** "sport" and "sports" for `sports_fitness`. Those
+#: are two whole words, and "Sports Clinic" matches the second of them — the rule is
+#: about *substrings*, not about near-synonyms.
+#:
+#: **Hyphens and apostrophes are normalised on both sides.** "story-time" and
+#: "storytime" are the same word to a reader, so either spelling of a keyword matches
+#: either spelling of the text. See `apps.ingestion.services.chip_matching`.
+#:
+#: **Why the keywords live here, and not in `domain/`.** AD-9: matching text over
+#: untrusted source content belongs to the layer that owns the content. `domain/` is
+#: stdlib-only and pure, and has no idea a render exists. `shared/constants.py` is
+#: stdlib-only too, so both may read it.
+#:
+#: **Why the table is editable.** The chip *keys* are stable forever — a renamed label
+#: must not orphan a user's stored picks. These keywords are the matching policy, and
+#: the policy is allowed to change: a new keyword improves the matching for every event
+#: at once, with no migration and no backfill.
+INTEREST_CHIP_KEYWORDS = {
+    "tech_meetups": ("tech", "startup", "developer", "hackathon", "software", "programming"),
+    "sports_fitness": (
+        "sport",
+        "sports",
+        "fitness",
+        "yoga",
+        "gym",
+        "basketball",
+        "soccer",
+        "running",
+    ),
+    "arts_culture": (
+        "concert",
+        "gallery",
+        "museum",
+        "theatre",
+        "theater",
+        "exhibition",
+        "art",
+        "music",
+        "film",
+    ),
+    "family_kids": ("family", "kids", "children", "playground", "storytime", "baby"),
+    "community_volunteering": (
+        "volunteer",
+        "volunteering",
+        "charity",
+        "fundraiser",
+        "donate",
+        "mutual aid",
+    ),
+    "outdoors_nature": (
+        "hike",
+        "hiking",
+        "trail",
+        "park",
+        "garden",
+        "outdoor",
+        "bird",
+        "beach",
+    ),
+    "classes_workshops": (
+        "workshop",
+        "class",
+        "course",
+        "lesson",
+        "training",
+        "bootcamp",
+    ),
+    "markets_fairs": ("market", "fair", "farmers", "flea", "bazaar", "craft fair"),
+    "talks_lectures": (
+        "talk",
+        "lecture",
+        "panel",
+        "conference",
+        "symposium",
+        "keynote",
+        "webinar",
+    ),
+    "government_civic": (
+        "council",
+        "town hall",
+        "mayor",
+        "zoning",
+        "public hearing",
+        "municipal",
+        "civic",
+    ),
+}
+
 # FR-1: "A user who leaves mid-step is resumed at the same step on return within 7 days."
 #
 # The window is **inclusive**: a user exactly 7 days after their last move is still
@@ -257,6 +380,35 @@ ONBOARDING_STEP_COUNT = len(ONBOARDING_STEPS)
 # delivery time — reads one row rather than branching on "was it set?".
 DEFAULT_DIGEST_DELIVERY_TIME = time(9, 0)
 DEFAULT_DIGEST_TIMEZONE = "UTC"
+
+# ── Digest composition scheduling (FR-1, FR-5, AD-7, AD-11) ─────────────────────
+#
+# AD-7 scheduling: at most this many users' digests are claimed per dispatcher run.
+#
+# **Its own number, not `SCHEDULE_BATCH` reused by name.** `SCHEDULE_BATCH` paces
+# per-*source* ingestion and `CALENDAR_SYNC_BATCH` paces per-*connection* calendar
+# fetches. This paces per-*user* digest composition — a different unit of work, with a
+# different cost (three candidate pools and a scoring pass, against one source or one
+# calendar fetch). Two schedulers pacing different work must not share a number, or a
+# change to one silently changes the other.
+DIGEST_DISPATCH_BATCH = 100
+
+# AD-7 scheduling: a digest claim older than this is a lost job (a worker died), so the
+# user becomes claimable again.
+#
+# **Not `INGEST_CLAIM_TTL` or `CALENDAR_CLAIM_TTL` reused by name.** An ingestion run can
+# take a long time; a calendar fetch is bounded by a 30 s timeout; a digest composition
+# reads three candidate pools and scores them — minutes, not hours. 15 minutes is
+# comfortably longer than a composition's worst case and comfortably shorter than the
+# 24-hour gap between one digest and the next, so a lost claim is recovered well before
+# the next day's digest is due.
+DIGEST_CLAIM_TTL = timedelta(minutes=15)
+
+# AD-8: the scheduler's own label, for the audit row and the log line.
+#
+# **It is a job name, not a user's name.** AD-13 forbids PII in logs, and an audit row
+# crosses into `catalog` (AD-3), so the actor names the *job* that acted.
+DIGEST_SCHEDULER_ACTOR = "digest_scheduler"
 
 # ── Event Fit (AD-10, FR-26) ───────────────────────────────────────────────────────
 #
@@ -318,6 +470,172 @@ EVENT_FIT_TAG_ORDER = (
     EVENT_FIT_TAG_TONIGHT,
     EVENT_FIT_TAG_TOMORROW,
     EVENT_FIT_TAG_THIS_WEEKEND,
+)
+
+# ── Relevance Pulse ranking (AD-10, FR-22, FR-5) ─────────────────────────────────
+#
+# The Relevance Pulse is the **per-user** explanation — the one on an authenticated card,
+# the Detail Screen and (later) the email. AD-10 persists it beside the decision it
+# explains and never recomputes it at render.
+#
+# **The published formula, and what is missing from it.** FR-22 publishes
+#
+#     relevance_score = 0.40 × preference_graph_match
+#                     + 0.25 × source_reliability
+#                     + 0.20 × recency_fit
+#                     + 0.15 × novelty_vs_exploration
+#
+# and locks those weights. **Two of the four components have no input in this codebase**:
+#
+#   * `source_reliability` — FR-16 is unbuilt; `Source` has no score field. It is not
+#     "not implemented yet": the number does not exist and cannot be computed.
+#   * `novelty_vs_exploration` — needs the Preference Graph (FR-25, deferred) *and* an
+#     event category, and `Event` has no category field.
+#
+# A term multiplied by a constant is an **inert weight**: the published formula would stay
+# arithmetically checkable and still produce a different number from the one on the card,
+# which is a worse trust failure than a reduced formula because it looks verifiable.
+# `domain/event_fit.py` set this precedent when it refused to invent a "Free" tag — "they
+# are added to Event Fit's rule set then, not faked now."
+#
+# So the omitted terms are **absent from the expression**, and the surviving weights are
+# redistributed so they still sum to 1.0. The docstring of `domain/ranking.py` states the
+# reduction, names every omitted input, and names the FR that will supply it.
+#
+# The weights below are the **reduced** ones. `RANKING_WEIGHT_SUM` is pinned to 1 by a test,
+# so the score still occupies [0, 1] and FR-22's bucket boundaries mean what they say.
+
+# The reduced formula's four surviving inputs.
+#
+#   relevance_score = RANKING_WEIGHT_INTEREST × interest_overlap
+#                   + RANKING_WEIGHT_RECENCY  × recency
+#                   + RANKING_WEIGHT_CITY     × city_match
+#                   + RANKING_WEIGHT_CONFIDENCE × confidence
+#
+# **Interest overlap is 0.45**, not FR-22's published 0.40 for `preference_graph_match`.
+# The chips are the Preference Graph's only surviving trace, so they inherit the
+# preference term's *rank* — the largest — while the slack from the two absent terms is
+# spread across the survivors.
+#
+# **Recency is 0.25**, up from FR-22's 0.20 for `recency_fit`: it is the term that
+# survives most directly, the event's start time against the user's day.
+#
+# **City match is 0.20**, and it is **additive**, not a multiplier. FR-5 multiplies by a
+# `geographic_distance_factor`, which zeroes out every event outside the user's city — but
+# city membership is decided by the *candidate read*, not by the score. Once the read has
+# filtered to the user's city, multiplying by a city factor would multiply by a constant,
+# which is exactly the inert weight this section exists to avoid.
+#
+# **Confidence is 0.10**, the smallest share. FR-22 says the Confidence Pulse measures the
+# AI's certainty about relevance "not just trust in the source"; extraction confidence is
+# the one measure of "how well do we know this event's facts" that exists, and it is the
+# same number the eligibility gates use.
+RANKING_WEIGHT_INTEREST = Decimal("0.45")
+RANKING_WEIGHT_RECENCY = Decimal("0.25")
+RANKING_WEIGHT_CITY = Decimal("0.20")
+RANKING_WEIGHT_CONFIDENCE = Decimal("0.10")
+
+# The four weights must sum to exactly 1, so the score stays in [0, 1] and the bucket
+# boundaries keep their meaning. Pinned by `tests/shared/test_constants.py`.
+RANKING_WEIGHT_SUM = (
+    RANKING_WEIGHT_INTEREST
+    + RANKING_WEIGHT_RECENCY
+    + RANKING_WEIGHT_CITY
+    + RANKING_WEIGHT_CONFIDENCE
+)
+
+# The recency bands, in order: how soon the event starts, relative to `now`.
+#
+# Each band is an **inclusive** upper bound on the time until the start, and the comparison
+# is made in the **event's own IANA zone** (AD-6) — the same rule `domain/event_fit.py` is
+# built around. A 23:30 event in `America/New_York` is "tonight" on Friday, not Saturday.
+RANKING_RECENCY_WITHIN_DAY = Decimal("1.00")
+RANKING_RECENCY_WITHIN_THREE_DAYS = Decimal("0.75")
+RANKING_RECENCY_WITHIN_WEEK = Decimal("0.50")
+RANKING_RECENCY_WITHIN_FORTNIGHT = Decimal("0.25")
+RANKING_RECENCY_LATER = Decimal("0.00")
+
+# The city bands. **`Venue` has no coordinates**, so haversine is not computable and
+# "nearby" is a band rather than a distance. The brief records this as a named deviation
+# from FR-5's distance curve; when coordinates arrive, this is where they land.
+RANKING_CITY_SAME = Decimal("1.00")
+RANKING_CITY_SAME_COUNTRY = Decimal("0.50")
+RANKING_CITY_OTHER = Decimal("0.00")
+
+# FR-22's bucket boundaries, exact. The score is clamped to [0, 1] before mapping, and the
+# rendered bucket is always an integer 1–5. **No interpolation.**
+#
+# On an exact boundary the **lower** bucket wins: 0.850 → 4 dots, not 5. That rule is why
+# the score is a `Decimal` and never a float — `0.85` as a binary float is not
+# `Decimal("0.85")`, and it lands the card in the wrong bucket.
+RANKING_BUCKET_5 = Decimal("0.85")
+RANKING_BUCKET_4 = Decimal("0.65")
+RANKING_BUCKET_3 = Decimal("0.45")
+RANKING_BUCKET_2 = Decimal("0.25")
+
+# The score's bounds.
+RANKING_SCORE_MIN = Decimal("0.00")
+RANKING_SCORE_MAX = Decimal("1.00")
+
+# The score is 1..5, and 5 is the best.
+RANKING_BUCKET_MIN = 1
+RANKING_BUCKET_MAX = 5
+
+# The hysteresis threshold: within one local day, a bucket holds unless the raw score
+# moves by **at least** this much.
+#
+# **≥0.10, not ±0.02.** The deprecated `ranking-algorithm-transparency-desktop.html` mockup
+# says ±0.02; EXPERIENCE.md §4 says ≥0.10 and is the canonical source, and the spines-win
+# rule governs. The deviation is recorded in the design doc.
+RANKING_HYSTERESIS_DELTA = Decimal("0.10")
+
+# "Tonight" starts at this local hour, in the **event's** zone.
+#
+# The same hour Event Fit uses, and the same rule: an event at 09:00 is later today, not
+# tonight, and calling it "tonight" would be a lie about the next eight hours.
+RANKING_EVENING_HOUR = 17
+
+# FR-5's Slot 1: an eligible **personal** event within this window is the must-know card.
+RANKING_PERSONAL_EVENT_WINDOW = timedelta(hours=48)
+
+# The boost a personal event gets in Slot 1.
+#
+# A personal event inside 48 hours is the one card that is certainly the user's and
+# certainly soon. The boost is a named constant rather than a fudge inside the formula, so
+# a reader can see exactly how much the slot-1 personal preference is worth.
+RANKING_PERSONAL_EVENT_BOOST = Decimal("0.20")
+
+# The Why-this Tag keys. Stable slugs — the server states facts, the client speaks the
+# user's language, so the label is the frontend's business.
+#
+# `discovery` is **not** a generic tag: FR-25 and the PRD §3 Glossary require it on Slot 3,
+# where it replaces a category name. UJ-1's `novel` is stale and does not govern.
+RANKING_TAG_NEARBY = "nearby"
+RANKING_TAG_TONIGHT = "tonight"
+RANKING_TAG_TOMORROW = "tomorrow"
+RANKING_TAG_WEEKEND = "weekend"
+RANKING_TAG_SAVED = "saved"
+RANKING_TAG_DISCOVERY = "discovery"
+
+# The prefix for a chip-match tag: `matches_music`, `matches_tech_meetups`.
+RANKING_TAG_CHIP_PREFIX = "matches_"
+
+# At most three Why-this Tags on a card (FR-6).
+RANKING_MAX_TAGS = 3
+
+# The tag order. Fixed, so two cards carrying the same tags always list them the same way
+# — an unordered set would make the rendered card depend on the database's mood.
+#
+# The order is also the **priority**: when more than three tags apply, the first three in
+# this order win. So a card that is nearby, tonight and matches a chip shows
+# `nearby, tonight, matches_music` — never three chip tags.
+RANKING_TAG_ORDER = (
+    RANKING_TAG_DISCOVERY,
+    RANKING_TAG_NEARBY,
+    RANKING_TAG_TONIGHT,
+    RANKING_TAG_TOMORROW,
+    RANKING_TAG_WEEKEND,
+    RANKING_TAG_SAVED,
 )
 
 # ── Pulse Preview (FR-2, AD-12, PRD §11.2) ────────────────────────────────────────

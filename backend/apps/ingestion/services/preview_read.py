@@ -40,28 +40,17 @@ from apps.ingestion.event_fit.reads import (
     list_event_fit_for_city,
 )
 from apps.ingestion.models import Event, EventFit, Source
+from apps.ingestion.services.source_badges import source_badge_for_type
 from shared.db import CATALOG
 
-# The Source Badge types (EXPERIENCE.md §4, PRD FR-23). The server names the type; the
-# client owns the label and the glyph.
-SOURCE_BADGE_OFFICIAL = "official_site"
-SOURCE_BADGE_COMMUNITY = "community"
-SOURCE_BADGE_AGGREGATOR = "aggregator"
-SOURCE_BADGE_CRAWLED = "crawled_html"
-
-#: The badge type for each `Source.source_type`.
-#:
-#: `venue` and `promoter` are the source's own site — the "Official" badge. `community`
-#: and `government` are community-maintained feeds. `ticketing` and `media` are third
-#: parties, so the event was "aggregated from a public listing".
-_BY_SOURCE_TYPE = {
-    Source.SourceType.VENUE: SOURCE_BADGE_OFFICIAL,
-    Source.SourceType.PROMOTER: SOURCE_BADGE_OFFICIAL,
-    Source.SourceType.COMMUNITY: SOURCE_BADGE_COMMUNITY,
-    Source.SourceType.GOVERNMENT: SOURCE_BADGE_COMMUNITY,
-    Source.SourceType.TICKETING: SOURCE_BADGE_AGGREGATOR,
-    Source.SourceType.MEDIA: SOURCE_BADGE_AGGREGATOR,
-}
+# The Source Badge types live in `source_badges`, because two reads on the catalog side
+# need the mapping and this module imports the Event Fit — which `catalog_read` must not
+# pull in, since `personalization` imports `catalog_read` and the `event-fit-separation`
+# contract exists to keep the Event Fit away from `personalization` (AD-10).
+#
+# **They are not re-exported here.** One rule, one home: a name exported from two
+# modules is two homes, and a reader has to know which one is current. This module was
+# their home before the split; `source_badges` is it now.
 
 
 @dataclass(frozen=True)
@@ -106,15 +95,14 @@ class PreviewCities:
 def source_badge_for(source: Source) -> str:
     """The Source Badge type for a source.
 
-    A source whose type is not in the table is an aggregator — the least specific
-    claim, and the one that does not assert a verification the registry has not made.
-    A source acquired by crawling gets the crawled badge regardless of its type,
-    because *how* the facts were obtained is what the ⚠ means: "this was scraped, not
-    published to us".
+    A thin wrapper over `source_badges.source_badge_for_type`, for the callers that hold
+    a `Source`. The rule itself lives in `source_badges` so that the digest's candidate
+    read can ask the same question without importing the Event Fit.
     """
-    if source.acquisition_method == "crawl":
-        return SOURCE_BADGE_CRAWLED
-    return _BY_SOURCE_TYPE.get(source.source_type, SOURCE_BADGE_AGGREGATOR)
+    return source_badge_for_type(
+        source_type=source.source_type,
+        acquisition_method=source.acquisition_method,
+    )
 
 
 def list_supported_cities(*, now: datetime) -> PreviewCities:
@@ -219,10 +207,6 @@ def _sources_for(event_ids: list[UUID]) -> dict[UUID, Source]:
 
 
 __all__ = [
-    "SOURCE_BADGE_AGGREGATOR",
-    "SOURCE_BADGE_COMMUNITY",
-    "SOURCE_BADGE_CRAWLED",
-    "SOURCE_BADGE_OFFICIAL",
     "PreviewCard",
     "PreviewCities",
     "list_preview_cards",

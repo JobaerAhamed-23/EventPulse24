@@ -203,6 +203,57 @@ def test_personalization_may_still_read_the_public_catalog():
     )
 
 
+def test_the_public_catalog_read_does_not_reach_the_event_fit_either():
+    """**The indirect half of the wall.** `personalization` may not import the Event Fit,
+    and `catalog_read` is a module `personalization` imports — so if `catalog_read`
+    reached the Event Fit, the Event Fit would arrive inside `personalization` by
+    another name.
+
+    The import contract allows this: `allow_indirect_imports` is true, because the point
+    is that `personalization` does not import the Event Fit *directly*. So the contract
+    cannot be the thing that catches it, and this file is.
+
+    **This is why the Source Badge mapping lives in its own module.**
+    `apps.ingestion.services.preview_read` holds the badge mapping and imports the Event
+    Fit; `catalog_read` needs the same mapping for the digest's candidate pool. Had the
+    mapping stayed in `preview_read`, `catalog_read` would have had to import it, and
+    `catalog_read`'s import graph would have carried the Event Fit into
+    `personalization`. `source_badges` holds the mapping and imports neither.
+    """
+    catalog_read = BACKEND_DIR / f"{PUBLIC_CATALOG_READ.replace('.', '/')}.py"
+
+    imported = _imported_modules(catalog_read)
+
+    assert not any(name.startswith(EVENT_FIT_PACKAGE) for name in imported), (
+        f"{PUBLIC_CATALOG_READ} reaches the Event Fit. `personalization` imports this "
+        "module, so the Event Fit would arrive inside it by another name — the same "
+        "substitution AD-10 forbids, one import hop removed."
+    )
+
+
+def test_the_source_badge_module_reaches_neither_the_event_fit_nor_personalization():
+    """The module that holds the badge mapping is the one both catalog-side reads share.
+
+    It must stay a leaf: if it imported the Event Fit, `catalog_read` would inherit the
+    Event Fit through it, which is the leak the test above guards against. If it imported
+    `personalization`, the Event Fit — computed from catalog facts — would gain access to
+    a user's preferences, and the fit would become a personal one wearing a public label.
+    """
+    badges = BACKEND_DIR / "apps/ingestion/services/source_badges.py"
+
+    imported = _imported_modules(badges)
+
+    assert not any(name.startswith(EVENT_FIT_PACKAGE) for name in imported), (
+        "source_badges reaches the Event Fit. It is shared by `catalog_read`, which "
+        "`personalization` imports, so the Event Fit would arrive by another name."
+    )
+    assert not any(name.startswith(PERSONALIZATION) for name in imported), (
+        "source_badges reaches personalization. The Event Fit is computed from catalog "
+        "facts; a fit that read a user's preferences would be a personal one wearing a "
+        "public label (AD-10)."
+    )
+
+
 # ── Direction two: ingestion may not reach personalization ───────────────────────
 
 

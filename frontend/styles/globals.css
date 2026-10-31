@@ -36,8 +36,39 @@ a {
   }
 }
 
+/* motion.skeletonPulse: the loading skeleton's fade, and the only animation in the
+   product.
+
+   EXPERIENCE.md §5's Loading Patterns asks for "3 paper rectangles rendered in
+   color.surface.paper, fading 1px toward color.ink.faint at 60% opacity, then back.
+   Pulse period: 1800ms." That is an *animation* — a repeating 1800ms cycle cannot be
+   expressed as a transition — so the product's single-transition rule needed one
+   companion: one named, declared animation, and nothing else.
+
+   The pulse is a *loading* affordance, and it collapses to an instant render under
+   prefers-reduced-motion, exactly as the reduced-motion rule requires ("All entrance
+   animations collapse to instant render"). `styles/motion.test.ts` fails the build on
+   any animation other than this one. */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1800ms ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fade-in {
     transition: none;
+  }
+
+  .skeleton-pulse {
+    animation: none;
   }
 }

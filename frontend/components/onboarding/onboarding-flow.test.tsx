@@ -43,7 +43,15 @@ function state(step: number | null, extra: Record<string, unknown> = {}) {
     current_step: step,
     step_name: null,
     interests: [],
-    digest: { delivery_time: null, timezone: null },
+    // The three fields the digest preference grew: the home city, how it was arrived
+    // at, and the personal-events opt-out (which defaults to included).
+    digest: {
+      delivery_time: null,
+      timezone: null,
+      city: null,
+      city_source: null,
+      include_personal_events: true,
+    },
     last_advanced_at: null,
     completed_at: null,
     ...extra,
