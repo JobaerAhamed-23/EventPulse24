@@ -37,7 +37,7 @@ export function PreAuthFooter({ current }: PreAuthFooterProps) {
           EventPulse24
         </div>
         <nav aria-label="Footer">
-          <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
             {LINKS.map((link) => (
               <li key={link.label}>
                 <Link

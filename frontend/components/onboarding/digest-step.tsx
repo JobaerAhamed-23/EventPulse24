@@ -89,7 +89,7 @@ export function DigestStep({ values, onChange, error }: DigestStepProps) {
               aria-pressed={values.deliveryTime === preset}
               onClick={() => set({ deliveryTime: preset })}
               className={[
-                "rounded-control border px-3 py-1.5 [font:var(--type-scale-meta-sm)]",
+                "rounded-control border px-3 py-2 [font:var(--type-scale-meta-sm)]",
                 values.deliveryTime === preset
                   ? "border-accent-terracotta text-ink-primary"
                   : "border-border-subtle text-ink-secondary",

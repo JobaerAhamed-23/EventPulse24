@@ -53,12 +53,12 @@ export default function PreviewPage() {
               three events the open web suggests, hand-picked for you. No feeds. No badges. No
               infinite scroll.
             </p>
-            <div className="mt-6 flex flex-wrap items-center gap-5">
+            <div className="mt-6 flex flex-wrap items-center gap-6">
               {/* The hero CTA is the surface's primary conversion affordance; the topbar
                 carries identity only (the topbar-quiet rule). */}
               <Link
                 href="/signup"
-                className="rounded-control bg-accent-terracotta px-5 py-2.5 [font:var(--type-scale-meta-md)] text-ink-inverse"
+                className="rounded-control bg-accent-terracotta px-6 py-3 [font:var(--type-scale-meta-md)] text-ink-inverse"
               >
                 Sign up
               </Link>

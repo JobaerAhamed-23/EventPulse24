@@ -59,7 +59,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const attempt = attemptFromQuery((await searchParams)[RETRY_PARAM]);
 
   return (
-    <AppShell name={displayName(session.user.email)}>
+    <AppShell name={displayName(session.user.email)} email={session.user.email}>
       {digest.kind === "unavailable" ? (
         <DigestError attempt={attempt} />
       ) : (
@@ -68,6 +68,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
             localDate={digest.digest.local_date}
             timezone={digest.digest.timezone}
             city={digest.digest.city ?? null}
+            empty={digest.kind === "empty"}
           />
 
           <div className="mt-8">

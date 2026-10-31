@@ -84,7 +84,7 @@ export function SigninForm() {
   };
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
+    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
       {formError ? <FormAlert message={formError} /> : null}
 
       <AuthTextInput

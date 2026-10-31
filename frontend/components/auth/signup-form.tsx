@@ -167,7 +167,7 @@ export function SignupForm() {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
+    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
       {/*
         The OIDC provider stack's position (`Component.Auth.SignUp`, zone 1): three
         equal-weight provider buttons and the "or" separator go here, above the
@@ -241,7 +241,7 @@ export function SignupForm() {
         <SubmitButton label="Create account" busyLabel="Creating account…" busy={busy} />
       </div>
 
-      <div className="border-t border-border-subtle pt-5 text-center">
+      <div className="border-t border-border-subtle pt-6 text-center">
         <p className="[font:var(--type-scale-body-sm)] text-ink-secondary">
           Already have an account?{" "}
           <Link href="/signin" className="text-accent-terracotta underline underline-offset-4">

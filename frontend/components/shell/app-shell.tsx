@@ -17,15 +17,23 @@ import { Sidenav } from "@/components/shell/sidenav";
  */
 export function AppShell({
   name,
+  email,
   children,
 }: {
   /** The user's name, for the sidenav's account row. */
   name: string;
+  /**
+   * The user's email, shown in the account sheet.
+   *
+   * Both navs need it, because both carry the account surface: the sidenav in its footer
+   * on desktop, the bottom bar's More sheet on mobile. One prop, threaded to both.
+   */
+  email: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-screen bg-surface-paper">
-      <Sidenav name={name} />
+      <Sidenav name={name} email={email} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/*
@@ -33,7 +41,7 @@ export function AppShell({
           docstring. The wordmark is `aria-hidden` on the logo and the text carries the
           name, so a screen reader reads "EventPulse24" once.
         */}
-        <header className="border-b border-border-subtle px-6 py-5">
+        <header className="border-b border-border-subtle px-6 py-6">
           <span className="flex items-center gap-2 text-ink-primary [font:var(--type-scale-body-md)] font-semibold">
             <span aria-hidden="true" className="text-accent-terracotta">
               ◉
@@ -59,7 +67,7 @@ export function AppShell({
         </main>
       </div>
 
-      <BottomTabNav />
+      <BottomTabNav name={name} email={email} />
     </div>
   );
 }

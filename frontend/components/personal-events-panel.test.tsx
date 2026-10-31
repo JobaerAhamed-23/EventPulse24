@@ -106,6 +106,18 @@ describe("PersonalEventsPanel", () => {
     expect(screen.getByText("Dinner with Rahul")).toBeInTheDocument();
   });
 
+  it("mounts only the sheets when the nav asks for sheetsOnly", () => {
+    // The nav's Add needs the round trip, not the panel: the whole panel in the sidenav
+    // wedged a headline into the rail, and beside the bottom-tab bar it became a third
+    // column that squeezed the mobile page.
+    const { container } = render(<PersonalEventsPanel sheetsOnly events={[EVENT]} />);
+
+    expect(screen.queryByRole("heading", { name: "Your personal events" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
+    expect(screen.queryByText("Dinner with Rahul")).toBeNull();
+    expect(container.querySelectorAll("dialog").length).toBeGreaterThan(0);
+  });
+
   describe("the warm-personal pairing", () => {
     it("pairs the stripe with the visible word 'Personal'", () => {
       render(<PersonalEventsPanel events={[EVENT]} />);

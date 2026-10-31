@@ -35,7 +35,7 @@ export function DetailReminder() {
             <li
               key={slot.label}
               className={[
-                "rounded-control px-3 py-1.5 [font:var(--type-scale-meta-sm)]",
+                "rounded-control px-3 py-2 [font:var(--type-scale-meta-sm)]",
                 selected
                   ? "bg-ink-primary text-ink-inverse"
                   : "bg-surface-subtle text-ink-secondary",

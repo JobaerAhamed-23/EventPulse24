@@ -52,11 +52,10 @@ describe("the facts on the card", () => {
 
   it("shows the local start time in the event's own zone, and names the zone", () => {
     // The server sends an instant plus an IANA zone and does not guess a locale (AD-6).
-    // 23:00 UTC is 18:00 in New York on that date.
+    // 23:00 UTC is 6:00 PM in New York on that date, after the clocks went back: EST.
     renderCard();
 
-    expect(screen.getByText(/2026-11-07 · 18:00/)).toBeInTheDocument();
-    expect(screen.getByText("(America/New_York)")).toBeInTheDocument();
+    expect(screen.getByText("Sat, Nov 7 · 6:00 PM EST")).toBeInTheDocument();
   });
 
   it("survives a card with no venue", () => {

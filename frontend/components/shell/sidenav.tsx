@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-import { AddEventButton } from "@/components/add-event-button";
 import { PersonalEventsPanel } from "@/components/personal-events-panel";
+import { AccountMenu } from "@/components/shell/account-menu";
 import {
   AddGlyph,
   BrowseGlyph,
@@ -32,20 +32,27 @@ import {
  * yet. An anchor with `aria-disabled="true"` is still focusable and still navigates —
  * the attribute is a hint, not a mechanism — and a link to a 404 is a lie about where
  * the label goes. A `<span>` says what is true: there is nothing there yet.
+ *
+ * **The account row is a control, and it obeys the same rule.** It used to link to
+ * `/settings`, which does not exist — the one place in the rail that broke the rule
+ * above. It now opens the account sheet (`AccountMenu`), which is a real surface, and
+ * that sheet is where Sign out lives.
  */
 export type SidenavProps = {
   /** The user's name, for the account row. */
   name: string;
+  /** The user's email, shown in the account sheet. */
+  email: string;
 };
 
-export function Sidenav({ name }: SidenavProps) {
+export function Sidenav({ name, email }: SidenavProps) {
   const pathname = usePathname();
   const [addOpen, setAddOpen] = useState(false);
 
   return (
     <aside
       aria-label="Primary"
-      className="hidden w-(--layout-sidenav-app-width-tablet) shrink-0 flex-col self-start bg-surface-paper p-6 md:flex lg:w-(--layout-sidenav-app-width-desktop)"
+      className="sticky top-0 hidden h-screen w-(--layout-sidenav-app-width-tablet) shrink-0 flex-col self-start overflow-y-auto border-r border-border-subtle bg-surface-paper p-6 md:flex lg:w-(--layout-sidenav-app-width-desktop)"
     >
       <div className="flex items-center gap-2 text-ink-primary [font:var(--type-scale-body-md)] font-semibold">
         <span aria-hidden="true" className="text-accent-terracotta">
@@ -59,11 +66,7 @@ export function Sidenav({ name }: SidenavProps) {
         <ul className="flex flex-col gap-1">
           <SidenavItem href="/" label="Digest" active={pathname === "/"} glyph={<DigestGlyph />} />
           <SidenavItem label="Timeline" glyph={<TimelineGlyph />} />
-          <SidenavItem
-            label="Add"
-            glyph={<AddGlyph />}
-            control={<AddEventButton compact withoutPanel onOpen={() => setAddOpen(true)} />}
-          />
+          <SidenavItem label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
           <SidenavItem label="Browse" glyph={<BrowseGlyph />} />
           <SidenavItem label="Conflicts" glyph={<ConflictsGlyph />} />
           <SidenavItem label="Settings" glyph={<SettingsGlyph />} />
@@ -71,10 +74,11 @@ export function Sidenav({ name }: SidenavProps) {
       </nav>
 
       {/*
-        The create sheet is mounted *outside* the route list. It is a whole panel of
-        markup, and inside the `<li>` it would be a form nested in a navigation list.
+        The create and conflict sheets are mounted *outside* the route list, and only the
+        sheets (`sheetsOnly`): inside the `<li>` they would be a form nested in a
+        navigation list, and the whole panel would wedge a heading into the rail.
       */}
-      <PersonalEventsPanel createOpen={addOpen} onCreateOpenChange={setAddOpen} />
+      <PersonalEventsPanel sheetsOnly createOpen={addOpen} onCreateOpenChange={setAddOpen} />
 
       {/*
         The footer is pinned to the bottom of the rail (`margin-top: auto`) and carries
@@ -91,22 +95,7 @@ export function Sidenav({ name }: SidenavProps) {
           <SearchGlyph />
           Search
         </button>
-        <Link
-          href="/settings"
-          aria-label={`Account: ${name} — opens Settings`}
-          className="mt-1 flex items-center gap-3 rounded-subtle px-2 py-2 hover:bg-surface-subtle"
-        >
-          <span
-            aria-hidden="true"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-inset text-ink-secondary [font:var(--type-scale-meta-sm)]"
-          >
-            {name.slice(0, 2).toUpperCase()}
-          </span>
-          <span className="flex flex-col">
-            <span className="text-ink-primary [font:var(--type-scale-body-md)]">{name}</span>
-            <span className="text-ink-muted [font:var(--type-scale-meta-sm)]">Account</span>
-          </span>
-        </Link>
+        <AccountMenu name={name} email={email} />
       </div>
     </aside>
   );
@@ -115,37 +104,45 @@ export function Sidenav({ name }: SidenavProps) {
 /**
  * One route row.
  *
- * `control` is for a row that opens a surface in place rather than routing — the Add
- * item, which the spec says mounts the creation panel instead of navigating.
+ * `onActivate` is for a row that opens a surface in place rather than routing — the Add
+ * item, which the spec says mounts the creation panel instead of navigating. The whole
+ * row is the button, so the target is the row the user sees, not a glyph inside it.
  */
 function SidenavItem({
   href,
   label,
   glyph,
   active,
-  control,
+  onActivate,
 }: {
   href?: string;
   label: string;
   glyph: React.ReactNode;
   active?: boolean;
-  control?: React.ReactNode;
+  onActivate?: () => void;
 }) {
   const className = [
-    "flex items-center gap-3 rounded-subtle px-2 py-2 [font:var(--type-scale-body-md)]",
+    // `[&>svg]:shrink-0`: a row with "Coming soon" is tight at 220px, and the glyph is
+    // the one thing in it that must keep its 16px.
+    "flex items-center gap-3 rounded-subtle px-2 py-2 [font:var(--type-scale-body-md)] [&>svg]:shrink-0",
     active
       ? "border border-border-subtle bg-surface-subtle text-ink-primary"
       : "text-ink-secondary",
   ].join(" ");
 
-  if (control) {
+  if (onActivate) {
     return (
       <li>
-        <span className={className}>
+        <button
+          type="button"
+          onClick={onActivate}
+          aria-haspopup="dialog"
+          aria-label="Add personal event"
+          className={`${className} w-full text-left hover:bg-surface-subtle hover:text-ink-primary`}
+        >
           {glyph}
-          {control}
           <span>{label}</span>
-        </span>
+        </button>
       </li>
     );
   }
@@ -159,7 +156,7 @@ function SidenavItem({
         <span className={className} aria-disabled="true">
           {glyph}
           <span>{label}</span>
-          <span className="ml-auto text-ink-muted [font:var(--type-scale-meta-sm)]">
+          <span className="ml-auto whitespace-nowrap text-ink-muted [font:var(--type-scale-meta-sm)]">
             Coming soon
           </span>
         </span>

@@ -188,7 +188,7 @@ function ConfidenceView({ value, factors }: { value: number; factors: string[] }
           <span
             key={index}
             className={[
-              "h-1.5 w-1.5 rounded-full",
+              "size-[6px] rounded-full",
               index < dots ? "bg-ink-primary" : "bg-ink-faint",
             ].join(" ")}
           />

@@ -167,7 +167,7 @@ export function PersonalEventForm({
       className="max-w-(--layout-container-form)"
     >
       <form onSubmit={submit}>
-        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-5">
+        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-6">
           <div>
             <h2 className="[font:var(--type-scale-headline-lg)]">
               {mode === "create" ? "Add personal event" : "Edit personal event"}
@@ -188,7 +188,7 @@ export function PersonalEventForm({
           </button>
         </div>
 
-        <div className="flex flex-col gap-4 px-6 py-5">
+        <div className="flex flex-col gap-4 px-6 py-6">
           <Field label="Name" id="personal-event-name" error={errors.name} required>
             <input
               id="personal-event-name"

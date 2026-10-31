@@ -45,12 +45,25 @@ export type PersonalEventsPanelProps = {
   createOpen?: boolean;
   /** Called when the caller drives the create sheet's open state. */
   onCreateOpenChange?: (open: boolean) => void;
+  /**
+   * Mount the flow's two sheets and nothing else — no heading, no list, no button.
+   *
+   * The nav's **Add** affordance needs the create → conflict → resolve round trip, not the
+   * panel around it. Rendered whole inside the sidenav, the panel pushed a headline-sized
+   * "Your personal events" between the routes and the footer; rendered whole beside the
+   * bottom-tab bar, it became a third column of the shell's flex row and squeezed the
+   * mobile page to a sliver. The sheets are native `<dialog>`s, so closed they take no
+   * space. The outcome line is announced, not shown: the closing sheet is the visible
+   * confirmation, and there is no panel to hold a line.
+   */
+  sheetsOnly?: boolean;
 };
 
 export function PersonalEventsPanel({
   events = [],
   createOpen,
   onCreateOpenChange,
+  sheetsOnly = false,
 }: PersonalEventsPanelProps) {
   // The panel's own create state, used when the caller does not drive it.
   const [ownFormOpen, setOwnFormOpen] = useState(false);
@@ -189,6 +202,41 @@ export function PersonalEventsPanel({
     setMessage(`Both events are on your timeline.${resolved.kind === "duplicate" ? "" : ""}`);
   };
 
+  const sheets = (
+    <>
+      <PersonalEventForm
+        key={formKey}
+        open={formOpen}
+        mode={editing ? "edit" : "create"}
+        initial={editing ? seedFrom(editing) : undefined}
+        highlightStartTime={highlightStartTime}
+        onClose={closeForm}
+        onSubmit={submit}
+      />
+
+      <ConflictResolution
+        open={conflict !== null}
+        conflict={conflict}
+        newEvent={pending}
+        onResolve={resolve}
+      />
+    </>
+  );
+
+  if (sheetsOnly) {
+    return (
+      <>
+        {/* A live region without `role="status"`: the nav mounts this on every authed
+            page, and a page's own status region (the digest's "ready" line) stays the
+            only one there is. */}
+        <p aria-live="polite" className="sr-only">
+          {message}
+        </p>
+        {sheets}
+      </>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between gap-4">
@@ -220,22 +268,7 @@ export function PersonalEventsPanel({
         </ul>
       )}
 
-      <PersonalEventForm
-        key={formKey}
-        open={formOpen}
-        mode={editing ? "edit" : "create"}
-        initial={editing ? seedFrom(editing) : undefined}
-        highlightStartTime={highlightStartTime}
-        onClose={closeForm}
-        onSubmit={submit}
-      />
-
-      <ConflictResolution
-        open={conflict !== null}
-        conflict={conflict}
-        newEvent={pending}
-        onResolve={resolve}
-      />
+      {sheets}
     </div>
   );
 }

@@ -47,7 +47,7 @@ export function DigestError({ attempt }: { attempt: number }) {
       */}
       <Link
         href={second ? "/" : "/?retry=1"}
-        className="mt-6 inline-block rounded-control bg-accent-terracotta px-5 py-2.5 text-ink-inverse [font:var(--type-scale-meta-md)]"
+        className="mt-6 inline-block rounded-control bg-accent-terracotta px-6 py-3 text-ink-inverse [font:var(--type-scale-meta-md)]"
       >
         {second ? "Refresh page." : "Try again"}
       </Link>

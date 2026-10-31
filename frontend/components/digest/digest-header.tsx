@@ -1,9 +1,17 @@
+import { AddEventButton } from "@/components/add-event-button";
+
 /**
  * The Pulse Digest's header: the eyebrow, the h1 and the lede.
  *
  * **The words are locked.** `EXPERIENCE.md` §3's microcopy contract gives the headline
  * exactly — "Today, three things matter." — and the desktop mockup agrees. The mobile
  * mockup's inverted "Three things matter today." is drift, and the spine wins.
+ *
+ * **An empty digest does not claim three things.** Over the empty card, "Today, three
+ * things matter." contradicts the card below it. The empty-state mockup
+ * (`pulse-digest-empty-state-desktop.html`) heads it "No pulse today." with "Your week is
+ * quiet. We don't pad it." — the card keeps §5's canonical copy. And the quick action is
+ * absent there, as in that mockup: §5's empty state carries no CTA.
  *
  * **The date line is the server's.** `local_date` is the user's local day and
  * `timezone` is the zone the digest was composed in. The page does not compute "today"
@@ -19,6 +27,7 @@ export function DigestHeader({
   localDate,
   timezone,
   city,
+  empty = false,
 }: {
   /** The user's local day, `YYYY-MM-DD`, from the API. */
   localDate: string;
@@ -26,15 +35,17 @@ export function DigestHeader({
   timezone: string;
   /** The city the server resolved. */
   city: string | null;
+  /** The digest was composed with no cards. */
+  empty?: boolean;
 }) {
   return (
-    <header>
+    <header className="relative">
       <p className="flex items-center gap-2 text-ink-secondary [font:var(--type-scale-meta-md)]">
         {/* The today indicator: a single glowing terracotta dot, inline with the date.
             `aria-hidden` — the words beside it carry the meaning. */}
         <span
           aria-hidden="true"
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-terracotta"
+          className="size-[6px] shrink-0 rounded-full bg-accent-terracotta"
           style={{ boxShadow: "var(--glow-today)" }}
         />
         <span>
@@ -46,13 +57,22 @@ export function DigestHeader({
       </p>
 
       <h1 className="mt-3 text-ink-primary [font:var(--type-scale-display-lg)]">
-        Today, three things matter.
+        {empty ? "No pulse today." : "Today, three things matter."}
       </h1>
 
       <p className="mt-3 max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-lg)]">
-        Your morning brief, kept short on purpose. Open one, save one, or close the app and let it
-        go.
+        {empty
+          ? "Your week is quiet. We don't pad it."
+          : "Your morning brief, kept short on purpose. Open one, save one, or close the app and let it go."}
       </p>
+      {/* The quick action sits on the page head's right rail at `lg`, level with the date
+          line, and drops below the lede on narrower viewports (the mockup's
+          `.pagehead .quickadd`). */}
+      {empty ? null : (
+        <div className="mt-6 lg:absolute lg:top-0 lg:right-0 lg:mt-0">
+          <AddEventButton />
+        </div>
+      )}
     </header>
   );
 }

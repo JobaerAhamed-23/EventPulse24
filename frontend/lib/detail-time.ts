@@ -148,6 +148,29 @@ export function detailTimes(
 }
 
 /**
+ * A card's time line: "Tue, Nov 3 · 9:30 AM CST", in the event's own zone.
+ *
+ * **The event's zone, not the viewer's.** A card renders on the server and hydrates in the
+ * browser; formatting in the browser's zone would print a different string on each side.
+ * The event's zone is the same on both, and its short name says whose clock it is (AD-6).
+ * The Detail Screen is where the viewer's own clock is added.
+ *
+ * **The date stays.** The mockup's "Thu · 7:30 PM" reads well for this week, but a card
+ * can be more than a week out, where a weekday alone names the wrong day.
+ */
+export function cardTime(
+  startTimeUtc: string | null | undefined,
+  zone: string | null | undefined,
+): string | null {
+  if (!startTimeUtc) return null;
+  const instant = new Date(startTimeUtc);
+  if (Number.isNaN(instant.getTime())) return null;
+  const eventZone = zone || "UTC";
+  const clock = formatted(wallClockIn(instant, eventZone));
+  return `${clock.day.slice(0, 3)}, ${clock.date} · ${clock.time} ${zoneLabel(instant, eventZone)}`;
+}
+
+/**
  * The browser's own IANA zone.
  *
  * **Read at the presentation edge.** `Intl` is available in the browser and in Node, so

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
@@ -441,7 +441,42 @@ describe("the shell", () => {
   it("shows the account row in the sidenav footer", async () => {
     render(await HomePage(props()));
 
-    expect(screen.getByRole("link", { name: /Account: Maya/ })).toBeInTheDocument();
+    // The row is a *button*, not a link. It used to be `<Link href="/settings">`, and
+    // `/settings` does not exist — the sidenav's own rule against linking to a 404.
+    expect(screen.getByRole("button", { name: /Account: Maya/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search events" })).toBeInTheDocument();
+  });
+
+  it("puts sign out behind the account row, so a signed-in user can get out", async () => {
+    render(await HomePage(props()));
+
+    const account = screen.getByRole("button", { name: /Account: Maya/ });
+    expect(account).toHaveAttribute("aria-haspopup", "dialog");
+
+    fireEvent.click(account);
+
+    // Scoped to the open sheet: the mobile More sheet renders the same panel, so the
+    // email and the button are in the document twice — once per breakpoint's surface.
+    const sheet = await screen.findByRole("dialog", { name: "Account" });
+    expect(within(sheet).getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(within(sheet).getByText("maya@example.test")).toBeInTheDocument();
+  });
+
+  it("reaches sign out on mobile too, where the sidenav is hidden", async () => {
+    render(await HomePage(props()));
+
+    // The rail is `hidden md:flex`, so the bottom bar's More sheet is the only account
+    // surface a phone has. Both carry the same panel.
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "More" });
+    expect(within(sheet).getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(within(sheet).getByText("maya@example.test")).toBeInTheDocument();
+  });
+
+  it("links the account row nowhere, because /settings does not exist", async () => {
+    const { container } = render(await HomePage(props()));
+
+    expect(container.querySelector('a[href="/settings"]')).toBeNull();
   });
 });

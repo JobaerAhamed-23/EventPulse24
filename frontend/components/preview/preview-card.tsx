@@ -21,7 +21,7 @@ import Link from "next/link";
 import type { components } from "@/lib/api/schema";
 import { EVENT_FIT_MAX, clampEventFit } from "@/lib/event-fit";
 import { EVENT_FIT_TOOLTIP, eventFitLabel, sourceBadge, tagLabel } from "@/lib/preview-labels";
-import { utcInstantToLocal } from "@/lib/timezones";
+import { cardTime } from "@/lib/detail-time";
 
 type Card = components["schemas"]["PreviewCardOut"];
 
@@ -34,15 +34,13 @@ export type PreviewCardProps = {
 };
 
 export function PreviewCard({ card, onSave, savedNote = null }: PreviewCardProps) {
-  const zone = card.start_time_tz || "UTC";
-  const local = utcInstantToLocal(new Date(card.start_time_utc), zone);
   const badge = sourceBadge(card.source_badge);
   const score = clampEventFit(card.score);
   const tooltipId = `fit-${card.id}`;
   const badgeTooltipId = `badge-${card.id}`;
 
   return (
-    <article className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface-elevated px-5 py-4">
+    <article className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface-elevated px-6 py-4">
       <div className="flex items-center justify-between gap-3">
         <EventFitDots score={score} tooltipId={tooltipId} />
         <span className="group relative">
@@ -68,7 +66,7 @@ export function PreviewCard({ card, onSave, savedNote = null }: PreviewCardProps
       {/* The local start time, in the event's own zone, with the zone named: the server
           sends an instant and an IANA zone and does not guess a locale (AD-6). */}
       <p className="[font:var(--type-scale-meta-sm)] text-ink-muted">
-        {local.date} · {local.time} <span className="text-ink-muted">({zone})</span>
+        {cardTime(card.start_time_utc, card.start_time_tz)}
       </p>
 
       <h3 className="[font:var(--type-scale-headline-sm)] text-ink-primary">
@@ -129,7 +127,7 @@ function EventFitDots({ score, tooltipId }: { score: number; tooltipId: string }
             key={index}
             aria-hidden="true"
             className={[
-              "h-1.5 w-1.5 rounded-full",
+              "size-[6px] rounded-full",
               index < score ? "bg-ink-primary" : "bg-ink-faint",
             ].join(" ")}
           />

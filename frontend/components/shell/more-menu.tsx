@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Sheet } from "@/components/sheets/sheet";
+import { AccountPanel, type AccountProps } from "@/components/shell/account-menu";
 import { BrowseGlyph, MoreGlyph } from "@/components/shell/nav-glyphs";
 
 /**
@@ -23,8 +24,14 @@ import { BrowseGlyph, MoreGlyph } from "@/components/shell/nav-glyphs";
  *
  * **The sheet is dismissible.** It is an ordinary modal, not a forced choice: the user
  * opened it by tapping More and can close it by tapping outside it or pressing Escape.
+ *
+ * **The account panel is here because the sidenav is not.** The rail is `hidden md:flex`,
+ * so mounting Sign out only in its footer would leave every phone with no way out of a
+ * session. This sheet is the one non-route control the bottom bar has, so the same
+ * `AccountPanel` the rail opens is rendered here *inline* — a sheet inside a sheet would
+ * be a second overlay level, and `Sheet` keeps there being exactly one.
  */
-export function MoreMenu() {
+export function MoreMenu({ name, email }: AccountProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -33,14 +40,14 @@ export function MoreMenu() {
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        aria-label="More destinations"
+        aria-label="More"
         className="flex flex-1 flex-col items-center justify-center gap-1 text-ink-muted [font:var(--type-scale-meta-sm)]"
       >
         <MoreGlyph />
         <span>More</span>
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} label="More destinations">
+      <Sheet open={open} onClose={() => setOpen(false)} label="More">
         <div className="p-4">
           <ul className="flex flex-col gap-1">
             <li>
@@ -61,6 +68,13 @@ export function MoreMenu() {
               </span>
             </li>
           </ul>
+
+          {/*
+            The account panel, below a rule. It is not a destination, so it is outside the
+            list: a Sign out button inside a `<ul>` of routes would read as a sixth route.
+          */}
+          <div className="my-3 h-px bg-border-subtle" />
+          <AccountPanel name={name} email={email} />
         </div>
       </Sheet>
     </>

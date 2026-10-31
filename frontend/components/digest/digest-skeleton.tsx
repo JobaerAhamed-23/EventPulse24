@@ -35,7 +35,7 @@ export function DigestSkeleton({ count = 3 }: { count?: number }) {
         <div
           key={index}
           aria-hidden="true"
-          className="skeleton-pulse h-32 rounded-card bg-surface-paper"
+          className="skeleton-pulse h-[128px] rounded-card bg-surface-paper"
         />
       ))}
     </div>

@@ -21,7 +21,7 @@ import Link from "next/link";
  */
 export function BrandTopbar({ href = "/preview" }: { href?: string }) {
   return (
-    <nav aria-label="Brand" className="px-6 pt-7 pb-4">
+    <nav aria-label="Brand" className="px-6 pt-8 pb-4">
       <Link href={href} aria-label="EventPulse24 home" className="inline-block">
         <span className="flex items-center gap-3">
           <Image
@@ -30,7 +30,7 @@ export function BrandTopbar({ href = "/preview" }: { href?: string }) {
             width={36}
             height={36}
             priority
-            className="h-9 w-9"
+            className="size-[36px]"
           />
           <span className="flex flex-col">
             <span className="text-ink-primary [font:var(--type-scale-headline-sm)]">
