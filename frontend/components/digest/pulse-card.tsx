@@ -25,6 +25,7 @@
 
 import Link from "next/link";
 
+import { ConflictIndicator } from "@/components/conflicts/conflict-indicator";
 import type { components } from "@/lib/api/schema";
 import { sourceBadge, tagLabel } from "@/lib/digest-labels";
 import { cardTime } from "@/lib/detail-time";
@@ -204,29 +205,6 @@ export function PulseCard({ card, explanation }: PulseCardProps) {
         className="absolute inset-0 z-0 rounded-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-terracotta"
       />
     </article>
-  );
-}
-
-/**
- * The conflict indicator (`DESIGN.md` `component.indicator.conflict`).
- *
- * **6px, `color.warn.amber`, never red** — ASSUM-13 locks the size and `DESIGN.md` says
- * "Never red". It never collapses at any density (`EXPERIENCE.md` §13).
- *
- * **The ring is what distinguishes it from an unfilled confidence dot.** The confidence
- * dots are 6px circles too, and `DESIGN.md` requires the conflict mark to be "distinct in
- * shape and position". A ring in `color.ink.faint` — the dimmest ink, not a chromatic one
- * — does that without breaking the locked size and without inventing a colour.
- */
-function ConflictIndicator() {
-  return (
-    <span
-      role="img"
-      aria-label="Schedule conflict"
-      className="inline-flex h-6 w-6 items-center justify-center"
-    >
-      <span className="size-[6px] rounded-full bg-warn-amber ring-1 ring-ink-faint" />
-    </span>
   );
 }
 

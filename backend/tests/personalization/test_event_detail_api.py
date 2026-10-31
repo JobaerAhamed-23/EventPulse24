@@ -514,7 +514,9 @@ def test_the_payload_never_carries_an_exact_count():
 
     assert "neighbor_count" not in body["personal"]
     assert "count" not in body["personal"]
-    assert set(body["personal"]) == {"why_this", "saved", "neighbor_bucket"}
+    # The whole shape, so a later change that adds a field fails here rather than
+    # shipping. `conflict` is the Detail Screen's active pair for this event (FR-33).
+    assert set(body["personal"]) == {"why_this", "saved", "neighbor_bucket", "conflict"}
 
 
 def test_a_save_outside_the_window_does_not_qualify():

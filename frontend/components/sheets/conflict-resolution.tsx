@@ -12,19 +12,54 @@
  * them to their labels. It cannot offer a resolution the pair's kind does not allow,
  * because it never decides what the choices are.
  *
+ * **Two surfaces, one prompt, one vocabulary.** This sheet is used by two callers:
+ *
+ *   - the **personal-events panel**, where the user has just created a personal event and
+ *     the pair's other side is something they had already saved. Its labels are
+ *     **relative**: "Edit the new one", "Update the existing one", "Skip the public
+ *     event";
+ *   - the **Detail Screen**, where the user has just saved a public event and the pair's
+ *     other side is one of their own. Its labels **name the event the action is about**:
+ *     "Move Work standup", "Skip Designers coffee chat".
+ *
+ * **The prompt cannot be relative on the Detail Screen**, because the thing the user
+ * "just did" there is *saving* — and "Edit the new one" would name an event the user
+ * never created and cannot edit. So the sheet takes a `wording` prop, and the two
+ * vocabularies are built from the same module (`lib/conflict-wording.ts`) — the action
+ * set is shared, and only the visible label is contextual.
+ *
  * The copy is the UX spine's, verbatim, and the voice is calm: no exclamation marks, no
  * alarm words. The header glyph is the amber circle — **never red**.
  */
 import { useEffect, useRef, useState } from "react";
 
 import type { components } from "@/lib/api/schema";
+import {
+  asResolution,
+  RESOLUTION_ARIA,
+  RESOLUTION_GLYPHS,
+  RESOLUTION_HINTS,
+  RESOLUTION_LABELS,
+  reviewActionAria,
+  reviewActionLabel,
+  type Resolution,
+} from "@/lib/conflict-wording";
 
 import { Sheet } from "./sheet";
 
 type Conflict = components["schemas"]["ConflictOut"];
 type ConflictSide = components["schemas"]["ConflictSideOut"];
-/** The resolutions the API accepts. The prompt never offers one outside this set. */
-type Resolution = components["schemas"]["ConflictResolutionIn"]["resolution"];
+
+/**
+ * Which vocabulary the prompt speaks.
+ *
+ * - `relative` — the personal-events panel. The labels say "the new one" and "the
+ *   existing one", because the prompt knows which is which.
+ * - `named` — the Detail Screen. The labels say the **event's name**, because the
+ *   surface knows the event the user is looking at and the pair's other side may be
+ *   either kind.
+ */
+export type ConflictWording = "relative" | "named";
 
 export type ConflictResolutionProps = {
   /** Whether the sheet is open. */
@@ -38,68 +73,41 @@ export type ConflictResolutionProps = {
   conflict: Conflict | null;
   /** The event the user just created — the prompt's "new" side. */
   newEvent: { id: string; name: string; start_time_utc: string } | null;
-  /** The user's choice, or `null` while the prompt is open. */
-  onResolve: (resolution: Resolution) => void;
+  /**
+   * The user's choice.
+   *
+   * **The choice is the resolution, and the pair it is about.** The side the action
+   * acts on is the caller's to work out — from the pair's kinds — and the pair travels
+   * with the choice so the caller does not have to hold a second copy of it and risk
+   * answering a different pair from the one on screen. The personal-events panel names
+   * the personal side; the Detail Screen names the saved side for "skip" and the
+   * personal side for the rest.
+   */
+  onResolve: (resolution: Resolution, conflict: Conflict) => void;
   /** Called when the sheet closes without a choice — impossible for a forced sheet. */
   onClose?: () => void;
-};
-
-/** The three resolutions, and the label each kind gives the second one. */
-const RESOLUTION_LABELS: Record<string, { label: string; hint: string; aria: string }> = {
-  keep_both: {
-    label: "Keep both — I'll manage",
-    hint: "Both events stay on your timeline. A small amber dot on each reminds you they're close. We won't ask again.",
-    aria: "Keep both events. The conflict indicator remains on both.",
-  },
-  edit_new: {
-    label: "Edit the new one",
-    hint: "Open the event in edit mode with the time pre-highlighted so you can shift it. Conflict re-checks automatically.",
-    aria: "Edit the new event. Its start time is highlighted so you can move it.",
-  },
-  update_existing: {
-    label: "Update the existing one",
-    hint: "Open the event you already saved in edit mode so you can change it. Conflict re-checks automatically.",
-    aria: "Update the existing event. Its details open in edit mode so you can change them.",
-  },
-  delete_new: {
-    label: "Delete the new one",
-    hint: "Removes the new event. You'll be asked to confirm before it's gone for good.",
-    aria: "Delete the new event. You will be asked to confirm before it is removed.",
-  },
-  skip_public: {
-    label: "Skip the public event",
-    hint: "Releases your saved copy of the public event. Your own event stays exactly as it is.",
-    aria: "Skip the public event. Your saved copy of it is released and your own event stays.",
-  },
-};
-
-/** The glyph each action carries. Decorative — the label carries the meaning. */
-const RESOLUTION_GLYPHS: Record<string, string> = {
-  keep_both: "✓",
-  edit_new: "✎",
-  update_existing: "✎",
-  delete_new: "✕",
-  skip_public: "↷",
+  /**
+   * Which vocabulary the prompt speaks. Defaults to `relative`, the panel's.
+   */
+  wording?: ConflictWording;
+  /**
+   * The name of the side each action acts on, for the `named` vocabulary.
+   *
+   * **A map from resolution to the event's name.** "Skip" is about the saved side and
+   * "Move" is about the personal one, so the caller works that out — it is the caller
+   * that knows which side is which — and the sheet just renders it.
+   */
+  subjects?: Partial<Record<Resolution, string | null>>;
 };
 
 /**
- * Narrow a server-supplied action name to a resolution the API accepts.
+ * The two headers the spine names.
  *
- * The contract types `actions` as the closed union the server owns. A name outside it is
- * one this sheet has no label for, so it is not offered — the sheet renders the server's
- * choices, and a choice it cannot explain is not a choice it offers.
+ * **The prompt's headers are relative to a prompt** — "This overlaps with another
+ * event." for a clash in time, "These overlap." for a duplicate. The review screen's
+ * heading is its own ("These days overlap."), and it is not derived from these: it is
+ * about the page, not about one pair.
  */
-function asResolution(value: string): Resolution | null {
-  return value === "keep_both" ||
-    value === "edit_new" ||
-    value === "update_existing" ||
-    value === "delete_new" ||
-    value === "skip_public"
-    ? value
-    : null;
-}
-
-/** The two headers the spine names. */
 const HEADER_BY_KIND: Record<string, string> = {
   time: "This overlaps with another event.",
   duplicate: "These overlap.",
@@ -111,6 +119,8 @@ export function ConflictResolution({
   newEvent,
   onResolve,
   onClose,
+  wording = "relative",
+  subjects,
 }: ConflictResolutionProps) {
   const headerRef = useRef<HTMLHeadingElement>(null);
 
@@ -147,7 +157,9 @@ export function ConflictResolution({
           {header}
         </h2>
         <p className="mx-auto mt-2 max-w-(--layout-container-reading) [font:var(--type-scale-body-sm)] text-ink-secondary">
-          You&apos;ve already saved {other.name}. Choose how to handle it.
+          {wording === "relative"
+            ? `You've already saved ${other.name}. Choose how to handle it.`
+            : `It overlaps "${other.name}" on your calendar. Choose how to handle it.`}
         </p>
         {/* The announcement: assertive, because the prompt is a forced choice the user must
             not miss. The text is the same calm copy the header uses. */}
@@ -158,13 +170,32 @@ export function ConflictResolution({
 
       <div className="px-6 pb-4">
         <div className="grid gap-3 sm:grid-cols-2">
+          {/*
+            **The two cards say what each side is**, in the vocabulary of the surface.
+
+            The personal-events panel's first side is one the user just **created**, so
+            it is marked "NEW". The Detail Screen's first side is one the user just
+            **saved** — they created nothing — so it is marked "Saved", and the other
+            side, which is their own personal event, is marked "On your calendar". The
+            badge is a fact about what the user did, so it cannot be the same badge on
+            both surfaces.
+          */}
           <ConflictCard
-            when={`New · ${formatWhen(newEvent.start_time_utc)}`}
+            when={
+              wording === "relative"
+                ? `New · ${formatWhen(newEvent.start_time_utc)}`
+                : `Saved · ${formatWhen(newEvent.start_time_utc)}`
+            }
             title={newEvent.name}
-            isNew
+            isNew={wording === "relative"}
+            isSaved={wording === "named"}
           />
           <ConflictCard
-            when={`Already saved · ${formatWhen(other.start_time_utc)}`}
+            when={
+              wording === "relative"
+                ? `Already saved · ${formatWhen(other.start_time_utc)}`
+                : `On your calendar · ${formatWhen(other.start_time_utc)}`
+            }
             title={other.name}
           />
         </div>
@@ -177,6 +208,9 @@ export function ConflictResolution({
         key={conflict.pair_id}
         actions={actions}
         newEventName={newEvent.name}
+        wording={wording}
+        subjects={subjects}
+        conflict={conflict}
         onResolve={onResolve}
       />
     </Sheet>
@@ -192,11 +226,17 @@ export function ConflictResolution({
 function ConflictChoices({
   actions,
   newEventName,
+  wording,
+  subjects,
+  conflict,
   onResolve,
 }: {
   actions: string[];
   newEventName: string;
-  onResolve: (resolution: Resolution) => void;
+  wording: ConflictWording;
+  subjects: Partial<Record<Resolution, string | null>> | undefined;
+  conflict: Conflict;
+  onResolve: (resolution: Resolution, conflict: Conflict) => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -206,7 +246,7 @@ function ConflictChoices({
       setConfirmingDelete(true);
       return;
     }
-    onResolve(resolution);
+    onResolve(resolution, conflict);
   };
 
   if (confirmingDelete) {
@@ -219,7 +259,7 @@ function ConflictChoices({
         <div className="mt-4 flex gap-3">
           <button
             type="button"
-            onClick={() => onResolve("delete_new")}
+            onClick={() => onResolve("delete_new", conflict)}
             aria-label={`Delete ${newEventName}. This cannot be undone.`}
             className="rounded-control bg-accent-terracotta px-4 py-2 [font:var(--type-scale-meta-md)] text-ink-inverse"
           >
@@ -244,13 +284,21 @@ function ConflictChoices({
         {actions.map((action) => {
           const resolution = asResolution(action);
           if (!resolution) return null;
-          const copy = RESOLUTION_LABELS[resolution];
+          // **The two vocabularies.** The relative one says "the new one"; the named one
+          // says the event's name. Both come from `lib/conflict-wording.ts`, so the two
+          // surfaces cannot describe the same action differently.
+          const named = wording === "named";
+          const subject = subjects?.[resolution] ?? null;
+          const label = named
+            ? reviewActionLabel(resolution, subject)
+            : RESOLUTION_LABELS[resolution];
+          const aria = named ? reviewActionAria(resolution, subject) : RESOLUTION_ARIA[resolution];
           return (
             <button
               key={resolution}
               type="button"
               onClick={() => choose(resolution)}
-              aria-label={copy.aria}
+              aria-label={aria}
               className="flex w-full items-start gap-3 rounded-timeline-cell border border-border-subtle bg-surface-paper p-4 text-left"
             >
               <span
@@ -260,9 +308,9 @@ function ConflictChoices({
                 {RESOLUTION_GLYPHS[resolution] ?? "•"}
               </span>
               <span>
-                <span className="block [font:var(--type-scale-meta-md)]">{copy.label}</span>
+                <span className="block [font:var(--type-scale-meta-md)]">{label}</span>
                 <span className="mt-1 block [font:var(--type-scale-body-sm)] text-ink-muted">
-                  {copy.hint}
+                  {RESOLUTION_HINTS[resolution]}
                 </span>
               </span>
             </button>
@@ -288,16 +336,18 @@ function ConflictCard({
   when,
   title,
   isNew = false,
+  isSaved = false,
 }: {
   when: string;
   title: string;
   isNew?: boolean;
+  isSaved?: boolean;
 }) {
   return (
     <div
       className={[
         "relative rounded-timeline-cell border p-4",
-        isNew
+        isNew || isSaved
           ? "border-accent-terracotta bg-accent-terracotta/6"
           : "border-border-subtle bg-surface-subtle",
       ].join(" ")}
@@ -305,6 +355,11 @@ function ConflictCard({
       {isNew ? (
         <span className="absolute -top-2 left-3 rounded-subtle border border-accent-terracotta/30 bg-surface-elevated px-2 text-[9px] font-bold tracking-[0.1em] text-accent-terracotta">
           NEW
+        </span>
+      ) : null}
+      {isSaved ? (
+        <span className="absolute -top-2 left-3 rounded-subtle border border-accent-terracotta/30 bg-surface-elevated px-2 text-[9px] font-bold tracking-[0.1em] text-accent-terracotta">
+          SAVED
         </span>
       ) : null}
       <span

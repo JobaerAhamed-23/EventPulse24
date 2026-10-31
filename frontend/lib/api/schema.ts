@@ -195,7 +195,7 @@ export interface paths {
         };
         /**
          * Get one event's Detail Screen
-         * @description The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, and the k-anonymous neighbor count; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.
+         * @description The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, the k-anonymous neighbor count, and their active conflict pair for this event if there is one; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.
          */
         get: operations["apps_personalization_detail_api_get_event_detail"];
         put?: never;
@@ -1100,6 +1100,87 @@ export interface components {
             onboarding: components["schemas"]["OnboardingStatusOut"];
         };
         /**
+         * DetailConflictOut
+         * @description The caller's **active** conflict pair for this event (FR-33, FR-58).
+         *
+         *     **The screen knows which event it is showing**, so this is not a symmetric pair —
+         *     it is the pair's *other* side, the one the save clashes with. The client does not
+         *     have to work out which of two sides is "mine".
+         *
+         *     **Both sides are named, because a resolution names a side.** The request body
+         *     (`ConflictResolutionIn.side`) carries a `(kind, id)` pair, and the server checks it
+         *     against the pair's own two sides — so the client has to be able to name the side it
+         *     is acting on. `saved_side` is the **save row's** id, which is *not* the catalog
+         *     event's id: the pair stores a `SavedEvent` by that row's id, and `skip_public`
+         *     releases the save by the same id. `other_side` is the personal event's id. Without
+         *     both, the client would have to guess an id, and a guessed id is refused by the server.
+         *
+         *     **`actions` is the saved side's set**, not the pair's union. The Detail Screen acts
+         *     on the save — "skip this event" releases it — so the choices are `keep_both`,
+         *     `edit_new` and `skip_public`. The union would also offer `delete_new`, and deleting
+         *     the user's personal event is not a choice this surface should present.
+         *
+         *     **Only an active pair is here.** A resolved pair is history and a cleared one is
+         *     nobody's decision; neither means "there is a choice waiting".
+         */
+        DetailConflictOut: {
+            /**
+             * Actions
+             * @default []
+             */
+            actions: ("keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public")[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "time" | "duplicate";
+            other_side: components["schemas"]["DetailConflictSideOut"];
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /**
+             * Saved Side Id
+             * Format: uuid
+             */
+            saved_side_id: string;
+        };
+        /**
+         * DetailConflictSideOut
+         * @description The side a saved event clashes with, as the Detail Screen reads it.
+         *
+         *     **`name` is nullable**, for the same reason the conflict list's side is: a side
+         *     whose record has gone has no title to show, and the client renders "event no longer
+         *     available" rather than a blank. `ConflictSideOut` — the 409's shape — requires a
+         *     name, because the 409 names a side the user just touched, and that one is always
+         *     there.
+         *
+         *     **No timezone of its own.** The side is a record that may live in a different zone
+         *     from the event on screen, and a conflict is about the instants they occupy.
+         */
+        DetailConflictSideOut: {
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "personal_event" | "saved_event";
+            /** Name */
+            name?: string | null;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+        };
+        /**
          * DetailPersonalOut
          * @description The signed-in user's own state for an event (FR-24).
          *
@@ -1113,6 +1194,7 @@ export interface components {
          *     recomputing one if none exists".
          */
         DetailPersonalOut: {
+            conflict?: components["schemas"]["DetailConflictOut"] | null;
             /** Neighbor Bucket */
             neighbor_bucket?: string | null;
             /**

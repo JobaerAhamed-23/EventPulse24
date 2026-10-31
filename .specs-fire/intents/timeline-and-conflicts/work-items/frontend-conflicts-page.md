@@ -4,11 +4,13 @@ title: The Conflict Review screen
 intent: timeline-and-conflicts
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - conflict-list-api
   - saved-public-conflict-resolution
 created: 2026-10-31
+run_id: run-eventpulse24-022
+completed_at: 2026-10-31T09:12:12.439Z
 ---
 
 # Work Item: The Conflict Review screen

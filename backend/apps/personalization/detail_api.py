@@ -46,6 +46,8 @@ from ninja import Router, Status
 
 from apps.identity.api_auth import current_user, unauthenticated_user
 from apps.personalization.schemas import (
+    DetailConflictOut,
+    DetailConflictSideOut,
     DetailPersonalOut,
     EventDetailFactsOut,
     EventDetailOut,
@@ -90,8 +92,9 @@ def _facts(event) -> EventDetailFactsOut:
     summary="Get one event's Detail Screen",
     description=(
         "The Detail Screen's data. A signed-in caller also receives their own why-this "
-        "breakdown, their saved state, and the k-anonymous neighbor count; an anonymous "
-        "caller receives the public facts and nothing personal. "
+        "breakdown, their saved state, the k-anonymous neighbor count, and their active "
+        "conflict pair for this event if there is one; an anonymous caller receives the "
+        "public facts and nothing personal. "
         "An event that is not public — or that has already started — reads as not found, "
         "the same set the public catalog shows."
     ),
@@ -121,6 +124,23 @@ def get_event_detail(request, event_id: UUID):
             ),
             saved=detail.personal.saved,
             neighbor_bucket=detail.personal.neighbors.bucket,
+            conflict=(
+                DetailConflictOut(
+                    pair_id=detail.personal.conflict.pair_id,
+                    kind=detail.personal.conflict.kind,
+                    saved_side_id=detail.personal.conflict.saved_side_id,
+                    other_side=DetailConflictSideOut(
+                        kind=detail.personal.conflict.other_side.kind,
+                        id=detail.personal.conflict.other_side.id,
+                        name=detail.personal.conflict.other_side.name,
+                        start_time_utc=detail.personal.conflict.other_side.start_time_utc,
+                        end_time_utc=detail.personal.conflict.other_side.end_time_utc,
+                    ),
+                    actions=list(detail.personal.conflict.actions),
+                )
+                if detail.personal.conflict is not None
+                else None
+            ),
         )
 
     return EventDetailOut(event=_facts(detail.event), personal=personal)

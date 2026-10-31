@@ -46,6 +46,7 @@ from uuid import UUID
 
 from apps.ingestion.services.catalog_read import PublicEventDetail, get_public_event_detail
 from apps.personalization.models import DigestComposition, SavedEvent
+from apps.personalization.services.detail_conflict import DetailConflict, read_detail_conflict
 from apps.personalization.services.neighbor_count import NeighborCount, count_neighbors
 from shared.db import PERSONAL
 
@@ -95,11 +96,16 @@ class DetailPersonal:
     on the composition, because a save may have happened since the composition was made.
     `neighbor_bucket` is the k-anonymous neighbor count, already bucketed; `None` means
     the count is below the threshold and is suppressed (D4).
+
+    **`conflict` is a fourth independent fact**, and it is `None` when there is no
+    **active** pair for this event. A resolved pair is history and a cleared one is
+    nobody's decision, so neither is an indicator — only a pair waiting for an answer is.
     """
 
     why_this: WhyThis | None
     saved: bool
     neighbors: NeighborCount
+    conflict: DetailConflict | None = None
 
 
 @dataclass(frozen=True)
@@ -148,14 +154,19 @@ def _why_this(row: DigestComposition | None) -> WhyThis | None:
     )
 
 
-def _is_saved(*, user_id: UUID, event_id: UUID) -> bool:
-    """Whether this user has saved this event.
+def _saved_row(*, user_id: UUID, event_id: UUID) -> SavedEvent | None:
+    """The user's own save row for this event, or `None`.
 
     **The user's own row**, read by the unique constraint on `(user_id, event_id)`. The
     scoping is repeated in the query as well as coming from the session, because the
     second line of defence is the query itself.
+
+    **The row, not a boolean**, because the conflict pair names the save **row's** id —
+    the Detail Screen is keyed by the catalog event's id, and the pair is not.
     """
-    return SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).exists()
+    return (
+        SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
+    )
 
 
 def read_event_detail(
@@ -190,15 +201,27 @@ def read_event_detail(
         return EventDetail(event=event, personal=None)
 
     composition = _most_recent_composition(user_id=user_id, event_id=event_id)
-    saved = _is_saved(user_id=user_id, event_id=event_id)
+    saved_row = _saved_row(user_id=user_id, event_id=event_id)
     neighbors = count_neighbors(event_id=event_id, now=now)
+
+    # **The conflict is read only when the user has saved the event.** A pair names a
+    # saved side, so without the save row there is nothing for a pair to name — and the
+    # query is skipped rather than run and discarded.
+    conflict = None
+    if saved_row is not None:
+        conflict = read_detail_conflict(
+            user_id=user_id,
+            saved=saved_row,
+            public_event_ids={event_id},
+        )
 
     return EventDetail(
         event=event,
         personal=DetailPersonal(
             why_this=_why_this(composition),
-            saved=saved,
+            saved=saved_row is not None,
             neighbors=neighbors,
+            conflict=conflict,
         ),
     )
 

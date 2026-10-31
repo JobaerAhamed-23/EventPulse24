@@ -4,8 +4,9 @@ title: The home page returns to the digest alone
 intent: timeline-and-conflicts
 complexity: low
 mode: autopilot
-status: pending
-depends_on: [frontend-timeline]
+status: in_progress
+depends_on:
+  - frontend-timeline
 created: 2026-10-31
 ---
 

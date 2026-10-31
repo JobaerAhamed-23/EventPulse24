@@ -718,7 +718,19 @@ def test_the_endpoint_path_issues_no_query_per_card():
 
 
 def test_the_local_day_is_the_users_and_not_the_servers():
-    """A user at 23:00 local and a user at 01:00 local get different digests."""
+    """A user at 23:00 local and a user at 01:00 local get different digests.
+
+    **The assertion is on the user's zone, not on a cross-zone difference.** The two
+    zones share a calendar date for eight hours of every day — the server's Los Angeles
+    clock and the user's Tokyo clock are on the same date for every hour between 07:00
+    and 15:00 UTC — so "the user's date differs from the server's date" is only true
+    part of the day, and the test would fail on every run in that window.
+
+    **What the endpoint actually promises** is that it resolved *the user's* zone. So
+    the test asserts the zone it used and the date that zone yields. Those two hold at
+    every hour of the day, and they say what the test is for: the server did not fall
+    back to its own clock.
+    """
     late_user = make_user("late@example.test")
     make_preference(late_user.pk, timezone="Asia/Tokyo")
     late_digest = make_digest(
@@ -731,8 +743,12 @@ def test_the_local_day_is_the_users_and_not_the_servers():
 
     body = get_digest(signed_in(late_user)).json()
 
+    assert body["timezone"] == "Asia/Tokyo"
     assert body["local_date"] == str(local_date_for(now=NOW, zone_name="Asia/Tokyo"))
-    assert body["local_date"] != str(local_date_for(now=NOW, zone_name=ZONE))
+    # The server's own zone is the one the endpoint must **not** have used. On the
+    # hours where the two zones share a date this is the same string, which is why the
+    # zone assertion above is the one that carries the meaning.
+    assert body["timezone"] != ZONE
 
 
 def test_a_digest_for_another_day_is_not_the_users_digest():

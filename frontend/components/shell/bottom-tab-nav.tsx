@@ -31,11 +31,12 @@ import {
  * carries no `aria-current="page"` — the row *inside* the sheet carries that when the
  * overflow route is the current one.
  *
- * **An inert slot is inert.** Three of the five routes do not exist yet, and a slot that
- * navigates to a 404 is a lie. An inert slot is a `<span>` with `aria-disabled="true"`,
- * and it carries the same "Coming soon" the sidenav's inert rows carry — visually hidden
- * here, because a slot is a fifth of the bar and there is no room to print it, but said
- * aloud, because `aria-disabled` alone does not explain *why* the slot does nothing.
+ * **An inert slot is inert.** Two of the five routes do not exist yet — Browse (behind
+ * the More sheet) and Settings — and a slot that navigates to a 404 is a lie. An inert
+ * slot is a `<span>` with `aria-disabled="true"`, and it carries the same "Coming soon"
+ * the sidenav's inert rows carry — visually hidden here, because a slot is a fifth of
+ * the bar and there is no room to print it, but said aloud, because `aria-disabled`
+ * alone does not explain *why* the slot does nothing.
  *
  * **Sign out reaches mobile through the More sheet.** The sidenav is `hidden md:flex`, so
  * the account row in its footer is desktop-only; `MoreMenu` carries the same account
@@ -60,7 +61,12 @@ export function BottomTabNav({ name, email }: AccountProps) {
           glyph={<TimelineGlyph />}
         />
         <TabSlot label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
-        <TabSlot label="Conflicts" glyph={<ConflictsGlyph />} />
+        <TabSlot
+          label="Conflicts"
+          href="/conflicts"
+          active={pathname === "/conflicts"}
+          glyph={<ConflictsGlyph />}
+        />
         <TabSlot label="Settings" glyph={<SettingsGlyph />} />
 
         {/*

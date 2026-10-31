@@ -531,20 +531,24 @@ intents:
         run_id: run-eventpulse24-022
         completed_at: 2026-10-31T08:52:55.146Z
       - id: frontend-conflicts-page
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - conflict-list-api
           - saved-public-conflict-resolution
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T09:12:12.439Z
       - id: detail-screen-conflict-prompt
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - saved-public-conflict-resolution
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T09:50:11.266Z
       - id: home-back-to-digest
-        status: pending
+        status: in_progress
         complexity: low
         mode: autopilot
         depends_on:
@@ -598,22 +602,24 @@ runs:
         - id: frontend-conflicts-page
           intent: timeline-and-conflicts
           mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
           current_checkpoint: plan
+          completed_at: 2026-10-31T09:12:12.439Z
         - id: detail-screen-conflict-prompt
           intent: timeline-and-conflicts
           mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-10-31T09:50:11.266Z
         - id: home-back-to-digest
           intent: timeline-and-conflicts
           mode: autopilot
-          status: pending
-          current_phase: null
+          status: in_progress
+          current_phase: plan
           checkpoint_state: none
           current_checkpoint: null
         - id: e2e-proof-and-contract-tests
@@ -623,7 +629,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: frontend-conflicts-page
+      current_item: home-back-to-digest
       started: 2026-10-31T06:33:07.500Z
   completed:
     - id: run-eventpulse24-001

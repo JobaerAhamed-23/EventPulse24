@@ -444,9 +444,9 @@ describe("the shell", () => {
   it("does not let an inert route navigate", async () => {
     render(await HomePage(props()));
 
-    // Three of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
+    // Two of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
     // with aria-disabled still navigates.
-    for (const label of ["Browse", "Conflicts", "Settings"]) {
+    for (const label of ["Browse", "Settings"]) {
       const item = [...sidenav().querySelectorAll("li")].find((li) =>
         [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
       );
@@ -454,6 +454,18 @@ describe("the shell", () => {
       expect(item?.querySelector("a"), label).toBeNull();
       expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
     }
+  });
+
+  it("makes Conflicts a real route, because the Conflict Review exists", async () => {
+    render(await HomePage(props()));
+
+    const item = [...sidenav().querySelectorAll("li")].find((li) =>
+      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Conflicts"),
+    );
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/conflicts");
+    // "Coming soon" is gone — the route is here.
+    expect(item?.textContent).not.toContain("Coming soon");
   });
 
   it("makes Timeline a real route, because the Timeline exists", async () => {

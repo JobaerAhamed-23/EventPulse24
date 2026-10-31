@@ -706,6 +706,63 @@ class WhyThisOut(Schema):
     slot: str
 
 
+class DetailConflictSideOut(Schema):
+    """The side a saved event clashes with, as the Detail Screen reads it.
+
+    **`name` is nullable**, for the same reason the conflict list's side is: a side
+    whose record has gone has no title to show, and the client renders "event no longer
+    available" rather than a blank. `ConflictSideOut` — the 409's shape — requires a
+    name, because the 409 names a side the user just touched, and that one is always
+    there.
+
+    **No timezone of its own.** The side is a record that may live in a different zone
+    from the event on screen, and a conflict is about the instants they occupy.
+    """
+
+    kind: ConflictSideKind
+    id: UUID
+    name: str | None = None
+    start_time_utc: datetime
+    end_time_utc: datetime | None = None
+
+
+class DetailConflictOut(Schema):
+    """The caller's **active** conflict pair for this event (FR-33, FR-58).
+
+    **The screen knows which event it is showing**, so this is not a symmetric pair —
+    it is the pair's *other* side, the one the save clashes with. The client does not
+    have to work out which of two sides is "mine".
+
+    **Both sides are named, because a resolution names a side.** The request body
+    (`ConflictResolutionIn.side`) carries a `(kind, id)` pair, and the server checks it
+    against the pair's own two sides — so the client has to be able to name the side it
+    is acting on. `saved_side` is the **save row's** id, which is *not* the catalog
+    event's id: the pair stores a `SavedEvent` by that row's id, and `skip_public`
+    releases the save by the same id. `other_side` is the personal event's id. Without
+    both, the client would have to guess an id, and a guessed id is refused by the server.
+
+    **`actions` is the saved side's set**, not the pair's union. The Detail Screen acts
+    on the save — "skip this event" releases it — so the choices are `keep_both`,
+    `edit_new` and `skip_public`. The union would also offer `delete_new`, and deleting
+    the user's personal event is not a choice this surface should present.
+
+    **Only an active pair is here.** A resolved pair is history and a cleared one is
+    nobody's decision; neither means "there is a choice waiting".
+    """
+
+    pair_id: UUID
+    #: `time` or `duplicate`.
+    kind: ConflictPairKind
+    #: The side the save clashes with — the user's own personal event.
+    other_side: DetailConflictSideOut
+    #: The save row's own id, as the pair stores it. This is the id a `skip_public`
+    #: resolution names, and it is **not** the catalog event's id.
+    saved_side_id: UUID
+    #: The choices, from the server's own map — the same one the resolve endpoint
+    #: enforces.
+    actions: list[ConflictAction] = []
+
+
 class DetailPersonalOut(Schema):
     """The signed-in user's own state for an event (FR-24).
 
@@ -735,6 +792,9 @@ class DetailPersonalOut(Schema):
     #: service, before it becomes a number the response-building code could log or
     #: leak.
     neighbor_bucket: str | None = None
+    #: The caller's **active** conflict pair for this event, or `None`. A `None` means
+    #: there is nothing to decide — not that the screen failed to look.
+    conflict: DetailConflictOut | None = None
 
 
 class EventDetailFactsOut(Schema):

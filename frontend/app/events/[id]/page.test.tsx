@@ -93,6 +93,30 @@ function personal(overrides: Record<string, unknown> = {}) {
     neighbor_bucket: "few",
     saved: false,
     why_this: whyThis(),
+    conflict: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The caller's **active** conflict pair for this event, as the payload carries it.
+ *
+ * **`saved_side_id` is the save row's id**, not the catalog event's — the pair stores a
+ * `SavedEvent` by that row's id, and a `skip_public` releases the save by the same id.
+ */
+function conflict(overrides: Record<string, unknown> = {}) {
+  return {
+    pair_id: "33333333-3333-3333-3333-333333333333",
+    kind: "time",
+    saved_side_id: "44444444-4444-4444-4444-444444444444",
+    other_side: {
+      kind: "personal_event",
+      id: "55555555-5555-5555-5555-555555555555",
+      name: "Dentist",
+      start_time_utc: "2026-11-07T23:30:00Z",
+      end_time_utc: null,
+    },
+    actions: ["keep_both", "edit_new", "skip_public"],
     ...overrides,
   };
 }
@@ -232,6 +256,71 @@ describe("the locked element order", () => {
     const buttons = Array.from(header?.querySelectorAll("button") ?? []);
     expect(buttons[0]).toHaveAccessibleName("Official");
     expect(buttons[1]).toHaveAccessibleName("Relevance 4 of 5");
+  });
+});
+
+/* ── the conflict mark ────────────────────────────────────────────────────────── */
+
+describe("the conflict mark", () => {
+  it("is absent when the payload names no pair", async () => {
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(screen.queryByRole("button", { name: /Schedule conflict/ })).not.toBeInTheDocument();
+  });
+
+  it("is present when the payload names an active pair", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ conflict: conflict() })),
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole("button", { name: "Schedule conflict. Choose how to handle it." }),
+    ).toBeInTheDocument();
+  });
+
+  it("sits in the trust row, after the badge and the pulse", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ conflict: conflict() })),
+    });
+
+    await renderPage();
+
+    // The mark is a fact about this event, and the trust row is where this screen puts
+    // its facts about the event.
+    const header = document.querySelector("article header");
+    const buttons = Array.from(header?.querySelectorAll("button") ?? []);
+    expect(buttons[0]).toHaveAccessibleName("Official");
+    expect(buttons[1]).toHaveAccessibleName("Relevance 4 of 5");
+    expect(buttons[2]).toHaveAccessibleName("Schedule conflict. Choose how to handle it.");
+  });
+
+  it("is absent for an anonymous reader", async () => {
+    // The anonymous reader has nothing personal, and a conflict is the most personal
+    // thing there is.
+    readEventDetail.mockResolvedValue({ kind: "anonymous", detail: found(null) });
+
+    await renderPage();
+
+    expect(screen.queryByRole("button", { name: /Schedule conflict/ })).not.toBeInTheDocument();
+  });
+
+  it("does not open the prompt by itself", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ conflict: conflict() })),
+    });
+
+    await renderPage();
+
+    // The payload says "there is a choice" — not "show the choice now". The user came
+    // to read an event.
+    expect(screen.queryByRole("dialog", { name: "Schedule conflict" })).not.toBeInTheDocument();
   });
 });
 

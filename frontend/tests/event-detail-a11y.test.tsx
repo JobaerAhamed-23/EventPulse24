@@ -17,7 +17,7 @@
  * boxes to compare and the rule reports false positives rather than findings. The
  * contrast requirement belongs to a real browser.
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,7 +80,33 @@ function whyThis(overrides: Record<string, unknown> = {}) {
 }
 
 function personal(overrides: Record<string, unknown> = {}) {
-  return { neighbor_bucket: "few", saved: false, why_this: whyThis(), ...overrides };
+  return {
+    neighbor_bucket: "few",
+    saved: false,
+    why_this: whyThis(),
+    conflict: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The caller's **active** conflict pair for this event, as the payload carries it.
+ */
+function conflict(overrides: Record<string, unknown> = {}) {
+  return {
+    pair_id: "33333333-3333-3333-3333-333333333333",
+    kind: "time",
+    saved_side_id: "44444444-4444-4444-4444-444444444444",
+    other_side: {
+      kind: "personal_event",
+      id: "55555555-5555-5555-5555-555555555555",
+      name: "Dentist",
+      start_time_utc: "2026-11-07T23:30:00Z",
+      end_time_utc: null,
+    },
+    actions: ["keep_both", "edit_new", "skip_public"],
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -167,6 +193,46 @@ describe("the Detail Screen's axe-core gate", () => {
     });
 
     await renderPage();
+
+    const violations = await audit();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
+      [],
+    );
+  });
+
+  it("has zero serious or critical violations with an active conflict", async () => {
+    // **The mark is a button**, and a button with an accessible name is a thing axe
+    // checks — a mark that was only a coloured dot would fail the "button name" rule,
+    // and a mark with no name would fail the "colour is not the sole carrier" rule.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts(), personal: personal({ conflict: conflict() }) },
+    });
+
+    await renderPage();
+
+    const violations = await audit();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
+      [],
+    );
+  });
+
+  it("has zero serious or critical violations with the prompt open", async () => {
+    // **The prompt is a modal sheet with its own content** — a heading, two cards and
+    // three choices. It is the surface where an accessibility failure would hurt most,
+    // because it is a forced choice the user cannot walk away from.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts(), personal: personal({ conflict: conflict() }) },
+    });
+
+    await renderPage();
+
+    screen.getByRole("button", { name: "Schedule conflict. Choose how to handle it." }).click();
+
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: "Schedule conflict" })).toBeInTheDocument(),
+    );
 
     const violations = await audit();
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(

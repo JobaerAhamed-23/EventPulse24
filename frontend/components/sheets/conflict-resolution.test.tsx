@@ -129,7 +129,7 @@ describe("ConflictResolution", () => {
 
       fireEvent.click(screen.getByText("Keep both — I'll manage"));
 
-      expect(onResolve).toHaveBeenCalledWith("keep_both");
+      expect(onResolve).toHaveBeenCalledWith("keep_both", TIME_CONFLICT);
     });
 
     it("reports the relabelled duplicate resolution", () => {
@@ -137,7 +137,17 @@ describe("ConflictResolution", () => {
 
       fireEvent.click(screen.getByText("Update the existing one"));
 
-      expect(onResolve).toHaveBeenCalledWith("update_existing");
+      expect(onResolve).toHaveBeenCalledWith("update_existing", DUPLICATE_CONFLICT);
+    });
+
+    it("reports the pair the choice is about", () => {
+      // **The pair travels with the choice**, so the caller cannot answer a different
+      // pair from the one on screen.
+      const { onResolve } = renderSheet();
+
+      fireEvent.click(screen.getByText("Keep both — I'll manage"));
+
+      expect(onResolve.mock.calls[0][1].pair_id).toBe(TIME_CONFLICT.pair_id);
     });
   });
 
@@ -324,7 +334,7 @@ describe("ConflictResolution", () => {
       fireEvent.click(screen.getByText("Delete the new one"));
       fireEvent.click(screen.getByRole("button", { name: /^Delete / }));
 
-      expect(onResolve).toHaveBeenCalledWith("delete_new");
+      expect(onResolve).toHaveBeenCalledWith("delete_new", TIME_CONFLICT);
     });
 
     it("returns to the three choices when the deletion is called off", () => {

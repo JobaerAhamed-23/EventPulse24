@@ -123,6 +123,19 @@ export type PersonalEventsPanelProps = {
    * through this callback.
    */
   onEditingEventChange?: (id: string | null) => void;
+  /**
+   * Whether the sheet highlights the start time, when the caller drives it.
+   *
+   * **A "move" action opens the sheet with the conflicting time pre-highlighted**, so
+   * the user lands on the field they have to change rather than on a form that looks
+   * like any other edit. The conflict prompt's "Edit the new one" says so; the review
+   * screen's "Move" says so; and this is the prop that makes both true.
+   *
+   * **Left `undefined`, the panel owns it** — the panel's own conflict flow sets it
+   * when the user chooses a move. Given, it is derived during render, like the editing
+   * id: two sources of truth would show the wrong form in the render between them.
+   */
+  highlightStartTime?: boolean;
 };
 
 export function PersonalEventsPanel({
@@ -134,6 +147,7 @@ export function PersonalEventsPanel({
   editingEvents = [],
   editingEventId,
   onEditingEventChange,
+  highlightStartTime: drivenHighlight,
 }: PersonalEventsPanelProps) {
   // **Every successful write refreshes the server's read.** The list is a server
   // component's read (`PersonalEventsSection`), so a write in this island is invisible
@@ -143,7 +157,7 @@ export function PersonalEventsPanel({
   const router = useRouter();
   const [ownFormOpen, setOwnFormOpen] = useState(false);
   const [ownEditing, setOwnEditing] = useState<PersonalEventSeed | null>(null);
-  const [highlightStartTime, setHighlightStartTime] = useState(false);
+  const [ownHighlightStartTime, setOwnHighlightStartTime] = useState(false);
   // A fresh key per opening, so the form is remounted with the new seed rather than
   // carrying the last one's values.
   const [formKey, setFormKey] = useState(0);
@@ -182,6 +196,13 @@ export function PersonalEventsPanel({
   const editing = driven ? drivenEvent : ownEditing;
   const formOpen = driven ? drivenEvent !== null : (createOpen ?? ownFormOpen);
 
+  // **The highlight is derived too, when the caller drives it.** A caller that says
+  // "open this event with its time highlighted" must not also have to say "and turn the
+  // highlight off when it closes" — the sheet's own close already clears the caller's id,
+  // and a derived highlight falls away with it. The panel's own conflict flow keeps
+  // owning the flag when nobody drives it.
+  const highlight = drivenHighlight ?? ownHighlightStartTime;
+
   const setFormOpen = (open: boolean): void => {
     if (!driven && createOpen === undefined) setOwnFormOpen(open);
     if (!driven) onCreateOpenChange?.(open);
@@ -190,7 +211,7 @@ export function PersonalEventsPanel({
   const closeForm = (): void => {
     setFormOpen(false);
     setOwnEditing(null);
-    setHighlightStartTime(false);
+    setOwnHighlightStartTime(false);
     // **The caller drives the sheet's open event too**, so clearing its id is what
     // actually closes it. Without this the caller would still believe the sheet was
     // open, and the next id it set would not reopen the form.
@@ -199,14 +220,14 @@ export function PersonalEventsPanel({
 
   const openCreate = (): void => {
     setOwnEditing(null);
-    setHighlightStartTime(false);
+    setOwnHighlightStartTime(false);
     setFormKey((key) => key + 1);
     setFormOpen(true);
   };
 
-  const openEdit = (event: PersonalEventSeed, highlight = false): void => {
+  const openEdit = (event: PersonalEventSeed, highlightTime = false): void => {
     setOwnEditing(event);
-    setHighlightStartTime(highlight);
+    setOwnHighlightStartTime(highlightTime);
     setFormKey((key) => key + 1);
     setFormOpen(true);
     onEditingEventChange?.(event.id);
@@ -241,7 +262,7 @@ export function PersonalEventsPanel({
         });
         setFormOpen(false);
         setOwnEditing(null);
-        setHighlightStartTime(false);
+        setOwnHighlightStartTime(false);
         router.refresh();
         return;
       }
@@ -257,10 +278,13 @@ export function PersonalEventsPanel({
   };
 
   /** The user's choice on the conflict prompt. */
-  const resolve = async (resolution: Resolution): Promise<void> => {
+  const resolve = async (resolution: Resolution, pair: Conflict): Promise<void> => {
     if (!conflict || !pending) return;
     const response = await api.POST("/api/personal/events/conflicts/{pair_id}/resolve", {
-      params: { path: { pair_id: conflict.pair_id } },
+      // **The pair the user answered is the pair the request is about.** The sheet
+      // passes the pair it rendered, so the choice cannot be applied to a different
+      // pair than the one on screen.
+      params: { path: { pair_id: pair.pair_id } },
       // **The request names the side the action is about**, with its kind. The pair row is
       // symmetric, so the server cannot infer which side the user is acting on — and the
       // action decides what it may act on: `delete_new` deletes a personal event,
@@ -272,8 +296,8 @@ export function PersonalEventsPanel({
       return;
     }
 
-    const other = conflict.other_side;
-    const resolved = conflict;
+    const other = pair.other_side;
+    const resolved = pair;
     setConflict(null);
     setPending(null);
     router.refresh();
@@ -327,7 +351,7 @@ export function PersonalEventsPanel({
         open={formOpen}
         mode={editing ? "edit" : "create"}
         initial={editing ? seedFrom(editing) : undefined}
-        highlightStartTime={highlightStartTime}
+        highlightStartTime={highlight}
         onClose={closeForm}
         onSubmit={submit}
       />

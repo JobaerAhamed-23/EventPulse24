@@ -5,17 +5,18 @@ import { BottomTabNav } from "@/components/shell/bottom-tab-nav";
 import { Sidenav } from "@/components/shell/sidenav";
 
 /**
- * The Timeline's place in the navigation.
+ * The navigation's real routes.
  *
- * **The Timeline is a real route now.** It was a "Coming soon" span when it was a
- * design; it is a link now that the screen exists. **A link to a 404 is a lie about
- * where the label goes**, and an inert row is a `<span>` with `aria-disabled` rather
- * than an anchor — so this pins both halves: Timeline is a link, and the three routes
- * that still do not exist are not.
+ * **A route that exists is a link; a route that does not is a `<span>`.** Timeline and
+ * Conflicts are real screens now, so both are links in both rails. **A link to a 404 is
+ * a lie about where the label goes**, and an inert row is a `<span>` with
+ * `aria-disabled` rather than an anchor — so this pins both halves: Timeline and
+ * Conflicts are links, and the two routes that still do not exist (Browse, Settings)
+ * are not.
  *
- * **The two rails carry the same route in different geometry.** The sidenav is a
- * vertical list; the bottom tab is a five-slot bar. Both must offer Timeline as a
- * link, and both must mark the current route with `aria-current="page"`.
+ * **The two rails carry the same routes in different geometry.** The sidenav is a
+ * vertical list; the bottom tab is a five-slot bar. Both must offer the real routes as
+ * links, and both must mark the current route with `aria-current="page"`.
  */
 
 const pathname = vi.fn();
@@ -48,15 +49,30 @@ function bottomBar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Main" });
 }
 
+/** The sidenav row carrying a label. */
+function sidenavItem(label: string): HTMLElement | undefined {
+  return [...sidenavRail().querySelectorAll("li")].find((li) =>
+    [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
+  );
+}
+
 describe("the sidenav", () => {
   it("links Timeline to the screen", () => {
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
-    const item = [...sidenavRail().querySelectorAll("li")].find((li) =>
-      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Timeline"),
-    );
+    const item = sidenavItem("Timeline");
     expect(item).not.toBeUndefined();
     expect(item?.querySelector("a")?.getAttribute("href")).toBe("/timeline");
+    expect(item?.textContent).not.toContain("Coming soon");
+  });
+
+  it("links Conflicts to the screen", () => {
+    render(<Sidenav name="Maya" email="maya@example.test" />);
+
+    const item = sidenavItem("Conflicts");
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/conflicts");
+    // "Coming soon" goes — the screen exists.
     expect(item?.textContent).not.toContain("Coming soon");
   });
 
@@ -69,24 +85,33 @@ describe("the sidenav", () => {
     expect(link?.getAttribute("aria-current")).toBe("page");
   });
 
-  it("does not mark Timeline as the current route on another page", () => {
+  it("marks Conflicts as the current route when it is", () => {
+    pathname.mockReturnValue("/conflicts");
+
+    render(<Sidenav name="Maya" email="maya@example.test" />);
+
+    const link = [...sidenavRail().querySelectorAll("a")].find(
+      (anchor) => anchor.getAttribute("href") === "/conflicts",
+    );
+    expect(link?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("does not mark Conflicts as the current route on another page", () => {
     pathname.mockReturnValue("/");
 
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
-      (anchor) => anchor.getAttribute("href") === "/timeline",
+      (anchor) => anchor.getAttribute("href") === "/conflicts",
     );
     expect(link?.getAttribute("aria-current")).toBeNull();
   });
 
-  it("leaves the three routes that do not exist inert", () => {
+  it("leaves the routes that do not exist inert", () => {
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
-    for (const label of ["Browse", "Conflicts", "Settings"]) {
-      const item = [...sidenavRail().querySelectorAll("li")].find((li) =>
-        [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
-      );
+    for (const label of ["Browse", "Settings"]) {
+      const item = sidenavItem(label);
       expect(item?.querySelector("a"), label).toBeNull();
       expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
     }
@@ -101,6 +126,13 @@ describe("the bottom tab", () => {
     expect(link).toHaveAttribute("href", "/timeline");
   });
 
+  it("links Conflicts to the screen", () => {
+    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+    const link = screen.getByRole("link", { name: "Conflicts" });
+    expect(link).toHaveAttribute("href", "/conflicts");
+  });
+
   it("marks Timeline as the current route when it is", () => {
     render(<BottomTabNav name="Maya" email="maya@example.test" />);
 
@@ -109,10 +141,20 @@ describe("the bottom tab", () => {
     );
   });
 
-  it("keeps the three routes that do not exist inert", () => {
+  it("marks Conflicts as the current route when it is", () => {
+    pathname.mockReturnValue("/conflicts");
+
     render(<BottomTabNav name="Maya" email="maya@example.test" />);
 
-    for (const label of ["Conflicts", "Settings"]) {
+    expect(screen.getByRole("link", { name: "Conflicts" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+  });
+
+  it("keeps the routes that do not exist inert", () => {
+    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+    for (const label of ["Settings"]) {
       expect(screen.queryByRole("link", { name: label }), label).toBeNull();
       const slot = bottomBar().querySelector(`[aria-disabled="true"]`);
       expect(slot, label).not.toBeNull();
