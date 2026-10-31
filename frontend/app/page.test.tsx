@@ -2,9 +2,10 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
+import { cookieStore, type CookieStore } from "@/tests/cookie-store";
 
 /**
- * `/` — the routing decision and the placeholder home.
+ * `/` — the Pulse Digest: the routing decision and the four states.
  *
  * The three redirect branches are the heart of it: an anonymous visitor belongs on
  * `/preview`, a half-onboarded user on `/onboarding`, and an onboarded one here. The
@@ -13,7 +14,11 @@ import HomePage from "@/app/page";
  */
 
 const getSession = vi.fn();
+const readDigest = vi.fn();
 const redirect = vi.fn();
+
+/** The request's cookie jar. The failure count lives in it. */
+let jar: CookieStore;
 
 vi.mock("@/lib/session", async () => {
   // `homeRoute` is the real one: it is the rule under test, and `lib/session.test.ts`
@@ -22,20 +27,19 @@ vi.mock("@/lib/session", async () => {
   return { ...actual, getSession: () => getSession() };
 });
 
+vi.mock("@/lib/digest-read", () => ({
+  readDigest: () => readDigest(),
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: async () => jar,
+}));
+
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirect(...args),
+  usePathname: () => "/",
   // The page renders the real sign-out button, which is a client component with a router.
-  // Its own behaviour is tested in `components/auth/sign-out-button.test.tsx`.
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-// The two server sections read through the API; the page's own test is about the page.
-vi.mock("@/components/personal-events-section", () => ({
-  PersonalEventsSection: () => <p>Personal events section</p>,
-}));
-
-vi.mock("@/components/saved-events-section", () => ({
-  SavedEventsSection: () => <p>Saved events section</p>,
 }));
 
 const USER = {
@@ -44,9 +48,47 @@ const USER = {
   onboarding: { completed: true, current_step: null },
 };
 
+function card(overrides: Record<string, unknown> = {}) {
+  return {
+    bucket: 4,
+    canonical_url: null,
+    catalog_event_missing: false,
+    conflict: false,
+    end_time_utc: null,
+    event_id: "22222222-2222-2222-2222-222222222222",
+    event_kind: "public",
+    location: "Brooklyn",
+    slot: "must_know",
+    source_badge: "official_site",
+    start_time_tz: "America/New_York",
+    start_time_utc: "2026-11-07T23:00:00Z",
+    tags: ["nearby", "tonight"],
+    title: "Brooklyn Symphony open rehearsal",
+    tz_review_pending: false,
+    venue_city: "Brooklyn",
+    venue_name: "BAM Howard Gilman Opera House",
+    ...overrides,
+  };
+}
+
+const COMPOSED = {
+  status: "composed" as const,
+  cards: [card(), card({ event_id: "33333333-3333-3333-3333-333333333333" })],
+  city: "Brooklyn",
+  city_source: "user",
+  local_date: "2026-11-07",
+  timezone: "America/New_York",
+};
+
 beforeEach(() => {
   getSession.mockReset();
   redirect.mockReset();
+  readDigest.mockReset();
+  // A fresh jar per test: the failure count is stateful, and a count left over from
+  // one test would decide the label in the next.
+  jar = cookieStore();
+  getSession.mockResolvedValue({ kind: "signed-in", user: USER });
+  readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
 });
 
 describe("the routing decision", () => {
@@ -70,17 +112,15 @@ describe("the routing decision", () => {
   });
 
   it("keeps an onboarded user here", async () => {
-    getSession.mockResolvedValue({ kind: "signed-in", user: USER });
-
     render(await HomePage());
 
     expect(redirect).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Your Pulse is being prepared." }),
+      screen.getByRole("heading", { level: 1, name: "Today, three things matter." }),
     ).toBeInTheDocument();
   });
 
-  it("shows the calm error, and does not redirect, when the API can't be reached", async () => {
+  it("shows the calm error, and does not redirect, when the session can't be read", async () => {
     getSession.mockResolvedValue({ kind: "unavailable" });
 
     render(await HomePage());
@@ -90,53 +130,309 @@ describe("the routing decision", () => {
       "Couldn't reach Pulse. Try again.",
     );
   });
+
+  it("does not read the digest when the visitor is not signed in", async () => {
+    // The session is unreadable, so there is no digest to read. Reading it anyway would
+    // be an anonymous read of a personal endpoint.
+    getSession.mockResolvedValue({ kind: "unavailable" });
+
+    await HomePage();
+
+    expect(readDigest).not.toHaveBeenCalled();
+  });
 });
 
-describe("the placeholder home", () => {
-  beforeEach(() => {
-    getSession.mockResolvedValue({ kind: "signed-in", user: USER });
-  });
+describe("the digest", () => {
+  it("renders the cards in the server's order", async () => {
+    // The order is a persisted fact: the composition service chose the slot order and
+    // stored it. A client that re-sorted would be re-deciding it at render (AD-10).
+    const titles = ["First card", "Second card", "Third card"];
+    readDigest.mockResolvedValue({
+      kind: "composed",
+      digest: {
+        ...COMPOSED,
+        cards: titles.map((title, index) =>
+          card({ title, event_id: `00000000-0000-0000-0000-00000000000${index}` }),
+        ),
+      },
+    });
 
-  it("hosts the personal and saved sections", async () => {
-    // The work item: the home "links to personal and saved events". Neither has a route
-    // of its own yet, so both are here rather than linked to a 404.
     render(await HomePage());
 
-    expect(screen.getByText("Personal events section")).toBeInTheDocument();
-    expect(screen.getByText("Saved events section")).toBeInTheDocument();
+    const headlines = screen.getAllByRole("heading", { level: 3 }).map((el) => el.textContent);
+    expect(headlines).toEqual(titles);
   });
 
-  it("offers sign-out, and names who is signed in", async () => {
+  it("renders no more cards than the server sent", async () => {
     render(await HomePage());
 
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
-    expect(screen.getByText("Signed in as maya@example.test")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(COMPOSED.cards.length);
   });
 
-  it("shows no digest content, because there is no digest yet", async () => {
-    // The calm placeholder must not imply a Pulse Digest exists: no cards, no score, no
-    // "Why this", no invented numbers.
+  it("shows the header's date line from the server's date and city", async () => {
+    readDigest.mockResolvedValue({
+      kind: "composed",
+      digest: { ...COMPOSED, local_date: "2026-11-07", city: "Brooklyn" },
+    });
+
     render(await HomePage());
 
-    const text = (document.body.textContent ?? "").toLowerCase();
-    for (const forbidden of ["why this", "relevance", "pulse score", "tonight's pulse"]) {
-      expect(text).not.toContain(forbidden);
-    }
+    // The weekday is read in the digest's own zone, so it is the server's Saturday —
+    // and 2026-11-07 is a Saturday.
+    const eyebrow = screen.getByText(/Saturday/);
+    expect(eyebrow).toHaveTextContent("Saturday · Nov 7, 2026 · Brooklyn");
   });
 
-  it("renders exactly one personal-events surface", async () => {
-    // The page used to render `AddEventButton` beside the section, and that button mounts
-    // its own copy of the panel — so there were two "Your personal events" lists, one of
-    // them always empty. The section owns the affordance now.
-    const { container } = render(await HomePage());
+  it("announces the digest once, in a live region, with the card count", async () => {
+    render(await HomePage());
 
-    expect(container.querySelectorAll('[aria-label="Your personal events"]')).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "Add personal event" })).toBeNull();
+    const region = screen.getByRole("status", { name: "" });
+    expect(region).toHaveAttribute("aria-live", "polite");
+    expect(region).toHaveAttribute("aria-atomic", "true");
+    expect(region).toHaveTextContent("Pulse Digest ready, 2 events for today.");
   });
 
-  it("is rendered per request, so the build never reads the user's session or events", async () => {
+  it("announces the digest with a comma, not a full stop", async () => {
+    // The full stop would change the sentence boundary a screen reader hears.
+    render(await HomePage());
+
+    const region = screen.getByRole("status", { name: "" });
+    expect(region.textContent).toContain("ready, 2 events");
+    expect(region.textContent).not.toContain("ready.");
+  });
+
+  it("is rendered per request, so the build never reads the user's digest", async () => {
     const page = await import("@/app/page");
 
     expect(page.dynamic).toBe("force-dynamic");
+  });
+});
+
+describe("the empty state", () => {
+  beforeEach(() => {
+    readDigest.mockResolvedValue({
+      kind: "empty",
+      digest: { ...COMPOSED, status: "empty", cards: [] },
+    });
+  });
+
+  it("reads the locked copy", async () => {
+    render(await HomePage());
+
+    expect(
+      screen.getByRole("heading", { name: "Nothing on the pulse today. The calendar is yours." }),
+    ).toBeInTheDocument();
+  });
+
+  it("names the city in the line below the card", async () => {
+    render(await HomePage());
+
+    expect(screen.getByText("No qualifying events in Brooklyn.")).toBeInTheDocument();
+  });
+
+  it("offers one low-weight link, and no button", async () => {
+    const { container } = render(await HomePage());
+
+    const link = screen.getByRole("link", { name: "Suggest an event" });
+    expect(link).toHaveAttribute("href", "/suggest");
+
+    // No CTA pair, no carousel, no upsell: the empty state is the message. The shell's
+    // own controls (the Add slot, the Search button) are not part of the empty state,
+    // so the assertion is scoped to the digest's region.
+    const main = container.querySelector("main");
+    expect(main?.querySelectorAll("button")).toHaveLength(0);
+    expect(main?.querySelectorAll("a")).toHaveLength(1);
+  });
+
+  it("carries no terracotta, which is rationed to four uses", async () => {
+    const { container } = render(await HomePage());
+
+    // The shell's brand mark is terracotta, and so is the header's `Indicator.Today`
+    // dot — both are sanctioned uses. The *empty state* may carry neither: the
+    // mockup's terracotta primary button is the violation.
+    const main = container.querySelector("main");
+    const empty = main?.querySelector("article");
+    expect(empty?.querySelector(".bg-accent-terracotta")).toBeNull();
+  });
+
+  it("is distinct from the not-yet-composed state", async () => {
+    render(await HomePage());
+
+    expect(screen.queryByRole("heading", { name: /being prepared/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("the not-yet-composed state", () => {
+  beforeEach(() => {
+    readDigest.mockResolvedValue({
+      kind: "not_composed",
+      digest: { ...COMPOSED, status: "not_composed", cards: [] },
+    });
+  });
+
+  it("says the digest is being prepared, and claims nothing about the world", async () => {
+    render(await HomePage());
+
+    expect(
+      screen.getByRole("heading", { name: "Your Pulse is being prepared." }),
+    ).toBeInTheDocument();
+
+    // "No qualifying events" is a claim about the world, and the world has not been
+    // asked yet.
+    expect(screen.queryByText(/No qualifying events/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing on the pulse today/)).not.toBeInTheDocument();
+  });
+
+  it("is not the empty state", async () => {
+    render(await HomePage());
+
+    expect(
+      screen.queryByRole("heading", { name: "Nothing on the pulse today. The calendar is yours." }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("the error state", () => {
+  beforeEach(() => {
+    readDigest.mockResolvedValue({ kind: "unavailable" });
+  });
+
+  it("says so, and offers one retry", async () => {
+    render(await HomePage());
+
+    expect(screen.getByRole("heading", { name: /Couldn't reach Pulse/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("says 'Refresh page.' on the second consecutive failure", async () => {
+    // The first failure renders "Try again" and records the failure in the cookie.
+    await HomePage();
+
+    // The second failure — the same page, rendered again with the cookie still set —
+    // is the one that changes the label.
+    render(await HomePage());
+
+    expect(screen.getByRole("link", { name: "Refresh page." })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  it("counts consecutive failures, and a success breaks the run", async () => {
+    // Two failures in a row: the label changes.
+    await HomePage();
+    await HomePage();
+    expect(jar.get("pulse-digest-attempt")?.value).toBe("2");
+
+    // A success clears the count, so the *next* failure is a first failure again.
+    readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
+    await HomePage();
+    expect(jar.get("pulse-digest-attempt")).toBeUndefined();
+
+    readDigest.mockResolvedValue({ kind: "unavailable" });
+    render(await HomePage());
+    expect(screen.getByRole("link", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("retries the read rather than reloading the document on the first failure", async () => {
+    render(await HomePage());
+
+    // The retry carries a nonce, so the server renders again rather than serving the
+    // failure it already rendered.
+    const retry = screen.getByRole("link", { name: "Try again" });
+    expect(retry).toHaveAttribute("href", "/?retry=1");
+  });
+
+  it("is not the session error", async () => {
+    // The session is fine here; the digest read failed. Two different failures, and the
+    // digest's error is the one inside the page's main region.
+    const { container } = render(await HomePage());
+
+    const main = container.querySelector("main");
+    expect(main?.querySelectorAll("h2")).toHaveLength(1);
+    expect(main?.querySelector("h1")).toBeNull();
+  });
+});
+
+describe("the shell", () => {
+  /**
+   * The sidenav and the bottom-tab bar both render the route labels, so a
+   * document-wide query finds two of everything. These helpers scope to the one
+   * rail or bar being tested.
+   */
+  function sidenav(): HTMLElement {
+    return screen.getByRole("complementary", { name: "Primary" });
+  }
+
+  it("carries the six routes, in the locked order", async () => {
+    render(await HomePage());
+
+    // The route list is the nav's own `<ul>`. Each route's name is a span of its own;
+    // the inert ones also carry a "Coming soon" note, the Add row carries a button,
+    // and the glyphs are SVG.
+    const nav = sidenav().querySelector("nav");
+    expect(nav).not.toBeNull();
+    const labels = [...(nav?.querySelectorAll("li") ?? [])].map((li) => {
+      const spans = [...li.querySelectorAll("span")];
+      const named = spans.find(
+        (span) =>
+          span.textContent?.trim() !== "Coming soon" &&
+          span.querySelector("svg") === null &&
+          !span.hasAttribute("aria-hidden"),
+      );
+      return named?.textContent?.trim();
+    });
+    expect(labels).toEqual(["Digest", "Timeline", "Add", "Browse", "Conflicts", "Settings"]);
+  });
+
+  it("marks the active route with an ink pill, never a terracotta fill", async () => {
+    render(await HomePage());
+
+    const active = sidenav().querySelector('a[aria-current="page"]');
+    expect(active).not.toBeNull();
+    expect(active?.textContent).toContain("Digest");
+    expect(active?.className).toContain("bg-surface-subtle");
+    expect(active?.className).not.toContain("terracotta");
+  });
+
+  it("does not let an inert route navigate", async () => {
+    render(await HomePage());
+
+    // Four of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
+    // with aria-disabled still navigates.
+    for (const label of ["Timeline", "Browse", "Conflicts", "Settings"]) {
+      const item = [...sidenav().querySelectorAll("li")].find((li) =>
+        [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
+      );
+      expect(item, label).not.toBeUndefined();
+      expect(item?.querySelector("a"), label).toBeNull();
+      expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
+    }
+  });
+
+  it("keeps the topbar brand-only", async () => {
+    const { container } = render(await HomePage());
+
+    const header = container.querySelector("header");
+    expect(header?.textContent).toContain("EventPulse24");
+    // The brand glyph is decorative; the wordmark carries the name.
+    expect(header?.querySelector("a")).toBeNull();
+    expect(header?.querySelector("button")).toBeNull();
+    expect(header?.querySelector("nav")).toBeNull();
+  });
+
+  it("constrains the content to the reading width, so a wide screen does not reflow it", async () => {
+    const { container } = render(await HomePage());
+
+    // "Desktop adds whitespace, never features, screens, actions or copy" (§10). A wide
+    // viewport stretches a card; a wide *card* changes how the card reads. So the
+    // constraint is the whole of the desktop's contribution to the layout.
+    const main = container.querySelector("main");
+    expect(main?.className).toContain("max-w-(--layout-container-max)");
+  });
+
+  it("shows the account row in the sidenav footer", async () => {
+    render(await HomePage());
+
+    expect(screen.getByRole("link", { name: /Account: Maya/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search events" })).toBeInTheDocument();
   });
 });

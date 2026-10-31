@@ -68,10 +68,10 @@ work_items:
   - id: frontend-digest-home
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: frontend-event-detail
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: frontend-digest-home
+current_item: frontend-event-detail
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -107,13 +107,13 @@ wide (12 work items)
 7. **event-detail-api** (confirm) — completed
 8. **digest-scheduling** (confirm) — completed
 9. **frontend-pulse-card** (confirm) — completed
-10. **frontend-digest-home** (confirm) — pending
+10. **frontend-digest-home** (confirm) — completed
 11. **frontend-event-detail** (confirm) — pending
 12. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-frontend-digest-home (confirm)
+frontend-event-detail (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -210,6 +210,32 @@ frontend-digest-home (confirm)
   — D1–D18, the ten-row drift table, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-frontend-pulse-card.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-frontend-pulse-card.md`
+- `frontend/lib/digest-read.ts` — the server-side read of `GET /api/personal/digest`,
+  typed as `composed` / `empty` / `not_composed` / `unavailable`
+- `frontend/components/shell/app-shell.tsx` — the authed frame: sidenav, brand-only
+  topbar, `<main>`, bottom-tab bar
+- `frontend/components/shell/sidenav.tsx` — the six-route rail and its footer
+- `frontend/components/shell/bottom-tab-nav.tsx` — the five-slot bar
+- `frontend/components/shell/more-menu.tsx` — the overflow sheet, where Browse lives
+- `frontend/components/shell/nav-glyphs.tsx` — eight hand-drawn 16×16 stroke-only SVGs
+- `frontend/components/digest/digest-header.tsx` — the today dot, the date line, the h1
+  and the lede
+- `frontend/components/digest/digest-empty.tsx` — §5's empty state: one `Text.Meta` link
+- `frontend/components/digest/digest-preparing.tsx` — the not-yet-composed state
+- `frontend/components/digest/digest-error.tsx` — "Couldn't reach Pulse." and both labels
+- `frontend/components/digest/digest-skeleton.tsx` — the three paper rectangles
+- `frontend/lib/digest-attempt.ts` — the server-owned count of consecutive failures
+- `frontend/app/page.test.tsx` — 31 tests
+- `frontend/tests/digest-home-a11y.test.tsx` — 5 tests, the axe-core gate over all four
+  documents
+- `frontend/tests/digest-home-boundary.test.ts` — 22 tests, asserted against the source
+- `frontend/lib/digest-attempt.test.ts` — 11 tests
+- `frontend/tests/cookie-store.ts` — a real cookie store, so the tests assert on the
+  cookie's value rather than on a method call
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/frontend-digest-home-design.md`
+  — D1–D21, the twelve-row drift table, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-frontend-digest-home.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-frontend-digest-home.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -763,3 +789,109 @@ frontend-digest-home (confirm)
   here.** It is a per-user, per-event dismissal and no dismissal state exists in the
   persisted card; the card shows the tooltip every time it is opened. It is recorded
   rather than silently dropped, and belongs with the detail screen or a dismissal store.
+
+## The frontend-digest-home item's decisions
+
+- **The route decision in `lib/session.ts` was not touched.** It is already a pure
+  function and already correct, and the fourth case's "not a redirect" is load-bearing:
+  sending a signed-in user to the anonymous preview because one request failed would
+  tell them they are logged out when they are not.
+- **The page reads the digest on the server**, through the generated client, with
+  `sessionHeaders()`. AD-19: the frontend reaches the backend only through the
+  generated `api` client. And a server read without the visitor's cookies is
+  anonymous — which showed up, once, as a signed-in user's own home page telling them
+  they had no personal events.
+- **The read lives in `lib/digest-read.ts`, not in the page.** The page's decision
+  becomes a pure function over a typed result, testable directly — the same pattern
+  `lib/session.ts` uses for the route rule.
+- **`not_composed` gets its own state.** The empty state's copy — "No qualifying events
+  in {city}." — is a **claim about the world**. Before the digest is composed, the
+  world has not been asked, so the page says only what is true: it is being prepared.
+  Both statuses answer 200 and both are "no cards", so collapsing them would have been
+  a one-line change that every test would have kept green.
+- **The empty state is §5's copy exactly**, with one `Text.Meta` link and nothing else.
+  The as-built mockup ships a terracotta primary, a ghost "Browse all sources" button
+  and a "Suggested sources for you" panel; §5 says "No CTA. No carousel. No upsell at
+  all." A terracotta button in that moment would be the marketing.
+- **"Suggest an event" is a real link to `/suggest`**, not a disabled button. The route
+  does not exist yet, and that is a separate work item; a disabled control would promise
+  a destination the product cannot deliver.
+- **The skeleton is three plain paper rectangles**, not the preview's card-shaped one.
+  §5's Loading Patterns is the digest's own vocabulary.
+- **The pulse is one named animation, and `styles/motion.test.ts` was updated rather
+  than deleted.** The spec requires the 1800ms pulse and the existing test forbade
+  every animation. The test's intent survives as "one transition and one loading pulse,
+  and nothing else": it now allows exactly that one and still fails on any other.
+- **The failure count lives in a cookie the server owns.** The retry is a navigation,
+  and a client-side counter cannot survive one. The cookie is written only on a failure
+  and cleared on a success, because §5's rule says *consecutive* — one good read breaks
+  the run.
+- **`recordFailure()` returns the number of prior failures, not the new total.** The
+  component's rule is `attempt >= 1`, so the first failure must pass 0. Returning the
+  new total would make the *first* failure render the *second* failure's label — which
+  is what the first version of the fix did, and what the new tests caught.
+- **The first retry re-runs the server's read; the second reloads the document.** The
+  digest is a *personal* page read, and a client-side re-fetch would be a second reader
+  of the same endpoint with a different failure mode. The second failure is probably
+  not in the one request.
+- **The error state is separate from `HomeUnavailable`.** The session being unreadable
+  and the digest read failing are different failures, and the page distinguishes them.
+- **The live region is visually hidden and announces once, with the comma form.** §7's
+  string uses a comma; the mockup uses a full stop, and the difference changes the
+  sentence boundary a screen reader hears.
+- **The sidenav is the six-route variant**, canonical on every authed surface. The
+  five-route variant survives only in the onboarding batch.
+- **The active sidenav item is an ink pill, never terracotta.** Both documents say so,
+  twice: "no terracotta fill on the active route", and "terracotta on a small-control
+  toggle burns the accent on a control used many times per day".
+- **An inert route is a `<span aria-disabled>`, not an `<a>`.** An anchor with
+  `aria-disabled="true"` is still focusable and still navigates — the attribute is a
+  hint, not a mechanism — and a link to a 404 is a lie about where the label goes. The
+  six-route order is locked, so the list must not shrink either.
+- **The create sheet is mounted outside the route list.** It is a whole panel of
+  markup; inside the `<li>` it would be a form nested in a navigation list, and its
+  "Name" field would be a descendant of the route list. `AddEventButton` gained
+  `withoutPanel` and `onOpen` for exactly this.
+- **The compact Add button carries no ink of its own.** The sidenav and the bottom-tab
+  draw the 16×16 stroke-only `+` themselves; a literal `+` beside that glyph is one
+  mark drawn badly, not the same mark twice.
+- **The More slot opens the overflow sheet, where Browse lives.** Five slots at twenty
+  percent each is the locked geometry, and Browse is the sixth route. The sheet's
+  Browse row is itself inert, because Browse is not built: a control that opens a sheet
+  is not the same as a route that exists.
+- **The glyphs are hand-drawn inline SVGs.** The stack is "UI system: None", and adding
+  an icon library for eight 16-pixel marks would be a heavier dependency than the marks
+  themselves.
+- **The layout is one column at every width, constrained to 1180px.** §10's two-column
+  layout is defined *in terms of* the side rail, and the rail's contents are (a) a Pro
+  card that cannot ship and (b) a saved-events rail that needs a backend read this item
+  does not do. A two-column layout with an empty column is a layout with a hole in it.
+- **The Pro card does not ship**, and the saved rail is deferred. There is no
+  `SUBSCRIPTION` model; every user is Free.
+- **Pull-to-refresh is not implemented and offline is out of scope.** Pull-to-refresh is
+  a browser-native behaviour that needs no work, and nothing here polls. There is no
+  service worker in this codebase, and the spec's offline path is a whole surface, not
+  a banner.
+- **The axe-core gate runs over all four documents,** not just the happy one. A page
+  can be accessible when it is full and inaccessible when it is empty — an empty state
+  with no heading hierarchy, an error state whose retry is an unnamed control — each is
+  a different document and a different set of rules.
+- **The axe gate fails on serious and critical only.** Minor and moderate findings are
+  advisory, and a gate that fails on a moderate finding is a gate that gets disabled.
+  `color-contrast` is disabled explicitly: jsdom computes no layout, so axe has no
+  boxes to compare and the rule reports false positives rather than findings.
+- **The boundary test strips the comments and asserts on what the compiler sees.** The
+  surface's docstrings quote the spec — they mention the middle dot, the terracotta
+  ration and the 1800ms pulse — and a source-text assertion that read them would be
+  asserting on prose.
+- **The cookie store in the tests is a real store, not a spy.** It is a `Map` behind
+  `get`/`set`/`delete`, so the tests assert on the cookie's *value* — "the count went
+  up to 2" — rather than on the fact that a method was called. A spy would only prove
+  the call happened; the store proves the cookie ended up right.
+- **One test was asserting the opposite of what its name said.** The test named
+  *"says 'Refresh page.' on the second consecutive failure"* asserted
+  `getByRole("link", { name: "Try again" })`. It passed while the feature was absent,
+  because the page hardcoded `attempt={0}` and the label could never change. The
+  lesson, recorded for the next item: **a test's name and its body must assert the same
+  thing** — the name is what a reviewer reads and the body is what the runner checks,
+  and when they disagree only the body is evidence.
