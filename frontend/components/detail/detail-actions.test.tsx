@@ -92,7 +92,15 @@ describe("the action row", () => {
               pair_id: "pair-1",
               kind: "overlap",
               actions: ["delete_new", "edit_new", "keep_both"],
-              other: {
+              new_side: {
+                kind: "saved_event",
+                id: "saved-1",
+                name: "Free tech meetup",
+                start_time_utc: "2026-11-03T14:30:00Z",
+                end_time_utc: "2026-11-03T15:30:00Z",
+              },
+              other_side: {
+                kind: "personal_event",
                 id: "personal-1",
                 name: "Dentist",
                 start_time_utc: "2026-11-03T15:00:00Z",

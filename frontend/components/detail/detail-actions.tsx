@@ -55,7 +55,7 @@ export function DetailActions({ eventId, saved }: DetailActionsProps) {
         // the same 409. The resolve endpoint takes personal events only, so the
         // three-action prompt is not offered here; the overlap is named instead.
         setIsSaved(true);
-        setOverlaps(clash.other.name);
+        setOverlaps(clash.other_side.name);
       } else {
         setFailed(true);
       }

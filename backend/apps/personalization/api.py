@@ -33,9 +33,11 @@ from apps.personalization.schemas import (
     CalendarConnectionListOut,
     CalendarConnectionOut,
     CalendarReconnectIn,
+    ConflictListOut,
     ConflictOut,
     ConflictResolutionIn,
     ConflictResolutionOut,
+    ConflictSideRef,
     DigestCardOut,
     DigestOut,
     DigestPreferenceIn,
@@ -53,6 +55,8 @@ from apps.personalization.schemas import (
     SavedEventListQuery,
     SavedEventOut,
     SchedulingConflictOut,
+    TimelineOut,
+    TimelineQuery,
 )
 from apps.personalization.services.calendar_connections import (
     connect_calendar,
@@ -61,8 +65,8 @@ from apps.personalization.services.calendar_connections import (
     list_calendar_connections,
     reconnect_calendar_for_user,
 )
+from apps.personalization.services.conflict_list import list_conflict_pairs
 from apps.personalization.services.conflict_resolutions import resolve_conflict
-from apps.personalization.services.conflicts import PERSONAL_EVENT_SIDE
 from apps.personalization.services.digest_read import read_digest
 from apps.personalization.services.onboarding import (
     advance_step,
@@ -86,6 +90,7 @@ from apps.personalization.services.saved_events import (
     save_event,
     unsave_event,
 )
+from apps.personalization.services.timeline import read_timeline_week
 from domain.errors import SchedulingConflictError
 from shared.actor import Actor
 from shared.errors import ErrorOut
@@ -241,7 +246,15 @@ def remove_event(request, event_id: UUID):
     description=(
         "Records the user's choice on a conflict prompt. Exactly one of the three actions "
         "the prompt offered is accepted; there is no dismiss. A resolution that is illegal "
-        "for this conflict's kind is refused, and the prompt stays open."
+        "for this conflict's kind — or for the side named — is refused, and the prompt "
+        "stays open.\n\n"
+        "**The request names the side the action is about**, with its kind, because the "
+        "pair row is symmetric and cannot say which side the user is acting on. The action "
+        "decides what it may act on: `delete_new` deletes a personal event and refuses a "
+        "saved side; `skip_public` releases a save of a public event and refuses a "
+        "personal side. So a client cannot delete a personal event by naming a saved "
+        "side, and it cannot release another user's save by naming a personal one — a "
+        "side that is not one of the pair's two is refused outright."
     ),
 )
 def resolve_event_conflict(request, pair_id: UUID, body: ConflictResolutionIn):
@@ -250,8 +263,8 @@ def resolve_event_conflict(request, pair_id: UUID, body: ConflictResolutionIn):
         user_id=request.user.pk,
         pair_id=pair_id,
         resolution=body.resolution,
-        new_side_kind=PERSONAL_EVENT_SIDE,
-        new_side_id=body.new_side_id,
+        side_kind=body.side.kind,
+        side_id=body.side.id,
         actor=_actor(request),
         now=timezone.now(),
     )
@@ -260,8 +273,81 @@ def resolve_event_conflict(request, pair_id: UUID, body: ConflictResolutionIn):
         kind=resolution.kind,
         resolution=resolution.resolution,
         status=resolution.status,
-        new_side_id=resolution.new_side_id,
-        existing_side_id=resolution.existing_side_id,
+        action_side=(
+            ConflictSideRef(kind=resolution.action_side_kind, id=resolution.action_side_id)
+            if resolution.action_side_id is not None
+            else None
+        ),
+        other_side=(
+            ConflictSideRef(kind=resolution.other_side_kind, id=resolution.other_side_id)
+            if resolution.other_side_id is not None
+            else None
+        ),
+    )
+
+
+@router.get(
+    "/conflicts",
+    response={200: ConflictListOut},
+    summary="List the signed-in user's conflict pairs",
+    description=(
+        "Every conflict pair the signed-in user has, in two groups: `active` — what still "
+        "needs a decision — and `resolved` — what was decided. Each pair carries both "
+        "sides, named, so a pair can be shown without a second request per side.\n\n"
+        "**A saved side is named by its catalog title.** A save has no title of its own; the "
+        "title lives in the catalog and is read through its published interface. A side "
+        "whose record is gone reads as `available: false` with no name — 'event no longer "
+        "available' — rather than a blank or an error.\n\n"
+        "**`resolved` holds the pairs the user answered.** A pair closed because a side "
+        "went away without the user answering (`cleared_by_state_change`) is not listed: it "
+        "is not the user's choice, so it is not presented as one.\n\n"
+        "Active pairs are ordered by the earlier side's start time, soonest first; "
+        "resolved pairs by resolution time, newest first. No other user's pairs are "
+        "readable."
+    ),
+)
+def list_conflicts(request):
+    """The signed-in user's conflict pairs, active and resolved."""
+    return ConflictListOut.from_view(list_conflict_pairs(user_id=request.user.pk))
+
+
+@router.get(
+    "/timeline",
+    response={200: TimelineOut},
+    summary="The signed-in user's week, day by day",
+    description=(
+        "One Mon–Sun week in the **user's timezone**, as seven days, each a time-ordered "
+        "list of blocks — the user's personal events and their saved public events, "
+        "merged.\n\n"
+        "**`week` is any date in the wanted week.** The response names that week's Monday "
+        "and Sunday. With no `week`, the current week in the user's own zone is returned. A "
+        "malformed value is a 422.\n\n"
+        "**Days are cut in the user's timezone**, not the server's — a week is cut at local "
+        "midnight, so it is 167 hours across a spring-forward and 169 across a fall-back. An "
+        "event is placed on the day its local start falls on.\n\n"
+        "**A block carries the id the screen acts on**: the personal event's id, or the "
+        "*catalog* event's id for a saved event, so the screen can route to `/events/:id`. "
+        "It also carries the event's own zone, which is not the zone the week is cut in.\n\n"
+        "**`conflict` is already decided.** It is true on both sides of an active pair, and "
+        "it stays true after 'Keep both' — that resolution leaves a permanent reminder. "
+        "Every other resolution clears it.\n\n"
+        "**A multi-day event appears on every day it covers**, and the indicator fires on "
+        "the day-cell whose interval contains the **overlap** — the clash itself, not the "
+        "event's whole span. So an event running from Friday 22:00 to Saturday 02:00 that "
+        "clashes on Friday lights Friday's cell only, while a clash that itself straddles "
+        "midnight lights both of its days.\n\n"
+        "**Seven days, always** — an empty week still has seven day cells. No other user's "
+        "events are readable."
+    ),
+)
+def read_timeline(request, filters: TimelineQuery = EVENT_LIST_QUERY):
+    """The signed-in user's week, with the conflicts already decided."""
+    return TimelineOut.from_week(
+        read_timeline_week(
+            user_id=request.user.pk,
+            day=filters.week,
+            now=timezone.now(),
+        )
     )
 
 
@@ -273,9 +359,12 @@ def resolve_event_conflict(request, pair_id: UUID, body: ConflictResolutionIn):
         "Saves a public catalog event onto the signed-in user's own calendar. The save is "
         "idempotent: saving an event that is already saved returns the existing record. The "
         "times in the response are the snapshot taken at save time; `stale` says whether the "
-        "catalog has moved past it, in which case re-propagation has been requested. If the "
-        "save clashes with a personal event, the response is 409 carrying the conflict and "
-        "the three actions."
+        "catalog has moved past it, in which case re-propagation has been requested.\n\n"
+        "If the save clashes with a personal event, the response is 409 carrying the "
+        "conflict and the three actions. **The third action is `skip_public`** — because "
+        "the side the user just added is a *save*, the destructive choice releases the "
+        "save rather than deleting a record. The conflict names both sides with their "
+        "kinds, so the client has everything it needs to post the resolution."
     ),
 )
 def save_public_event(request, catalog_event_id: UUID):

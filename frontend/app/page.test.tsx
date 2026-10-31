@@ -444,9 +444,9 @@ describe("the shell", () => {
   it("does not let an inert route navigate", async () => {
     render(await HomePage(props()));
 
-    // Four of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
+    // Three of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
     // with aria-disabled still navigates.
-    for (const label of ["Timeline", "Browse", "Conflicts", "Settings"]) {
+    for (const label of ["Browse", "Conflicts", "Settings"]) {
       const item = [...sidenav().querySelectorAll("li")].find((li) =>
         [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
       );
@@ -454,6 +454,18 @@ describe("the shell", () => {
       expect(item?.querySelector("a"), label).toBeNull();
       expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
     }
+  });
+
+  it("makes Timeline a real route, because the Timeline exists", async () => {
+    render(await HomePage(props()));
+
+    const item = [...sidenav().querySelectorAll("li")].find((li) =>
+      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Timeline"),
+    );
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/timeline");
+    // "Coming soon" is gone — the route is here.
+    expect(item?.textContent).not.toContain("Coming soon");
   });
 
   it("keeps the topbar brand-only", async () => {

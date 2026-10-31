@@ -66,6 +66,11 @@ const RESOLUTION_LABELS: Record<string, { label: string; hint: string; aria: str
     hint: "Removes the new event. You'll be asked to confirm before it's gone for good.",
     aria: "Delete the new event. You will be asked to confirm before it is removed.",
   },
+  skip_public: {
+    label: "Skip the public event",
+    hint: "Releases your saved copy of the public event. Your own event stays exactly as it is.",
+    aria: "Skip the public event. Your saved copy of it is released and your own event stays.",
+  },
 };
 
 /** The glyph each action carries. Decorative — the label carries the meaning. */
@@ -74,20 +79,22 @@ const RESOLUTION_GLYPHS: Record<string, string> = {
   edit_new: "✎",
   update_existing: "✎",
   delete_new: "✕",
+  skip_public: "↷",
 };
 
 /**
  * Narrow a server-supplied action name to a resolution the API accepts.
  *
- * The contract types `actions` as `string[]`, because the server owns the set. A name
- * outside the four is one this sheet has no label for, so it is not offered — the sheet
- * renders the server's choices, and a choice it cannot explain is not a choice it offers.
+ * The contract types `actions` as the closed union the server owns. A name outside it is
+ * one this sheet has no label for, so it is not offered — the sheet renders the server's
+ * choices, and a choice it cannot explain is not a choice it offers.
  */
 function asResolution(value: string): Resolution | null {
   return value === "keep_both" ||
     value === "edit_new" ||
     value === "update_existing" ||
-    value === "delete_new"
+    value === "delete_new" ||
+    value === "skip_public"
     ? value
     : null;
 }
@@ -115,10 +122,11 @@ export function ConflictResolution({
 
   if (!conflict || !newEvent) return null;
 
-  // The two sides, read from the conflict itself. `other` is the event that was already
-  // saved; the "new" side is the event the client just created, which the conflict does
-  // not carry (the pair row is symmetric — the client knows which side is new).
-  const other = conflict.other;
+  // The two sides, read from the conflict itself. `other_side` is the event that was
+  // already saved; the "new" side is the event the client just created, which the
+  // conflict does not carry (the pair row is symmetric — the client knows which side is
+  // new).
+  const other = conflict.other_side;
   const actions = conflict.actions;
   const header = HEADER_BY_KIND[conflict.kind] ?? HEADER_BY_KIND.time;
 

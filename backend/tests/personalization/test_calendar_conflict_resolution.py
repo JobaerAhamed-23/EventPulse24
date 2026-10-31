@@ -28,10 +28,10 @@ from apps.personalization.services.calendar_connections import (
 )
 from apps.personalization.services.calendar_sync import claim_due_connections, sync_calendar
 from apps.personalization.services.conflict_resolutions import (
+    IllegalResolutionError,
     ImportedEventNotDeletableError,
     resolve_conflict,
 )
-from apps.personalization.services.personal_events import PersonalEventNotFoundError
 from domain.errors import InvalidCalendarCredentialError
 from ports.calendar import CalendarEntry, CalendarResult
 from shared.actor import Actor
@@ -116,8 +116,8 @@ def test_delete_new_is_refused_when_the_new_side_is_an_imported_event():
             user_id=connection.user_id,
             pair_id=pair.pk,
             resolution=ConflictPair.Resolution.DELETE_NEW,
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=imported.pk,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=imported.pk,
             actor=_actor(),
             now=NOW,
         )
@@ -140,8 +140,8 @@ def test_the_refusal_leaves_the_pair_active_and_the_event_alone():
             user_id=connection.user_id,
             pair_id=pair.pk,
             resolution=ConflictPair.Resolution.DELETE_NEW,
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=imported.pk,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=imported.pk,
             actor=_actor(),
             now=NOW,
         )
@@ -169,8 +169,8 @@ def test_keep_both_is_offered_for_an_imported_event():
         user_id=connection.user_id,
         pair_id=pair.pk,
         resolution=ConflictPair.Resolution.KEEP_BOTH,
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=imported.pk,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=imported.pk,
         actor=_actor(),
         now=NOW,
     )
@@ -195,14 +195,14 @@ def test_edit_new_is_offered_for_an_imported_event():
         user_id=connection.user_id,
         pair_id=pair.pk,
         resolution=ConflictPair.Resolution.EDIT_NEW,
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=imported.pk,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=imported.pk,
         actor=_actor(),
         now=NOW,
     )
 
     assert resolution.resolution == ConflictPair.Resolution.EDIT_NEW
-    assert resolution.new_side_id == imported.pk
+    assert resolution.action_side_id == imported.pk
 
 
 def test_delete_new_still_works_for_a_user_created_event():
@@ -227,8 +227,8 @@ def test_delete_new_still_works_for_a_user_created_event():
         user_id=connection.user_id,
         pair_id=pair.pk,
         resolution=ConflictPair.Resolution.DELETE_NEW,
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=other.pk,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=other.pk,
         actor=_actor(),
         now=NOW,
     )
@@ -239,7 +239,9 @@ def test_delete_new_still_works_for_a_user_created_event():
 
 def test_a_saved_event_side_is_never_refused_as_an_import():
     # A saved event is the user's own save of a public event, so it is never imported and
-    # is always the user's to remove. The imported-event refusal must not touch it.
+    # is always the user's to remove. The imported-event refusal must not touch it: the
+    # action legal against a saved side is `skip_public`, which releases the save, and it
+    # is refused by the *side* rule rather than by the import rule.
     connection = CalendarConnectionFactory()
     saved = SavedEvent.objects.using(PERSONAL).create(
         user_id=connection.user_id,
@@ -269,20 +271,20 @@ def test_a_saved_event_side_is_never_refused_as_an_import():
     resolution = resolve_conflict(
         user_id=connection.user_id,
         pair_id=pair.pk,
-        resolution=ConflictPair.Resolution.EDIT_NEW,
-        new_side_kind=ConflictPair.SideKind.SAVED_EVENT,
-        new_side_id=saved.pk,
+        resolution=ConflictPair.Resolution.SKIP_PUBLIC,
+        side_kind=ConflictPair.SideKind.SAVED_EVENT,
+        side_id=saved.pk,
         actor=_actor(),
         now=NOW,
     )
 
-    assert resolution.resolution == ConflictPair.Resolution.EDIT_NEW
+    assert resolution.resolution == ConflictPair.Resolution.SKIP_PUBLIC
 
 
-def test_delete_new_on_a_saved_event_side_is_not_the_imported_refusal():
-    # The imported-event refusal must not fire for a saved-event side: a saved event is
-    # the user's own save of a public event, never an import. The command's own
-    # not-found error is what comes back, not the import refusal.
+def test_delete_new_on_a_saved_event_side_is_refused_as_an_illegal_action():
+    # A save cannot be deleted — it can be released. So `delete_new` is not legal against
+    # a saved side, and the refusal is the *side* rule (an illegal resolution), not the
+    # import rule and not the delete command's not-found error.
     connection = CalendarConnectionFactory()
     saved = SavedEvent.objects.using(PERSONAL).create(
         user_id=connection.user_id,
@@ -309,16 +311,21 @@ def test_delete_new_on_a_saved_event_side_is_not_the_imported_refusal():
         detected_at=NOW,
     )
 
-    with pytest.raises(PersonalEventNotFoundError):
+    with pytest.raises(IllegalResolutionError):
         resolve_conflict(
             user_id=connection.user_id,
             pair_id=pair.pk,
             resolution=ConflictPair.Resolution.DELETE_NEW,
-            new_side_kind=ConflictPair.SideKind.SAVED_EVENT,
-            new_side_id=saved.pk,
+            side_kind=ConflictPair.SideKind.SAVED_EVENT,
+            side_id=saved.pk,
             actor=_actor(),
             now=NOW,
         )
+
+    # The save is untouched, and the pair is still answerable.
+    assert SavedEvent.objects.using(PERSONAL).filter(pk=saved.pk).exists()
+    pair.refresh_from_db()
+    assert pair.status == ConflictPair.Status.ACTIVE
 
 
 def test_delete_new_for_a_side_that_is_gone_is_not_a_refusal():
@@ -341,8 +348,8 @@ def test_delete_new_for_a_side_that_is_gone_is_not_a_refusal():
         user_id=connection.user_id,
         pair_id=pair.pk,
         resolution=ConflictPair.Resolution.KEEP_BOTH,
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=gone,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=gone,
         actor=_actor(),
         now=NOW,
     )

@@ -28,7 +28,7 @@ import {
  * toggle burns the accent on a control used many times per day". The pill mirrors the
  * `Control.Segmented` ink-inversion pattern in miniature.
  *
- * **An inert route is a `<span>`, not an `<a>`.** Four of the six routes do not exist
+ * **An inert route is a `<span>`, not an `<a>`.** Three of the six routes do not exist
  * yet. An anchor with `aria-disabled="true"` is still focusable and still navigates —
  * the attribute is a hint, not a mechanism — and a link to a 404 is a lie about where
  * the label goes. A `<span>` says what is true: there is nothing there yet.
@@ -65,7 +65,12 @@ export function Sidenav({ name, email }: SidenavProps) {
       <nav aria-label="Main">
         <ul className="flex flex-col gap-1">
           <SidenavItem href="/" label="Digest" active={pathname === "/"} glyph={<DigestGlyph />} />
-          <SidenavItem label="Timeline" glyph={<TimelineGlyph />} />
+          <SidenavItem
+            href="/timeline"
+            label="Timeline"
+            active={pathname === "/timeline"}
+            glyph={<TimelineGlyph />}
+          />
           <SidenavItem label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
           <SidenavItem label="Browse" glyph={<BrowseGlyph />} />
           <SidenavItem label="Conflicts" glyph={<ConflictsGlyph />} />

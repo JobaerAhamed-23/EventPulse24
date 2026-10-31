@@ -127,6 +127,14 @@
   --layout-bottom-tab-height: calc(56px + env(safe-area-inset-bottom));
   --layout-sidenav-app-width-tablet: 220px;
   --layout-sidenav-app-width-desktop: 240px;
+  /* The Timeline's week grid (DESIGN.md §Layout): seven equal columns on desktop
+     (`md+`). The mobile view collapses to a single column — one day at a time — and
+     that is a layout switch in the markup, not a grid that reflows.
+
+     The grid is ONE grid, not seven cards: only the outer corners round
+     (`--radius-timeline-cell`), and the inner shared edges are square, so the seven
+     columns read as one continuous surface. */
+  --layout-timeline-grid: repeat(7, minmax(0, 1fr));
 
   /* Shapes */
   --radius-none: 0;

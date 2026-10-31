@@ -22,7 +22,15 @@ const TIME_CONFLICT: Conflict = {
   pair_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
   kind: "time",
   actions: ["keep_both", "edit_new", "delete_new"],
-  other: {
+  new_side: {
+    kind: "personal_event",
+    id: NEW_EVENT.id,
+    name: NEW_EVENT.name,
+    start_time_utc: NEW_EVENT.start_time_utc,
+    end_time_utc: "2026-11-07T01:30:00Z",
+  },
+  other_side: {
+    kind: "personal_event",
     id: "22222222-2222-2222-2222-222222222222",
     name: "Free tech meetup — Designing for Calm",
     start_time_utc: "2026-11-06T22:30:00Z",
@@ -35,7 +43,15 @@ const DUPLICATE_CONFLICT: Conflict = {
   pair_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
   kind: "duplicate",
   actions: ["keep_both", "update_existing", "delete_new"],
-  other: {
+  new_side: {
+    kind: "personal_event",
+    id: NEW_EVENT.id,
+    name: NEW_EVENT.name,
+    start_time_utc: NEW_EVENT.start_time_utc,
+    end_time_utc: "2026-11-07T01:30:00Z",
+  },
+  other_side: {
+    kind: "personal_event",
     id: "33333333-3333-3333-3333-333333333333",
     name: "Designing for Calm",
     start_time_utc: "2026-11-06T23:30:00Z",
@@ -180,7 +196,7 @@ describe("ConflictResolution", () => {
 
       expect(
         screen.getByText(
-          `You've already saved ${TIME_CONFLICT.other.name}. Choose how to handle it.`,
+          `You've already saved ${TIME_CONFLICT.other_side.name}. Choose how to handle it.`,
         ),
       ).toBeInTheDocument();
     });

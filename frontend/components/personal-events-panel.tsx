@@ -34,6 +34,27 @@ type ConflictDetails = components["schemas"]["SchedulingConflictDetails"];
 /** The resolutions the API accepts. */
 type Resolution = components["schemas"]["ConflictResolutionIn"]["resolution"];
 
+/**
+ * **The narrow shape the edit sheet needs.**
+ *
+ * The sheet seeds itself from an event's id, name, times, zone, location and notes —
+ * and from nothing else. `PersonalEventOut` also carries `version`, the
+ * optimistic-locking counter, and `calendar_connection_id`. **A caller that does not
+ * have those must not invent them**: a fabricated `version: 1` is a fact about the
+ * event that is not true, and the day it stops being true is the day a reader believes
+ * a lie. So the prop takes the shape the sheet reads, and a caller that *does* hold a
+ * full `PersonalEventOut` passes one — it satisfies this type by having more.
+ */
+export type PersonalEventSeed = {
+  id: string;
+  name: string;
+  start_time_utc: string;
+  start_time_tz: string;
+  end_time_utc?: string | null;
+  location?: string | null;
+  notes?: string | null;
+};
+
 export type PersonalEventsPanelProps = {
   /** The user's personal events, read by the server component that renders this. */
   events?: PersonalEvent[];
@@ -66,6 +87,42 @@ export type PersonalEventsPanelProps = {
    * be two controls for one action.
    */
   addButton?: boolean;
+  /**
+   * The personal events the **Timeline** offers to edit, and the events it opens the
+   * edit sheet for.
+   *
+   * **The Timeline is read-only at MVP** (ASSUM-7) — no drag-to-reschedule, no inline
+   * rename — but a personal block opens the existing **Edit personal event** sheet.
+   * The sheet lives inside this island, so the panel needs to know *which* event the
+   * Timeline clicked, and it learns it here: the list is the set of events the sheet
+   * may open, and the sheet opens on the one the caller names.
+   *
+   * **The panel finds the event by id**, so a caller that passes an event the panel does
+   * not know opens nothing rather than opening the wrong one.
+   *
+   * **The shape is the narrow one the sheet reads** (`PersonalEventSeed`), because the
+   * Timeline's block payload carries no `version` and a fabricated one would be a lie
+   * about the event. A caller holding a full `PersonalEventOut` passes one unchanged.
+   */
+  editingEvents?: PersonalEventSeed[];
+  /**
+   * The id of the event the sheet is open on, when the caller drives it.
+   *
+   * **The Timeline drives it.** A personal block on the Timeline is a button that opens
+   * the edit sheet, and the sheet's state lives in this island — so the Timeline tells
+   * the panel *which* event to open, and the panel opens it. Left `undefined`, the panel
+   * owns the choice and its own "Edit" buttons drive it.
+   */
+  editingEventId?: string | null;
+  /**
+   * Called when the caller drives which event the sheet is open on.
+   *
+   * **`null` closes the sheet.** The panel opens the sheet when the id names an event
+   * it knows, and closes it when the id goes back to `null` — so the caller can close
+   * the sheet by clearing the id, and the sheet's own "Cancel" does the same thing
+   * through this callback.
+   */
+  onEditingEventChange?: (id: string | null) => void;
 };
 
 export function PersonalEventsPanel({
@@ -74,6 +131,9 @@ export function PersonalEventsPanel({
   onCreateOpenChange,
   sheetsOnly = false,
   addButton = true,
+  editingEvents = [],
+  editingEventId,
+  onEditingEventChange,
 }: PersonalEventsPanelProps) {
   // **Every successful write refreshes the server's read.** The list is a server
   // component's read (`PersonalEventsSection`), so a write in this island is invisible
@@ -82,7 +142,7 @@ export function PersonalEventsPanel({
   // The panel's own create state, used when the caller does not drive it.
   const router = useRouter();
   const [ownFormOpen, setOwnFormOpen] = useState(false);
-  const [editing, setEditing] = useState<PersonalEvent | null>(null);
+  const [ownEditing, setOwnEditing] = useState<PersonalEventSeed | null>(null);
   const [highlightStartTime, setHighlightStartTime] = useState(false);
   // A fresh key per opening, so the form is remounted with the new seed rather than
   // carrying the last one's values.
@@ -97,31 +157,59 @@ export function PersonalEventsPanel({
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const formOpen = createOpen ?? ownFormOpen;
+  /**
+   * **The caller drives the sheet when it says which event to open.**
+   *
+   * The Timeline's personal block is a button, and the sheet lives in this island — so
+   * the Timeline names the event and the sheet opens on it.
+   *
+   * **The state is derived, not synchronised.** When `editingEventId` is given, the
+   * event being edited is *computed* from it during render — there is no effect that
+   * copies the id into a `useState`, because that would be two sources of truth and a
+   * render between them would show the wrong event. A caller that clears the id is
+   * closing the sheet, and the sheet's own "Cancel" clears the id through the same
+   * callback, so the two paths agree.
+   *
+   * **An id the panel does not know opens nothing.** The panel finds the event in
+   * `editingEvents` by id, so a caller naming an event it did not pass opens no sheet
+   * rather than opening the wrong one.
+   */
+  const driven = editingEventId !== undefined;
+  const drivenEvent = driven
+    ? (editingEvents.find((candidate) => candidate.id === editingEventId) ?? null)
+    : null;
+
+  const editing = driven ? drivenEvent : ownEditing;
+  const formOpen = driven ? drivenEvent !== null : (createOpen ?? ownFormOpen);
 
   const setFormOpen = (open: boolean): void => {
-    if (createOpen === undefined) setOwnFormOpen(open);
-    onCreateOpenChange?.(open);
+    if (!driven && createOpen === undefined) setOwnFormOpen(open);
+    if (!driven) onCreateOpenChange?.(open);
   };
 
   const closeForm = (): void => {
     setFormOpen(false);
-    setEditing(null);
+    setOwnEditing(null);
     setHighlightStartTime(false);
+    // **The caller drives the sheet's open event too**, so clearing its id is what
+    // actually closes it. Without this the caller would still believe the sheet was
+    // open, and the next id it set would not reopen the form.
+    onEditingEventChange?.(null);
   };
 
   const openCreate = (): void => {
-    setEditing(null);
+    setOwnEditing(null);
     setHighlightStartTime(false);
     setFormKey((key) => key + 1);
     setFormOpen(true);
   };
 
-  const openEdit = (event: PersonalEvent, highlight = false): void => {
-    setEditing(event);
+  const openEdit = (event: PersonalEventSeed, highlight = false): void => {
+    setOwnEditing(event);
     setHighlightStartTime(highlight);
     setFormKey((key) => key + 1);
     setFormOpen(true);
+    onEditingEventChange?.(event.id);
   };
 
   /** The create and the edit share the submit: the mode says which endpoint to call. */
@@ -152,7 +240,7 @@ export function PersonalEventsPanel({
           start_time_utc: body.start_time_utc,
         });
         setFormOpen(false);
-        setEditing(null);
+        setOwnEditing(null);
         setHighlightStartTime(false);
         router.refresh();
         return;
@@ -173,14 +261,18 @@ export function PersonalEventsPanel({
     if (!conflict || !pending) return;
     const response = await api.POST("/api/personal/events/conflicts/{pair_id}/resolve", {
       params: { path: { pair_id: conflict.pair_id } },
-      body: { resolution, new_side_id: pending.id },
+      // **The request names the side the action is about**, with its kind. The pair row is
+      // symmetric, so the server cannot infer which side the user is acting on — and the
+      // action decides what it may act on: `delete_new` deletes a personal event,
+      // `skip_public` releases a save.
+      body: { resolution, side: { kind: "personal_event", id: pending.id } },
     });
     if (response.error) {
       setMessage("We couldn't record that choice. Try again.");
       return;
     }
 
-    const other = conflict.other;
+    const other = conflict.other_side;
     const resolved = conflict;
     setConflict(null);
     setPending(null);
@@ -188,13 +280,14 @@ export function PersonalEventsPanel({
 
     if (resolution === "edit_new") {
       // The new event, opened in edit mode with the conflicting time pre-highlighted.
+      // **The zone is empty** — the 409 payload does not carry it, and the sheet falls
+      // back to UTC rather than showing a zone it was never told.
       openEdit(
         {
           id: pending.id,
           name: pending.name,
           start_time_utc: pending.start_time_utc,
           start_time_tz: "",
-          version: 1,
         },
         true,
       );
@@ -202,13 +295,14 @@ export function PersonalEventsPanel({
     }
     if (resolution === "update_existing") {
       // The **existing** event — for a duplicate, the second action opens this one.
+      // **The zone is empty** for the same reason as above: the conflict payload
+      // carries a side's times but not its zone, and the sheet falls back to UTC.
       openEdit(
         {
           id: other.id,
           name: other.name,
           start_time_utc: other.start_time_utc,
           start_time_tz: "",
-          version: 1,
         },
         true,
       );
@@ -224,7 +318,12 @@ export function PersonalEventsPanel({
   const sheets = (
     <>
       <PersonalEventForm
-        key={formKey}
+        // **A fresh key per opening, so the form is remounted with the new seed**
+        // rather than carrying the last one's values. When the caller drives the
+        // sheet, the key follows the event it named — so naming a second event
+        // remounts the form with that event's values, and the panel's own `formKey`
+        // is left alone for the case it owns.
+        key={driven ? `driven-${editing?.id ?? "none"}` : formKey}
         open={formOpen}
         mode={editing ? "edit" : "create"}
         initial={editing ? seedFrom(editing) : undefined}
@@ -328,7 +427,7 @@ function PersonalEventRow({ event, onEdit }: { event: PersonalEvent; onEdit: () 
 }
 
 /** The edit form's seed values, taken from the event being edited. */
-function seedFrom(event: PersonalEvent): Partial<PersonalEventFormValues> {
+function seedFrom(event: PersonalEventSeed): Partial<PersonalEventFormValues> {
   const zone = event.start_time_tz || "UTC";
   const start = utcInstantToLocal(new Date(event.start_time_utc), zone);
   const end = event.end_time_utc ? utcInstantToLocal(new Date(event.end_time_utc), zone) : null;

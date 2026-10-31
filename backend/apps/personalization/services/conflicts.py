@@ -288,6 +288,7 @@ def close_pairs_for_side(
     kind: str,
     side_id: UUID,
     now: datetime,
+    keep_pair: UUID | None = None,
 ) -> int:
     """Close the active pairs naming one side, because that side went away.
 
@@ -296,21 +297,31 @@ def close_pairs_for_side(
     resolution stays NULL, which is exactly what makes a cleared pair distinguishable from a
     resolved one.
 
+    **`keep_pair` names one pair to leave alone.** The conflict-resolution flow answers a
+    prompt *and* removes a side: it records the user's answer on the pair first, then
+    unsaves the saved side. Without the exclusion, the unsave would close that pair as
+    `cleared_by_state_change` — NULLing the answer the user just gave and turning their
+    choice into "nobody answered". The exclusion says "this pair is being answered, not
+    abandoned", and it is stated explicitly rather than left to the pair's status
+    happening to be `resolved` already.
+
     Must run inside the caller's `transaction.atomic(using=PERSONAL)`.
     """
     side_filter = Q(left_kind=kind, left_id=side_id) | Q(right_kind=kind, right_id=side_id)
-    return (
+    queryset = (
         ConflictPair.objects.using(PERSONAL)
         .filter(
             user_id=user_id,
             status=ConflictPair.Status.ACTIVE,
         )
         .filter(side_filter)
-        .update(
-            status=ConflictPair.Status.CLEARED_BY_STATE_CHANGE,
-            resolution=None,
-            resolved_at=now,
-        )
+    )
+    if keep_pair is not None:
+        queryset = queryset.exclude(pk=keep_pair)
+    return queryset.update(
+        status=ConflictPair.Status.CLEARED_BY_STATE_CHANGE,
+        resolution=None,
+        resolved_at=now,
     )
 
 

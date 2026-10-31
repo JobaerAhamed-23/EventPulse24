@@ -33,6 +33,7 @@ from datetime import datetime
 from uuid import UUID
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.ingestion.services.catalog_read import get_public_event
 from apps.personalization.models import ConflictPair, SavedEvent
@@ -201,11 +202,19 @@ def unsave_event(
     event_id: UUID,
     actor: Actor,
     now: datetime,
+    keep_pair: UUID | None = None,
 ) -> None:
     """Remove a save and close the pairs it took part in (AD-21).
 
     The pairs close as `cleared_by_state_change`: the pair ended because a side went away,
     which AD-21 says is *not* a user resolution.
+
+    **`keep_pair` names one pair to leave open.** The conflict-resolution flow answers a
+    prompt *and* releases a save: it records the user's answer on the pair first, then
+    unsaves. Without the exclusion, the unsave would close that pair as
+    `cleared_by_state_change` — NULLing the answer the user just gave, and turning their
+    choice into "nobody answered". The exclusion says "this pair is being answered, not
+    abandoned".
     """
     with transaction.atomic(using=PERSONAL):
         saved = (
@@ -219,6 +228,7 @@ def unsave_event(
             kind=ConflictPair.SideKind.SAVED_EVENT,
             side_id=saved_id,
             now=now,
+            keep_pair=keep_pair,
         )
         saved.delete()
         write_audit(
@@ -302,6 +312,8 @@ def list_saved_events(
     user_id: UUID,
     starts_after: datetime | None = None,
     starts_before: datetime | None = None,
+    overlaps_after: datetime | None = None,
+    overlaps_before: datetime | None = None,
 ) -> list[SavedEventSnapshot]:
     """The user's own saved events, soonest first.
 
@@ -314,6 +326,22 @@ def list_saved_events(
     bound has to be applied to the same value the list returns — otherwise the filter and
     the item would disagree about which event is which.
 
+    **The `overlaps_*` bounds ask a different question, and both kinds of bound can be
+    given at once.** `starts_after` / `starts_before` ask *"which saves **start** in this
+    window?"*. `overlaps_after` / `overlaps_before` ask *"which saves **touch** this
+    window?"* — and the two answers differ. A save that started on the Sunday before the
+    week and runs into Monday touches Monday without starting in the week, so a
+    start-bounded read misses it. The Timeline needs the overlap rule; the digest's list
+    needs the start rule. Each bound is optional, and with neither the list is every save
+    the user has.
+
+    **An open-ended save is never excluded by the lower overlap bound.** `end_utc` is
+    nullable, and a save with no end runs from its start onward — so the filter is
+    `end_utc >= window_start OR end_utc IS NULL`.
+
+    The window's end is **exclusive**: a save starting exactly at `overlaps_before` is
+    outside the window.
+
     **This reads the personal side only.** The display fields come from `catalog`, and the
     API layer resolves them separately, one event at a time — a save whose catalog event
     has since disappeared is the caller's to notice, not this function's to hide.
@@ -323,6 +351,10 @@ def list_saved_events(
         queryset = queryset.filter(start_utc__gte=starts_after)
     if starts_before is not None:
         queryset = queryset.filter(start_utc__lte=starts_before)
+    if overlaps_after is not None:
+        queryset = queryset.filter(Q(end_utc__gte=overlaps_after) | Q(end_utc__isnull=True))
+    if overlaps_before is not None:
+        queryset = queryset.filter(start_utc__lt=overlaps_before)
     return [_snapshot(saved) for saved in queryset.order_by("start_utc", "id")]
 
 

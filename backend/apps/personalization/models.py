@@ -360,12 +360,19 @@ class ConflictPair(UUIDv7Model):
 
         There is no `dismiss` value: FR-58 says the user must make an explicit choice.
         `edit_new` is for a time conflict; `update_existing` is for a duplicate.
+
+        `skip_public` is the one resolution that acts on a **saved** side: it releases the
+        user's save of a public event. It is a value of its own rather than a second
+        meaning for `delete_new`, because a stored word must mean one thing — otherwise
+        `/conflicts`' Resolved list and the audit trail would both have to disambiguate
+        by the side's kind before they could say what the user did.
         """
 
         KEEP_BOTH = "keep_both"
         EDIT_NEW = "edit_new"
         DELETE_NEW = "delete_new"
         UPDATE_EXISTING = "update_existing"
+        SKIP_PUBLIC = "skip_public"
 
     retention_category = RetentionCategory.ACCOUNT_CONTENT
 
@@ -420,19 +427,35 @@ class ConflictPair(UUIDv7Model):
             ),
             # A time conflict offers edit_new; a duplicate offers update_existing. keep_both
             # and delete_new are legal for both.
+            #
+            # `skip_public` is legal for **both** kinds: the kind decides the *name* of the
+            # middle action (edit_new vs update_existing), while the *side's* kind decides
+            # the destructive one (delete_new against a personal side, skip_public against
+            # a saved one). Which side a resolution may act on is a rule about the pair's
+            # two sides, and that is only knowable by joining them — so it is enforced in
+            # the service, and this constraint stays a kind-level rule.
             models.CheckConstraint(
                 condition=(
                     models.Q(kind="time")
                     & (
                         models.Q(resolution__isnull=True)
-                        | models.Q(resolution__in=["keep_both", "edit_new", "delete_new"])
+                        | models.Q(
+                            resolution__in=["keep_both", "edit_new", "delete_new", "skip_public"]
+                        )
                     )
                 )
                 | (
                     models.Q(kind="duplicate")
                     & (
                         models.Q(resolution__isnull=True)
-                        | models.Q(resolution__in=["keep_both", "update_existing", "delete_new"])
+                        | models.Q(
+                            resolution__in=[
+                                "keep_both",
+                                "update_existing",
+                                "delete_new",
+                                "skip_public",
+                            ]
+                        )
                     )
                 ),
                 name="conflict_pair_resolution_kind_ck",
