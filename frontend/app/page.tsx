@@ -6,8 +6,6 @@ import { DigestEmpty } from "@/components/digest/digest-empty";
 import { DigestError } from "@/components/digest/digest-error";
 import { DigestHeader } from "@/components/digest/digest-header";
 import { DigestPreparing } from "@/components/digest/digest-preparing";
-import { PersonalEventsPanel } from "@/components/personal-events-panel";
-import { readPersonalEvents } from "@/components/personal-events-section";
 import { AppShell } from "@/components/shell/app-shell";
 import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
@@ -36,6 +34,12 @@ import { getSession, homeRoute } from "@/lib/session";
  * city, the date, the status — was decided by the composition service and persisted.
  * The page scores nothing, sorts nothing and re-buckets nothing (AD-10).
  *
+ * **The digest is alone here.** It carried a personal-events list as a stopgap, added
+ * before the Timeline existed. The Timeline does now, so the list is gone and with it
+ * the page's second read. The header's "+ Add personal event" stays — the *add* belongs
+ * to the page head — and it confirms the add inline, with a link to the week the event
+ * landed on, so an add from here never again looks like nothing happened.
+ *
  * The page is rendered **per request**, as it was before: it shows the signed-in user's
  * own digest, and neither can be baked into a build.
  */
@@ -49,7 +53,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
   if (session.kind !== "signed-in") return <HomeUnavailable />;
 
-  const [digest, personalEvents] = await Promise.all([readDigest(), readPersonalEvents()]);
+  const digest = await readDigest();
 
   /**
    * **The failure count is the server's, and it is consecutive.**
@@ -80,16 +84,6 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
             {digest.kind === "composed" ? <DigestCards digest={digest.digest} /> : null}
           </div>
-
-          {/*
-            The user's own events, below the digest. Their real home is the Timeline,
-            which is not built yet; until it is, this is the one place a user can see,
-            and edit, what they added. The header's "+ Add personal event" is the Add
-            here, so the list draws none of its own.
-          */}
-          <section aria-label="Your personal events" className="mt-16">
-            <PersonalEventsPanel events={personalEvents} addButton={false} />
-          </section>
         </>
       )}
     </AppShell>

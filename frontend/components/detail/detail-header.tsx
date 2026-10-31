@@ -20,6 +20,7 @@
  * missing Relevance Pulse. So an anonymous visitor, and a signed-in user who was never
  * shown this event, see **no five-dot indicator at all**.
  */
+import { DetailConflictMark } from "@/components/conflicts/detail-conflict-mark";
 import { TriggerTip } from "@/components/detail/trigger-tip";
 import { sourceBadge } from "@/lib/digest-labels";
 import type { DetailTimes } from "@/lib/detail-time";
@@ -44,6 +45,23 @@ export type DetailHeaderProps = {
   confidence: number | null;
   /** The breakdown's factor lines, shown in the confidence tooltip. */
   factors: string[];
+  /**
+   * Whether the caller has an **active** conflict pair for this event.
+   *
+   * **The server's fact.** The payload names a pair that is waiting for a choice, and
+   * the header shows the mark. A client that decided for itself would be recomputing a
+   * persisted fact at render — the failure AD-10 exists to prevent.
+   */
+  hasConflict: boolean;
+  /**
+   * The event's id, for the mark's open signal.
+   *
+   * **The mark opens the prompt from another island.** The prompt lives in the action
+   * row's island, and the header is server-rendered content, so the mark *announces*
+   * the open and the island listens. The event id travels with the signal so an island
+   * for a different event ignores it.
+   */
+  eventId: string;
 };
 
 export function DetailHeader({
@@ -55,6 +73,8 @@ export function DetailHeader({
   sourceBadgeKey,
   confidence,
   factors,
+  hasConflict,
+  eventId,
 }: DetailHeaderProps) {
   const badge = sourceBadgeKey ? sourceBadge(sourceBadgeKey) : null;
   const place = venueName || venueCity || null;
@@ -63,10 +83,16 @@ export function DetailHeader({
     <header>
       {/* The trust row: the Source Badge and the Confidence Pulse, in the locked order.
           The badge is first because "where did this come from" is the first question a
-          sceptical reader has. */}
+          sceptical reader has.
+
+          **The conflict mark joins the trust row.** It is a fact about this event —
+          that it clashes with something on the user's own calendar — and the trust row
+          is where this screen puts its facts about the event. The mark is the **same
+          mark** the Pulse Card draws, so the two surfaces cannot drift. */}
       <div className="flex flex-wrap items-center gap-3">
         {badge ? <SourceBadgeView badge={badge} /> : null}
         {confidence !== null ? <ConfidenceView value={confidence} factors={factors} /> : null}
+        {hasConflict ? <DetailConflictMark eventId={eventId} /> : null}
       </div>
 
       <h1 className="mt-4 text-ink-primary [font:var(--type-scale-display-md)]">{title}</h1>

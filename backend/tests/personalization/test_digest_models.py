@@ -596,12 +596,22 @@ def test_the_most_recent_composition_lookup_uses_the_index():
     The plan's root node is the `Limit`, so the tree is walked to find the node that
     actually touches the table — and that node must be an `Index Scan` over the index
     this design added.
+
+    **The sequential scan is switched off for the duration of the plan.** The question
+    this test asks is "is there an index the planner *may* use for this lookup", not
+    "does the planner *prefer* it on a table with three rows". On a table this small the
+    cost model legitimately prefers a sequential scan, and which way it falls depends on
+    the table statistics at that moment — so a plan-shape assertion here is a coin toss
+    rather than a rule. With `enable_seqscan = off` the planner has to use an index if
+    one applies, and the assertion below still fails when none does, which is the case
+    this test exists to catch.
     """
     user_id = DigestCompositionFactory.create().user_id
     event_id = DigestCompositionFactory.create().event_id
     DigestCompositionFactory.create(user_id=user_id, event_id=event_id)
 
     with connections[PERSONAL].cursor() as cursor:
+        cursor.execute("SET LOCAL enable_seqscan = off")
         cursor.execute(
             "EXPLAIN (FORMAT JSON) SELECT id FROM personal.personalization_digestcomposition "
             "WHERE user_id = %s AND event_id = %s ORDER BY composed_at DESC LIMIT 1",

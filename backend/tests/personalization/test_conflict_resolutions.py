@@ -15,6 +15,7 @@ from apps.personalization.services.conflict_resolutions import (
     ConflictAlreadyResolvedError,
     ConflictPairNotFoundError,
     IllegalResolutionError,
+    SideNotInPairError,
     resolve_conflict,
 )
 from apps.personalization.services.personal_events import create_personal_event
@@ -66,8 +67,8 @@ def test_keeping_both_records_the_resolution():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
@@ -88,8 +89,8 @@ def test_keeping_both_leaves_both_events_in_place():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
@@ -105,15 +106,15 @@ def test_editing_the_new_one_records_the_resolution_and_keeps_the_event():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="edit_new",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
 
     assert result.resolution == "edit_new"
     # The caller opens the new event in edit mode; the command does not edit it.
-    assert result.new_side_id == second.event.id
+    assert result.action_side_id == second.event.id
     assert PersonalEvent.objects.filter(pk=second.event.id).exists()
     pair = ConflictPair.objects.get(pk=conflict.pair_id)
     assert pair.status == ConflictPair.Status.RESOLVED
@@ -128,8 +129,8 @@ def test_deleting_the_new_one_records_the_resolution_and_removes_the_event():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="delete_new",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
@@ -149,8 +150,8 @@ def test_resolving_writes_an_audit_row():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
@@ -169,8 +170,8 @@ def test_deleting_the_new_one_also_writes_the_deletion_audit_row():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="delete_new",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
@@ -190,8 +191,8 @@ def test_a_resolved_pair_is_never_re_prompted():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
@@ -201,8 +202,8 @@ def test_a_resolved_pair_is_never_re_prompted():
             user_id=USER,
             pair_id=conflict.pair_id,
             resolution="keep_both",
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=second.event.id,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=second.event.id,
             actor=Actor.user(USER),
             now=NOW,
         )
@@ -219,8 +220,8 @@ def test_a_cleared_pair_is_never_re_prompted():
             user_id=USER,
             pair_id=conflict.pair_id,
             resolution="keep_both",
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=second.event.id,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=second.event.id,
             actor=Actor.user(USER),
             now=NOW,
         )
@@ -234,8 +235,8 @@ def test_resolving_a_pair_that_is_not_the_callers_is_not_found():
             user_id=OTHER,
             pair_id=conflict.pair_id,
             resolution="keep_both",
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=second.event.id,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=second.event.id,
             actor=Actor.user(OTHER),
             now=NOW,
         )
@@ -266,8 +267,8 @@ def test_a_time_conflict_refuses_the_duplicate_resolution():
             user_id=USER,
             pair_id=conflict.pair_id,
             resolution="update_existing",
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=second.event.id,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=second.event.id,
             actor=Actor.user(USER),
             now=NOW,
         )
@@ -283,8 +284,8 @@ def test_an_unknown_resolution_is_refused():
             user_id=USER,
             pair_id=conflict.pair_id,
             resolution="dismiss",
-            new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-            new_side_id=second.event.id,
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=second.event.id,
             actor=Actor.user(USER),
             now=NOW,
         )
@@ -307,15 +308,15 @@ def test_resolving_names_the_other_side_as_the_existing_one():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=second.event.id,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=second.event.id,
         actor=Actor.user(USER),
         now=NOW,
     )
 
-    assert result.new_side_id == second.event.id
-    assert result.existing_side_id == first.event.id
-    assert result.existing_side_kind == ConflictPair.SideKind.PERSONAL_EVENT
+    assert result.action_side_id == second.event.id
+    assert result.other_side_id == first.event.id
+    assert result.other_side_kind == ConflictPair.SideKind.PERSONAL_EVENT
 
 
 def test_resolving_names_the_other_side_whatever_the_pairs_order():
@@ -334,14 +335,14 @@ def test_resolving_names_the_other_side_whatever_the_pairs_order():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=right_kind,
-        new_side_id=right_id,
+        side_kind=right_kind,
+        side_id=right_id,
         actor=Actor.user(USER),
         now=NOW,
     )
 
-    assert result.new_side_id == right_id
-    assert result.existing_side_id == other_id
+    assert result.action_side_id == right_id
+    assert result.other_side_id == other_id
 
 
 def test_resolving_names_the_other_side_when_the_new_side_is_the_pairs_left():
@@ -354,36 +355,34 @@ def test_resolving_names_the_other_side_when_the_new_side_is_the_pairs_left():
         user_id=USER,
         pair_id=conflict.pair_id,
         resolution="keep_both",
-        new_side_kind=pair.left_kind,
-        new_side_id=pair.left_id,
+        side_kind=pair.left_kind,
+        side_id=pair.left_id,
         actor=Actor.user(USER),
         now=NOW,
     )
 
-    assert result.new_side_id == pair.left_id
-    assert result.existing_side_id == pair.right_id
+    assert result.action_side_id == pair.left_id
+    assert result.other_side_id == pair.right_id
 
 
-def test_resolving_with_a_side_that_is_not_in_the_pair_leaves_the_other_side_unnamed():
-    # A caller that names a side the pair does not contain gets a resolution with no
-    # "existing" side to point at. The pair is still resolved — the user answered it — and
-    # the audit row records what was chosen.
+def test_resolving_with_a_side_that_is_not_in_the_pair_is_refused():
+    # A caller that names a side the pair does not contain is asking the server to act on
+    # a record that has nothing to do with this conflict. It is refused, and the pair stays
+    # active and answerable with a choice that works.
     _, second, conflict = make_conflict()
     stranger = uuid7()
 
-    result = resolve_conflict(
-        user_id=USER,
-        pair_id=conflict.pair_id,
-        resolution="keep_both",
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=stranger,
-        actor=Actor.user(USER),
-        now=NOW,
-    )
+    with pytest.raises(SideNotInPairError):
+        resolve_conflict(
+            user_id=USER,
+            pair_id=conflict.pair_id,
+            resolution="keep_both",
+            side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+            side_id=stranger,
+            actor=Actor.user(USER),
+            now=NOW,
+        )
 
-    assert result.new_side_id == stranger
-    assert result.existing_side_id is None
-    assert result.existing_side_kind is None
     pair = ConflictPair.objects.get(pk=conflict.pair_id)
-    assert pair.status == ConflictPair.Status.RESOLVED
-    assert pair.resolution == "keep_both"
+    assert pair.status == ConflictPair.Status.ACTIVE
+    assert pair.resolution is None

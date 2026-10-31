@@ -20,7 +20,7 @@ from datetime import datetime
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 
 from apps.delivery.services.reminder_plans import attach_default_plan
 from apps.personalization.models import ConflictPair, PersonalEvent
@@ -450,6 +450,8 @@ def list_personal_events(
     user_id: UUID,
     starts_after: datetime | None = None,
     starts_before: datetime | None = None,
+    overlaps_after: datetime | None = None,
+    overlaps_before: datetime | None = None,
 ) -> list[PersonalEventSnapshot]:
     """The user's own personal events, soonest first (FR-18).
 
@@ -459,12 +461,37 @@ def list_personal_events(
 
     The bounds are inclusive and apply to the start time. They are optional: with no bounds
     the list is every event the user has, which is what the endpoint's default asks for.
+
+    **The `overlaps_*` bounds are a different question, and both kinds of bound can be
+    given at once.** `starts_after` / `starts_before` ask *"which events **start** in this
+    window?"*. `overlaps_after` / `overlaps_before` ask *"which events **touch** this
+    window?"* — and the two answers differ.
+
+    An event that started on the Sunday before the week and runs into Monday **touches**
+    Monday, but does not start in the week. A start-bounded read misses it; an
+    overlap-bounded read keeps it. The Timeline needs the overlap rule (FR-33: an event
+    running past midnight appears on each day it covers), and the digest's list needs the
+    start rule (a card is about an event that begins today). So both bounds exist, and each
+    is optional — with neither, the list is every event the user has.
+
+    **An open-ended event is never excluded by the lower overlap bound.** `end_utc` is
+    nullable, and an event with no end runs from its start onward — so it covers every day
+    after it, and a window that starts before the event cannot overlap it. The filter is
+    therefore `end_utc >= window_start OR end_utc IS NULL`, and the null branch is what
+    keeps the rule true for a nullable column.
+
+    The window's end is **exclusive**: an event starting exactly at `overlaps_before` is
+    outside the window, because the next window's first instant is this one's last.
     """
     queryset = PersonalEvent.objects.using(PERSONAL).filter(user_id=user_id)
     if starts_after is not None:
         queryset = queryset.filter(start_utc__gte=starts_after)
     if starts_before is not None:
         queryset = queryset.filter(start_utc__lte=starts_before)
+    if overlaps_after is not None:
+        queryset = queryset.filter(Q(end_utc__gte=overlaps_after) | Q(end_utc__isnull=True))
+    if overlaps_before is not None:
+        queryset = queryset.filter(start_utc__lt=overlaps_before)
     return [_snapshot(event) for event in queryset.order_by("start_utc", "id")]
 
 

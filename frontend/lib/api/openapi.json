@@ -181,21 +181,127 @@
         "title": "ComponentsOut",
         "type": "object"
       },
+      "ConflictListOut": {
+        "description": "The user's conflict pairs, split into what needs a decision and what is history.\n\n`resolved` holds exactly the pairs **the user answered**. A pair that was closed\nbecause a side went away — `cleared_by_state_change` — is neither list's business:\nnobody chose it, so it is not the user's history to read.",
+        "properties": {
+          "active": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConflictPairOut"
+            },
+            "title": "Active",
+            "type": "array"
+          },
+          "resolved": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConflictPairOut"
+            },
+            "title": "Resolved",
+            "type": "array"
+          }
+        },
+        "title": "ConflictListOut",
+        "type": "object"
+      },
+      "ConflictListSideOut": {
+        "description": "One side of a pair, as the conflict list hands it over.\n\n**`name` is nullable, and `available` says why.** A side whose record cannot be read\nhas no title to show. The client renders \"event no longer available\" rather than a\nblank name, so the state is explicit instead of looking like an event with no title.\n\nA side is unavailable when its own row is gone, or — for a saved side — when the\ncatalog no longer **publishes** the event. The catalog's published interface is the\nonly view across the schema wall (AD-2 / AD-3), and an event that is unpublished, in\nreview or superseded is simply not in it. This is the same rule `GET\n/api/personal/saved-events` follows.\n\n`start_time_tz` is the side's **display** zone: the personal event's own zone, or the\ncatalog event's zone for a saved side. It is None for an unavailable side, because the\nsnapshot is UTC and the display zone is then genuinely unknown.",
+        "properties": {
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "personal_event",
+              "saved_event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "start_time_tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Tz"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "start_time_utc"
+        ],
+        "title": "ConflictListSideOut",
+        "type": "object"
+      },
       "ConflictOut": {
-        "description": "One conflict the user must answer.\n\n`actions` is the closed set of three choices for this conflict's kind. `dismiss` is not\namong them and cannot be expressed.",
+        "description": "One conflict the user must answer.\n\n`actions` is the closed set of three choices for this conflict's kind **and the side\nthe user just acted on**. `dismiss` is not among them and cannot be expressed.\n\n**Both sides are named.** The 409 is the client's route to a resolution, and a\nresolution names a side — so the client needs the side it just created or saved, and\nthe side it clashes with, each with its kind. `new_side` is the one the user just\ntouched; `other_side` is the one it clashes with.",
         "properties": {
           "actions": {
             "items": {
+              "enum": [
+                "keep_both",
+                "edit_new",
+                "update_existing",
+                "delete_new",
+                "skip_public"
+              ],
               "type": "string"
             },
             "title": "Actions",
             "type": "array"
           },
           "kind": {
+            "enum": [
+              "time",
+              "duplicate"
+            ],
             "title": "Kind",
             "type": "string"
           },
-          "other": {
+          "new_side": {
+            "$ref": "#/components/schemas/ConflictSideOut"
+          },
+          "other_side": {
             "$ref": "#/components/schemas/ConflictSideOut"
           },
           "pair_id": {
@@ -207,68 +313,41 @@
         "required": [
           "pair_id",
           "kind",
-          "other",
+          "new_side",
+          "other_side",
           "actions"
         ],
         "title": "ConflictOut",
         "type": "object"
       },
-      "ConflictResolutionIn": {
-        "description": "The body of a resolution: which of the three, and which event is the new one.\n\n`new_side_id` is required because the pair row is **symmetric** — it stores both sides\nsorted, so the row cannot say which side the user just created. The prompt's asymmetry\nlives in the client (it knows which event it just made) and comes back here.\n\nThe body carries the id only, not the kind: this endpoint resolves conflicts *on\npersonal events*, so the new side is a personal event by definition. That keeps the\nshape narrow — a client cannot name a saved event's id and have it deleted.",
+      "ConflictPairOut": {
+        "description": "One pair, with both sides and the choices it offers.\n\n**Both sides are present, symmetrically.** The pair row stores them sorted, so the row\ncannot say which side the user should move — the resolve flow decides that, by the\naction the user picks.\n\n`actions` is the allowed set for an **active** pair, and it comes from the service's\nmaps — the same ones the resolve endpoint enforces, so there is one source and not a\nsecond list. A **resolved** pair carries no actions (there is nothing left to choose)\nand instead carries `resolution` and `resolved_at`.\n\n**A pair with a saved side offers four actions.** The list presents both sides\nsymmetrically and does not know which one the user will act on, so it offers the\nunion across the pair's sides: `delete_new` for the personal side, `skip_public` for\nthe saved one, and the two shared choices. A personal-vs-personal pair is unaffected —\nits union is exactly the three it has always offered.",
         "properties": {
-          "new_side_id": {
-            "format": "uuid",
-            "title": "New Side Id",
-            "type": "string"
-          },
-          "resolution": {
-            "enum": [
-              "keep_both",
-              "edit_new",
-              "update_existing",
-              "delete_new"
-            ],
-            "title": "Resolution",
-            "type": "string"
-          }
-        },
-        "required": [
-          "resolution",
-          "new_side_id"
-        ],
-        "title": "ConflictResolutionIn",
-        "type": "object"
-      },
-      "ConflictResolutionOut": {
-        "description": "The outcome of a resolution.\n\n`new_side_id` is the event the prompt called \"new\" — the client opens it in edit mode\nfor `edit_new`, or finds it already deleted for `delete_new`.",
-        "properties": {
-          "existing_side_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Existing Side Id"
+          "actions": {
+            "default": [],
+            "items": {
+              "enum": [
+                "keep_both",
+                "edit_new",
+                "update_existing",
+                "delete_new",
+                "skip_public"
+              ],
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
           },
           "kind": {
+            "enum": [
+              "time",
+              "duplicate"
+            ],
             "title": "Kind",
             "type": "string"
           },
-          "new_side_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Side Id"
+          "left": {
+            "$ref": "#/components/schemas/ConflictListSideOut"
           },
           "pair_id": {
             "format": "uuid",
@@ -276,10 +355,136 @@
             "type": "string"
           },
           "resolution": {
+            "anyOf": [
+              {
+                "enum": [
+                  "keep_both",
+                  "edit_new",
+                  "update_existing",
+                  "delete_new",
+                  "skip_public"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "right": {
+            "$ref": "#/components/schemas/ConflictListSideOut"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "resolved",
+              "cleared_by_state_change"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pair_id",
+          "kind",
+          "status",
+          "left",
+          "right"
+        ],
+        "title": "ConflictPairOut",
+        "type": "object"
+      },
+      "ConflictResolutionIn": {
+        "description": "The body of a resolution: which action, and which side it is about.\n\n**`side` names the side the action applies to**, and it carries the kind as well as\nthe id. The pair row is **symmetric** — it stores both sides sorted — so the row\ncannot say which side the user is acting on, and the request has to.\n\nThe field is called `side` rather than `new_side` because \"new\" is only true of the\nprompt: for a pair reviewed later on `/conflicts` there is no new side, there are two\nsides and the user picks one.\n\n**The kind is what makes the request safe.** The action decides what it may act on:\n`delete_new` deletes a personal event and refuses a saved side; `skip_public`\nreleases a save and refuses a personal side. So a client cannot delete a personal\nevent by naming a saved side, and it cannot release somebody else's save by naming a\npersonal one. The rule is per-action, which is what it has to be now that both kinds\nof side are answerable.",
+        "properties": {
+          "resolution": {
+            "enum": [
+              "keep_both",
+              "edit_new",
+              "update_existing",
+              "delete_new",
+              "skip_public"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/ConflictSideRef"
+          }
+        },
+        "required": [
+          "resolution",
+          "side"
+        ],
+        "title": "ConflictResolutionIn",
+        "type": "object"
+      },
+      "ConflictResolutionOut": {
+        "description": "The outcome of a resolution.\n\n`action_side` is the side the action was about — the client opens it in edit mode for\n`edit_new`, or finds it already deleted for `delete_new`, or finds the save gone for\n`skip_public`. `other_side` is the pair's other side.\n\nBoth carry their kind, which the old shape did not: the old `new_side_id` was always\na personal event, so the kind was implied.",
+        "properties": {
+          "action_side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConflictSideRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "enum": [
+              "time",
+              "duplicate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "other_side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConflictSideRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pair_id": {
+            "format": "uuid",
+            "title": "Pair Id",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "keep_both",
+              "edit_new",
+              "update_existing",
+              "delete_new",
+              "skip_public"
+            ],
             "title": "Resolution",
             "type": "string"
           },
           "status": {
+            "enum": [
+              "active",
+              "resolved",
+              "cleared_by_state_change"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -294,7 +499,7 @@
         "type": "object"
       },
       "ConflictSideOut": {
-        "description": "One side of a conflict: the event that clashes.\n\nThe times are UTC instants. The side does not carry a timezone of its own — the sides\nare two records that may live in two different zones, and a conflict is about the\ninstants they occupy, not about how either is displayed.",
+        "description": "One side of a conflict: the event that clashes.\n\nThe times are UTC instants. The side does not carry a timezone of its own — the sides\nare two records that may live in two different zones, and a conflict is about the\ninstants they occupy, not about how either is displayed.\n\n`kind` says which kind of record this side names: a personal event the user owns, or\na save of a public event. The client needs it to post a resolution — the resolution\nnames the side, and the side is a `(kind, id)` pair.",
         "properties": {
           "end_time_utc": {
             "anyOf": [
@@ -313,6 +518,14 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "enum": [
+              "personal_event",
+              "saved_event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -324,11 +537,36 @@
           }
         },
         "required": [
+          "kind",
           "id",
           "name",
           "start_time_utc"
         ],
         "title": "ConflictSideOut",
+        "type": "object"
+      },
+      "ConflictSideRef": {
+        "description": "The side a resolution acts on: its kind and its id.\n\nThe pair row stores its two sides **by value** as `(kind, id)` — the kind beside the\nid, because the id is a UUID and a UUID does not say what it points at. This is that\nsame shape, so the server can check the request against the row without a\ntranslation.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "personal_event",
+              "saved_event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "ConflictSideRef",
         "type": "object"
       },
       "CsrfTokenOut": {
@@ -369,9 +607,121 @@
         "title": "CurrentUserOut",
         "type": "object"
       },
+      "DetailConflictOut": {
+        "description": "The caller's **active** conflict pair for this event (FR-33, FR-58).\n\n**The screen knows which event it is showing**, so this is not a symmetric pair —\nit is the pair's *other* side, the one the save clashes with. The client does not\nhave to work out which of two sides is \"mine\".\n\n**Both sides are named, because a resolution names a side.** The request body\n(`ConflictResolutionIn.side`) carries a `(kind, id)` pair, and the server checks it\nagainst the pair's own two sides — so the client has to be able to name the side it\nis acting on. `saved_side` is the **save row's** id, which is *not* the catalog\nevent's id: the pair stores a `SavedEvent` by that row's id, and `skip_public`\nreleases the save by the same id. `other_side` is the personal event's id. Without\nboth, the client would have to guess an id, and a guessed id is refused by the server.\n\n**`actions` is the saved side's set**, not the pair's union. The Detail Screen acts\non the save — \"skip this event\" releases it — so the choices are `keep_both`,\n`edit_new` and `skip_public`. The union would also offer `delete_new`, and deleting\nthe user's personal event is not a choice this surface should present.\n\n**Only an active pair is here.** A resolved pair is history and a cleared one is\nnobody's decision; neither means \"there is a choice waiting\".",
+        "properties": {
+          "actions": {
+            "default": [],
+            "items": {
+              "enum": [
+                "keep_both",
+                "edit_new",
+                "update_existing",
+                "delete_new",
+                "skip_public"
+              ],
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "time",
+              "duplicate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "other_side": {
+            "$ref": "#/components/schemas/DetailConflictSideOut"
+          },
+          "pair_id": {
+            "format": "uuid",
+            "title": "Pair Id",
+            "type": "string"
+          },
+          "saved_side_id": {
+            "format": "uuid",
+            "title": "Saved Side Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pair_id",
+          "kind",
+          "other_side",
+          "saved_side_id"
+        ],
+        "title": "DetailConflictOut",
+        "type": "object"
+      },
+      "DetailConflictSideOut": {
+        "description": "The side a saved event clashes with, as the Detail Screen reads it.\n\n**`name` is nullable**, for the same reason the conflict list's side is: a side\nwhose record has gone has no title to show, and the client renders \"event no longer\navailable\" rather than a blank. `ConflictSideOut` — the 409's shape — requires a\nname, because the 409 names a side the user just touched, and that one is always\nthere.\n\n**No timezone of its own.** The side is a record that may live in a different zone\nfrom the event on screen, and a conflict is about the instants they occupy.",
+        "properties": {
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "personal_event",
+              "saved_event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "start_time_utc"
+        ],
+        "title": "DetailConflictSideOut",
+        "type": "object"
+      },
       "DetailPersonalOut": {
         "description": "The signed-in user's own state for an event (FR-24).\n\n**Three independent facts, and none of them implies another.** \"There is no\nexplanation\" and \"you have not saved this\" are different, and a client that cannot\ntell them apart renders the wrong thing.\n\n**`why_this` is `None` when no composition exists** for this `(user, event)` pair.\nThat is an **explicit absence**: not an empty breakdown, not a zero bucket, and not\na recomputed one. AD-10 says the screen \"renders no explanation rather than\nrecomputing one if none exists\".",
         "properties": {
+          "conflict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetailConflictOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "neighbor_bucket": {
             "anyOf": [
               {
@@ -2029,6 +2379,145 @@
         "title": "SignUpOut",
         "type": "object"
       },
+      "TimelineBlockOut": {
+        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.",
+        "properties": {
+          "conflict": {
+            "default": false,
+            "title": "Conflict",
+            "type": "boolean"
+          },
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "personal",
+              "public"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "start_time_utc",
+          "start_time_tz"
+        ],
+        "title": "TimelineBlockOut",
+        "type": "object"
+      },
+      "TimelineDayOut": {
+        "description": "One local day, with its blocks in time order.\n\n**A multi-day event appears on every day it covers.** An event running from Friday\n22:00 to Saturday 02:00 is a Friday block *and* a Saturday block, and the indicator\nfires on whichever day-cell the overlap falls in.",
+        "properties": {
+          "blocks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TimelineBlockOut"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "TimelineDayOut",
+        "type": "object"
+      },
+      "TimelineOut": {
+        "description": "One Mon–Sun week, in the user's timezone.\n\n**Seven days, always.** An empty week still has seven day cells, each with an empty\n`blocks` list — the screen draws seven columns, and it should not have to know whether\nthe week has anything in it.\n\n`timezone` is the zone the days were cut in, so the client can label the week without\nguessing.",
+        "properties": {
+          "days": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TimelineDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "week_end": {
+            "format": "date",
+            "title": "Week End",
+            "type": "string"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "week_end",
+          "timezone"
+        ],
+        "title": "TimelineOut",
+        "type": "object"
+      },
+      "TimelineQuery": {
+        "description": "The query parameters of the Timeline endpoint.\n\n**`week` is any date in the wanted week.** The response names that week's Monday and\nSunday, so the client does not have to know which day of the week it asked for. With\nno `week`, the current week in the user's own zone is returned — the user's zone, not\nthe server's, because a week is cut at local midnight.\n\nA malformed value is a 422: the parameter is typed as a date, so Django Ninja's own\nvalidation answers it, on the same path every other malformed query in this codebase\ntakes.",
+        "properties": {
+          "week": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "title": "TimelineQuery",
+        "type": "object"
+      },
       "WhyThisOut": {
         "description": "The persisted why-this breakdown (FR-24, AD-10).\n\n**This is a persisted fact, not a computation.** The tags, the bucket and the badge\nare the `DigestComposition` row's own values, read back from the most recent\ncomposition for that `(user, event)` pair. AD-10 says an explanation \"is never\ngenerated at view time\", and this is where that either holds or is quietly broken.\n\n**The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;\nthe screen shows 1–5 dots. Sending the score would invite the frontend to re-bucket\nit — the \"recomputed at render\" failure wearing a different hat.\n\n**The tags are the persisted keys, in the persisted order.** The client owns the\nlabels; the server states the facts.\n\n**The Source Badge is the variant key, or `None`.** A personal event has no source,\nso it has no badge; `None` here means \"there is no source\", not \"unknown\".",
         "properties": {
@@ -2546,7 +3035,7 @@
     },
     "/api/events/{event_id}": {
       "get": {
-        "description": "The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, and the k-anonymous neighbor count; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.",
+        "description": "The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, the k-anonymous neighbor count, and their active conflict pair for this event if there is one; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.",
         "operationId": "apps_personalization_detail_api_get_event_detail",
         "parameters": [
           {
@@ -2864,6 +3353,29 @@
         ]
       }
     },
+    "/api/personal/conflicts": {
+      "get": {
+        "description": "Every conflict pair the signed-in user has, in two groups: `active` — what still needs a decision — and `resolved` — what was decided. Each pair carries both sides, named, so a pair can be shown without a second request per side.\n\n**A saved side is named by its catalog title.** A save has no title of its own; the title lives in the catalog and is read through its published interface. A side whose record is gone reads as `available: false` with no name — 'event no longer available' — rather than a blank or an error.\n\n**`resolved` holds the pairs the user answered.** A pair closed because a side went away without the user answering (`cleared_by_state_change`) is not listed: it is not the user's choice, so it is not presented as one.\n\nActive pairs are ordered by the earlier side's start time, soonest first; resolved pairs by resolution time, newest first. No other user's pairs are readable.",
+        "operationId": "apps_personalization_api_list_conflicts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictListOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List the signed-in user's conflict pairs",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
     "/api/personal/digest": {
       "get": {
         "description": "The user's Pulse Digest for their local day, as it was composed.\n\nThe response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.\n\nEach card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.\n\nThe times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.",
@@ -2988,7 +3500,7 @@
     },
     "/api/personal/events/conflicts/{pair_id}/resolve": {
       "post": {
-        "description": "Records the user's choice on a conflict prompt. Exactly one of the three actions the prompt offered is accepted; there is no dismiss. A resolution that is illegal for this conflict's kind is refused, and the prompt stays open.",
+        "description": "Records the user's choice on a conflict prompt. Exactly one of the three actions the prompt offered is accepted; there is no dismiss. A resolution that is illegal for this conflict's kind — or for the side named — is refused, and the prompt stays open.\n\n**The request names the side the action is about**, with its kind, because the pair row is symmetric and cannot say which side the user is acting on. The action decides what it may act on: `delete_new` deletes a personal event and refuses a saved side; `skip_public` releases a save of a public event and refuses a personal side. So a client cannot delete a personal event by naming a saved side, and it cannot release another user's save by naming a personal one — a side that is not one of the pair's two is refused outright.",
         "operationId": "apps_personalization_api_resolve_event_conflict",
         "parameters": [
           {
@@ -3517,7 +4029,7 @@
         ]
       },
       "post": {
-        "description": "Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested. If the save clashes with a personal event, the response is 409 carrying the conflict and the three actions.",
+        "description": "Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested.\n\nIf the save clashes with a personal event, the response is 409 carrying the conflict and the three actions. **The third action is `skip_public`** — because the side the user just added is a *save*, the destructive choice releases the save rather than deleting a record. The conflict names both sides with their kinds, so the client has everything it needs to post the resolution.",
         "operationId": "apps_personalization_api_save_public_event",
         "parameters": [
           {
@@ -3564,6 +4076,47 @@
           }
         },
         "summary": "Save a public event",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/timeline": {
+      "get": {
+        "description": "One Mon–Sun week in the **user's timezone**, as seven days, each a time-ordered list of blocks — the user's personal events and their saved public events, merged.\n\n**`week` is any date in the wanted week.** The response names that week's Monday and Sunday. With no `week`, the current week in the user's own zone is returned. A malformed value is a 422.\n\n**Days are cut in the user's timezone**, not the server's — a week is cut at local midnight, so it is 167 hours across a spring-forward and 169 across a fall-back. An event is placed on the day its local start falls on.\n\n**A block carries the id the screen acts on**: the personal event's id, or the *catalog* event's id for a saved event, so the screen can route to `/events/:id`. It also carries the event's own zone, which is not the zone the week is cut in.\n\n**`conflict` is already decided.** It is true on both sides of an active pair, and it stays true after 'Keep both' — that resolution leaves a permanent reminder. Every other resolution clears it.\n\n**A multi-day event appears on every day it covers**, and the indicator fires on the day-cell whose interval contains the **overlap** — the clash itself, not the event's whole span. So an event running from Friday 22:00 to Saturday 02:00 that clashes on Friday lights Friday's cell only, while a clash that itself straddles midnight lights both of its days.\n\n**Seven days, always** — an empty week still has seven day cells. No other user's events are readable.",
+        "operationId": "apps_personalization_api_read_timeline",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The signed-in user's week, day by day",
         "tags": [
           "personal"
         ]

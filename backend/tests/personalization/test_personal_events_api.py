@@ -220,8 +220,12 @@ def test_a_conflicting_create_answers_409_with_the_conflict_and_the_three_action
     assert details["event_id"]
     conflict = details["conflicts"][0]
     assert conflict["kind"] == "time"
-    assert conflict["other"]["name"] == "Coffee with Sam"
-    assert conflict["other"]["id"]
+    assert conflict["other_side"]["name"] == "Coffee with Sam"
+    assert conflict["other_side"]["id"]
+    assert conflict["other_side"]["kind"] == "personal_event"
+    # Both sides are named, so the client has everything it needs to post a resolution.
+    assert conflict["new_side"]["kind"] == "personal_event"
+    assert conflict["new_side"]["id"] == details["event_id"]
     assert conflict["actions"] == ["delete_new", "edit_new", "keep_both"]
 
 
@@ -248,6 +252,7 @@ def test_the_openapi_schema_cannot_express_a_dismiss():
         "edit_new",
         "update_existing",
         "delete_new",
+        "skip_public",
     }
 
 
@@ -291,10 +296,10 @@ def test_a_non_conflicting_create_answers_201():
 # --- Resolving a conflict (FR-58) ------------------------------------------------------------
 
 
-def resolve(client, pair, resolution, new_side_id):
+def resolve(client, pair, resolution, side_id, side_kind="personal_event"):
     return client.post(
         f"/api/personal/events/conflicts/{pair}/resolve",
-        {"resolution": resolution, "new_side_id": str(new_side_id)},
+        {"resolution": resolution, "side": {"kind": side_kind, "id": str(side_id)}},
         content_type="application/json",
     )
 
@@ -320,7 +325,8 @@ def test_keeping_both_records_the_resolution_and_closes_the_pair():
     payload = response.json()
     assert payload["resolution"] == "keep_both"
     assert payload["status"] == "resolved"
-    assert payload["new_side_id"] == new_side_id
+    assert payload["action_side"]["id"] == new_side_id
+    assert payload["action_side"]["kind"] == "personal_event"
     pair.refresh_from_db()
     assert pair.status == ConflictPair.Status.RESOLVED
     assert pair.resolution == "keep_both"

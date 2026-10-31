@@ -245,6 +245,7 @@ def test_conflict_pair_has_no_dismiss_resolution():
         "edit_new",
         "delete_new",
         "update_existing",
+        "skip_public",
     }
 
 

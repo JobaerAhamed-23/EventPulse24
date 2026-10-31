@@ -46,7 +46,15 @@ const CONFLICT_DETAILS = {
       pair_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       kind: "time",
       actions: ["keep_both", "edit_new", "delete_new"],
-      other: {
+      new_side: {
+        kind: "personal_event",
+        id: "55555555-5555-5555-5555-555555555555",
+        name: "Dinner with Rahul",
+        start_time_utc: "2026-11-07T00:30:00Z",
+        end_time_utc: null,
+      },
+      other_side: {
+        kind: "personal_event",
         id: "66666666-6666-6666-6666-666666666666",
         name: "Free tech meetup",
         start_time_utc: "2026-11-06T22:30:00Z",
@@ -290,7 +298,10 @@ describe("PersonalEventsPanel", () => {
       await waitFor(() => expect(POST).toHaveBeenCalledTimes(2));
       expect(POST).toHaveBeenLastCalledWith("/api/personal/events/conflicts/{pair_id}/resolve", {
         params: { path: { pair_id: CONFLICT_DETAILS.conflicts[0].pair_id } },
-        body: { resolution: "keep_both", new_side_id: CONFLICT_DETAILS.event_id },
+        body: {
+          resolution: "keep_both",
+          side: { kind: "personal_event", id: CONFLICT_DETAILS.event_id },
+        },
       });
     });
 

@@ -31,11 +31,12 @@ import {
  * carries no `aria-current="page"` — the row *inside* the sheet carries that when the
  * overflow route is the current one.
  *
- * **An inert slot is inert.** Four of the five routes do not exist yet, and a slot that
- * navigates to a 404 is a lie. An inert slot is a `<span>` with `aria-disabled="true"`,
- * and it carries the same "Coming soon" the sidenav's inert rows carry — visually hidden
- * here, because a slot is a fifth of the bar and there is no room to print it, but said
- * aloud, because `aria-disabled` alone does not explain *why* the slot does nothing.
+ * **An inert slot is inert.** Two of the five routes do not exist yet — Browse (behind
+ * the More sheet) and Settings — and a slot that navigates to a 404 is a lie. An inert
+ * slot is a `<span>` with `aria-disabled="true"`, and it carries the same "Coming soon"
+ * the sidenav's inert rows carry — visually hidden here, because a slot is a fifth of
+ * the bar and there is no room to print it, but said aloud, because `aria-disabled`
+ * alone does not explain *why* the slot does nothing.
  *
  * **Sign out reaches mobile through the More sheet.** The sidenav is `hidden md:flex`, so
  * the account row in its footer is desktop-only; `MoreMenu` carries the same account
@@ -53,9 +54,19 @@ export function BottomTabNav({ name, email }: AccountProps) {
         style={{ height: "var(--layout-bottom-tab-height)" }}
       >
         <TabSlot label="Digest" active={pathname === "/"} glyph={<DigestGlyph />} />
-        <TabSlot label="Timeline" glyph={<TimelineGlyph />} />
+        <TabSlot
+          label="Timeline"
+          href="/timeline"
+          active={pathname === "/timeline"}
+          glyph={<TimelineGlyph />}
+        />
         <TabSlot label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
-        <TabSlot label="Conflicts" glyph={<ConflictsGlyph />} />
+        <TabSlot
+          label="Conflicts"
+          href="/conflicts"
+          active={pathname === "/conflicts"}
+          glyph={<ConflictsGlyph />}
+        />
         <TabSlot label="Settings" glyph={<SettingsGlyph />} />
 
         {/*
@@ -82,15 +93,21 @@ export function BottomTabNav({ name, email }: AccountProps) {
  * `onActivate` is for a slot that opens a surface in place rather than routing — the Add
  * slot, which the spec says mounts the creation panel instead of navigating. The whole
  * slot is the button, so the tap target is the full fifth of the bar.
+ *
+ * `href` is for a slot that routes. **A slot with no `href` and no `onActivate` is
+ * inert** — it is a `<span>` with `aria-disabled`, because a link to a 404 is a lie
+ * about where the label goes.
  */
 function TabSlot({
   label,
   glyph,
+  href,
   active,
   onActivate,
 }: {
   label: string;
   glyph: React.ReactNode;
+  href?: string;
   active?: boolean;
   onActivate?: () => void;
 }) {
@@ -122,7 +139,7 @@ function TabSlot({
     );
   }
 
-  if (!active && label !== "Digest") {
+  if (!href) {
     // The inert slot. Nothing to navigate to, so there is nothing to focus.
     //
     // "Coming soon" is visually hidden rather than printed: the sidenav's inert rows show
@@ -139,7 +156,7 @@ function TabSlot({
 
   return (
     <a
-      href={label === "Digest" ? "/" : undefined}
+      href={href}
       aria-current={active ? "page" : undefined}
       className={[
         className,

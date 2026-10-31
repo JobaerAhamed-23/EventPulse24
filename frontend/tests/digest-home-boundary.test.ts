@@ -356,3 +356,34 @@ describe("the home's digest states", () => {
     expect(error).toContain("Refresh page.");
   });
 });
+
+describe("the home's personal events", () => {
+  it("renders no personal-events list, because the Timeline is where they live", () => {
+    const page = code.get("app/page.tsx") ?? "";
+
+    // The stopgap list is gone, and with it the page's second read. A personal-events
+    // read on the digest's home would fetch a list the page does not show.
+    expect(page).not.toContain("PersonalEventsPanel");
+    expect(page).not.toContain("readPersonalEvents");
+    expect(page).not.toContain("personal-events-section");
+    expect(page).not.toContain("Your personal events");
+  });
+
+  it("confirms an add inline, never as a toast", () => {
+    const button = code.get("components/add-event-button.tsx") ?? "";
+
+    // "inline notice only" — no toast, no portal, no floating layer.
+    expect(button).not.toContain("createPortal");
+    expect(button).not.toContain("fixed ");
+    expect(button).not.toContain("toast");
+    expect(button).not.toContain("Toast");
+  });
+
+  it("points the confirmation at the Timeline, not at a route that does not exist", () => {
+    const button = code.get("components/add-event-button.tsx") ?? "";
+
+    // The Timeline exists. A link to anywhere else would be a 404 — and the sidenav's
+    // own rule against linking to a page that is not built.
+    expect(button).toContain("/timeline?week=");
+  });
+});

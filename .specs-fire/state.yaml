@@ -495,6 +495,78 @@ intents:
           - digest-scheduling
         run_id: run-eventpulse24-021
         completed_at: 2026-10-31T12:00:00Z
+  - id: timeline-and-conflicts
+    title: Unified Timeline & Conflict Review
+    status: completed
+    created: 2026-10-31
+    completed_at: 2026-10-31T10:27:58.269Z
+    work_items:
+      - id: conflict-list-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: saved-public-conflict-resolution
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: timeline-week-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - conflict-list-api
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: frontend-timeline
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - timeline-week-api
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: frontend-conflicts-page
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - conflict-list-api
+          - saved-public-conflict-resolution
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: detail-screen-conflict-prompt
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - saved-public-conflict-resolution
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: home-back-to-digest
+        status: completed
+        complexity: low
+        mode: autopilot
+        depends_on:
+          - frontend-timeline
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
+      - id: e2e-proof-and-contract-tests
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-timeline
+          - frontend-conflicts-page
+          - detail-screen-conflict-prompt
+          - home-back-to-digest
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:28:08.146Z
 runs:
   active: []
   completed:
@@ -759,3 +831,32 @@ runs:
           mode: confirm
       started: 2026-10-30T12:40:28.978Z
       completed: 2026-10-31T12:00:00Z
+    - id: run-eventpulse24-022
+      scope: wide
+      work_items:
+        - id: conflict-list-api
+          intent: timeline-and-conflicts
+          mode: confirm
+        - id: saved-public-conflict-resolution
+          intent: timeline-and-conflicts
+          mode: validate
+        - id: timeline-week-api
+          intent: timeline-and-conflicts
+          mode: confirm
+        - id: frontend-timeline
+          intent: timeline-and-conflicts
+          mode: confirm
+        - id: frontend-conflicts-page
+          intent: timeline-and-conflicts
+          mode: confirm
+        - id: detail-screen-conflict-prompt
+          intent: timeline-and-conflicts
+          mode: confirm
+        - id: home-back-to-digest
+          intent: timeline-and-conflicts
+          mode: autopilot
+        - id: e2e-proof-and-contract-tests
+          intent: timeline-and-conflicts
+          mode: confirm
+      started: 2026-10-31T06:33:07.500Z
+      completed: 2026-10-31T10:28:08.146Z

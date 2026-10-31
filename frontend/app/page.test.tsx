@@ -17,7 +17,6 @@ import HomePage from "@/app/page";
 
 const getSession = vi.fn();
 const readDigest = vi.fn();
-const readPersonalEvents = vi.fn();
 const redirect = vi.fn();
 
 vi.mock("@/lib/session", async () => {
@@ -29,10 +28,6 @@ vi.mock("@/lib/session", async () => {
 
 vi.mock("@/lib/digest-read", () => ({
   readDigest: () => readDigest(),
-}));
-
-vi.mock("@/components/personal-events-section", () => ({
-  readPersonalEvents: () => readPersonalEvents(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -91,8 +86,6 @@ beforeEach(() => {
   readDigest.mockReset();
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
   readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
-  readPersonalEvents.mockReset();
-  readPersonalEvents.mockResolvedValue([]);
 });
 
 describe("the routing decision", () => {
@@ -146,32 +139,34 @@ describe("the routing decision", () => {
   });
 });
 
-describe("the personal events", () => {
-  it("lists the user's own events below the digest, so an added event can be seen", async () => {
-    readPersonalEvents.mockResolvedValue([
-      {
-        id: "77777777-7777-7777-7777-777777777777",
-        name: "Dentist",
-        start_time_utc: "2026-11-03T15:00:00Z",
-        start_time_tz: "America/Chicago",
-        end_time_utc: null,
-        location: null,
-        notes: null,
-        version: 1,
-      },
-    ]);
+describe("the digest is alone", () => {
+  it("shows no personal-events list, because the Timeline is where they live", async () => {
     render(await HomePage(props()));
 
-    const section = screen.getByRole("region", { name: "Your personal events" });
-    expect(section).toHaveTextContent("Dentist");
-    // The header's "+ Add personal event" is the Add here; the list draws none.
+    // The stopgap list is gone. The Timeline is the home of a personal event, so a
+    // second list under the digest would be the same events in two places.
+    expect(screen.queryByRole("region", { name: "Your personal events" })).toBeNull();
+    expect(screen.queryByText("You haven't added any personal events yet.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
   });
 
-  it("says so when there are none", async () => {
-    render(await HomePage(props()));
+  it("reads the digest and nothing else", async () => {
+    // The page's second read is gone with the list. A personal-events read on the
+    // digest's home would fetch a list the page does not show.
+    const source = readFileSync(path.join(__dirname, "page.tsx"), "utf8");
+    expect(source).not.toContain("readPersonalEvents");
+    expect(source).not.toContain("PersonalEventsPanel");
+    expect(source).not.toContain("personal-events-section");
+  });
 
-    expect(screen.getByText("You haven't added any personal events yet.")).toBeInTheDocument();
+  it("keeps the header's quick-add, because the add belongs to the page head", async () => {
+    const { container } = render(await HomePage(props()));
+
+    // The sidenav and the bottom-tab bar carry their own Add rows, and the shell's
+    // topbar is brand-only — so the header's quick-add is found by its place in the
+    // digest's own header rather than by its name.
+    const main = container.querySelector("main");
+    expect(main?.querySelector("header")?.textContent).toContain("Add personal event");
   });
 });
 
@@ -270,14 +265,12 @@ describe("the empty state", () => {
     expect(link).toHaveAttribute("href", "/suggest");
 
     // No CTA pair, no carousel, no upsell: the empty state is the message. The shell's
-    // own controls (the Add slot, the Search button) are not part of the empty state, and
-    // neither is the personal-events section below it, so the assertion is scoped to the
-    // digest's region.
+    // own controls (the Add slot, the Search button) are not part of the empty state,
+    // and neither is anything else outside `main` — so the assertion is over the whole
+    // digest region, which is what is left now the personal-events list is gone.
     const main = container.querySelector("main");
-    const inDigest = (element: Element) =>
-      element.closest('section[aria-label="Your personal events"]') === null;
-    expect([...(main?.querySelectorAll("button") ?? [])].filter(inDigest)).toHaveLength(0);
-    expect([...(main?.querySelectorAll("a") ?? [])].filter(inDigest)).toHaveLength(1);
+    expect([...(main?.querySelectorAll("button") ?? [])]).toHaveLength(0);
+    expect([...(main?.querySelectorAll("a") ?? [])]).toHaveLength(1);
   });
 
   it("carries no terracotta, which is rationed to four uses", async () => {
@@ -444,9 +437,9 @@ describe("the shell", () => {
   it("does not let an inert route navigate", async () => {
     render(await HomePage(props()));
 
-    // Four of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
+    // Two of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
     // with aria-disabled still navigates.
-    for (const label of ["Timeline", "Browse", "Conflicts", "Settings"]) {
+    for (const label of ["Browse", "Settings"]) {
       const item = [...sidenav().querySelectorAll("li")].find((li) =>
         [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
       );
@@ -454,6 +447,30 @@ describe("the shell", () => {
       expect(item?.querySelector("a"), label).toBeNull();
       expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
     }
+  });
+
+  it("makes Conflicts a real route, because the Conflict Review exists", async () => {
+    render(await HomePage(props()));
+
+    const item = [...sidenav().querySelectorAll("li")].find((li) =>
+      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Conflicts"),
+    );
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/conflicts");
+    // "Coming soon" is gone — the route is here.
+    expect(item?.textContent).not.toContain("Coming soon");
+  });
+
+  it("makes Timeline a real route, because the Timeline exists", async () => {
+    render(await HomePage(props()));
+
+    const item = [...sidenav().querySelectorAll("li")].find((li) =>
+      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Timeline"),
+    );
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/timeline");
+    // "Coming soon" is gone — the route is here.
+    expect(item?.textContent).not.toContain("Coming soon");
   });
 
   it("keeps the topbar brand-only", async () => {

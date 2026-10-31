@@ -82,6 +82,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       </Link>
 
       <DetailHeader
+        eventId={event.id}
         title={event.title}
         venueName={event.venue_name ?? null}
         venueCity={event.venue_city ?? null}
@@ -90,6 +91,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         sourceBadgeKey={why?.source_badge ?? null}
         confidence={why ? why.bucket : null}
         factors={factors}
+        // **The server's fact.** The payload names the caller's active pair for this
+        // event, or names none — the header does not decide whether a clash exists.
+        hasConflict={personal?.conflict != null}
       />
 
       {/* The same three tags, in the same order, as the card (FR-21). */}
@@ -133,7 +137,20 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
               </div>
 
               <div className="mt-8">
-                <DetailActions eventId={event.id} saved={personal.saved} />
+                {/*
+                  **The action row owns the conflict prompt.** The mark in the header is
+                  a server-rendered fact that *announces* the open; the prompt lives in
+                  this island, and the event's own title and times are handed over so
+                  the prompt can name the side the user is looking at.
+                */}
+                <DetailActions
+                  eventId={event.id}
+                  saved={personal.saved}
+                  conflict={personal.conflict ?? null}
+                  eventName={event.title}
+                  startTimeUtc={event.start_time_utc}
+                  endTimeUtc={event.end_time_utc ?? null}
+                />
               </div>
             </>
           ) : null}

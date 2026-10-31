@@ -195,7 +195,7 @@ export interface paths {
         };
         /**
          * Get one event's Detail Screen
-         * @description The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, and the k-anonymous neighbor count; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.
+         * @description The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, the k-anonymous neighbor count, and their active conflict pair for this event if there is one; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.
          */
         get: operations["apps_personalization_detail_api_get_event_detail"];
         put?: never;
@@ -311,6 +311,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's conflict pairs
+         * @description Every conflict pair the signed-in user has, in two groups: `active` — what still needs a decision — and `resolved` — what was decided. Each pair carries both sides, named, so a pair can be shown without a second request per side.
+         *
+         *     **A saved side is named by its catalog title.** A save has no title of its own; the title lives in the catalog and is read through its published interface. A side whose record is gone reads as `available: false` with no name — 'event no longer available' — rather than a blank or an error.
+         *
+         *     **`resolved` holds the pairs the user answered.** A pair closed because a side went away without the user answering (`cleared_by_state_change`) is not listed: it is not the user's choice, so it is not presented as one.
+         *
+         *     Active pairs are ordered by the earlier side's start time, soonest first; resolved pairs by resolution time, newest first. No other user's pairs are readable.
+         */
+        get: operations["apps_personalization_api_list_conflicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/digest": {
         parameters: {
             query?: never;
@@ -372,7 +398,9 @@ export interface paths {
         put?: never;
         /**
          * Answer a conflict prompt
-         * @description Records the user's choice on a conflict prompt. Exactly one of the three actions the prompt offered is accepted; there is no dismiss. A resolution that is illegal for this conflict's kind is refused, and the prompt stays open.
+         * @description Records the user's choice on a conflict prompt. Exactly one of the three actions the prompt offered is accepted; there is no dismiss. A resolution that is illegal for this conflict's kind — or for the side named — is refused, and the prompt stays open.
+         *
+         *     **The request names the side the action is about**, with its kind, because the pair row is symmetric and cannot say which side the user is acting on. The action decides what it may act on: `delete_new` deletes a personal event and refuses a saved side; `skip_public` releases a save of a public event and refuses a personal side. So a client cannot delete a personal event by naming a saved side, and it cannot release another user's save by naming a personal one — a side that is not one of the pair's two is refused outright.
          */
         post: operations["apps_personalization_api_resolve_event_conflict"];
         delete?: never;
@@ -584,7 +612,9 @@ export interface paths {
         put?: never;
         /**
          * Save a public event
-         * @description Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested. If the save clashes with a personal event, the response is 409 carrying the conflict and the three actions.
+         * @description Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested.
+         *
+         *     If the save clashes with a personal event, the response is 409 carrying the conflict and the three actions. **The third action is `skip_public`** — because the side the user just added is a *save*, the destructive choice releases the save rather than deleting a record. The conflict names both sides with their kinds, so the client has everything it needs to post the resolution.
          */
         post: operations["apps_personalization_api_save_public_event"];
         /**
@@ -592,6 +622,38 @@ export interface paths {
          * @description Removes one of the signed-in user's saves. The conflict pairs it took part in close as `cleared_by_state_change` — the pair ended because a side went away, which is not a user resolution.
          */
         delete: operations["apps_personalization_api_unsave_public_event"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's week, day by day
+         * @description One Mon–Sun week in the **user's timezone**, as seven days, each a time-ordered list of blocks — the user's personal events and their saved public events, merged.
+         *
+         *     **`week` is any date in the wanted week.** The response names that week's Monday and Sunday. With no `week`, the current week in the user's own zone is returned. A malformed value is a 422.
+         *
+         *     **Days are cut in the user's timezone**, not the server's — a week is cut at local midnight, so it is 167 hours across a spring-forward and 169 across a fall-back. An event is placed on the day its local start falls on.
+         *
+         *     **A block carries the id the screen acts on**: the personal event's id, or the *catalog* event's id for a saved event, so the screen can route to `/events/:id`. It also carries the event's own zone, which is not the zone the week is cut in.
+         *
+         *     **`conflict` is already decided.** It is true on both sides of an active pair, and it stays true after 'Keep both' — that resolution leaves a permanent reminder. Every other resolution clears it.
+         *
+         *     **A multi-day event appears on every day it covers**, and the indicator fires on the day-cell whose interval contains the **overlap** — the clash itself, not the event's whole span. So an event running from Friday 22:00 to Saturday 02:00 that clashes on Friday lights Friday's cell only, while a clash that itself straddles midnight lights both of its days.
+         *
+         *     **Seven days, always** — an empty week still has seven day cells. No other user's events are readable.
+         */
+        get: operations["apps_personalization_api_read_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -742,18 +804,93 @@ export interface components {
             redis: components["schemas"]["ComponentOut"];
         };
         /**
+         * ConflictListOut
+         * @description The user's conflict pairs, split into what needs a decision and what is history.
+         *
+         *     `resolved` holds exactly the pairs **the user answered**. A pair that was closed
+         *     because a side went away — `cleared_by_state_change` — is neither list's business:
+         *     nobody chose it, so it is not the user's history to read.
+         */
+        ConflictListOut: {
+            /**
+             * Active
+             * @default []
+             */
+            active: components["schemas"]["ConflictPairOut"][];
+            /**
+             * Resolved
+             * @default []
+             */
+            resolved: components["schemas"]["ConflictPairOut"][];
+        };
+        /**
+         * ConflictListSideOut
+         * @description One side of a pair, as the conflict list hands it over.
+         *
+         *     **`name` is nullable, and `available` says why.** A side whose record cannot be read
+         *     has no title to show. The client renders "event no longer available" rather than a
+         *     blank name, so the state is explicit instead of looking like an event with no title.
+         *
+         *     A side is unavailable when its own row is gone, or — for a saved side — when the
+         *     catalog no longer **publishes** the event. The catalog's published interface is the
+         *     only view across the schema wall (AD-2 / AD-3), and an event that is unpublished, in
+         *     review or superseded is simply not in it. This is the same rule `GET
+         *     /api/personal/saved-events` follows.
+         *
+         *     `start_time_tz` is the side's **display** zone: the personal event's own zone, or the
+         *     catalog event's zone for a saved side. It is None for an unavailable side, because the
+         *     snapshot is UTC and the display zone is then genuinely unknown.
+         */
+        ConflictListSideOut: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "personal_event" | "saved_event";
+            /** Name */
+            name?: string | null;
+            /** Start Time Tz */
+            start_time_tz?: string | null;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+        };
+        /**
          * ConflictOut
          * @description One conflict the user must answer.
          *
-         *     `actions` is the closed set of three choices for this conflict's kind. `dismiss` is not
-         *     among them and cannot be expressed.
+         *     `actions` is the closed set of three choices for this conflict's kind **and the side
+         *     the user just acted on**. `dismiss` is not among them and cannot be expressed.
+         *
+         *     **Both sides are named.** The 409 is the client's route to a resolution, and a
+         *     resolution names a side — so the client needs the side it just created or saved, and
+         *     the side it clashes with, each with its kind. `new_side` is the one the user just
+         *     touched; `other_side` is the one it clashes with.
          */
         ConflictOut: {
             /** Actions */
-            actions: string[];
-            /** Kind */
-            kind: string;
-            other: components["schemas"]["ConflictSideOut"];
+            actions: ("keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public")[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "time" | "duplicate";
+            new_side: components["schemas"]["ConflictSideOut"];
+            other_side: components["schemas"]["ConflictSideOut"];
             /**
              * Pair Id
              * Format: uuid
@@ -761,52 +898,113 @@ export interface components {
             pair_id: string;
         };
         /**
-         * ConflictResolutionIn
-         * @description The body of a resolution: which of the three, and which event is the new one.
+         * ConflictPairOut
+         * @description One pair, with both sides and the choices it offers.
          *
-         *     `new_side_id` is required because the pair row is **symmetric** — it stores both sides
-         *     sorted, so the row cannot say which side the user just created. The prompt's asymmetry
-         *     lives in the client (it knows which event it just made) and comes back here.
+         *     **Both sides are present, symmetrically.** The pair row stores them sorted, so the row
+         *     cannot say which side the user should move — the resolve flow decides that, by the
+         *     action the user picks.
          *
-         *     The body carries the id only, not the kind: this endpoint resolves conflicts *on
-         *     personal events*, so the new side is a personal event by definition. That keeps the
-         *     shape narrow — a client cannot name a saved event's id and have it deleted.
+         *     `actions` is the allowed set for an **active** pair, and it comes from the service's
+         *     maps — the same ones the resolve endpoint enforces, so there is one source and not a
+         *     second list. A **resolved** pair carries no actions (there is nothing left to choose)
+         *     and instead carries `resolution` and `resolved_at`.
+         *
+         *     **A pair with a saved side offers four actions.** The list presents both sides
+         *     symmetrically and does not know which one the user will act on, so it offers the
+         *     union across the pair's sides: `delete_new` for the personal side, `skip_public` for
+         *     the saved one, and the two shared choices. A personal-vs-personal pair is unaffected —
+         *     its union is exactly the three it has always offered.
          */
-        ConflictResolutionIn: {
+        ConflictPairOut: {
             /**
-             * New Side Id
-             * Format: uuid
+             * Actions
+             * @default []
              */
-            new_side_id: string;
+            actions: ("keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public")[];
             /**
-             * Resolution
+             * Kind
              * @enum {string}
              */
-            resolution: "keep_both" | "edit_new" | "update_existing" | "delete_new";
-        };
-        /**
-         * ConflictResolutionOut
-         * @description The outcome of a resolution.
-         *
-         *     `new_side_id` is the event the prompt called "new" — the client opens it in edit mode
-         *     for `edit_new`, or finds it already deleted for `delete_new`.
-         */
-        ConflictResolutionOut: {
-            /** Existing Side Id */
-            existing_side_id?: string | null;
-            /** Kind */
-            kind: string;
-            /** New Side Id */
-            new_side_id?: string | null;
+            kind: "time" | "duplicate";
+            left: components["schemas"]["ConflictListSideOut"];
             /**
              * Pair Id
              * Format: uuid
              */
             pair_id: string;
             /** Resolution */
-            resolution: string;
-            /** Status */
-            status: string;
+            resolution?: ("keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public") | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            right: components["schemas"]["ConflictListSideOut"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "resolved" | "cleared_by_state_change";
+        };
+        /**
+         * ConflictResolutionIn
+         * @description The body of a resolution: which action, and which side it is about.
+         *
+         *     **`side` names the side the action applies to**, and it carries the kind as well as
+         *     the id. The pair row is **symmetric** — it stores both sides sorted — so the row
+         *     cannot say which side the user is acting on, and the request has to.
+         *
+         *     The field is called `side` rather than `new_side` because "new" is only true of the
+         *     prompt: for a pair reviewed later on `/conflicts` there is no new side, there are two
+         *     sides and the user picks one.
+         *
+         *     **The kind is what makes the request safe.** The action decides what it may act on:
+         *     `delete_new` deletes a personal event and refuses a saved side; `skip_public`
+         *     releases a save and refuses a personal side. So a client cannot delete a personal
+         *     event by naming a saved side, and it cannot release somebody else's save by naming a
+         *     personal one. The rule is per-action, which is what it has to be now that both kinds
+         *     of side are answerable.
+         */
+        ConflictResolutionIn: {
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public";
+            side: components["schemas"]["ConflictSideRef"];
+        };
+        /**
+         * ConflictResolutionOut
+         * @description The outcome of a resolution.
+         *
+         *     `action_side` is the side the action was about — the client opens it in edit mode for
+         *     `edit_new`, or finds it already deleted for `delete_new`, or finds the save gone for
+         *     `skip_public`. `other_side` is the pair's other side.
+         *
+         *     Both carry their kind, which the old shape did not: the old `new_side_id` was always
+         *     a personal event, so the kind was implied.
+         */
+        ConflictResolutionOut: {
+            action_side?: components["schemas"]["ConflictSideRef"] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "time" | "duplicate";
+            other_side?: components["schemas"]["ConflictSideRef"] | null;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "resolved" | "cleared_by_state_change";
         };
         /**
          * ConflictSideOut
@@ -815,6 +1013,10 @@ export interface components {
          *     The times are UTC instants. The side does not carry a timezone of its own — the sides
          *     are two records that may live in two different zones, and a conflict is about the
          *     instants they occupy, not about how either is displayed.
+         *
+         *     `kind` says which kind of record this side names: a personal event the user owns, or
+         *     a save of a public event. The client needs it to post a resolution — the resolution
+         *     names the side, and the side is a `(kind, id)` pair.
          */
         ConflictSideOut: {
             /** End Time Utc */
@@ -824,6 +1026,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "personal_event" | "saved_event";
             /** Name */
             name: string;
             /**
@@ -831,6 +1038,27 @@ export interface components {
              * Format: date-time
              */
             start_time_utc: string;
+        };
+        /**
+         * ConflictSideRef
+         * @description The side a resolution acts on: its kind and its id.
+         *
+         *     The pair row stores its two sides **by value** as `(kind, id)` — the kind beside the
+         *     id, because the id is a UUID and a UUID does not say what it points at. This is that
+         *     same shape, so the server can check the request against the row without a
+         *     translation.
+         */
+        ConflictSideRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "personal_event" | "saved_event";
         };
         /**
          * CsrfTokenOut
@@ -872,6 +1100,87 @@ export interface components {
             onboarding: components["schemas"]["OnboardingStatusOut"];
         };
         /**
+         * DetailConflictOut
+         * @description The caller's **active** conflict pair for this event (FR-33, FR-58).
+         *
+         *     **The screen knows which event it is showing**, so this is not a symmetric pair —
+         *     it is the pair's *other* side, the one the save clashes with. The client does not
+         *     have to work out which of two sides is "mine".
+         *
+         *     **Both sides are named, because a resolution names a side.** The request body
+         *     (`ConflictResolutionIn.side`) carries a `(kind, id)` pair, and the server checks it
+         *     against the pair's own two sides — so the client has to be able to name the side it
+         *     is acting on. `saved_side` is the **save row's** id, which is *not* the catalog
+         *     event's id: the pair stores a `SavedEvent` by that row's id, and `skip_public`
+         *     releases the save by the same id. `other_side` is the personal event's id. Without
+         *     both, the client would have to guess an id, and a guessed id is refused by the server.
+         *
+         *     **`actions` is the saved side's set**, not the pair's union. The Detail Screen acts
+         *     on the save — "skip this event" releases it — so the choices are `keep_both`,
+         *     `edit_new` and `skip_public`. The union would also offer `delete_new`, and deleting
+         *     the user's personal event is not a choice this surface should present.
+         *
+         *     **Only an active pair is here.** A resolved pair is history and a cleared one is
+         *     nobody's decision; neither means "there is a choice waiting".
+         */
+        DetailConflictOut: {
+            /**
+             * Actions
+             * @default []
+             */
+            actions: ("keep_both" | "edit_new" | "update_existing" | "delete_new" | "skip_public")[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "time" | "duplicate";
+            other_side: components["schemas"]["DetailConflictSideOut"];
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /**
+             * Saved Side Id
+             * Format: uuid
+             */
+            saved_side_id: string;
+        };
+        /**
+         * DetailConflictSideOut
+         * @description The side a saved event clashes with, as the Detail Screen reads it.
+         *
+         *     **`name` is nullable**, for the same reason the conflict list's side is: a side
+         *     whose record has gone has no title to show, and the client renders "event no longer
+         *     available" rather than a blank. `ConflictSideOut` — the 409's shape — requires a
+         *     name, because the 409 names a side the user just touched, and that one is always
+         *     there.
+         *
+         *     **No timezone of its own.** The side is a record that may live in a different zone
+         *     from the event on screen, and a conflict is about the instants they occupy.
+         */
+        DetailConflictSideOut: {
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "personal_event" | "saved_event";
+            /** Name */
+            name?: string | null;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+        };
+        /**
          * DetailPersonalOut
          * @description The signed-in user's own state for an event (FR-24).
          *
@@ -885,6 +1194,7 @@ export interface components {
          *     recomputing one if none exists".
          */
         DetailPersonalOut: {
+            conflict?: components["schemas"]["DetailConflictOut"] | null;
             /** Neighbor Bucket */
             neighbor_bucket?: string | null;
             /**
@@ -1795,6 +2105,123 @@ export interface components {
             status: string;
         };
         /**
+         * TimelineBlockOut
+         * @description One block on one day of the Timeline.
+         *
+         *     **`id` is the id the screen acts on.** For a personal block it is the personal event's
+         *     id; for a public block it is the **catalog** event's id, so the screen routes to
+         *     `/events/:id` without knowing which table it came from.
+         *
+         *     **`name` is nullable, and that is a state rather than a hole.** A save whose catalog
+         *     event has disappeared has no title to show — the save is still the user's own record
+         *     and its snapshot still has a time, so the block is still drawn, and the client says
+         *     "event no longer available" rather than showing a blank.
+         *
+         *     **`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public
+         *     event in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than
+         *     its own clock suggests — so the block carries its own zone, and the response carries
+         *     the user's zone separately.
+         *
+         *     **`conflict` is already decided.** The server projects the pairs onto the blocks, so
+         *     the screen does not have to know what a conflict pair is, and the two surfaces — the
+         *     Pulse Card and the Timeline — cannot disagree about which block is flagged.
+         */
+        TimelineBlockOut: {
+            /**
+             * Conflict
+             * @default false
+             */
+            conflict: boolean;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "personal" | "public";
+            /** Name */
+            name?: string | null;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+        };
+        /**
+         * TimelineDayOut
+         * @description One local day, with its blocks in time order.
+         *
+         *     **A multi-day event appears on every day it covers.** An event running from Friday
+         *     22:00 to Saturday 02:00 is a Friday block *and* a Saturday block, and the indicator
+         *     fires on whichever day-cell the overlap falls in.
+         */
+        TimelineDayOut: {
+            /**
+             * Blocks
+             * @default []
+             */
+            blocks: components["schemas"]["TimelineBlockOut"][];
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+        };
+        /**
+         * TimelineOut
+         * @description One Mon–Sun week, in the user's timezone.
+         *
+         *     **Seven days, always.** An empty week still has seven day cells, each with an empty
+         *     `blocks` list — the screen draws seven columns, and it should not have to know whether
+         *     the week has anything in it.
+         *
+         *     `timezone` is the zone the days were cut in, so the client can label the week without
+         *     guessing.
+         */
+        TimelineOut: {
+            /**
+             * Days
+             * @default []
+             */
+            days: components["schemas"]["TimelineDayOut"][];
+            /** Timezone */
+            timezone: string;
+            /**
+             * Week End
+             * Format: date
+             */
+            week_end: string;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+        };
+        /**
+         * TimelineQuery
+         * @description The query parameters of the Timeline endpoint.
+         *
+         *     **`week` is any date in the wanted week.** The response names that week's Monday and
+         *     Sunday, so the client does not have to know which day of the week it asked for. With
+         *     no `week`, the current week in the user's own zone is returned — the user's zone, not
+         *     the server's, because a week is cut at local midnight.
+         *
+         *     A malformed value is a 422: the parameter is typed as a date, so Django Ninja's own
+         *     validation answers it, on the same path every other malformed query in this codebase
+         *     takes.
+         */
+        TimelineQuery: {
+            /** Week */
+            week?: string | null;
+        };
+        /**
          * WhyThisOut
          * @description The persisted why-this breakdown (FR-24, AD-10).
          *
@@ -2407,6 +2834,26 @@ export interface operations {
             };
         };
     };
+    apps_personalization_api_list_conflicts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictListOut"];
+                };
+            };
+        };
+    };
     apps_personalization_api_read_digest_endpoint: {
         parameters: {
             query?: never;
@@ -2912,6 +3359,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_read_timeline: {
+        parameters: {
+            query?: {
+                week?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineOut"];
                 };
             };
         };

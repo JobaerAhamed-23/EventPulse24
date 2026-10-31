@@ -24,7 +24,7 @@ import { useState } from "react";
 import type { components } from "@/lib/api/schema";
 import { api } from "@/lib/backend-client";
 import { cardTime } from "@/lib/detail-time";
-import { utcInstantToLocal } from "@/lib/timezones";
+import { utcInstantToLocal, formatLocalDate } from "@/lib/timezones";
 
 import { ConflictResolution, type Conflict } from "./sheets/conflict-resolution";
 import { PersonalEventForm, type PersonalEventFormValues } from "./sheets/personal-event-form";
@@ -33,6 +33,27 @@ type PersonalEvent = components["schemas"]["PersonalEventOut"];
 type ConflictDetails = components["schemas"]["SchedulingConflictDetails"];
 /** The resolutions the API accepts. */
 type Resolution = components["schemas"]["ConflictResolutionIn"]["resolution"];
+
+/**
+ * **The narrow shape the edit sheet needs.**
+ *
+ * The sheet seeds itself from an event's id, name, times, zone, location and notes —
+ * and from nothing else. `PersonalEventOut` also carries `version`, the
+ * optimistic-locking counter, and `calendar_connection_id`. **A caller that does not
+ * have those must not invent them**: a fabricated `version: 1` is a fact about the
+ * event that is not true, and the day it stops being true is the day a reader believes
+ * a lie. So the prop takes the shape the sheet reads, and a caller that *does* hold a
+ * full `PersonalEventOut` passes one — it satisfies this type by having more.
+ */
+export type PersonalEventSeed = {
+  id: string;
+  name: string;
+  start_time_utc: string;
+  start_time_tz: string;
+  end_time_utc?: string | null;
+  location?: string | null;
+  notes?: string | null;
+};
 
 export type PersonalEventsPanelProps = {
   /** The user's personal events, read by the server component that renders this. */
@@ -66,6 +87,91 @@ export type PersonalEventsPanelProps = {
    * be two controls for one action.
    */
   addButton?: boolean;
+  /**
+   * The personal events the **Timeline** offers to edit, and the events it opens the
+   * edit sheet for.
+   *
+   * **The Timeline is read-only at MVP** (ASSUM-7) — no drag-to-reschedule, no inline
+   * rename — but a personal block opens the existing **Edit personal event** sheet.
+   * The sheet lives inside this island, so the panel needs to know *which* event the
+   * Timeline clicked, and it learns it here: the list is the set of events the sheet
+   * may open, and the sheet opens on the one the caller names.
+   *
+   * **The panel finds the event by id**, so a caller that passes an event the panel does
+   * not know opens nothing rather than opening the wrong one.
+   *
+   * **The shape is the narrow one the sheet reads** (`PersonalEventSeed`), because the
+   * Timeline's block payload carries no `version` and a fabricated one would be a lie
+   * about the event. A caller holding a full `PersonalEventOut` passes one unchanged.
+   */
+  editingEvents?: PersonalEventSeed[];
+  /**
+   * The id of the event the sheet is open on, when the caller drives it.
+   *
+   * **The Timeline drives it.** A personal block on the Timeline is a button that opens
+   * the edit sheet, and the sheet's state lives in this island — so the Timeline tells
+   * the panel *which* event to open, and the panel opens it. Left `undefined`, the panel
+   * owns the choice and its own "Edit" buttons drive it.
+   */
+  editingEventId?: string | null;
+  /**
+   * Called when the caller drives which event the sheet is open on.
+   *
+   * **`null` closes the sheet.** The panel opens the sheet when the id names an event
+   * it knows, and closes it when the id goes back to `null` — so the caller can close
+   * the sheet by clearing the id, and the sheet's own "Cancel" does the same thing
+   * through this callback.
+   */
+  onEditingEventChange?: (id: string | null) => void;
+  /**
+   * Whether the sheet highlights the start time, when the caller drives it.
+   *
+   * **A "move" action opens the sheet with the conflicting time pre-highlighted**, so
+   * the user lands on the field they have to change rather than on a form that looks
+   * like any other edit. The conflict prompt's "Edit the new one" says so; the review
+   * screen's "Move" says so; and this is the prop that makes both true.
+   *
+   * **Left `undefined`, the panel owns it** — the panel's own conflict flow sets it
+   * when the user chooses a move. Given, it is derived during render, like the editing
+   * id: two sources of truth would show the wrong form in the render between them.
+   */
+  highlightStartTime?: boolean;
+  /**
+   * Called when an event was **created**, with the local day it landed on.
+   *
+   * **The panel owns the write, so the panel is what knows it succeeded.** The caller
+   * cannot see the panel's state, and a caller that guessed would be guessing. So the
+   * panel reports the fact: the event's name and the local date it starts on.
+   *
+   * **The local day, not the instant.** The week a personal event belongs to is the
+   * week of the day it starts *in the user's own zone* — the same rule the server uses
+   * to cut a week. An instant in UTC would put an 11pm Tokyo event on the previous
+   * day, and the link would take the user to the wrong week.
+   */
+  onCreated?: (event: { name: string; localDate: string }) => void;
+  /**
+   * Called when a write **failed**, with the calm message the panel would have shown.
+   *
+   * **A failure is as visible as a success.** A caller that takes over the success
+   * message has to take over the failure message too — otherwise a refused save
+   * would say nothing at all, and a sheet that closes with no word is the same as
+   * nothing happening.
+   */
+  onFailed?: (message: string) => void;
+  /**
+   * Whether the **caller** is the one showing the panel's message.
+   *
+   * **A message is announced once.** The panel's `sheetsOnly` mode has no visible
+   * message of its own — it announces through a hidden live region instead. But a
+   * caller that renders the confirmation itself (the digest header's quick-add does:
+   * a visible line with a link to the week) would then have **two** announcements of
+   * the same fact, and a screen reader would say it twice.
+   *
+   * So the caller says it owns the message, and the panel's hidden region goes quiet.
+   * The panel still *sets* the message — the caller reads it through its own
+   * `onCreated` and `onFailed` — it just does not also announce it.
+   */
+  messageShownByCaller?: boolean;
 };
 
 export function PersonalEventsPanel({
@@ -74,6 +180,13 @@ export function PersonalEventsPanel({
   onCreateOpenChange,
   sheetsOnly = false,
   addButton = true,
+  editingEvents = [],
+  editingEventId,
+  onEditingEventChange,
+  highlightStartTime: drivenHighlight,
+  onCreated,
+  onFailed,
+  messageShownByCaller = false,
 }: PersonalEventsPanelProps) {
   // **Every successful write refreshes the server's read.** The list is a server
   // component's read (`PersonalEventsSection`), so a write in this island is invisible
@@ -82,8 +195,8 @@ export function PersonalEventsPanel({
   // The panel's own create state, used when the caller does not drive it.
   const router = useRouter();
   const [ownFormOpen, setOwnFormOpen] = useState(false);
-  const [editing, setEditing] = useState<PersonalEvent | null>(null);
-  const [highlightStartTime, setHighlightStartTime] = useState(false);
+  const [ownEditing, setOwnEditing] = useState<PersonalEventSeed | null>(null);
+  const [ownHighlightStartTime, setOwnHighlightStartTime] = useState(false);
   // A fresh key per opening, so the form is remounted with the new seed rather than
   // carrying the last one's values.
   const [formKey, setFormKey] = useState(0);
@@ -97,31 +210,66 @@ export function PersonalEventsPanel({
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const formOpen = createOpen ?? ownFormOpen;
+  /**
+   * **The caller drives the sheet when it says which event to open.**
+   *
+   * The Timeline's personal block is a button, and the sheet lives in this island — so
+   * the Timeline names the event and the sheet opens on it.
+   *
+   * **The state is derived, not synchronised.** When `editingEventId` is given, the
+   * event being edited is *computed* from it during render — there is no effect that
+   * copies the id into a `useState`, because that would be two sources of truth and a
+   * render between them would show the wrong event. A caller that clears the id is
+   * closing the sheet, and the sheet's own "Cancel" clears the id through the same
+   * callback, so the two paths agree.
+   *
+   * **An id the panel does not know opens nothing.** The panel finds the event in
+   * `editingEvents` by id, so a caller naming an event it did not pass opens no sheet
+   * rather than opening the wrong one.
+   */
+  const driven = editingEventId !== undefined;
+  const drivenEvent = driven
+    ? (editingEvents.find((candidate) => candidate.id === editingEventId) ?? null)
+    : null;
+
+  const editing = driven ? drivenEvent : ownEditing;
+  const formOpen = driven ? drivenEvent !== null : (createOpen ?? ownFormOpen);
+
+  // **The highlight is derived too, when the caller drives it.** A caller that says
+  // "open this event with its time highlighted" must not also have to say "and turn the
+  // highlight off when it closes" — the sheet's own close already clears the caller's id,
+  // and a derived highlight falls away with it. The panel's own conflict flow keeps
+  // owning the flag when nobody drives it.
+  const highlight = drivenHighlight ?? ownHighlightStartTime;
 
   const setFormOpen = (open: boolean): void => {
-    if (createOpen === undefined) setOwnFormOpen(open);
-    onCreateOpenChange?.(open);
+    if (!driven && createOpen === undefined) setOwnFormOpen(open);
+    if (!driven) onCreateOpenChange?.(open);
   };
 
   const closeForm = (): void => {
     setFormOpen(false);
-    setEditing(null);
-    setHighlightStartTime(false);
+    setOwnEditing(null);
+    setOwnHighlightStartTime(false);
+    // **The caller drives the sheet's open event too**, so clearing its id is what
+    // actually closes it. Without this the caller would still believe the sheet was
+    // open, and the next id it set would not reopen the form.
+    onEditingEventChange?.(null);
   };
 
   const openCreate = (): void => {
-    setEditing(null);
-    setHighlightStartTime(false);
+    setOwnEditing(null);
+    setOwnHighlightStartTime(false);
     setFormKey((key) => key + 1);
     setFormOpen(true);
   };
 
-  const openEdit = (event: PersonalEvent, highlight = false): void => {
-    setEditing(event);
-    setHighlightStartTime(highlight);
+  const openEdit = (event: PersonalEventSeed, highlightTime = false): void => {
+    setOwnEditing(event);
+    setOwnHighlightStartTime(highlightTime);
     setFormKey((key) => key + 1);
     setFormOpen(true);
+    onEditingEventChange?.(event.id);
   };
 
   /** The create and the edit share the submit: the mode says which endpoint to call. */
@@ -152,8 +300,8 @@ export function PersonalEventsPanel({
           start_time_utc: body.start_time_utc,
         });
         setFormOpen(false);
-        setEditing(null);
-        setHighlightStartTime(false);
+        setOwnEditing(null);
+        setOwnHighlightStartTime(false);
         router.refresh();
         return;
       }
@@ -161,40 +309,60 @@ export function PersonalEventsPanel({
 
     if (response.error) {
       setMessage("We couldn't save that. Try again.");
+      // **A refused save is reported too.** A caller that shows the success message
+      // has to show this one — otherwise the sheet closes with no word at all, which
+      // reads as nothing happening.
+      onFailed?.("We couldn't save that. Try again.");
       return;
     }
     setMessage(editing ? `"${body.name}" was updated.` : `"${body.name}" was added.`);
+    // **A create is reported, an edit is not.** The caller's line says the event was
+    // added and points at the week it landed on — a week an edit does not change.
+    if (!editing) {
+      onCreated?.({
+        name: body.name,
+        localDate: localDateIn(body.start_time_utc, body.start_time_tz),
+      });
+    }
     closeForm();
     router.refresh();
   };
 
   /** The user's choice on the conflict prompt. */
-  const resolve = async (resolution: Resolution): Promise<void> => {
+  const resolve = async (resolution: Resolution, pair: Conflict): Promise<void> => {
     if (!conflict || !pending) return;
     const response = await api.POST("/api/personal/events/conflicts/{pair_id}/resolve", {
-      params: { path: { pair_id: conflict.pair_id } },
-      body: { resolution, new_side_id: pending.id },
+      // **The pair the user answered is the pair the request is about.** The sheet
+      // passes the pair it rendered, so the choice cannot be applied to a different
+      // pair than the one on screen.
+      params: { path: { pair_id: pair.pair_id } },
+      // **The request names the side the action is about**, with its kind. The pair row is
+      // symmetric, so the server cannot infer which side the user is acting on — and the
+      // action decides what it may act on: `delete_new` deletes a personal event,
+      // `skip_public` releases a save.
+      body: { resolution, side: { kind: "personal_event", id: pending.id } },
     });
     if (response.error) {
       setMessage("We couldn't record that choice. Try again.");
       return;
     }
 
-    const other = conflict.other;
-    const resolved = conflict;
+    const other = pair.other_side;
+    const resolved = pair;
     setConflict(null);
     setPending(null);
     router.refresh();
 
     if (resolution === "edit_new") {
       // The new event, opened in edit mode with the conflicting time pre-highlighted.
+      // **The zone is empty** — the 409 payload does not carry it, and the sheet falls
+      // back to UTC rather than showing a zone it was never told.
       openEdit(
         {
           id: pending.id,
           name: pending.name,
           start_time_utc: pending.start_time_utc,
           start_time_tz: "",
-          version: 1,
         },
         true,
       );
@@ -202,13 +370,14 @@ export function PersonalEventsPanel({
     }
     if (resolution === "update_existing") {
       // The **existing** event — for a duplicate, the second action opens this one.
+      // **The zone is empty** for the same reason as above: the conflict payload
+      // carries a side's times but not its zone, and the sheet falls back to UTC.
       openEdit(
         {
           id: other.id,
           name: other.name,
           start_time_utc: other.start_time_utc,
           start_time_tz: "",
-          version: 1,
         },
         true,
       );
@@ -224,11 +393,16 @@ export function PersonalEventsPanel({
   const sheets = (
     <>
       <PersonalEventForm
-        key={formKey}
+        // **A fresh key per opening, so the form is remounted with the new seed**
+        // rather than carrying the last one's values. When the caller drives the
+        // sheet, the key follows the event it named — so naming a second event
+        // remounts the form with that event's values, and the panel's own `formKey`
+        // is left alone for the case it owns.
+        key={driven ? `driven-${editing?.id ?? "none"}` : formKey}
         open={formOpen}
         mode={editing ? "edit" : "create"}
         initial={editing ? seedFrom(editing) : undefined}
-        highlightStartTime={highlightStartTime}
+        highlightStartTime={highlight}
         onClose={closeForm}
         onSubmit={submit}
       />
@@ -247,10 +421,16 @@ export function PersonalEventsPanel({
       <>
         {/* A live region without `role="status"`: the nav mounts this on every authed
             page, and a page's own status region (the digest's "ready" line) stays the
-            only one there is. */}
-        <p aria-live="polite" className="sr-only">
-          {message}
-        </p>
+            only one there is.
+
+            **And it is only here when the caller is not showing the message.** A
+            caller that renders the confirmation itself would otherwise hear the same
+            fact twice — once from the visible line, once from here. */}
+        {messageShownByCaller ? null : (
+          <p aria-live="polite" className="sr-only">
+            {message}
+          </p>
+        )}
         {sheets}
       </>
     );
@@ -328,7 +508,7 @@ function PersonalEventRow({ event, onEdit }: { event: PersonalEvent; onEdit: () 
 }
 
 /** The edit form's seed values, taken from the event being edited. */
-function seedFrom(event: PersonalEvent): Partial<PersonalEventFormValues> {
+function seedFrom(event: PersonalEventSeed): Partial<PersonalEventFormValues> {
   const zone = event.start_time_tz || "UTC";
   const start = utcInstantToLocal(new Date(event.start_time_utc), zone);
   const end = event.end_time_utc ? utcInstantToLocal(new Date(event.end_time_utc), zone) : null;
@@ -342,4 +522,22 @@ function seedFrom(event: PersonalEvent): Partial<PersonalEventFormValues> {
     location: event.location ?? "",
     notes: event.notes ?? "",
   };
+}
+
+/**
+ * The calendar day an instant falls on, in the zone it was written in.
+ *
+ * **The zone is the event's own, not the browser's.** An event the user entered as
+ * "Nov 7, 11pm, Asia/Tokyo" starts on Nov 7 *in Tokyo* — which is Nov 6 in UTC. The
+ * week the event belongs to is the week of the day the user will see it on their own
+ * calendar, so the date has to be read in the zone the event was written in.
+ *
+ * **An unparseable instant falls back to UTC**, which is the same fallback the form
+ * makes for a missing zone. A wrong zone would put the event in the wrong week; a
+ * fallback at least puts it in a real one.
+ */
+function localDateIn(startTimeUtc: string, zone: string): string {
+  const instant = new Date(startTimeUtc);
+  if (Number.isNaN(instant.getTime())) return startTimeUtc.slice(0, 10);
+  return formatLocalDate(instant, zone || "UTC");
 }

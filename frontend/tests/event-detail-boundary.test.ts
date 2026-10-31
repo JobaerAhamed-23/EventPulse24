@@ -26,6 +26,8 @@ const ROOT = path.resolve(__dirname, "..");
 const FILES = [
   "app/events/[id]/page.tsx",
   "app/events/[id]/loading.tsx",
+  "components/conflicts/conflict-indicator.tsx",
+  "components/conflicts/detail-conflict-mark.tsx",
   "components/detail/detail-actions.tsx",
   "components/detail/detail-breakdown.tsx",
   "components/detail/detail-header.tsx",
@@ -33,6 +35,7 @@ const FILES = [
   "components/detail/detail-reminder.tsx",
   "components/detail/detail-states.tsx",
   "components/detail/trigger-tip.tsx",
+  "lib/conflict-open.ts",
   "lib/detail-labels.ts",
   "lib/detail-time.ts",
   "lib/event-detail-read.ts",
@@ -289,5 +292,93 @@ describe("the read", () => {
   it("carries the session's cookies", () => {
     const source = code.get("lib/event-detail-read.ts") ?? "";
     expect(source).toContain("sessionHeaders");
+  });
+});
+
+describe("the conflict mark", () => {
+  it("is amber and never red", () => {
+    // `DESIGN.md`: "Never red". ASSUM-13 locks the size at 6px. The mark is the same
+    // one the Pulse Card draws, so the two surfaces cannot drift.
+    const source = code.get("components/conflicts/conflict-indicator.tsx") ?? "";
+    expect(source).toContain("bg-warn-amber");
+    expect(source).not.toMatch(/text-signal-warn|bg-signal-warn|text-red|bg-red/);
+    expect(source).toContain("size-[6px]");
+  });
+
+  it("carries an accessible name, so colour is not the sole carrier", () => {
+    // WCAG 1.4.1: an amber dot with no name says nothing to a screen-reader user.
+    const source = code.get("components/conflicts/conflict-indicator.tsx") ?? "";
+    expect(source).toContain('aria-label="Schedule conflict"');
+  });
+
+  it("is a button on the Detail Screen, and says what pressing it does", () => {
+    // On the Pulse Card the mark is a fact and the card is the target. Here the prompt
+    // is opened from it, so it is a button — and its name says there is a choice.
+    const source = code.get("components/conflicts/detail-conflict-mark.tsx") ?? "";
+    expect(source).toContain("ConflictIndicatorButton");
+    expect(source).toContain("Choose how to handle it");
+  });
+
+  it("is drawn from the one shared component", () => {
+    // Two copies of the mark would drift, and a mark that drifted would be one screen
+    // saying "conflict" in amber and another saying it in something else.
+    const source = code.get("components/conflicts/detail-conflict-mark.tsx") ?? "";
+    expect(source).toContain("@/components/conflicts/conflict-indicator");
+    expect(source).not.toContain("rounded-full bg-warn-amber");
+  });
+});
+
+describe("the conflict prompt", () => {
+  /**
+   * **The sheet is shared, so it is not in the Detail Screen's file list.**
+   *
+   * `components/sheets/conflict-resolution.tsx` is drawn by two surfaces — the personal
+   * event flow and the Detail Screen — and it is asserted on by both. Putting it in
+   * `FILES` would subject it to *this* surface's rules: the Detail Screen has no
+   * `text-xl` because it has no amber glyph, and it has no opacity modifiers because
+   * it states no score. Those rules belong to the sheet's own home, and the assertions
+   * below read the file directly so they can be about the sheet's contract rather than
+   * about this surface's palette.
+   */
+  const sheet = withoutComments(
+    readFileSync(path.join(ROOT, "components/sheets/conflict-resolution.tsx"), "utf8"),
+  );
+
+  it("names the side the action is about, not the pair", () => {
+    // The prompt's row is symmetric, so the label has to name the event the action is
+    // about. A label that says "the new one" would name an event the user never
+    // created — they *saved* one.
+    //
+    // **The island builds the map and the sheet renders it.** The sheet's own labels
+    // come from the wording module, so the two surfaces cannot describe the same
+    // action differently.
+    const island = code.get("components/detail/detail-actions.tsx") ?? "";
+    expect(island).toContain("buildSubjects");
+    expect(sheet).toContain("reviewActionLabel");
+    expect(sheet).toContain('wording === "named"');
+  });
+
+  it("computes the request's side from the pair's kinds", () => {
+    // The server checks the side, and it enforces it. A client that named the side
+    // any other way would be refused — and the prompt would offer an action that
+    // cannot be taken.
+    const source = code.get("components/detail/detail-actions.tsx") ?? "";
+    expect(source).toContain("actionSide");
+  });
+
+  it("does not name the catalog event id as the saved side", () => {
+    // The pair stores a `SavedEvent` by **that row's** id, and a `skip_public` releases
+    // the save by the same id. The catalog event's id would name a side the pair does
+    // not have.
+    const source = code.get("components/detail/detail-actions.tsx") ?? "";
+    expect(source).toContain("saved_side_id");
+    expect(source).not.toContain("id: eventId,");
+  });
+
+  it("has no dismiss path of its own", () => {
+    // FR-58: no dismiss button, no X, no escape-key close, no outside-click close. The
+    // sheet is `dismissible={false}` — one place, next to the code that opens it.
+    const source = code.get("components/detail/detail-actions.tsx") ?? "";
+    expect(source).not.toMatch(/dismiss(?!ible)/i);
   });
 });

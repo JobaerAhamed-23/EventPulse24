@@ -704,8 +704,8 @@ def test_a_resolved_conflict_is_not_re_prompted_on_the_next_sync():
         user_id=connection.user_id,
         pair_id=pair.pk,
         resolution=ConflictPair.Resolution.KEEP_BOTH,
-        new_side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
-        new_side_id=imported.pk,
+        side_kind=ConflictPair.SideKind.PERSONAL_EVENT,
+        side_id=imported.pk,
         actor=Actor.user(uuid7()),
         now=NOW + timedelta(minutes=30),
     )

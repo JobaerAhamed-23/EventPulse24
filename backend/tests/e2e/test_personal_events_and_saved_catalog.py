@@ -164,7 +164,9 @@ def test_the_whole_personal_event_and_save_flow_holds_together(seeded, enqueued)
     assert conflict["kind"] == "time"
     assert len(conflict["actions"]) == 3
     assert set(conflict["actions"]) == {"keep_both", "edit_new", "delete_new"}
-    assert conflict["other"]["id"] == first_event_id
+    assert conflict["other_side"]["id"] == first_event_id
+    assert conflict["other_side"]["kind"] == "personal_event"
+    assert conflict["new_side"]["id"] == details["event_id"]
     # The event was **written** — a 409 is not a failed write, it is a pending prompt.
     assert PersonalEvent.objects.using(PERSONAL).filter(pk=details["event_id"]).exists()
     pair_id = conflict["pair_id"]
@@ -174,7 +176,10 @@ def test_the_whole_personal_event_and_save_flow_holds_together(seeded, enqueued)
     answered = _post(
         client,
         f"/api/personal/events/conflicts/{pair_id}/resolve",
-        {"resolution": "keep_both", "new_side_id": second_event_id},
+        {
+            "resolution": "keep_both",
+            "side": {"kind": "personal_event", "id": second_event_id},
+        },
     )
     assert answered.status_code == 200, answered.content
     assert answered.json()["resolution"] == "keep_both"
@@ -216,7 +221,10 @@ def test_the_whole_personal_event_and_save_flow_holds_together(seeded, enqueued)
     replay = _post(
         client,
         f"/api/personal/events/conflicts/{pair_id}/resolve",
-        {"resolution": "delete_new", "new_side_id": second_event_id},
+        {
+            "resolution": "delete_new",
+            "side": {"kind": "personal_event", "id": second_event_id},
+        },
     )
     assert replay.status_code == 422, replay.content
     assert replay.json()["code"] == "conflict_already_resolved"
@@ -243,7 +251,8 @@ def test_the_whole_personal_event_and_save_flow_holds_together(seeded, enqueued)
     assert over_save.status_code == 409, over_save.content
     save_conflict = over_save.json()["details"]["conflicts"][0]
     assert len(save_conflict["actions"]) == 3
-    assert save_conflict["other"]["id"] == str(save_row.id)
+    assert save_conflict["other_side"]["id"] == str(save_row.id)
+    assert save_conflict["other_side"]["kind"] == "saved_event"
     save_pair_id = save_conflict["pair_id"]
     over_save_id = over_save.json()["details"]["event_id"]
 
@@ -251,7 +260,10 @@ def test_the_whole_personal_event_and_save_flow_holds_together(seeded, enqueued)
     deleted = _post(
         client,
         f"/api/personal/events/conflicts/{save_pair_id}/resolve",
-        {"resolution": "delete_new", "new_side_id": over_save_id},
+        {
+            "resolution": "delete_new",
+            "side": {"kind": "personal_event", "id": over_save_id},
+        },
     )
     assert deleted.status_code == 200, deleted.content
     assert deleted.json()["resolution"] == "delete_new"
