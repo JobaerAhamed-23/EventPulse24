@@ -53,25 +53,71 @@ const CLIENT = path.join(ROOT, "lib/backend-client.ts");
 
 /**
  * The endpoints this intent added, with the operation id the generated schema gives
- * them and the frontend module that calls them.
+ * them and the frontend modules that call them.
  *
  * **The operation id is the link.** It is the key the generated TypeScript uses, so
  * asserting on it proves two things at once: the endpoint is in the schema, *and* the
  * generated client has a typed binding for it.
+ *
+ * **`caller` is a list, because an endpoint can have more than one caller.** The
+ * resolve endpoint is called from three places — the conflicts page's panel, the Detail
+ * Screen's actions, and the personal-events panel — and **all three are checked**. A
+ * single-caller field would have let two of them drift out of the contract unnoticed,
+ * which is the exact failure the file exists to catch.
  */
 const NEW_ENDPOINTS = [
   {
     path: "/api/events/{event_id}",
     method: "get",
     operationId: "apps_personalization_detail_api_get_event_detail",
-    /** The frontend's module that calls it. */
-    caller: "lib/event-detail-read.ts",
+    /** The frontend's modules that call it. */
+    caller: ["lib/event-detail-read.ts"],
   },
   {
     path: "/api/personal/digest",
     method: "get",
     operationId: "apps_personalization_api_read_digest_endpoint",
-    caller: "lib/digest-read.ts",
+    caller: ["lib/digest-read.ts"],
+  },
+  // ── The Unified Timeline and the Conflict Review ───────────────────────────────
+  {
+    path: "/api/personal/timeline",
+    method: "get",
+    operationId: "apps_personalization_api_read_timeline",
+    caller: ["lib/timeline-read.ts"],
+  },
+  {
+    path: "/api/personal/conflicts",
+    method: "get",
+    operationId: "apps_personalization_api_list_conflicts",
+    caller: ["lib/conflict-list-read.ts"],
+  },
+  {
+    path: "/api/personal/events/conflicts/{pair_id}/resolve",
+    method: "post",
+    operationId: "apps_personalization_api_resolve_event_conflict",
+    // **Three call sites, and all three matter.** The conflicts page answers a pair
+    // reviewed later; the Detail Screen answers the prompt it just raised; the
+    // personal-events panel answers the prompt its own create raised. Each one posts
+    // a `{resolution, side}` body, so each one is a place the contract could be
+    // broken.
+    caller: [
+      "components/conflicts/conflicts-panel.tsx",
+      "components/detail/detail-actions.tsx",
+      "components/personal-events-panel.tsx",
+    ],
+  },
+  {
+    path: "/api/personal/events",
+    method: "post",
+    operationId: "apps_personalization_api_create_event",
+    caller: ["components/personal-events-panel.tsx"],
+  },
+  {
+    path: "/api/personal/saved-events/{catalog_event_id}",
+    method: "post",
+    operationId: "apps_personalization_api_save_public_event",
+    caller: ["components/detail/detail-actions.tsx"],
   },
 ] as const;
 
@@ -123,16 +169,23 @@ function withoutComments(source: string): string {
 }
 
 /**
- * Every frontend module that names `endpointPath` in a call to the generated client.
+ * Every frontend source file under `app`, `components` and `lib`, handed to `visit`.
  *
  * **The search is over the source tree**, not over a list of files this test knows
  * about — so a caller added in a new module is found, and a caller added anywhere
  * else is not missed.
+ *
+ * **Test files are skipped.** A test file names endpoints by the dozen — it mocks
+ * them, asserts on them — and a test file is not a call site. Including them would
+ * report every endpoint as called by every test.
+ *
+ * **The generated folder is skipped too.** `lib/api/schema.ts` names every endpoint
+ * in the contract by definition — it is the contract. So a search that included it
+ * would find every endpoint and report them all as called, which is the false green
+ * these searches exist to avoid.
  */
-function findCallers(endpointPath: string): string[] {
-  const callers: string[] = [];
-
-  const walk = (directory: string) => {
+function visitSources(visit: (relativePath: string, source: string) => void): void {
+  const walk = (directory: string): void => {
     for (const entry of readdirSync(directory)) {
       const full = path.join(directory, entry);
       if (statSync(full).isDirectory()) {
@@ -141,22 +194,30 @@ function findCallers(endpointPath: string): string[] {
       }
       if (!full.endsWith(".ts") && !full.endsWith(".tsx")) continue;
       if (full.endsWith(".test.ts") || full.endsWith(".test.tsx")) continue;
-      const source = readFileSync(full, "utf8");
-      if (source.includes(endpointPath)) {
-        callers.push(path.relative(ROOT, full).split(path.sep).join("/"));
-      }
+      const relative = path.relative(ROOT, full).split(path.sep).join("/");
+      if (relative.startsWith("lib/api/")) continue;
+      visit(relative, readFileSync(full, "utf8"));
     }
   };
 
   for (const root of ["app", "components", "lib"]) {
     walk(path.join(ROOT, root));
   }
+}
 
-  // **The generated folder is not a caller.** `lib/api/schema.ts` names every
-  // endpoint in the contract by definition — it is the contract. So a search that
-  // included it would find every endpoint and report them all as called, which is
-  // the false green this search exists to avoid.
-  return callers.filter((caller) => !caller.startsWith("lib/api/")).sort();
+/**
+ * Every frontend module that names `endpointPath` in a call to the generated client.
+ */
+function findCallers(endpointPath: string): string[] {
+  const callers: string[] = [];
+
+  visitSources((relative, source) => {
+    if (source.includes(endpointPath)) {
+      callers.push(relative);
+    }
+  });
+
+  return callers.sort();
 }
 
 describe("AD-19: the new endpoints are in the generated schema", () => {
@@ -216,42 +277,46 @@ describe("AD-19: the new endpoints are in the generated schema", () => {
       );
     });
 
-    it(`${endpoint.caller} reaches ${endpoint.path} through the generated client`, () => {
-      const caller = withoutComments(readFileSync(path.join(ROOT, endpoint.caller), "utf8"));
+    it(`${endpoint.caller.join(", ")} reaches ${endpoint.path} through the generated client`, () => {
+      for (const callerPath of endpoint.caller) {
+        const caller = withoutComments(readFileSync(path.join(ROOT, callerPath), "utf8"));
 
-      // **Through the generated client, and not around it.** The path appears in the
-      // call site's typed path expression — `api.GET("/api/events/{event_id}", …)` —
-      // so a call site that spelled the URL out by hand would still be caught.
-      //
-      // **The comments are stripped first, and that is not a detail.** The detail
-      // read's own docstring names the path it calls. A `toContain` over the raw file
-      // was satisfied by the *prose*, so a call site rewritten to a hand-written URL
-      // still passed. The client-break probe found it.
-      expect(caller).toContain(endpoint.path);
+        // **Through the generated client, and not around it.** The path appears in the
+        // call site's typed path expression — `api.GET("/api/events/{event_id}", …)` —
+        // so a call site that spelled the URL out by hand would still be caught.
+        //
+        // **The comments are stripped first, and that is not a detail.** The detail
+        // read's own docstring names the path it calls. A `toContain` over the raw file
+        // was satisfied by the *prose*, so a call site rewritten to a hand-written URL
+        // still passed. The client-break probe found it.
+        expect(caller, `${callerPath} must reach ${endpoint.path}`).toContain(endpoint.path);
 
-      // And the call goes through `api`, the generated client — not through a raw
-      // `fetch`, which would bypass the generated types entirely.
-      expect(caller).toMatch(/api\.(GET|POST)\(/);
-      expect(caller).not.toMatch(/\bfetch\(/);
+        // And the call goes through `api`, the generated client — not through a raw
+        // `fetch`, which would bypass the generated types entirely.
+        expect(caller, `${callerPath} must call the generated client`).toMatch(/api\.(GET|POST)\(/);
+        expect(caller, `${callerPath} must not call fetch`).not.toMatch(/\bfetch\(/);
+      }
     });
 
-    it(`${endpoint.caller} imports the generated client, and does not define its own`, () => {
+    it(`${endpoint.caller.join(", ")} imports the generated client, and does not define its own`, () => {
       // **The import is what makes the client load-bearing.** A call site that
       // mentions `api.GET(` but imports `api` from somewhere else — or defines its own
       // `api` — would satisfy the assertion above while bypassing the generated types
       // entirely. The client-break probe found the shape of this hole: removing the
       // export from `backend-client.ts` broke every call site, and nothing said so.
-      const caller = withoutComments(readFileSync(path.join(ROOT, endpoint.caller), "utf8"));
+      for (const callerPath of endpoint.caller) {
+        const caller = withoutComments(readFileSync(path.join(ROOT, callerPath), "utf8"));
 
-      expect(caller, `${endpoint.caller} must import the generated client`).toMatch(
-        /import\s*\{[^}]*\bapi\b[^}]*\}\s*from\s*["']@\/lib\/backend-client["']/,
-      );
+        expect(caller, `${callerPath} must import the generated client`).toMatch(
+          /import\s*\{[^}]*\bapi\b[^}]*\}\s*from\s*["']@\/lib\/backend-client["']/,
+        );
 
-      // **And it must not define its own `api`.** A local `const api = …` would shadow
-      // the import and the call would go somewhere the generated types do not cover.
-      expect(caller, `${endpoint.caller} must not define its own 'api'`).not.toMatch(
-        /\b(?:const|let|var|function|class)\s+api\b/,
-      );
+        // **And it must not define its own `api`.** A local `const api = …` would shadow
+        // the import and the call would go somewhere the generated types do not cover.
+        expect(caller, `${callerPath} must not define its own 'api'`).not.toMatch(
+          /\b(?:const|let|var|function|class)\s+api\b/,
+        );
+      }
     });
   }
 });
@@ -326,6 +391,47 @@ describe("AD-19: the generated folder is not hand-edited", () => {
     }
 
     expect(missing, "these operations are in the schema but not in the client").toEqual([]);
+  });
+
+  it("every endpoint the frontend calls is in the committed schema", () => {
+    // **The other direction of the join, and the one that was missing.**
+    //
+    // The sweep above goes *from* the schema *into* the client: every operation the
+    // committed schema declares has a binding. This goes the other way: every path
+    // the frontend **calls** is one the schema declares.
+    //
+    // **Why it was missing.** `NEW_ENDPOINTS` is a hand-kept list, and a list is only
+    // as good as the last time somebody added to it. An endpoint added to the backend
+    // and called from the frontend — but not added to `NEW_ENDPOINTS` — would be
+    // invisible to every check in this file. The schema would not mention it, so the
+    // sweep above would not see it either, and the frontend would be calling a path the
+    // contract does not describe. `openapi-fetch` types the call, so `tsc` catches a
+    // *typo* — but it cannot catch an endpoint that was added to the backend and
+    // **called correctly by hand**: the call is typed, the path is in the schema, and
+    // nothing says the schema *should* have it.
+    //
+    // So this is derived from the source tree rather than from a list. Every
+    // `api.GET("…")` / `api.POST("…")` call site is found, and its path is checked
+    // against the committed schema.
+    const declared = new Set(Object.keys(openapi.paths));
+    const uncalled: string[] = [];
+
+    visitSources((relative, source) => {
+      const withoutProse = withoutComments(source);
+      // The path is the **first argument** of the call — a literal string. A
+      // template literal would be a dynamic path, and the contract is keyed by
+      // literal paths, so only literals are checked.
+      for (const match of withoutProse.matchAll(/api\.(?:GET|POST|PATCH|DELETE)\(\s*"([^"]+)"/g)) {
+        if (!declared.has(match[1])) {
+          uncalled.push(`${relative} calls ${match[1]}`);
+        }
+      }
+    });
+
+    expect(
+      uncalled,
+      "the frontend calls endpoints that are not in the committed schema — run `make client`",
+    ).toEqual([]);
   });
 
   it("the client module exports the typed api, and types it from the generated schema", () => {

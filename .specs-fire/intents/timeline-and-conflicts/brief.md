@@ -1,8 +1,9 @@
 ---
 id: timeline-and-conflicts
 title: Unified Timeline & Conflict Review
-status: in_progress
+status: completed
 created: 2026-10-31
+completed_at: 2026-10-31T10:27:58.269Z
 ---
 
 # Intent: Unified Timeline & Conflict Review

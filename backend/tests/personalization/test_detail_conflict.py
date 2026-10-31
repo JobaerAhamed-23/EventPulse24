@@ -28,7 +28,7 @@ from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone as django_timezone
 
-from apps.personalization.models import ConflictPair, PersonalEvent, SavedEvent
+from apps.personalization.models import ConflictPair, PersonalEvent
 from shared.db import CATALOG, PERSONAL
 from tests.ingestion.factories import EventFactory, VenueFactory
 from tests.personalization.factories import (
@@ -49,9 +49,7 @@ START = NOW + timedelta(days=1)
 
 
 def make_user(email=None):
-    return User.objects.create_user(
-        email=email or f"sam-{uuid4().hex}@example.test", password="pw"
-    )
+    return User.objects.create_user(email=email or f"sam-{uuid4().hex}@example.test", password="pw")
 
 
 def signed_in(user=None):

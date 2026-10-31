@@ -164,9 +164,7 @@ def _saved_row(*, user_id: UUID, event_id: UUID) -> SavedEvent | None:
     **The row, not a boolean**, because the conflict pair names the save **row's** id —
     the Detail Screen is keyed by the catalog event's id, and the pair is not.
     """
-    return (
-        SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
-    )
+    return SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
 
 
 def read_event_detail(

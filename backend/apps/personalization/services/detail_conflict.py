@@ -151,25 +151,17 @@ def read_detail_conflict(
         return None
 
     other_kind = (
-        pair.right_kind
-        if pair.left_kind == ConflictPair.SideKind.SAVED_EVENT
-        else pair.left_kind
+        pair.right_kind if pair.left_kind == ConflictPair.SideKind.SAVED_EVENT else pair.left_kind
     )
-    other_id = pair.right_id if pair.left_kind == ConflictPair.SideKind.SAVED_EVENT else pair.left_id
+    other_id = (
+        pair.right_id if pair.left_kind == ConflictPair.SideKind.SAVED_EVENT else pair.left_id
+    )
 
     if other_kind == ConflictPair.SideKind.PERSONAL_EVENT:
         # The user's own event. Scoped to the caller as well as to the id: the pair is
         # the caller's row, so its sides are the caller's rows too.
-        event = (
-            PersonalEvent.objects.using(PERSONAL)
-            .filter(user_id=user_id, pk=other_id)
-            .first()
-        )
-        other = (
-            _personal_side(event)
-            if event is not None
-            else _missing_side(other_kind, other_id)
-        )
+        event = PersonalEvent.objects.using(PERSONAL).filter(user_id=user_id, pk=other_id).first()
+        other = _personal_side(event) if event is not None else _missing_side(other_kind, other_id)
     else:
         # The other side is a save. Its title lives in the catalog, read through the
         # published interface — never by a cross-schema query (AD-2 / AD-3).
