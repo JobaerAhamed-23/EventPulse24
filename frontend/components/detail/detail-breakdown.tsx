@@ -72,7 +72,7 @@ export function DetailBreakdown({ tags }: { tags: string[] }) {
         `::before` with a `content-` would be visible to a sighted user and invisible
         to a screen reader, which is the regression `EXPERIENCE.md` §8 forbids.
       */}
-      <ul className="mt-1 flex list-disc flex-col gap-1 pl-5">
+      <ul className="mt-1 flex list-disc flex-col gap-1 pl-6">
         {factors.map((factor) => (
           <li key={factor} className="text-ink-secondary [font:var(--type-scale-body-sm)]">
             {factor}

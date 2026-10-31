@@ -247,7 +247,12 @@ def test_no_read_path_names_a_literal_schema(path):
     """
     source = path.read_text()
 
-    for literal in ('using("personal")', "using('personal')", 'using("catalog")', "using('catalog')"):
+    for literal in (
+        'using("personal")',
+        "using('personal')",
+        'using("catalog")',
+        "using('catalog')",
+    ):
         assert literal not in source, (
             f"{path.relative_to(BACKEND_DIR)} uses the literal {literal}. Every database "
             "call names its alias with shared.db.PERSONAL / CATALOG (AD-3)."

@@ -21,14 +21,10 @@ import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
-import { cookieStore, type CookieStore } from "@/tests/cookie-store";
 
 const getSession = vi.fn();
 const readDigest = vi.fn();
 const redirect = vi.fn();
-
-/** The request's cookie jar. The failure count lives in it. */
-let jar: CookieStore;
 
 vi.mock("@/lib/session", async () => {
   const actual = await vi.importActual<typeof import("@/lib/session")>("@/lib/session");
@@ -39,14 +35,15 @@ vi.mock("@/lib/digest-read", () => ({
   readDigest: () => readDigest(),
 }));
 
+// The user's own events, below the digest: none here, and never a network read.
+vi.mock("@/components/personal-events-section", () => ({
+  readPersonalEvents: async () => [],
+}));
+
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirect(...args),
   usePathname: () => "/",
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock("next/headers", () => ({
-  cookies: async () => jar,
 }));
 
 const USER = {
@@ -87,11 +84,15 @@ const COMPOSED = {
   timezone: "America/New_York",
 };
 
+/** The props Next passes the page: no route params, and the query string given. */
+function props(query: Record<string, string | string[]> = {}): PageProps<"/"> {
+  return { params: Promise.resolve({}), searchParams: Promise.resolve(query) };
+}
+
 beforeEach(() => {
   getSession.mockReset();
   redirect.mockReset();
   readDigest.mockReset();
-  jar = cookieStore();
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
 });
 
@@ -116,7 +117,7 @@ describe("the Pulse Digest home's axe-core gate", () => {
   it("has zero serious or critical violations in the composed state", async () => {
     readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const violations = await audit();
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
@@ -130,7 +131,7 @@ describe("the Pulse Digest home's axe-core gate", () => {
       digest: { ...COMPOSED, status: "empty", cards: [] },
     });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const violations = await audit();
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
@@ -144,7 +145,7 @@ describe("the Pulse Digest home's axe-core gate", () => {
       digest: { ...COMPOSED, status: "not_composed", cards: [] },
     });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const violations = await audit();
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
@@ -155,7 +156,7 @@ describe("the Pulse Digest home's axe-core gate", () => {
   it("has zero serious or critical violations in the error state", async () => {
     readDigest.mockResolvedValue({ kind: "unavailable" });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const violations = await audit();
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
@@ -169,7 +170,7 @@ describe("the Pulse Digest home's axe-core gate", () => {
     // landmarks the surface is supposed to have are actually in the document.
     readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(screen.getByRole("main")).toBeInTheDocument();
     const rail = screen.getByRole("complementary", { name: "Primary" });

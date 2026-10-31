@@ -77,6 +77,45 @@ describe("the action row", () => {
     expect(screen.getByRole("button", { name: "Save to Pulse" })).toBeInTheDocument();
   });
 
+  it("shows a clashing save as saved, and names the overlap", async () => {
+    // The real API's 409 for a save: the save row was written, then the clash was found.
+    // "Couldn't save that" would be false — the event is saved.
+    POST.mockResolvedValue({
+      data: undefined,
+      error: {
+        code: "scheduling_conflict",
+        message: "That clashes with something else already on your calendar.",
+        details: {
+          event_id: "saved-1",
+          conflicts: [
+            {
+              pair_id: "pair-1",
+              kind: "overlap",
+              actions: ["delete_new", "edit_new", "keep_both"],
+              other: {
+                id: "personal-1",
+                name: "Dentist",
+                start_time_utc: "2026-11-03T15:00:00Z",
+                end_time_utc: "2026-11-03T16:00:00Z",
+              },
+            },
+          ],
+        },
+      },
+      response: { status: 409 },
+    });
+
+    render(<DetailActions eventId="event-1" saved={false} />);
+
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Saved to your Pulse" })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("It overlaps “Dentist” on your calendar.");
+    expect(screen.queryByText(/Couldn't save that/)).not.toBeInTheDocument();
+  });
+
   it("does not post when the event is already saved", () => {
     render(<DetailActions eventId="event-1" saved />);
 

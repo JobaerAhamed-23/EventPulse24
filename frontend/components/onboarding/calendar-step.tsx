@@ -214,7 +214,7 @@ export function CalendarStep({ existing = null }: CalendarStepProps) {
     // `EXPERIENCE.md`'s locked copy, with two equal-weight buttons: neither skipping nor
     // retrying is the "right" answer, so neither is the primary.
     return (
-      <div className="rounded-card border border-border-subtle bg-surface-subtle px-5 py-4">
+      <div className="rounded-card border border-border-subtle bg-surface-subtle px-6 py-4">
         <p role="alert" className="[font:var(--type-scale-body-md)] text-ink-primary">
           Connection failed. Skip for now?
         </p>
@@ -352,7 +352,7 @@ function AddressForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="mt-5 rounded-card border border-border-subtle bg-surface-subtle px-5 py-4"
+      className="mt-6 rounded-card border border-border-subtle bg-surface-subtle px-6 py-4"
     >
       <p className="[font:var(--type-scale-body-sm)] text-ink-secondary">{chosen.guidance}</p>
 
@@ -413,7 +413,7 @@ function SyncState({ line }: { line: string }) {
   return (
     <p
       role="status"
-      className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-subtle px-5 py-4 [font:var(--type-scale-body-md)] text-ink-secondary"
+      className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-subtle px-6 py-4 [font:var(--type-scale-body-md)] text-ink-secondary"
     >
       <span aria-hidden="true" className="h-2 w-2 rounded-full bg-accent-terracotta" />
       {line}
@@ -430,7 +430,7 @@ function ImportedEvents({
   events: PersonalEvent[];
 }) {
   return (
-    <div className="rounded-card border border-border-subtle bg-surface-subtle px-5 py-4">
+    <div className="rounded-card border border-border-subtle bg-surface-subtle px-6 py-4">
       <p role="status" className="[font:var(--type-scale-body-md)] text-ink-primary">
         {events.length === 0
           ? "Connected. Nothing upcoming in that calendar yet."

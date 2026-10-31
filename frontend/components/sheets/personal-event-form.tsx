@@ -12,7 +12,7 @@
  * browser converts the local date and time into that instant. A floating local time is a
  * time the backend would have to guess at, and AD-6 says it is refused rather than guessed.
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { ZONE_CHOICES, browserZone, localToUtcInstant, toApiInstant } from "@/lib/timezones";
 
@@ -93,6 +93,14 @@ export function PersonalEventForm({
   onClose,
   onSubmit,
 }: PersonalEventFormProps) {
+  // **The field ids are per instance.** The sheet is mounted by the sidenav, the
+  // bottom-tab bar, the digest header's quick-add and the personal-events list, so one
+  // page carries four of these forms. Fixed ids repeated four times made every label point
+  // at the *first* form's input, inside a closed dialog: clicking "Name" did nothing, and a
+  // screen reader paired the open form's fields with another form's labels.
+  const uid = useId();
+  const fieldId = (name: string): string => `${uid}-${name}`;
+
   // The form's state is seeded **once**, from the caller's `initial`. Re-seeding it when
   // the sheet opens is React's `key` prop's job — the parent gives a fresh key per
   // opening, and the form is remounted with the new seed. Doing it here with an effect
@@ -167,7 +175,7 @@ export function PersonalEventForm({
       className="max-w-(--layout-container-form)"
     >
       <form onSubmit={submit}>
-        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-5">
+        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-6">
           <div>
             <h2 className="[font:var(--type-scale-headline-lg)]">
               {mode === "create" ? "Add personal event" : "Edit personal event"}
@@ -188,35 +196,35 @@ export function PersonalEventForm({
           </button>
         </div>
 
-        <div className="flex flex-col gap-4 px-6 py-5">
-          <Field label="Name" id="personal-event-name" error={errors.name} required>
+        <div className="flex flex-col gap-4 px-6 py-6">
+          <Field label="Name" id={fieldId("name")} error={errors.name} required>
             <input
-              id="personal-event-name"
+              id={fieldId("name")}
               name="name"
               value={values.name}
               onChange={set("name")}
               aria-invalid={Boolean(errors.name)}
-              aria-describedby={errors.name ? "personal-event-name-error" : undefined}
+              aria-describedby={errors.name ? fieldId("name-error") : undefined}
               className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
             />
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date" id="personal-event-date" error={errors.date} required>
+            <Field label="Date" id={fieldId("date")} error={errors.date} required>
               <input
-                id="personal-event-date"
+                id={fieldId("date")}
                 name="date"
                 type="date"
                 value={values.date}
                 onChange={set("date")}
                 aria-invalid={Boolean(errors.date)}
-                aria-describedby={errors.date ? "personal-event-date-error" : undefined}
+                aria-describedby={errors.date ? fieldId("date-error") : undefined}
                 className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
               />
             </Field>
             <Field
               label="Start time"
-              id="personal-event-time"
+              id={fieldId("time")}
               error={errors.time}
               required
               highlighted={highlightStartTime}
@@ -227,13 +235,13 @@ export function PersonalEventForm({
               }
             >
               <input
-                id="personal-event-time"
+                id={fieldId("time")}
                 name="time"
                 type="time"
                 value={values.time}
                 onChange={set("time")}
                 aria-invalid={Boolean(errors.time)}
-                aria-describedby={errors.time ? "personal-event-time-error" : undefined}
+                aria-describedby={errors.time ? fieldId("time-error") : undefined}
                 className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
               />
             </Field>
@@ -241,18 +249,18 @@ export function PersonalEventForm({
 
           <Field
             label="Timezone"
-            id="personal-event-timezone"
+            id={fieldId("timezone")}
             error={errors.timezone}
             required
             hint="The event's own timezone. It is not guessed from your browser."
           >
             <select
-              id="personal-event-timezone"
+              id={fieldId("timezone")}
               name="timezone"
               value={values.timezone}
               onChange={set("timezone")}
               aria-invalid={Boolean(errors.timezone)}
-              aria-describedby={errors.timezone ? "personal-event-timezone-error" : undefined}
+              aria-describedby={errors.timezone ? fieldId("timezone-error") : undefined}
               className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
             >
               <option value="">Choose a timezone</option>
@@ -265,40 +273,40 @@ export function PersonalEventForm({
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="End date" id="personal-event-end-date" error={errors.endDate}>
+            <Field label="End date" id={fieldId("end-date")} error={errors.endDate}>
               <input
-                id="personal-event-end-date"
+                id={fieldId("end-date")}
                 name="end_date"
                 type="date"
                 value={values.endDate}
                 onChange={set("endDate")}
                 aria-invalid={Boolean(errors.endDate)}
-                aria-describedby={errors.endDate ? "personal-event-end-date-error" : undefined}
+                aria-describedby={errors.endDate ? fieldId("end-date-error") : undefined}
                 className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
               />
             </Field>
             <Field
               label="End time"
-              id="personal-event-end-time"
+              id={fieldId("end-time")}
               error={errors.endTime}
               hint="Optional."
             >
               <input
-                id="personal-event-end-time"
+                id={fieldId("end-time")}
                 name="end_time"
                 type="time"
                 value={values.endTime}
                 onChange={set("endTime")}
                 aria-invalid={Boolean(errors.endTime)}
-                aria-describedby={errors.endTime ? "personal-event-end-time-error" : undefined}
+                aria-describedby={errors.endTime ? fieldId("end-time-error") : undefined}
                 className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
               />
             </Field>
           </div>
 
-          <Field label="Location" id="personal-event-location" hint="Optional.">
+          <Field label="Location" id={fieldId("location")} hint="Optional.">
             <input
-              id="personal-event-location"
+              id={fieldId("location")}
               name="location"
               value={values.location}
               onChange={set("location")}
@@ -306,9 +314,9 @@ export function PersonalEventForm({
             />
           </Field>
 
-          <Field label="Notes" id="personal-event-notes" hint="Optional.">
+          <Field label="Notes" id={fieldId("notes")} hint="Optional.">
             <textarea
-              id="personal-event-notes"
+              id={fieldId("notes")}
               name="notes"
               value={values.notes}
               onChange={set("notes")}

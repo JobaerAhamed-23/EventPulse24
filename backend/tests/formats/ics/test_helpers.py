@@ -36,6 +36,14 @@ def wall(text: str) -> datetime:
         ("Line\nbreak\t\ttabs   spaces", "Line break tabs spaces"),
         ("Null\x00and\x07bell", "Null and bell"),
         ("a<br>b<p>c", "a b c"),
+        # The MMFA JSON-LD description, verbatim: entity-escaped tags, double-escaped newlines.
+        (
+            "&lt;p&gt;Tuesday, November 3&lt;br /&gt;\\n9:30 AM&lt;br /&gt;\\n"
+            "Permanent Collection Galleries&lt;/p&gt;\\n",
+            "Tuesday, November 3 9:30 AM Permanent Collection Galleries",
+        ),
+        ("&lt;script&gt;alert(1)&lt;/script&gt;Safe", "Safe"),
+        ("Fish &amp; Chips &lt;3 &lt;b&gt;bold&lt;/b&gt;", "Fish & Chips <3 bold"),
         (None, ""),
         (42, "42"),
     ],

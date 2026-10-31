@@ -15,6 +15,12 @@ import { PersonalEventsPanel } from "@/components/personal-events-panel";
 const POST = vi.fn();
 const PATCH = vi.fn();
 
+/** The panel refreshes the route after every successful write; the spy says it did. */
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh, replace: vi.fn(), push: vi.fn() }),
+}));
+
 vi.mock("@/lib/backend-client", () => ({
   api: {
     POST: (...args: unknown[]) => POST(...args),
@@ -53,6 +59,7 @@ const CONFLICT_DETAILS = {
 beforeEach(() => {
   POST.mockReset();
   PATCH.mockReset();
+  refresh.mockReset();
 });
 
 /**
@@ -106,6 +113,26 @@ describe("PersonalEventsPanel", () => {
     expect(screen.getByText("Dinner with Rahul")).toBeInTheDocument();
   });
 
+  it("draws no Add button of its own when the page already has one", () => {
+    render(<PersonalEventsPanel events={[EVENT]} addButton={false} />);
+
+    expect(screen.getByRole("heading", { name: "Your personal events" })).toBeInTheDocument();
+    expect(screen.getByText("Dinner with Rahul")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
+  });
+
+  it("mounts only the sheets when the nav asks for sheetsOnly", () => {
+    // The nav's Add needs the round trip, not the panel: the whole panel in the sidenav
+    // wedged a headline into the rail, and beside the bottom-tab bar it became a third
+    // column that squeezed the mobile page.
+    const { container } = render(<PersonalEventsPanel sheetsOnly events={[EVENT]} />);
+
+    expect(screen.queryByRole("heading", { name: "Your personal events" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
+    expect(screen.queryByText("Dinner with Rahul")).toBeNull();
+    expect(container.querySelectorAll("dialog").length).toBeGreaterThan(0);
+  });
+
   describe("the warm-personal pairing", () => {
     it("pairs the stripe with the visible word 'Personal'", () => {
       render(<PersonalEventsPanel events={[EVENT]} />);
@@ -154,6 +181,39 @@ describe("PersonalEventsPanel", () => {
           screen.queryByRole("dialog", { name: "Add personal event" }),
         ).not.toBeInTheDocument(),
       );
+    });
+
+    it("says the event was added, and refreshes the page's list", async () => {
+      // A saved event used to look like nothing happened: the form closed, and the list
+      // was a server read that never re-ran.
+      POST.mockResolvedValue({ data: EVENT, error: undefined });
+      render(<PersonalEventsPanel />);
+
+      await submitCreate();
+
+      await waitFor(() =>
+        expect(screen.getByText('"Dinner with Rahul" was added.')).toBeInTheDocument(),
+      );
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not refresh when the write failed", async () => {
+      POST.mockResolvedValue({ data: undefined, error: { code: "bad_request", message: "no" } });
+      render(<PersonalEventsPanel />);
+
+      await submitCreate();
+
+      await waitFor(() => expect(screen.getByText(/couldn't save that/)).toBeInTheDocument());
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it("refreshes on a 409 too, because the event was written", async () => {
+      mockBackend();
+      render(<PersonalEventsPanel />);
+
+      await submitCreate();
+
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
     });
 
     it("does not open the conflict sheet when there is no conflict", async () => {

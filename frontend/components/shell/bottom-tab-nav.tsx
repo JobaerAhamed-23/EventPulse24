@@ -3,8 +3,8 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-import { AddEventButton } from "@/components/add-event-button";
 import { PersonalEventsPanel } from "@/components/personal-events-panel";
+import { type AccountProps } from "@/components/shell/account-menu";
 import { MoreMenu } from "@/components/shell/more-menu";
 import {
   AddGlyph,
@@ -32,9 +32,16 @@ import {
  * overflow route is the current one.
  *
  * **An inert slot is inert.** Four of the five routes do not exist yet, and a slot that
- * navigates to a 404 is a lie. An inert slot is a `<span>` with `aria-disabled="true"`.
+ * navigates to a 404 is a lie. An inert slot is a `<span>` with `aria-disabled="true"`,
+ * and it carries the same "Coming soon" the sidenav's inert rows carry — visually hidden
+ * here, because a slot is a fifth of the bar and there is no room to print it, but said
+ * aloud, because `aria-disabled` alone does not explain *why* the slot does nothing.
+ *
+ * **Sign out reaches mobile through the More sheet.** The sidenav is `hidden md:flex`, so
+ * the account row in its footer is desktop-only; `MoreMenu` carries the same account
+ * panel here.
  */
-export function BottomTabNav() {
+export function BottomTabNav({ name, email }: AccountProps) {
   const pathname = usePathname();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -47,11 +54,7 @@ export function BottomTabNav() {
       >
         <TabSlot label="Digest" active={pathname === "/"} glyph={<DigestGlyph />} />
         <TabSlot label="Timeline" glyph={<TimelineGlyph />} />
-        <TabSlot
-          label="Add"
-          glyph={<AddGlyph />}
-          control={<AddEventButton compact withoutPanel onOpen={() => setAddOpen(true)} />}
-        />
+        <TabSlot label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
         <TabSlot label="Conflicts" glyph={<ConflictsGlyph />} />
         <TabSlot label="Settings" glyph={<SettingsGlyph />} />
 
@@ -60,14 +63,15 @@ export function BottomTabNav() {
           Browse lives. It is mounted as its own component because it carries a dialog
           — and a dialog inside a nav slot would be a form nested in a navigation list.
         */}
-        <MoreMenu />
+        <MoreMenu name={name} email={email} />
       </nav>
 
       {/*
-        The create sheet is mounted outside the bar. It is a whole panel of markup, and
-        inside a nav slot it would be a form nested in a navigation list.
+        The create and conflict sheets are mounted outside the bar, and only the sheets
+        (`sheetsOnly`): inside a nav slot they would be a form nested in a navigation list,
+        and the whole panel here would be a third column of the shell's flex row.
       */}
-      <PersonalEventsPanel createOpen={addOpen} onCreateOpenChange={setAddOpen} />
+      <PersonalEventsPanel sheetsOnly createOpen={addOpen} onCreateOpenChange={setAddOpen} />
     </>
   );
 }
@@ -75,19 +79,20 @@ export function BottomTabNav() {
 /**
  * One slot.
  *
- * `control` is for a slot that opens a surface in place rather than routing — the Add
- * slot, which the spec says mounts the creation panel instead of navigating.
+ * `onActivate` is for a slot that opens a surface in place rather than routing — the Add
+ * slot, which the spec says mounts the creation panel instead of navigating. The whole
+ * slot is the button, so the tap target is the full fifth of the bar.
  */
 function TabSlot({
   label,
   glyph,
   active,
-  control,
+  onActivate,
 }: {
   label: string;
   glyph: React.ReactNode;
   active?: boolean;
-  control?: React.ReactNode;
+  onActivate?: () => void;
 }) {
   const className = [
     "flex flex-1 flex-col items-center justify-center gap-1",
@@ -103,21 +108,31 @@ function TabSlot({
     </>
   );
 
-  if (control) {
+  if (onActivate) {
     return (
-      <div className={className}>
-        {glyph}
-        {control}
-        <span>{label}</span>
-      </div>
+      <button
+        type="button"
+        onClick={onActivate}
+        aria-haspopup="dialog"
+        aria-label="Add personal event"
+        className={className}
+      >
+        {content}
+      </button>
     );
   }
 
   if (!active && label !== "Digest") {
     // The inert slot. Nothing to navigate to, so there is nothing to focus.
+    //
+    // "Coming soon" is visually hidden rather than printed: the sidenav's inert rows show
+    // it in muted meta ink, but a slot here is a fifth of the bar and the words do not
+    // fit. Hiding them visually keeps the bar's geometry and still tells a screen reader
+    // what `aria-disabled` alone leaves unsaid — that the route is on the way, not broken.
     return (
       <div className={className} aria-disabled="true">
         {content}
+        <span className="sr-only">Coming soon</span>
       </div>
     );
   }

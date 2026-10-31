@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { detailTimes } from "@/lib/detail-time";
+import { cardTime, detailTimes } from "@/lib/detail-time";
 
 /** 2026-11-07 is a Saturday. */
 const SATURDAY_EVENING = "2026-11-07T23:00:00Z";
@@ -83,5 +83,29 @@ describe("the user's local time", () => {
 
     expect(times?.date).toContain("Sunday");
     expect(times?.date).toContain("Nov 8");
+  });
+});
+
+describe("a card's time line", () => {
+  it("reads as weekday, date, 12-hour time and the event's zone", () => {
+    expect(cardTime("2026-11-03T15:30:00Z", "America/Chicago")).toBe("Tue, Nov 3 · 9:30 AM CST");
+  });
+
+  it("uses the event's zone, so the server and the browser print the same text", () => {
+    // 01:00 UTC on Nov 4 is still Nov 3 in Chicago: the day comes from the event's clock.
+    expect(cardTime("2026-11-04T01:00:00Z", "America/Chicago")).toBe("Tue, Nov 3 · 7:00 PM CST");
+  });
+
+  it("names daylight time when the event is in it", () => {
+    expect(cardTime("2026-07-04T23:00:00Z", "America/New_York")).toBe("Sat, Jul 4 · 7:00 PM EDT");
+  });
+
+  it("has no time to show without a start", () => {
+    expect(cardTime(null, "America/Chicago")).toBeNull();
+    expect(cardTime("not a date", "America/Chicago")).toBeNull();
+  });
+
+  it("falls back to UTC when the zone is missing", () => {
+    expect(cardTime("2026-11-03T00:05:00Z", null)).toBe("Tue, Nov 3 · 12:05 AM UTC");
   });
 });

@@ -35,6 +35,7 @@ const FILES = [
   "components/shell/sidenav.tsx",
   "components/shell/bottom-tab-nav.tsx",
   "components/shell/more-menu.tsx",
+  "components/shell/account-menu.tsx",
   "components/shell/nav-glyphs.tsx",
   "lib/digest-attempt.ts",
   "lib/digest-read.ts",
@@ -150,16 +151,18 @@ describe("the home's motion", () => {
 
 describe("the home's terracotta ration", () => {
   it("spends terracotta only on the sanctioned uses", () => {
-    // The four sanctioned uses are the today dot, the primary CTA, the verified
-    // source badge and the focus ring. On this surface three are reachable: the
-    // `Indicator.Today` dot, the error state's primary retry, and the brand mark's
-    // glyph. Nothing else may carry it.
+    // The five sanctioned uses are the today dot, the primary CTA, the verified
+    // source badge, the focus ring and the header's quick-add outline (DESIGN.md
+    // §Color usage rules). On this surface four are reachable: the `Indicator.Today`
+    // dot, the error state's primary retry, the brand mark's glyph and the quick-add —
+    // whose outline, label and hover tint are the only tinted terracotta tokens allowed.
+    // Nothing else may carry it.
     const terracotta = allTokens().filter((token) => token.includes("terracotta"));
 
     expect(terracotta.length).toBeGreaterThan(0);
     for (const token of terracotta) {
       expect(token, token).toMatch(
-        /^(?:bg-accent-terracotta|text-accent-terracotta|border-accent-terracotta|border-t-accent-terracotta|focus-visible:outline-accent-terracotta)$/,
+        /^(?:bg-accent-terracotta|text-accent-terracotta|border-accent-terracotta|border-t-accent-terracotta|focus-visible:outline-accent-terracotta|border-accent-terracotta\/45|hover:border-accent-terracotta|hover:bg-accent-terracotta\/10)$/,
       );
     }
   });
@@ -261,11 +264,11 @@ describe("the home's shell", () => {
   });
 
   it("draws the Add glyph once, with no duplicate plus mark", () => {
-    // The sidenav and the bottom-tab draw the 16×16 stroke-only `+` themselves. The
-    // compact button must not also render a literal `+`, or one row would carry two
-    // plus signs.
+    // Each Add affordance draws the 16×16 stroke-only `+` glyph and nothing else: a
+    // literal "+" beside it would put two plus signs on one control.
     const button = code.get("components/add-event-button.tsx") ?? "";
-    expect(button).toContain("compact ? null");
+    expect([...button.matchAll(/<AddGlyph \/>/g)]).toHaveLength(1);
+    expect(button).not.toMatch(/>\s*\+/);
 
     for (const file of ["components/shell/sidenav.tsx", "components/shell/bottom-tab-nav.tsx"]) {
       const source = code.get(file) ?? "";
@@ -278,7 +281,9 @@ describe("the home's shell", () => {
     // The More slot is a control, not a route: it opens the overflow sheet. A slot
     // that renders a `<div>` and does nothing is a control that lies.
     const bottom = code.get("components/shell/bottom-tab-nav.tsx") ?? "";
-    expect(bottom).toContain("<MoreMenu />");
+    // Not the exact `<MoreMenu />`: the sheet now also carries the account panel, so it
+    // takes props. What is pinned is that the slot mounts the component at all.
+    expect(bottom).toContain("<MoreMenu ");
 
     const more = code.get("components/shell/more-menu.tsx") ?? "";
     expect(more).toContain("<Sheet");
@@ -287,6 +292,30 @@ describe("the home's shell", () => {
     // a lie.
     expect(more).toContain('aria-disabled="true"');
     expect(more).not.toContain("<Link");
+  });
+
+  it("links nowhere that does not exist — the account row included", () => {
+    // The sidenav's own rule: "a link to a 404 is a lie about where the label goes."
+    // The account row broke it by linking to `/settings`, which has no route. It is a
+    // button onto the account sheet now, and this pins it: no shell file may link to a
+    // route that is not built, and `/settings` is the one that was.
+    for (const [file, source] of code) {
+      expect(source, file).not.toContain('href="/settings"');
+    }
+  });
+
+  it("keeps sign out reachable at both breakpoints", () => {
+    // The rail is `hidden md:flex`. Mounting the only sign-out in its footer is how the
+    // control went missing once already — the Pulse Digest replaced the home page that
+    // held it, the endpoint kept working, and nothing rendered the button. So both the
+    // desktop surface and the mobile one must mount the account panel.
+    const sidenav = code.get("components/shell/sidenav.tsx") ?? "";
+    const more = code.get("components/shell/more-menu.tsx") ?? "";
+    const account = code.get("components/shell/account-menu.tsx") ?? "";
+
+    expect(sidenav).toContain("<AccountMenu ");
+    expect(more).toContain("<AccountPanel ");
+    expect(account).toContain("<SignOutButton />");
   });
 
   it("constrains the content, so a wide screen does not reflow the digest", () => {

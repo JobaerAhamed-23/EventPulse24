@@ -6,8 +6,10 @@ import { DigestEmpty } from "@/components/digest/digest-empty";
 import { DigestError } from "@/components/digest/digest-error";
 import { DigestHeader } from "@/components/digest/digest-header";
 import { DigestPreparing } from "@/components/digest/digest-preparing";
+import { PersonalEventsPanel } from "@/components/personal-events-panel";
+import { readPersonalEvents } from "@/components/personal-events-section";
 import { AppShell } from "@/components/shell/app-shell";
-import { clearAttempt, readAttempt, recordFailure } from "@/lib/digest-attempt";
+import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
 import { getSession, homeRoute } from "@/lib/session";
 
@@ -39,7 +41,7 @@ import { getSession, homeRoute } from "@/lib/session";
  */
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: PageProps<"/">) {
   const session = await getSession();
   const destination = homeRoute(session);
   // `redirect` throws, so it is called outside any try/catch.
@@ -47,23 +49,19 @@ export default async function HomePage() {
 
   if (session.kind !== "signed-in") return <HomeUnavailable />;
 
-  const digest = await readDigest();
+  const [digest, personalEvents] = await Promise.all([readDigest(), readPersonalEvents()]);
 
   /**
    * **The failure count is the server's, and it is consecutive.**
    *
-   * A failed read records the failure and renders the error state; a successful read
-   * clears the count, because "the second *consecutive* failure" means the second one
-   * in a row — one good read in between breaks the run.
-   *
-   * `recordFailure` returns the number of **prior** failures, so the first failure
-   * renders "Try again" and the second renders "Refresh page.".
+   * It is read from the URL and never written: the first failure's retry link carries
+   * `?retry=1`, so a failure on that render is the second in a row and renders "Refresh
+   * page.". `lib/digest-attempt.ts` says why it is not a cookie.
    */
-  const attempt = digest.kind === "unavailable" ? await recordFailure() : await readAttempt();
-  if (digest.kind !== "unavailable") await clearAttempt();
+  const attempt = attemptFromQuery((await searchParams)[RETRY_PARAM]);
 
   return (
-    <AppShell name={displayName(session.user.email)}>
+    <AppShell name={displayName(session.user.email)} email={session.user.email}>
       {digest.kind === "unavailable" ? (
         <DigestError attempt={attempt} />
       ) : (
@@ -72,6 +70,7 @@ export default async function HomePage() {
             localDate={digest.digest.local_date}
             timezone={digest.digest.timezone}
             city={digest.digest.city ?? null}
+            empty={digest.kind === "empty"}
           />
 
           <div className="mt-8">
@@ -81,6 +80,16 @@ export default async function HomePage() {
 
             {digest.kind === "composed" ? <DigestCards digest={digest.digest} /> : null}
           </div>
+
+          {/*
+            The user's own events, below the digest. Their real home is the Timeline,
+            which is not built yet; until it is, this is the one place a user can see,
+            and edit, what they added. The header's "+ Add personal event" is the Add
+            here, so the list draws none of its own.
+          */}
+          <section aria-label="Your personal events" className="mt-16">
+            <PersonalEventsPanel events={personalEvents} addButton={false} />
+          </section>
         </>
       )}
     </AppShell>

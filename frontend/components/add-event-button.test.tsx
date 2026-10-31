@@ -13,6 +13,12 @@ import { AddEventButton } from "@/components/add-event-button";
 
 const POST = vi.fn();
 
+/** The panel refreshes the route after every successful write; the spy says it did. */
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh, replace: vi.fn(), push: vi.fn() }),
+}));
+
 vi.mock("@/lib/backend-client", () => ({
   api: {
     POST: (...args: unknown[]) => POST(...args),

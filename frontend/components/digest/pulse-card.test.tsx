@@ -93,7 +93,7 @@ describe("the anatomy", () => {
   it("shows the source-and-time row in the meta scale", () => {
     renderCard();
 
-    const row = screen.getByText(/2026-11-07/);
+    const row = screen.getByText(/Sat, Nov 7 · 6:00 PM EST/);
     expect(row.className).toContain("--type-scale-meta-md");
   });
 
@@ -304,8 +304,9 @@ describe("the confidence indicator", () => {
 
     const trigger = screen.getByRole("button", { name: /Relevance/ });
     const dot = trigger.querySelector("span[aria-hidden='true'] > span");
-    expect(dot?.className).toContain("h-1.5");
-    expect(dot?.className).toContain("w-1.5");
+    // `size-[6px]`, not `h-1.5 w-1.5`: the spacing scale has no 1.5 step, so those classes
+    // generated no CSS and the dots had no size (tests/spacing-scale.test.ts).
+    expect(dot?.className).toContain("size-[6px]");
     expect(dot?.className).toContain("rounded-full");
   });
 
@@ -355,8 +356,8 @@ describe("the confidence indicator", () => {
     renderCard();
 
     const trigger = screen.getByRole("button", { name: /Relevance/ });
-    expect(trigger.className).toContain("min-h-11");
-    expect(trigger.className).toContain("min-w-11");
+    expect(trigger.className).toContain("min-h-[44px]");
+    expect(trigger.className).toContain("min-w-[44px]");
   });
 
   it("clamps a value outside the range rather than drawing it", () => {
@@ -437,7 +438,7 @@ describe("the Source Badge", () => {
   it("gives the badge a 44px-tall hit area", () => {
     renderCard();
 
-    expect(screen.getByRole("button", { name: /Official/ }).className).toContain("min-h-11");
+    expect(screen.getByRole("button", { name: /Official/ }).className).toContain("min-h-[44px]");
   });
 });
 
@@ -458,8 +459,9 @@ describe("the conflict indicator", () => {
     renderCard({ conflict: true });
 
     const dot = screen.getByLabelText("Schedule conflict").querySelector("span");
-    expect(dot?.className).toContain("h-1.5");
-    expect(dot?.className).toContain("w-1.5");
+    // `size-[6px]`, not `h-1.5 w-1.5`: the spacing scale has no 1.5 step, so those classes
+    // generated no CSS and the dots had no size (tests/spacing-scale.test.ts).
+    expect(dot?.className).toContain("size-[6px]");
     expect(dot?.className).toContain("bg-warn-amber");
     // The ring is what tells it apart from an empty confidence dot.
     expect(dot?.className).toContain("ring-1");

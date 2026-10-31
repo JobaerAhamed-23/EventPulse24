@@ -27,7 +27,7 @@ import Link from "next/link";
 
 import type { components } from "@/lib/api/schema";
 import { sourceBadge, tagLabel } from "@/lib/digest-labels";
-import { utcInstantToLocal } from "@/lib/timezones";
+import { cardTime } from "@/lib/detail-time";
 
 type DigestCard = components["schemas"]["DigestCardOut"];
 
@@ -91,14 +91,12 @@ export function categoryFor(card: DigestCard): Category {
 export function PulseCard({ card, explanation }: PulseCardProps) {
   const category = categoryFor(card);
   const tags = card.tags.slice(0, MAX_WHY_THIS_TAGS);
-  const zone = card.start_time_tz || "UTC";
-  const local = card.start_time_utc ? utcInstantToLocal(new Date(card.start_time_utc), zone) : null;
 
   const title = card.title ?? "Event details unavailable";
   const place = card.venue_name || card.location || card.venue_city || null;
   const source = card.source_badge ? sourceBadge(card.source_badge) : null;
 
-  const time = local ? `${local.date} · ${local.time}` : null;
+  const time = cardTime(card.start_time_utc, card.start_time_tz);
   const tooltipId = `confidence-${card.event_id}`;
   const badgeTooltipId = `badge-${card.event_id}`;
 
@@ -181,13 +179,7 @@ export function PulseCard({ card, explanation }: PulseCardProps) {
       ) : null}
 
       <p className="[font:var(--type-scale-meta-md)] text-ink-secondary">
-        {time ? (
-          <>
-            {time} <span className="text-ink-muted">({zone})</span>
-          </>
-        ) : (
-          <span className="text-ink-muted">Time to be confirmed</span>
-        )}
+        {time ? <>{time}</> : <span className="text-ink-muted">Time to be confirmed</span>}
         {place ? <> · {place}</> : null}
         {card.tz_review_pending ? (
           <>
@@ -233,7 +225,7 @@ function ConflictIndicator() {
       aria-label="Schedule conflict"
       className="inline-flex h-6 w-6 items-center justify-center"
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-warn-amber ring-1 ring-ink-faint" />
+      <span className="size-[6px] rounded-full bg-warn-amber ring-1 ring-ink-faint" />
     </span>
   );
 }
@@ -270,14 +262,14 @@ function ConfidencePulse({
         type="button"
         aria-label={`${name} ${value} of ${CONFIDENCE_POSITIONS}`}
         aria-describedby={tooltipId}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center"
+        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center"
       >
         <span aria-hidden="true" className="flex items-center gap-1">
           {Array.from({ length: CONFIDENCE_POSITIONS }, (_, index) => (
             <span
               key={index}
               className={[
-                "h-1.5 w-1.5 rounded-full",
+                "size-[6px] rounded-full",
                 index < value ? "bg-ink-primary" : "bg-ink-faint",
               ].join(" ")}
             />
@@ -349,7 +341,7 @@ function SourceBadgeBadge({
         type="button"
         aria-describedby={tooltipId}
         className={[
-          "inline-flex min-h-11 items-center gap-1 rounded-control px-1",
+          "inline-flex min-h-[44px] items-center gap-1 rounded-control px-1",
           "[font:var(--type-scale-meta-sm)]",
           labelColour,
         ].join(" ")}

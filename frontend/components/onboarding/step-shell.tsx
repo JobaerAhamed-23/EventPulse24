@@ -75,7 +75,7 @@ export function StepShell({
       </h1>
       <p className="mt-4 [font:var(--type-scale-body-lg)] text-ink-secondary">{lede}</p>
 
-      <div className="mt-10">{children}</div>
+      <div className="mt-8">{children}</div>
 
       <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-border-subtle pt-6">
         <div className="flex items-center gap-4">
@@ -111,7 +111,7 @@ export function StepShell({
             onClick={onContinue}
             disabled={busy}
             aria-busy={busy}
-            className="rounded-control bg-accent-terracotta px-5 py-2.5 [font:var(--type-scale-meta-md)] text-ink-inverse disabled:bg-surface-inset disabled:text-ink-faint"
+            className="rounded-control bg-accent-terracotta px-6 py-3 [font:var(--type-scale-meta-md)] text-ink-inverse disabled:bg-surface-inset disabled:text-ink-faint"
           >
             {continueLabel}
           </button>
@@ -143,7 +143,7 @@ function StepDots({ step }: { step: number }) {
             key={position}
             aria-label={`Step ${position} of ${ONBOARDING_STEP_COUNT} — ${state}`}
             className={[
-              "h-1.5 flex-1 rounded-full",
+              "h-[6px] flex-1 rounded-full",
               state === "current"
                 ? "bg-accent-terracotta"
                 : state === "done"

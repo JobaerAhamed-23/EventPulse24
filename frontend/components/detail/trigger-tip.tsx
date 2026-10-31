@@ -87,7 +87,7 @@ export function TriggerTip({ children, tip, label, className }: TriggerTipProps)
         onBlur={close}
         onClick={() => setOpen((was) => !was)}
         className={[
-          "inline-flex min-h-11 items-center justify-center rounded-control",
+          "inline-flex min-h-[44px] items-center justify-center rounded-control",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-terracotta",
           className ?? "",
         ].join(" ")}

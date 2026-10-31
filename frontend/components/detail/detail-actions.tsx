@@ -31,6 +31,8 @@ export function DetailActions({ eventId, saved }: DetailActionsProps) {
   const [isSaved, setIsSaved] = useState(saved);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The name of the event a clashing save overlaps, once the server has said so.
+  const [overlaps, setOverlaps] = useState<string | null>(null);
 
   const onSave = useCallback(async () => {
     setBusy(true);
@@ -39,11 +41,21 @@ export function DetailActions({ eventId, saved }: DetailActionsProps) {
       const response = await api.POST("/api/personal/saved-events/{catalog_event_id}", {
         params: { path: { catalog_event_id: eventId } },
       });
+      const clash =
+        response.response.status === 409 ? response.error?.details?.conflicts?.[0] : undefined;
       // The save is idempotent, so a 2xx means it is saved now. A refusal is shown
       // calmly rather than swallowed — a button that silently fails is the thing this
       // screen is careful about.
       if (response.response.status >= 200 && response.response.status < 300) {
         setIsSaved(true);
+      } else if (clash) {
+        // **A 409 is not a failed save.** The server wrote the save row and *then* found the
+        // clash, so the event is saved and the pair is waiting for a choice. Saying
+        // "Couldn't save that" would be false, and pressing Save again would only return
+        // the same 409. The resolve endpoint takes personal events only, so the
+        // three-action prompt is not offered here; the overlap is named instead.
+        setIsSaved(true);
+        setOverlaps(clash.other.name);
       } else {
         setFailed(true);
       }
@@ -77,7 +89,7 @@ export function DetailActions({ eventId, saved }: DetailActionsProps) {
         onClick={onSave}
         disabled={busy || isSaved}
         className={[
-          "rounded-control px-5 py-2.5 [font:var(--type-scale-meta-md)]",
+          "rounded-control px-6 py-3 [font:var(--type-scale-meta-md)]",
           isSaved
             ? "bg-surface-subtle text-ink-secondary"
             : "bg-accent-terracotta text-ink-inverse",
@@ -90,10 +102,16 @@ export function DetailActions({ eventId, saved }: DetailActionsProps) {
       <button
         type="button"
         onClick={onShare}
-        className="rounded-control border border-border-subtle bg-surface-elevated px-5 py-2.5 text-ink-secondary [font:var(--type-scale-meta-md)]"
+        className="rounded-control border border-border-subtle bg-surface-elevated px-6 py-3 text-ink-secondary [font:var(--type-scale-meta-md)]"
       >
         Share
       </button>
+
+      {overlaps ? (
+        <p role="status" className="text-ink-muted [font:var(--type-scale-body-sm)]">
+          It overlaps &ldquo;{overlaps}&rdquo; on your calendar.
+        </p>
+      ) : null}
 
       {failed ? (
         <p className="text-ink-muted [font:var(--type-scale-body-sm)]">

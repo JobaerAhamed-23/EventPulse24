@@ -3,10 +3,15 @@
 /**
  * Sign out.
  *
- * It lives in the **home's footer**, not in the topbar: the topbar-quiet rule keeps
- * account affordances out of the topbar, and the sidenav footer that will carry "Account"
- * (`Component.Sidenav.Footer`) does not exist yet. The footer is where the spine puts
- * secondary affordances until it does.
+ * It lives in the **account surface** (`AccountPanel`), not in the topbar: the
+ * topbar-quiet rule keeps account affordances out of the topbar. That panel is opened
+ * from the sidenav's footer row on desktop and rendered inline in the bottom bar's More
+ * sheet on mobile, so both breakpoints reach it.
+ *
+ * It was in the home page's footer first, as a placeholder until
+ * `Component.Sidenav.Footer` existed. The Pulse Digest replaced that page and the button
+ * went with it — the endpoint kept working and nothing rendered the control — which is
+ * why it now hangs off a component the shell owns rather than off one route's markup.
  *
  * `POST /api/auth/signout` is a state-changing request, so it carries the CSRF token like
  * every other write — the client's middleware does that. Afterwards the user goes to

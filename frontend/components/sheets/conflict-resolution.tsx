@@ -127,7 +127,7 @@ export function ConflictResolution({
       <div className="px-6 pt-6 pb-4 text-center">
         <div
           aria-hidden="true"
-          className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-warn-amber/15 text-xl text-warn-amber"
+          className="mx-auto flex size-12 items-center justify-center rounded-full bg-warn-amber/15 text-xl text-warn-amber"
         >
           !
         </div>
@@ -247,13 +247,13 @@ function ConflictChoices({
             >
               <span
                 aria-hidden="true"
-                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-inset text-sm text-ink-secondary"
+                className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-inset text-sm text-ink-secondary"
               >
                 {RESOLUTION_GLYPHS[resolution] ?? "•"}
               </span>
               <span>
                 <span className="block [font:var(--type-scale-meta-md)]">{copy.label}</span>
-                <span className="mt-0.5 block [font:var(--type-scale-body-sm)] text-ink-muted">
+                <span className="mt-1 block [font:var(--type-scale-body-sm)] text-ink-muted">
                   {copy.hint}
                 </span>
               </span>
@@ -295,19 +295,19 @@ function ConflictCard({
       ].join(" ")}
     >
       {isNew ? (
-        <span className="absolute -top-2 left-3 rounded-subtle border border-accent-terracotta/30 bg-surface-elevated px-1.5 text-[9px] font-bold tracking-[0.1em] text-accent-terracotta">
+        <span className="absolute -top-2 left-3 rounded-subtle border border-accent-terracotta/30 bg-surface-elevated px-2 text-[9px] font-bold tracking-[0.1em] text-accent-terracotta">
           NEW
         </span>
       ) : null}
       <span
         role="img"
         aria-label="Schedule conflict"
-        className="absolute top-3 right-3 h-2.5 w-2.5 rounded-full bg-warn-amber"
+        className="absolute top-3 right-3 size-[6px] rounded-full bg-warn-amber"
       />
       <p className="pr-6 text-[11px] font-semibold tracking-[0.04em] text-ink-muted uppercase">
         {when}
       </p>
-      <p className="mt-1.5 [font:var(--type-scale-headline-sm)]">{title}</p>
+      <p className="mt-2 [font:var(--type-scale-headline-sm)]">{title}</p>
     </div>
   );
 }

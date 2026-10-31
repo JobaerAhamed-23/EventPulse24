@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { DetailActions } from "@/components/detail/detail-actions";
 import { DetailBreakdown, DetailTags } from "@/components/detail/detail-breakdown";
 import { DetailHeader } from "@/components/detail/detail-header";
@@ -69,6 +71,16 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
 
   const content = (
     <article className="mx-auto w-full max-w-(--layout-container-reading)">
+      {/* The way back (the mockup's "← Today"): the digest for a signed-in reader, the
+          preview they came from for an anonymous one. */}
+      <Link
+        href={read.kind === "anonymous" ? "/preview" : "/"}
+        className="mb-8 inline-flex min-h-[44px] items-center gap-2 text-ink-secondary hover:text-ink-primary [font:var(--type-scale-meta-md)]"
+      >
+        <span aria-hidden="true">←</span>
+        {read.kind === "anonymous" ? "Preview" : "Today"}
+      </Link>
+
       <DetailHeader
         title={event.title}
         venueName={event.venue_name ?? null}
@@ -131,14 +143,14 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       {/* The breakdown is absent when there is no composition — the section element is
           not in the DOM at all, which is what the criterion asks for. */}
       {why ? (
-        <div className="mt-10">
+        <div className="mt-12">
           <DetailBreakdown tags={tags} />
         </div>
       ) : null}
 
       {/* The neighbor count is silent below the k-anonymity threshold. */}
       {personal ? (
-        <div className="mt-10">
+        <div className="mt-12">
           <DetailNeighbors bucket={personal.neighbor_bucket ?? null} />
         </div>
       ) : null}
@@ -146,7 +158,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       {/* The source link. The canonical URL is the event's own, and it is a plain
           anchor — an external link, not a route. */}
       {event.canonical_url ? (
-        <p className="mt-10 text-ink-muted [font:var(--type-scale-meta-sm)]">
+        <p className="mt-12 text-ink-muted [font:var(--type-scale-meta-sm)]">
           <a
             href={event.canonical_url}
             rel="noopener noreferrer nofollow"
@@ -169,8 +181,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
 
   const session = await getSession();
   const name = session.kind === "signed-in" ? displayName(session.user.email) : "";
+  const email = session.kind === "signed-in" ? session.user.email : "";
 
-  return <AppShell name={name}>{content}</AppShell>;
+  return (
+    <AppShell name={name} email={email}>
+      {content}
+    </AppShell>
+  );
 }
 
 /**

@@ -29,9 +29,10 @@ Run from the repo root:
     uv run --directory backend python tests/e2e/mutation_probe_contract_e2e.py
 """
 
+import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[2]
@@ -120,7 +121,7 @@ PROBES: list[Probe] = [
             (
                 "    event = get_public_event_detail(event_id=event_id, now=now)\n",
                 "    event = get_public_event_detail(event_id=event_id, now=now)\n"
-                "    list_event_fit_for_city(city=\"Los Angeles\")\n",
+                '    list_event_fit_for_city(city="Los Angeles")\n',
             ),
         ],
         suite="backend",
@@ -191,7 +192,7 @@ PROBES: list[Probe] = [
                 "from shared.actor import Actor\n"
                 "from shared.db import PERSONAL\n"
                 "\n"
-                "ACTOR = Actor.system(\"probe\")\n",
+                'ACTOR = Actor.system("probe")\n',
             ),
         ],
         suite="backend",
@@ -346,11 +347,11 @@ PROBES: list[Probe] = [
         edits=[
             (
                 '            details={"event_id": str(event_id), "created": created},\n',
-                '            details={\n'
+                "            details={\n"
                 '                "event_id": str(event_id),\n'
                 '                "created": created,\n'
                 '                "title": "Dinner with Priya at Rosa\'s",\n'
-                '            },\n',
+                "            },\n",
             ),
         ],
         suite="backend",
@@ -423,8 +424,12 @@ def run_backend_suite() -> tuple[int, str]:
 
 def run_frontend_suite() -> tuple[int, str]:
     """Run the frontend contract suite. Returns `(returncode, output)`."""
+    # The full path, not "pnpm": a partial path runs whatever `pnpm` is first on PATH (S607).
+    pnpm = shutil.which("pnpm")
+    if pnpm is None:
+        return 127, "pnpm is not on PATH"
     result = subprocess.run(
-        ["pnpm", "vitest", "run", *FRONTEND_SUITE],
+        [pnpm, "vitest", "run", *FRONTEND_SUITE],
         cwd=FRONTEND,
         capture_output=True,
         text=True,
@@ -455,9 +460,7 @@ def run_probe(probe: Probe) -> ProbeResult:
 
     for original, _ in probe.edits:
         if original not in source:
-            return ProbeResult(
-                probe, "skip", "a pattern was not found — the probe did not apply"
-            )
+            return ProbeResult(probe, "skip", "a pattern was not found — the probe did not apply")
 
     mutated = source
     for original, replacement in probe.edits:
@@ -494,9 +497,7 @@ def main() -> int:
     failures = [r for r in results if r.outcome != "ok"]
     if failures:
         for result in failures:
-            print(
-                f"{result.outcome.upper()}: {result.probe.description} -- {result.detail}"
-            )
+            print(f"{result.outcome.upper()}: {result.probe.description} -- {result.detail}")
         return 1
 
     print(f"All {len(results)} contract probes were caught by the suite.")

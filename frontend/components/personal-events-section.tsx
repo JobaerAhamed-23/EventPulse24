@@ -32,10 +32,10 @@ type PersonalEvent = components["schemas"]["PersonalEventOut"];
  *   - the section catches a failed read, so a signed-out visitor or a down API is an
  *     empty list rather than an error page.
  */
-export async function PersonalEventsSection() {
+export async function PersonalEventsSection({ addButton = true }: { addButton?: boolean } = {}) {
   const events = await readPersonalEvents();
 
-  return <PersonalEventsPanel events={events} />;
+  return <PersonalEventsPanel events={events} addButton={addButton} />;
 }
 
 /**
@@ -54,7 +54,7 @@ export async function PersonalEventsSection() {
  * read from the browser listed them — a failure that looks like missing data rather than
  * a missing cookie, which is what made it worth a comment.
  */
-async function readPersonalEvents(): Promise<PersonalEvent[]> {
+export async function readPersonalEvents(): Promise<PersonalEvent[]> {
   if (!apiBaseUrl()) return [];
 
   try {

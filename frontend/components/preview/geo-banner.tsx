@@ -100,7 +100,7 @@ export function GeoBanner({
                   <button
                     type="button"
                     onClick={() => onPickCity(candidate)}
-                    className="rounded-control border border-border-subtle px-3 py-1.5 [font:var(--type-scale-meta-sm)] text-ink-secondary"
+                    className="rounded-control border border-border-subtle px-3 py-2 [font:var(--type-scale-meta-sm)] text-ink-secondary"
                   >
                     {candidate}
                   </button>

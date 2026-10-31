@@ -12,7 +12,7 @@ import Link from "next/link";
  * decision is a decision moment.
  *
  * **On the second consecutive failure the label becomes "Refresh page."** §5 says so
- * verbatim, and it is a *stateful* rule, so the count lives in a cookie the server owns
+ * verbatim, and it is a *stateful* rule, so the count travels in the retry link's URL
  * (`lib/digest-attempt.ts`) and the server passes the count in.
  *
  * **The two failures are different failures, and the two actions do different things.**
@@ -41,12 +41,13 @@ export function DigestError({ attempt }: { attempt: number }) {
 
       {/*
         A link, not a button: both actions are navigations, and a link says so. The
-        first carries a nonce so the server renders again rather than serving the
-        failure it already rendered; the second reloads the document outright.
+        first carries `retry=1`, which makes the server render again rather than serve
+        the failure it already rendered, and tells it this is the second attempt; the
+        second reloads the document outright.
       */}
       <Link
         href={second ? "/" : "/?retry=1"}
-        className="mt-6 inline-block rounded-control bg-accent-terracotta px-5 py-2.5 text-ink-inverse [font:var(--type-scale-meta-md)]"
+        className="mt-6 inline-block rounded-control bg-accent-terracotta px-6 py-3 text-ink-inverse [font:var(--type-scale-meta-md)]"
       >
         {second ? "Refresh page." : "Try again"}
       </Link>

@@ -28,7 +28,7 @@ export function SubmitButton({ label, busyLabel, busy }: SubmitButtonProps) {
       type="submit"
       disabled={busy}
       aria-busy={busy}
-      className="inline-flex items-center gap-2 rounded-control bg-accent-terracotta px-5 py-2.5 [font:var(--type-scale-meta-md)] text-ink-inverse disabled:bg-surface-inset disabled:text-ink-faint"
+      className="inline-flex items-center gap-2 rounded-control bg-accent-terracotta px-6 py-3 [font:var(--type-scale-meta-md)] text-ink-inverse disabled:bg-surface-inset disabled:text-ink-faint"
     >
       {busy ? <span aria-hidden="true" className="h-2 w-2 rounded-full bg-current" /> : null}
       {busy ? busyLabel : label}

@@ -21,14 +21,14 @@ export function CardSkeletons({ count = 3 }: { count?: number }) {
         <div
           key={index}
           aria-hidden="true"
-          className="fade-in flex flex-col gap-3 rounded-card border border-border-subtle bg-surface-elevated px-5 py-4"
+          className="fade-in flex flex-col gap-3 rounded-card border border-border-subtle bg-surface-elevated px-6 py-4"
         >
-          <div className="h-3 w-24 rounded-full bg-surface-inset" />
-          <div className="h-3 w-32 rounded-full bg-surface-inset" />
-          <div className="h-5 w-full rounded-full bg-surface-inset" />
-          <div className="h-5 w-3/4 rounded-full bg-surface-inset" />
-          <div className="h-3 w-40 rounded-full bg-surface-inset" />
-          <div className="mt-2 h-9 w-24 rounded-control bg-surface-inset" />
+          <div className="h-3 w-[96px] rounded-full bg-surface-inset" />
+          <div className="h-3 w-[128px] rounded-full bg-surface-inset" />
+          <div className="h-[20px] w-full rounded-full bg-surface-inset" />
+          <div className="h-[20px] w-3/4 rounded-full bg-surface-inset" />
+          <div className="h-3 w-[160px] rounded-full bg-surface-inset" />
+          <div className="mt-2 h-[36px] w-[96px] rounded-control bg-surface-inset" />
         </div>
       ))}
     </div>

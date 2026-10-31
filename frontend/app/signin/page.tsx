@@ -31,7 +31,7 @@ export default async function SigninPage() {
       current="/signin"
     >
       <SigninForm />
-      <div className="mt-8 border-t border-border-subtle pt-5 text-center">
+      <div className="mt-8 border-t border-border-subtle pt-6 text-center">
         <p className="[font:var(--type-scale-body-sm)] text-ink-secondary">
           New to EventPulse24?{" "}
           <Link href="/signup" className="text-accent-terracotta underline underline-offset-4">
