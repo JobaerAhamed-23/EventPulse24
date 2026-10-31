@@ -183,7 +183,7 @@ export function PulseCard({ card, explanation }: PulseCardProps) {
       <p className="[font:var(--type-scale-meta-md)] text-ink-secondary">
         {time ? (
           <>
-            {time} <span className="text-ink-faint">({zone})</span>
+            {time} <span className="text-ink-muted">({zone})</span>
           </>
         ) : (
           <span className="text-ink-muted">Time to be confirmed</span>
@@ -312,9 +312,27 @@ function ConfidencePulse({
  * The Source Badge (`EXPERIENCE.md` §4 `Badge.Source`).
  *
  * **Always inline, never behind a tap**, and every variant has a **visible inline text
- * label** — never icon-only (WCAG 1.1.1). `official_site` is terracotta: one of the four
- * sanctioned uses, and the only one that appears on a card body besides the `Indicator.Today`
- * dot.
+ * label** — never icon-only (WCAG 1.1.1).
+ *
+ * **The chromatic colour is on the glyph, and the label is ink.** `EXPERIENCE.md` §4
+ * `Badge.Source` is the canonical list, and it says: *"`official_site`:
+ * `color.accent.terracotta`-**filled checkmark icon**. Inline label "Official" in
+ * `Text.Meta`."* — the terracotta fills the **icon**, and the label is plain meta text.
+ * `DESIGN.md` §"Badges and indicators" says "terracotta label", which contradicts the
+ * canonical list it cites; the canonical list wins, and it agrees with the design's own
+ * `soldout-badge` precedent (`DESIGN.md`): a chromatic **glyph** paired with the label
+ * in `color.ink.secondary`.
+ *
+ * **And it has to be that way, because the chromatic colours do not survive as text.**
+ * In the light theme `color.accent.terracotta` is `#C4502B`, which is **4.37:1** against
+ * `color.surface.paper` — below AA's 4.5:1 for text, though comfortably above the 3:1
+ * that a meaningful **graphic** needs. `color.signal.warn` is worse: **2.96:1** on paper,
+ * which fails even the non-text threshold. So the colours stay on the glyphs, where the
+ * design put them and where they are legible, and the text goes back to ink.
+ *
+ * **This is the pattern `DESIGN.md` already uses** for the sold-out badge: *"a leading
+ * `●` glyph in `{color.signal.warn}` … + label "Sold out" in `{type.scale.meta.sm}`
+ * `{color.ink.secondary}`"*. The badge and the sold-out pill now read the same way.
  */
 function SourceBadgeBadge({
   badge,
@@ -323,13 +341,7 @@ function SourceBadgeBadge({
   badge: ReturnType<typeof sourceBadge>;
   tooltipId: string;
 }) {
-  const colour = badge.official
-    ? "text-accent-terracotta"
-    : badge.warn
-      ? "text-signal-warn"
-      : badge.italic
-        ? "text-ink-primary italic"
-        : "text-ink-secondary";
+  const labelColour = badge.italic ? "text-ink-primary italic" : "text-ink-secondary";
 
   return (
     <span className="group/badge relative inline-flex items-center">
@@ -339,7 +351,7 @@ function SourceBadgeBadge({
         className={[
           "inline-flex min-h-11 items-center gap-1 rounded-control px-1",
           "[font:var(--type-scale-meta-sm)]",
-          colour,
+          labelColour,
         ].join(" ")}
       >
         <BadgeGlyph glyph={badge.glyph} official={badge.official} warn={badge.warn} />

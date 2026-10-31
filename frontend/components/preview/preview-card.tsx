@@ -52,7 +52,7 @@ export function PreviewCard({ card, onSave, savedNote = null }: PreviewCardProps
             className={[
               "rounded-control border px-2 py-1 [font:var(--type-scale-meta-sm)]",
               badge.unverified
-                ? "border-signal-warn text-signal-warn"
+                ? "border-signal-warn text-ink-secondary"
                 : "border-border-subtle text-ink-secondary",
             ].join(" ")}
           >
@@ -68,7 +68,7 @@ export function PreviewCard({ card, onSave, savedNote = null }: PreviewCardProps
       {/* The local start time, in the event's own zone, with the zone named: the server
           sends an instant and an IANA zone and does not guess a locale (AD-6). */}
       <p className="[font:var(--type-scale-meta-sm)] text-ink-muted">
-        {local.date} · {local.time} <span className="text-ink-faint">({zone})</span>
+        {local.date} · {local.time} <span className="text-ink-muted">({zone})</span>
       </p>
 
       <h3 className="[font:var(--type-scale-headline-sm)] text-ink-primary">

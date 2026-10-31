@@ -109,11 +109,11 @@ wide (12 work items)
 9. **frontend-pulse-card** (confirm) — completed
 10. **frontend-digest-home** (confirm) — completed
 11. **frontend-event-detail** (confirm) — completed
-12. **e2e-proof-and-contract-tests** (confirm) — pending
+12. **e2e-proof-and-contract-tests** (confirm) — completed
 
 
 ## Current Item
-e2e-proof-and-contract-tests (confirm)
+e2e-proof-and-contract-tests (confirm) — completed
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -274,6 +274,30 @@ e2e-proof-and-contract-tests (confirm)
   — D1–D14 plus D3b, the twelve-row drift table, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-frontend-event-detail.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-frontend-event-detail.md`
+- `backend/tests/e2e/test_digest_and_detail_proof.py` — 12 tests, the end-to-end proof:
+  the scenario, the skip path, the empty path, the determinism check
+- `backend/tests/architecture/test_ad10_explanation_persistence.py` — 8 tests, AD-10's
+  "no explanation at view time": the AST call checks and the database row count
+- `backend/tests/architecture/test_ad3_composition_separation.py` — 6 tests, AD-3's
+  composition path: the transaction ordering and the one-alias-per-query rule
+- `backend/tests/architecture/test_ad13_pii_sweep.py` — 6 tests, AD-13's sweep over the
+  five new paths, against the log sink's allowlist and the audit sink's vocabulary
+- `backend/tests/e2e/mutation_probe_contract_e2e.py` — the backend probe harness, 10
+  probes, one per contract rule
+- `frontend/tests/ad10-separation.test.ts` — 9 tests, AD-10's frontend wall: the
+  transitive import walk
+- `frontend/tests/personal-separation.test.ts` — 7 tests, the brace-aware `personal`
+  data-flow check
+- `frontend/tests/ad19-endpoint-coverage.test.ts` — 16 tests, AD-19's endpoint coverage,
+  binding and call-site rules
+- `frontend/tests/contrast.test.ts` — 66 tests, the static WCAG computation, the
+  token-usage rules, and the deviation tripwire
+- `frontend/tests/contrast-mutation.mjs` — the contrast probe harness, 10 probes
+- `frontend/tests/ad19-client-break.mjs` — the client-break probe harness, 7 probes
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/e2e-proof-and-contract-tests-design.md`
+  — D1–D14 plus the seven-row drift table
+- `.specs-fire/runs/run-eventpulse24-021/test-report-e2e-proof-and-contract-tests.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-e2e-proof-and-contract-tests.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -335,6 +359,19 @@ e2e-proof-and-contract-tests (confirm)
   also enqueues the dispatcher
 - `backend/tests/worker/test_scheduling_tasks.py` — the tick's pinned enqueue table
   grows a row in every case
+- `frontend/styles/tokens.css` — the two light ambers darkened to `#8A5A1C` (from
+  `#B8893D`/`#B8893A`), which were 2.96:1 and were used as error text in seven places
+- `frontend/components/digest/pulse-card.tsx` — the Source Badge's chromatic colour
+  moved onto the `aria-hidden` glyph; the timezone abbreviation's ink lifted from
+  `faint` to `muted`
+- `frontend/components/detail/detail-header.tsx` — the same glyph/label split on the
+  Detail Screen's Source Badge
+- `frontend/components/preview/preview-card.tsx` — the same two violations, on the
+  pre-existing preview surface
+- `frontend/components/digest/pulse-card.test.tsx` — two tests updated to the corrected
+  behaviour
+- `_bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/DESIGN.md` —
+  the two ambers, the `component.badge.source` rule, and the re-verification note
 
 ## Decisions
 - **D4 — retention category `ACCOUNT_CONTENT`** for both tables. It is the only category
@@ -1019,3 +1056,298 @@ e2e-proof-and-contract-tests (confirm)
   stacking order and no hit-testing, so the rendered contrast, the Lighthouse score, the
   LCP and the touch behaviour are all unmeasured. `e2e-proof-and-contract-tests` is the
   item that puts the product in front of a real browser.
+
+## The `e2e-proof-and-contract-tests` item's decisions
+
+### The shape of the proof
+
+- **The proof is one backend test, and it is the *rows* it walks.** The work item's
+  scenario says the user "opens `/`, sees three cards… taps one… and reads a why-this
+  breakdown built from the same persisted row the card rendered". The *rendered* half of
+  that was already proved by the two frontend items — the digest home's tests assert the
+  cards, the detail screen's assert the breakdown. What only a backend test can see is the
+  thing the two surfaces agree *about*: **the persisted `DigestComposition` row.** So the
+  scenario drives signup → onboarding → ingestion → the worker's composition → the two
+  read paths, and asserts that the card's tags/bucket/badge and the detail's `why_this`
+  are **the same values, read from the same row, by two independent services**.
+- **Two read paths, deliberately.** `read_digest` and `read_event_detail` are separate
+  services in separate modules. The proof drives both and asserts they agree — because
+  the claim is that the *row* is the shared truth, not that the two readers share code.
+- **The worker's tick is the composer.** AD-11 says a request handler validates, enqueues
+  and returns, so the scenario calls `worker.tasks.compose_digest` and not the API. The
+  architecture test pins the API side of that same rule.
+- **The three paths are three tests, not one test with branches.** The happy path, the
+  skip-everything path and the empty-state path are separate scenarios, because the skip
+  path is the one nobody clicks manually and the one that rots.
+
+### The contract tests
+
+- **The AD-10 frontend wall is a *transitive import walk*, not a name check.** The
+  preview's read module is the one place allowed to import the Event Fit; the walk
+  starts at the authenticated route and asserts the Event Fit read is not in its
+  import graph. A direct name check would be bypassed by a re-export — the lesson
+  `test_event_fit_separation.py` already learned and recorded.
+- **The `personal` check is a brace-aware data-flow check, not a line check.** The bug
+  the Detail Screen's own review found was a use of personal data *outside* the guard —
+  the reminder picker — and a line-based check would not catch it, because the guard
+  `{personal ? (` is on one line and the use is two lines later. The check finds each use
+  and walks **outward** through the enclosing braces, requiring a real brace match: a
+  JSX guard is `{personal ? ( … ) : null}`, so the *expression's* brace and the
+  *branch's* parenthesis are both walked. A `lastIndexOf("}")` cannot tell an open block
+  from a closed one, and the probe showed exactly that.
+- **The "no explanation at view time" rule has a half that only the database can catch.**
+  The AST half says the read paths do not *call* `domain/ranking.py` or
+  `compose_digest`. The database half says the `DigestComposition` row count is
+  unchanged across a read. A read that called a service which wrote would pass every
+  import check and every call check, and still generate an explanation at view time.
+- **The AD-3 check is about the *composition path*,** because the composition is the one
+  place where both schemas are legitimately touched — so it needs a specific assertion
+  rather than the general "every query names its alias" rule. The `transaction.atomic`
+  names the **personal** alias, and the catalog reads happen **before** the transaction
+  opens. A transaction whose window covers a catalog read is a distributed transaction,
+  which Postgres cannot do and which the ORM would fake by opening a second connection.
+- **The FR-22 pin is confirmed and *watched*.** `tests/shared/test_constants.py` already
+  pinned the weights; what this item adds is the proof that the pin can fail. A pin
+  nobody has watched fail is a comment.
+- **`tests/worker/test_tick.py` is not edited.** The criterion says it must pass
+  unchanged, so the evidence is that it passes *and* that git reports no diff to it.
+- **The PII sweep asserts against the allowlist, not against a list of known PII.** Every
+  *extra* field on a captured record must be either in `ALLOWED_FIELDS` or the literal
+  `[redacted]`. The audit sink's `details` JSONField has no schema and no allowlist, so
+  the sweep states its own vocabulary too — an email address, a city, an event title.
+
+### The generated client (AD-19)
+
+- **The chain has five links and the proof checks the last join by *breaking* it.**
+  `backend route → live OpenAPI → committed openapi.json → schema.ts → the call site`.
+  The backend's `test_contract.py` checks the first join; the new frontend test checks
+  the middle; the client-break probe checks the last, by removing or corrupting one link
+  at a time and requiring the suite to fail. A test that asserts the client *is* present
+  passes just as happily against a client that is present but ignored.
+- **The operation id appears twice in the generated file, and both halves are asserted.**
+  Once as the key of the `operations` entry that carries the operation's request and
+  response types, and once inside the `paths` entry that points at it
+  (`get: operations["…"]`). A `toContain` over the whole file is satisfied by **either**
+  one alone — so renaming only the `operations` key left the `paths` reference behind and
+  the check stayed green. The probe found exactly that.
+- **The call site's assertions read its *source*, and a source that says `api.GET(…)`
+  still says it when `api` no longer exists.** So the client module is asserted to
+  **export** the typed `api` and to type it from the generated `paths`; and the caller is
+  asserted to **import** it from `@/lib/backend-client` and to **not define its own**
+  `api`, which would shadow the import and route the call past the generated types.
+- **Comments are stripped before the call site's source is read.** The detail read's own
+  docstring names the path it calls, so a `toContain(path)` over the raw file was
+  satisfied by the *prose* — and a call site rewritten to a hand-written URL still
+  passed. That was a **false green**, and the probe found it.
+
+### The accessibility gate, and the two product defects it found
+
+- **The axe gate is the two frontend items' own, confirmed here.** The digest home's runs
+  over four documents, the detail screen's over five. This item does not duplicate them.
+- **Lighthouse ≥95 is unverified, and the gap is named.** Lighthouse measures a rendered
+  page in a browser under a throttled network; **Playwright is not installed and this
+  run does not install it** — the same scope decision the previous two intents' proofs
+  made and recorded.
+- **The substitute is a static computation of what Lighthouse would measure** that *can*
+  be measured here: **colour contrast**, computed from the token file and the rendered
+  pairs against WCAG 2.1's thresholds. This is the one Lighthouse criterion the axe gate
+  *cannot* cover, because jsdom computes no layout and `color-contrast` is therefore
+  disabled there. It is a static computation from the token file, **not a Lighthouse
+  run**, and it is recorded as such.
+- **The contrast check found two real, pre-existing product defects** that nothing had
+  caught: the light `signal-warn` at **2.96:1** was being used as **error text in seven
+  places** (auth field errors, reset and sign-out alerts, onboarding errors), and the
+  empty confidence dot sat at **1.77:1**. Both were pre-existing on the two surfaces
+  this intent added. The ambers were darkened to `#8A5A1C` (**4.79:1** at its worst
+  across all four light surfaces) and `DESIGN.md` — the source of truth — was updated to
+  match, since `styles/tokens.test.ts` asserts the token file equals DESIGN.md's own
+  bullets.
+- **The terracotta was left alone, and used as a graphic.** `#C4502B` is **4.37:1** on
+  paper — a graphic's ratio, not a text's. So it is used as the badge's `aria-hidden`
+  **glyph** and never as body text, which is the design's established pattern for
+  chromatic elements (`component.badge.soldout`, `component.input.field.error`) and the
+  reading `EXPERIENCE.md §4` gives for `Badge.Source`.
+- **One deviation is recorded rather than silently fixed: the empty confidence dot.**
+  `color.ink.faint` is the design's designated value for it and the value is
+  pre-existing. The **state** is legible — the filled dot is 10:1 against the empty one —
+  so the deviation is a value deviation, not a state ambiguity. It is held open by a
+  **tripwire**: a test that asserts the empty dot is *still* below 3:1, so closing the
+  deviation makes the test fail and forces the note to be updated.
+
+### The probe record — every contract test verified to be able to fail
+
+The acceptance criterion: *"Every test in this item can fail. No placeholder assertions,
+no `or`-fallbacks, no test that passes because a value is absent. Each one is verified to
+fail when the behavior it pins is deliberately broken, and the run log records that it was
+checked."*
+
+**The mechanism.** Apply one real bug to the implementation, run the suite that is
+supposed to catch it, and require that at least one test fails. A probe that leaves the
+suite green means the tests do not prove that rule. Every probe **restores the file it
+touched** in a `finally` — the restore is unconditional, so a failure cannot leave the
+tree broken.
+
+**The three suites, and why there are three.** A frontend bug is caught by a frontend
+test, so the harness carries a **per-probe command** rather than one global suite: the
+backend probes run pytest, the frontend probes run vitest.
+
+**Result: 27 of 27 probes caught.** Re-run on 2026-10-31, all three suites green
+against the restored tree.
+
+#### The backend contract probes — `backend/tests/e2e/mutation_probe_contract_e2e.py`
+
+Ten probes over the five backend contract files this item added
+(`test_ad10_explanation_persistence.py`, `test_ad3_composition_separation.py`,
+`test_ad13_pii_sweep.py`, `test_digest_and_detail_proof.py`, `test_constants.py`).
+
+| # | The bug planted | Caught by | Result |
+|---|---|---|---|
+| 1 | the detail read imports and **calls** the Event Fit's read | AD-10's import wall | **caught** (11 failed, 39 passed) |
+| 2 | the digest read **calls** the ranking function and re-buckets the card | the AST call check | **caught** (1 failed, 49 passed) |
+| 3 | the detail read **calls** `compose_digest` | the AST call check | **caught** (1 failed, 49 passed) |
+| 4 | the detail read **writes** a composition row when none exists | the database row-count check | **caught** (2 failed, 48 passed) |
+| 5 | `RANKING_WEIGHT_INTEREST` moves from `0.45` to `0.50` | the FR-22 constants pin | **caught** (1 failed, 49 passed) |
+| 6 | the detail page reads `.personal` outside the guard | the brace-aware data-flow check | **caught** (vitest failed) |
+| 7 | the composition's catalog read moves **inside** the personal transaction | the AD-3 ordering check | **caught** (1 failed, 49 passed) |
+| 8 | the audit sink records the event title | the AD-13 sweep | **caught** (2 failed, 48 passed) |
+| 9 | the audit sink records the user's city | the AD-13 sweep | **caught** (2 failed, 48 passed) |
+| 10 | the card's bucket disagrees with the breakdown's | the scenario's FR-21 agreement | **caught** (3 failed, 47 passed) |
+
+**Three of these probes were rewritten because the first version proved nothing**, and
+the record of *how* is the point:
+
+- **Probes 2 and 3 plant a CALL, not an import.** An import that is never used changes
+  nothing about the app's behaviour — an imported-but-uncalled function computes nothing.
+  The AST check is a **call** check for the same reason: a call is what a computation is,
+  and an import is not.
+- **Probe 7 is a *read that moves*, not a duplicated argument.** An earlier version wrote
+  `transaction.atomic(using=PERSONAL, using=CATALOG)`, which is a `SyntaxError` — and
+  the suite "caught" it, because a suite that cannot be collected fails. That is a **false
+  green**: the probe would have passed while proving nothing. The mutation is now a
+  catalog read moved inside the transaction window, which parses and still runs.
+- **Probe 10 targets the *live* card builder, not the missing-catalog one.** An earlier
+  version changed the first pattern it found, which was the branch for an event whose
+  catalog row is gone — and the suite stayed green, because the scenario's events are all
+  present and that branch never runs. **A probe that plants a bug in dead code proves
+  nothing.**
+
+#### The contrast probes — `frontend/tests/contrast-mutation.mjs`
+
+Ten probes over `frontend/tests/contrast.test.ts`, the static WCAG computation.
+
+| # | The bug planted | Caught by | Result |
+|---|---|---|---|
+| 1 | the card's timezone abbreviation goes back to `ink-faint` | the token-usage rule | **caught** |
+| 2 | the card's Source Badge label goes back to terracotta | the glyph/label split | **caught** |
+| 3 | the detail screen's Source Badge label goes back to terracotta | the glyph/label split | **caught** |
+| 4 | the detail screen's badge glyph loses its `aria-hidden` | the chromatic-provenance check | **caught** |
+| 5 | the card's warn glyph becomes text on the label | the signal-colour rule | **caught** |
+| 6 | the light `signal-warn` goes back to `#B8893A` | the AA non-text pair | **caught** |
+| 7 | the light `warn-amber` goes back to `#B8893D` | the AA non-text pair | **caught** |
+| 8 | the light `ink-faint` darkens enough to close the deviation | the deviation tripwire | **caught** |
+| 9 | the dark `ink-faint` brightens enough to close the deviation | the deviation tripwire | **caught** |
+| 10 | the preview card's timezone abbreviation goes back to `ink-faint` | the token-usage rule | **caught** |
+
+**Two of these probes were rewritten because the first version proved nothing.** Probes 6
+and 7 first reverted the ambers but **no pair used them**, so the suite stayed green — the
+conflict-dot pairs on both surfaces were added, and the ambers are now covered. Probes 8
+and 9 first moved `ink-muted`, which is **not** the token the deviation is about — the
+empty confidence dot uses `ink-faint`, so the tripwire was re-probed against the right
+token in both themes.
+
+#### The AD-19 client-break probes — `frontend/tests/ad19-client-break.mjs`
+
+Seven probes over `frontend/tests/ad19-endpoint-coverage.test.ts`, each breaking one link
+of the five-link chain.
+
+| # | The link broken | Caught by | Result |
+|---|---|---|---|
+| 1 | the generated schema loses the detail endpoint's operation id | the operations-key binding | **caught** |
+| 2 | the committed schema loses the detail endpoint's path | the committed-schema presence | **caught** |
+| 3 | the generated schema loses the digest endpoint's operation id | the operations-key binding | **caught** |
+| 4 | the client stops exporting the typed `api` | the client's export assertion | **caught** |
+| 5 | the detail read goes around the client | the call-site path assertion | **caught** |
+| 6 | the detail read hand-writes a `fetch` | the no-raw-fetch assertion | **caught** |
+| 7 | the detail read defines its own `api`, shadowing the import | the import-and-don't-shadow assertion | **caught** |
+
+**This suite was the least honest one, and the probes found four real holes in the test
+that had been written to catch them:**
+
+1. **The false green.** `expect(caller).toContain(endpoint.path)` read the detail read's
+   **docstring**, which names the path it calls — so a call site rewritten to
+   `/api/events/hand-written` still passed. Fixed by stripping comments before reading
+   the source.
+2. **The binding was one assertion where it needed two.** The operation id appears twice
+   in `schema.ts` — as the `operations` key and as the `paths` reference — and
+   `toContain` is satisfied by either alone. Renaming only the key left the reference
+   behind and the check stayed green. Split into "is a key in `export interface
+   operations {`" **and** "the `paths` entry references it".
+3. **Nothing checked the client was exported.** Removing `export` from
+   `backend-client.ts` broke every call site and **every endpoint test stayed green** —
+   because the call sites' assertions read their *source*, and a source that says
+   `api.GET(…)` still says it when `api` no longer exists.
+4. **Nothing checked the caller imported it.** A call site that mentions `api.GET(` but
+   defines its own `api` satisfies the path assertion while bypassing the generated
+   types entirely.
+
+**And the probe harness had its own bug, which is worth recording:** its first edit
+replaced the *first* occurrence of the path in the file — which is the **docstring**, not
+the call site — so the code kept calling the right endpoint and the probe "passed"
+without breaking anything. The mutation now targets `api.GET("/api/events/{event_id}"`,
+and probes 6 and 7 were added for the two ways a call site can bypass the client.
+
+**The lesson, stated once:** a test that asserts a dependency *exists* proves nothing
+about whether anything *depends* on it. Every one of these four holes was a check that
+would have stayed green through a real break in the chain.
+
+---
+
+## The run's closing note
+
+**Run `run-eventpulse24-021` is complete: 12 work items, and the intent
+`pulse-digest-and-trust` is closed.**
+
+The intent built the Pulse Digest, the Relevance Pulse and the two trust surfaces —
+and its last item was the one that had to say whether it held together. It did, and
+the proof is honest about what it did and did not check.
+
+**What the intent shipped.** A digest the worker composes on a 60-second tick, a card
+that carries a persisted explanation rather than a computed one, a Detail Screen that
+serves the same explanation two audiences, and a set of architectural rules that now
+have **something to be substituted for** — which is what made AD-10 enforceable in both
+directions for the first time.
+
+**The three findings that mattered.**
+
+1. **The proof is structural, not textual.** The card and the breakdown are two
+   projections of one persisted `DigestComposition` row, asserted on the database, by
+   two independent read services. The work item's scenario reads like a browser test;
+   the browser half was proved by the two frontend items, and the row half is proved
+   here. **A browser dependency is a scope decision, and it was made explicitly.**
+2. **The probes found four real holes in the test written to catch them** — including a
+   false green that read a **docstring** instead of the code, and a check that stayed
+   green when the client stopped being exported at all. Five probes were rewritten
+   because their first version proved nothing. **27 of 27 caught.**
+3. **The accessibility substitute earned its place.** Colour contrast is the one
+   Lighthouse criterion the axe gate cannot cover, and computing it statically found
+   **two real, pre-existing product defects** — the light ambers at 2.96:1 used as
+   error text in seven places, and the empty confidence dot at 1.77:1. Both were fixed
+   at the source of truth, `DESIGN.md`.
+
+**What is still open, by name.**
+
+- **D1 — the empty confidence dot is below 3:1.** The value is the design's and is
+  pre-existing; the *state* is legible. A **tripwire** fires when someone closes it.
+- **D2 — the detail-open endpoint has no frontend caller.** Calling it would be a
+  behaviour change to the Detail Screen, and that decision belongs to the
+  `frontend-event-detail` item. A **tripwire** fires when the caller appears.
+- **Lighthouse ≥95 is unverified.** There is no browser in this stack and this run does
+  not install one. The substantive half — `axe-core` zero serious/critical on both
+  surfaces — is met, and colour contrast is computed statically. **A static
+  computation is not a Lighthouse score, and the run does not claim one.**
+
+**The final gates.** Backend **3920 passed**; frontend **785 passed** across 58 files;
+`make lint-imports` **19 kept, 0 broken**; `manage.py check` clean on both database
+aliases; typecheck, lint, format and build all clean; `tests/worker/test_tick.py`
+unchanged; **27/27 mutation probes caught**; the tree confirmed clean after every
+probe.

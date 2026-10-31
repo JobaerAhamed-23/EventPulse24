@@ -104,25 +104,37 @@ export function DetailHeader({
 /**
  * The Source Badge (`EXPERIENCE.md` §4 `Badge.Source`).
  *
- * **Every variant has a visible inline text label** — never icon-only (WCAG 1.1.1). The
- * `official_site` badge is terracotta: one of the four sanctioned uses.
+ * **Every variant has a visible inline text label** — never icon-only (WCAG 1.1.1).
+ *
+ * **The chromatic colour is on the glyph; the label is ink.** `EXPERIENCE.md` §4
+ * `Badge.Source` is the canonical list: *"`official_site`:
+ * `color.accent.terracotta`-**filled checkmark icon**. Inline label "Official" in
+ * `Text.Meta`."* The terracotta fills the **icon**; the label is plain meta text.
+ *
+ * **On this screen that distinction is load-bearing.** The Detail Screen's badge sits
+ * directly on `color.surface.paper`, and in the light theme `color.accent.terracotta`
+ * (`#C4502B`) is **4.37:1** on paper — under AA's 4.5:1 for text, over the 3:1 a
+ * meaningful graphic needs. `color.signal.warn` (`#B8893A`) is **2.96:1** on paper, which
+ * clears neither. So the colours live on the glyphs, where `EXPERIENCE.md` put them and
+ * where they are legible, and the labels go back to ink. This is the same pattern the
+ * design already uses for the sold-out badge (`DESIGN.md`: a `●` glyph in
+ * `{color.signal.warn}` with the label in `{color.ink.secondary}`).
  */
 function SourceBadgeView({ badge }: { badge: ReturnType<typeof sourceBadge> }) {
-  const colour = badge.official
+  const labelColour = badge.italic ? "text-ink-primary italic" : "text-ink-secondary";
+  const glyphColour = badge.official
     ? "text-accent-terracotta"
     : badge.warn
       ? "text-signal-warn"
-      : badge.italic
-        ? "text-ink-primary italic"
-        : "text-ink-secondary";
+      : "text-ink-primary";
 
   return (
     <TriggerTip
       label={badge.label}
       tip={badge.tooltip}
-      className={`gap-1 px-1 [font:var(--type-scale-meta-sm)] ${colour}`}
+      className={`gap-1 px-1 [font:var(--type-scale-meta-sm)] ${labelColour}`}
     >
-      <span aria-hidden="true">
+      <span aria-hidden="true" className={glyphColour}>
         {badge.glyph === "check"
           ? "✓"
           : badge.glyph === "chain"

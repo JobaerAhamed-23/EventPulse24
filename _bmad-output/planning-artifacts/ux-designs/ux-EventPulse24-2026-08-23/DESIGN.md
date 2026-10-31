@@ -86,12 +86,12 @@ Light mode is provided as a swap-out, not the source. Same vocabulary applies.
 - `color.surface.paper.darker` — `#F4F0E8`. Card hover on light.
 - `color.warm.personal` — `#A8765C`. Personal event tone on light.
 - `color.cool.public` — `#5B6B7E`. Public event tone on light (alias `color.accent.slate` light variant).
-- `color.warn.amber` — `#B8893D`. Conflict indicator on light.
+- `color.warn.amber` — `#8A5A1C`. Conflict indicator on light. **Darkened from `#B8893D`** by the ASSUM-1 re-verification — see §Color usage rules → "The light ambers were re-verified".
 - `color.accent.terracotta` — `#C4502B`. Terracotta on light.
 - `color.accent.slate` — `#5B6B7E`.
 - `color.accent.amber` — `#C77A2C`.
 - `color.signal.success` — `#4A7A4A`.
-- `color.signal.warn` — `#B8893A`.
+- `color.signal.warn` — `#8A5A1C`. **Darkened from `#B8893A`** by the ASSUM-1 re-verification — see §Color usage rules → "The light ambers were re-verified".
 - `color.signal.error` — `#8E2A1F`.
 - `color.border.subtle` — `rgba(26, 24, 20, 0.08)`.
 - `color.border.strong` — `rgba(26, 24, 20, 0.16)`.
@@ -109,6 +109,11 @@ Light mode is provided as a swap-out, not the source. Same vocabulary applies.
 - `color.signal.success`, `color.signal.warn`, and `color.signal.error` are signal colors, not brand colors. They appear only at the moment of state change, never as decoration.
 - `color.ink.faint` is reserved for empty `Indicator.Confidence` dot placeholders, the skeleton pulse animation's dim target, and the handle bar on mobile bottom sheets. Never used for body copy or interactive affordances.
 - `color.surface.paper.darker` is reserved for `Card.PulseDigest` hover background and the skeleton pulse animation's resting frame. Never used as a static surface or as a hover state on non-card elements.
+- **The light ambers were re-verified.** ASSUM-1 tasked the light palette with being *"re-verify[d] for AA contrast for `color.ink.*`, `color.warn.amber`, and the terracotta focus ring against `color.surface.paper` in dark and light modes"*, and that re-verification has now been done — by a static computation of the WCAG contrast ratios for every colour pair the Pulse Digest and Detail Screen actually use (`frontend/tests/contrast.test.ts`). **The result: the light ambers failed and were darkened; the terracotta passed as a graphic and the ink tokens passed as text.**
+  - **`color.warn.amber` and `color.signal.warn` moved from `#B8893D`/`#B8893A` to `#8A5A1C`.** The originals were **2.96:1** against `color.surface.paper` — below the 3:1 that WCAG 1.4.11 requires of a meaningful graphic, and far below the 4.5:1 that WCAG 1.4.3 requires of text. That was not a theoretical gap: `color.signal.warn` **is** text in seven places (the auth field errors, the reset and sign-out alerts, the onboarding errors), so every error message in the product was a live text failure. `#8A5A1C` is **4.79:1 at its worst** across all four light surfaces (`paper`, `elevated`, `subtle`, `inset`), so it clears AA as text everywhere it appears and as a graphic everywhere it appears, and it keeps the warm amber hue. The dark value `#D8A86A` is unchanged — at 7.25:1 it was never in question.
+  - **`color.accent.terracotta` was left at `#C4502B`.** It is a *sanctioned* accent and its hex is fixed by the brand. On `color.surface.paper` it is **4.37:1** — under AA's 4.5:1 for text, over the 3:1 a meaningful graphic needs. **So it is used as a graphic and never as body text.** That is not a new rule: it is the pattern the design already applies to the sold-out badge (a `●` glyph in `{color.signal.warn}` with the label in `{color.ink.secondary}`) and to the auth error row (a `⚠` glyph in `{color.signal.warn}` with the error text in `{color.ink.secondary}`). The Source Badge follows it — see `component.badge.source` below.
+  - **`color.ink.faint` was left at `#C9C2B5`/`#3A3A40`, and this is a recorded deviation.** At **1.77:1** (light) and **1.64:1** (dark) against the card, the *empty* confidence-dot placeholder does not meet 1.4.11's 3:1. The Confidence Pulse's **state** — how many of the five positions are filled — is legible at **10:1**, and the filled dot is at 17.7:1 against the card, so what the reader needs to identify is not in doubt; the empty dot is the *track* of the indicator, the way an unfilled progress track is not itself the progress. Changing the value would be a palette change to a token the design reserves for exactly this use, and it is pre-existing (the Pulse Preview's dot uses it too). It is recorded as a deviation with its numbers, and `frontend/tests/contrast.test.ts` holds a tripwire on it: darkening `color.ink.faint` to clear 3:1 will **fail** that test, which says the deviation is closed.
+- **The Source Badge's chromatic colour is on its glyph, and its label is ink.** `EXPERIENCE.md §4 component.badge.source` is the canonical list, and it specifies the terracotta as the *filled checkmark icon* with the label in `Text.Meta`. The badge's label is therefore body copy and is rendered in `color.ink.secondary` (or `color.ink.primary` italic for `community`); the terracotta and the amber are on the `aria-hidden` glyph. This is what makes the badge's own text meet AA: the terracotta would not clear 4.5:1 on `color.surface.paper`, and the amber would not clear it anywhere in light.
 
 ## Token Implementation Contract
 
@@ -299,12 +304,13 @@ All three providers (Google, Apple, Outlook) ship at MVP per PRD FR-3 / FR-50. T
 ### Badges and indicators
 
 - `component.badge.source` — Inline source attribution badge. Five variants, distinguished by glyph + label color, not by fill. (Canonical list — also enumerated in `EXPERIENCE.md §4`.)
-  - `official_site` — `color.accent.terracotta` label, terracotta-filled checkmark icon. One of the four sanctioned terracotta uses. The only one that appears on a card body besides the `Indicator.Today` dot.
+  - `official_site` — Terracotta-filled checkmark **icon**, with the label in `{color.ink.secondary}`. One of the four sanctioned terracotta uses. The only one that appears on a card body besides the `Indicator.Today` dot. **The terracotta is on the glyph, not the label** — see §Color usage rules → "The light ambers were re-verified": at `#C4502B` the terracotta is 4.37:1 on `color.surface.paper`, which is a graphic's ratio and not a text's.
   - `community` — `{color.ink.primary}` label, 1.5px ink-bordered checkmark (no fill). Italic label.
   - `aggregator` — `{color.ink.secondary}` label, ink-bordered link/chain glyph.
   - `user_imported` — `{color.ink.secondary}` label, ink-bordered inbox icon.
-  - `crawled_html` — Small `color.warn.amber` warning triangle. One-time "Why does this show ⚠?" tooltip on first view per user per event.
+  - `crawled_html` — Small `color.warn.amber` warning triangle **glyph**, with the label in `{color.ink.secondary}`. One-time "Why does this show ⚠?" tooltip on first view per user per event.
   - Always inline on the card (top-right zone, in the trust-signal row with `Indicator.Confidence`), never behind a tap. Every variant includes a visible inline text label, not icon-only (WCAG 1.1.1).
+  - **The glyph is `aria-hidden`; the label carries the meaning.** The chromatic colour is the glyph's, and every label is in ink — the same treatment `component.badge.soldout` and `component.input.field.error` use.
 - `component.indicator.confidence` — A row of 1–5 small dots (`{radius.full}`, 6px diameter) in `{color.ink.faint}` for unfilled positions and `{color.ink.primary}` for filled positions. The numeric count is rendered in `{type.scale.numeric}` next to the dots. Five positions, always; never a bar.
 - `component.indicator.today` — A single 6px `{radius.full}` dot in `{color.accent.terracotta}` with the sanctioned glow `box-shadow: 0 0 12px rgba(255,106,71,0.55)`. Placed inline next to today's date label. Not a background fill, not a bar — a single glowing dot.
 - `component.indicator.conflict` — A 6px filled circle in `{color.warn.amber}` (PRD FR-58). Top-right of the affected Pulse Card, symmetric across the conflict pair. Distinct in shape and position from the Source Badge and Confidence Pulse. `aria-label="Schedule conflict"`. Never red. Size is consistent across Pulse Cards and Timeline event-blocks — see `component.timeline.event-block` below for the Timeline variant.

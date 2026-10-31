@@ -379,11 +379,23 @@ describe("the Source Badge", () => {
     expect(screen.getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
   });
 
-  it("renders Official in terracotta — one of the four sanctioned uses", () => {
+  it("renders Official with the terracotta on the glyph — one of the four sanctioned uses", () => {
     renderCard({ source_badge: "official_site" });
 
     const badge = screen.getByRole("button", { name: /Official/ });
-    expect(badge.className).toContain("text-accent-terracotta");
+
+    // **The terracotta is on the glyph, and the label is ink.** `EXPERIENCE.md` §4
+    // `Badge.Source` — the canonical list — specifies the terracotta as the *filled
+    // checkmark icon*, with the label in `Text.Meta`. That is also the only way the
+    // badge's text can meet AA: `#C4502B` is 4.37:1 on `color.surface.paper`, which is
+    // a graphic's ratio and not a text's.
+    const glyph = badge.querySelector('[aria-hidden="true"]');
+    expect(glyph).not.toBeNull();
+    expect(glyph?.className).toContain("text-accent-terracotta");
+
+    // And the label itself — the button's own class — is in ink.
+    expect(badge.className).toContain("text-ink-secondary");
+    expect(badge.className).not.toContain("text-accent-terracotta");
   });
 
   it("does not render a badge at all for a personal event", () => {
@@ -404,11 +416,20 @@ describe("the Source Badge", () => {
     expect(badge).toBeInTheDocument();
   });
 
-  it("marks a crawled listing with the warning colour and its tooltip", () => {
+  it("marks a crawled listing with the warning colour on the glyph, and its tooltip", () => {
     renderCard({ source_badge: "crawled_html" });
 
     const badge = screen.getByRole("button", { name: /Unverified/ });
-    expect(badge.className).toContain("text-signal-warn");
+
+    // **The amber is on the glyph and the label is ink** — the same treatment the
+    // sold-out badge and the auth error row use. The amber is a signal colour, and a
+    // source's provenance is not a state change.
+    const glyph = badge.querySelector('[aria-hidden="true"]');
+    expect(glyph).not.toBeNull();
+    expect(glyph?.className).toContain("text-signal-warn");
+    expect(badge.className).toContain("text-ink-secondary");
+    expect(badge.className).not.toContain("text-signal-warn");
+
     const tooltip = document.getElementById(badge.getAttribute("aria-describedby") as string);
     expect(tooltip).toHaveTextContent("Read from a public page");
   });
