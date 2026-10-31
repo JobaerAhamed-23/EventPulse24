@@ -61,10 +61,10 @@ work_items:
   - id: frontend-pulse-card
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: frontend-digest-home
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: frontend-pulse-card
+current_item: frontend-digest-home
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -106,14 +106,14 @@ wide (12 work items)
 6. **digest-read-api** (confirm) — completed
 7. **event-detail-api** (confirm) — completed
 8. **digest-scheduling** (confirm) — completed
-9. **frontend-pulse-card** (confirm) — pending
+9. **frontend-pulse-card** (confirm) — completed
 10. **frontend-digest-home** (confirm) — pending
 11. **frontend-event-detail** (confirm) — pending
 12. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-frontend-pulse-card (confirm)
+frontend-digest-home (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -197,6 +197,19 @@ frontend-pulse-card (confirm)
   — D1–D10, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-digest-scheduling.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-digest-scheduling.md`
+- `frontend/components/digest/pulse-card.tsx` — `Card.PulseDigest`: the card, plus
+  `categoryFor`, `MAX_WHY_THIS_TAGS` and the required `Explanation` union
+- `frontend/lib/digest-labels.ts` — the two label tables: the Why-this Tags and the
+  Source Badge, with the chip table checked against the backend's
+- `frontend/components/digest/pulse-card.test.tsx` — 71 tests
+- `frontend/tests/digest-labels.test.ts` — 11 tests, reading
+  `backend/shared/constants.py` so the restated chip table cannot go stale
+- `frontend/tests/pulse-card-boundary.test.ts` — 13 tests, asserted against the
+  **source** rather than the DOM
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/frontend-pulse-card-design.md`
+  — D1–D18, the ten-row drift table, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-frontend-pulse-card.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-frontend-pulse-card.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -662,3 +675,91 @@ frontend-pulse-card (confirm)
 - **The item adds no endpoint.** The enqueue is a background job, not a route, and
   the command is a management command, so the OpenAPI schema did not change and the
   regenerated contract was a no-op.
+
+## The frontend-pulse-card item's decisions
+
+- **The card is a projection, and it decides nothing.** It renders `DigestCardOut`; it
+  does not re-bucket the score, re-sort the tags, recompute the local date or choose the
+  category. The API sends the **bucket** and not the raw score for exactly this reason —
+  a client that re-bucketed would be recomputing a persisted fact at render, which is
+  the failure AD-10 exists to prevent.
+- **The explanation source is a required prop, and it is a union.** The Relevance Pulse
+  (per-user, AD-10) and the Event Fit (session-free, AD-12) look identical on screen
+  and mean different things, so the caller must say which it is carrying. A defaulted
+  prop would be exactly how one quietly became the other.
+- **The indicator's *name* is visible, and its *count* is not.** The five dots are the
+  same shape for both indicators, so the words are the only thing keeping them apart
+  (AD-10) — and an `sr-only` name would have told only the screen-reader user which
+  indicator they were looking at, which is not the audience the risk is about. The
+  count, on the other hand, stays out of sight: a visible number is what makes the
+  indicator legible as a **score**, and the same number on an Event Fit card would be
+  the two indicators wearing each other's clothes.
+- **The confidence tooltip lists the persisted tags, and computes nothing.** It cannot
+  say "Strong match on your top three interests" — that text was never persisted, and
+  generating it at render is what AD-10 forbids. The Why-this Tags *are* the persisted
+  contributing factors: the server chose them and stored them. So the tooltip says
+  "Surfaced because:" and lists them.
+- **The tag separator is the comma, and it is DOM text.** `DESIGN.md` uses a middle dot
+  and `EXPERIENCE.md:736` says the tags are announced as comma-separated text — a
+  rendered middle dot would announce "nearby dot tonight", so the visible reading and
+  the announced reading would diverge. It is real text rather than a `::after`
+  pseudo-element, which would be visible to a sighted user and silent to a screen
+  reader.
+- **The personal check comes before the slot.** A personal event fills Slot 1
+  (`must_know`) when it is eligible — the backend's own rule — so a slot-first mapping
+  would give every personal event the amber must-know stripe and the label "Must-know".
+  The warm-personal tone is the tone of the *kind*, not of the slot (FR-19).
+- **The conflict mark needed a shape, not just a colour.** The conflict dot and the
+  confidence dots are both 6px circles, so a 6px amber circle among five 6px circles
+  is not distinguishable. Enlarging breaks ASSUM-13, reshaping breaks "filled circle",
+  and amber was already its colour — so it took a `ring-1 ring-ink-faint`. The ring makes
+  it distinct in shape, and `color.ink.faint` is the dimmest ink, not a chromatic one,
+  so no colour reservation is broken.
+- **The visible dot is 6px; the hit area is 44px.** The dot is what the user sees; the
+  trigger is `min-h-11 min-w-11`, because a finger needs 44px even when the mark does
+  not.
+- **The whole card is the tap target, by a stretched link.** HTML forbids interactive
+  content inside an `<a>`, and the tooltip triggers need `<button>`s — so the link is
+  stretched over the card and the triggers sit above it.
+- **The code review found that the triggers did *not* sit above it.** The link is
+  `absolute inset-0 z-0` and comes **last** in the DOM; the trust row's buttons were in
+  the normal flow with no `z-index`, so the link painted **over** them. They were covered
+  by an invisible `<a>` spanning the whole card — clicking the confidence dots navigated
+  to the event instead of opening the tooltip, and the badge's tooltip was equally
+  unreachable. The trust row is now `relative z-10`. **No test could have caught it**:
+  jsdom computes no stacking order and does no hit-testing, and every accessibility
+  query still found the buttons. It was found by reading CSS rules against DOM order.
+- **The card's rules are asserted against the source as well as the DOM.** A rendering
+  test can see that the stripe is the right colour and that the tags are capped; it
+  cannot see that the card contains no literal hex, or that a hex has crept into a
+  **second** file, or that the separator is a DOM character rather than a pseudo-element.
+  `tests/pulse-card-boundary.test.ts` strips the comments and asserts on what the
+  compiler sees — because a comment is not code, and the card's docstrings quote the
+  spec.
+- **The chip labels are restated in the frontend, and a test holds them to the
+  backend's.** The frontend cannot import Python, so `lib/digest-labels.ts` carries its
+  own copy of `INTEREST_CHIPS` — and `tests/digest-labels.test.ts` reads
+  `backend/shared/constants.py` and fails if the two have drifted. A chip with no
+  label is not an error (it renders from its slug, so a new chip still appears); a chip
+  whose *label* has drifted is, because the user would read one spelling on the card
+  and another in the chip picker.
+- **The two weekend vocabularies stay apart.** `shared.constants` carries the Event
+  Fit's `this_weekend` and the Relevance Pulse's `weekend` — two keys for one idea, in
+  two tables. That is a *backend* naming drift, and the client translates each
+  vocabulary on its own terms rather than making one key mean two things.
+- **The label tables are not `preview-labels.ts`, and never import it.** The two
+  indicators have different tag vocabularies and AD-10 forbids substituting one for the
+  other. The boundary test asserts the import never appears.
+- **An unknown source type borrows nothing.** An unknown badge falls back to a plain
+  "Listed" and does **not** wear the terracotta — the official treatment is not a
+  default.
+- **There is no density state.** No `compact` prop, no `dense` variant, no media-query
+  branch that drops a signal. Hover and focus *add* — the tooltips appear, the `▸`
+  appears — and nothing is removed. The `▸` reveals on `group-focus-within` as well as
+  `group-hover`, so there is no hover-only affordance on a small viewport.
+- **The one transition is `motion.fadeIn`,** and the card adds no motion of its own. The
+  hover is a swap of fill and border, not an animation, and no shadow is ever added.
+- **The `crawled_html` tooltip's "once per user per event" half is *not* implemented
+  here.** It is a per-user, per-event dismissal and no dismissal state exists in the
+  persisted card; the card shows the tooltip every time it is opened. It is recorded
+  rather than silently dropped, and belongs with the detail screen or a dismissal store.
