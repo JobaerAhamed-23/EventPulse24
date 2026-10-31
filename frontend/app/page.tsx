@@ -6,6 +6,8 @@ import { DigestEmpty } from "@/components/digest/digest-empty";
 import { DigestError } from "@/components/digest/digest-error";
 import { DigestHeader } from "@/components/digest/digest-header";
 import { DigestPreparing } from "@/components/digest/digest-preparing";
+import { PersonalEventsPanel } from "@/components/personal-events-panel";
+import { readPersonalEvents } from "@/components/personal-events-section";
 import { AppShell } from "@/components/shell/app-shell";
 import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
@@ -47,7 +49,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
   if (session.kind !== "signed-in") return <HomeUnavailable />;
 
-  const digest = await readDigest();
+  const [digest, personalEvents] = await Promise.all([readDigest(), readPersonalEvents()]);
 
   /**
    * **The failure count is the server's, and it is consecutive.**
@@ -78,6 +80,16 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
             {digest.kind === "composed" ? <DigestCards digest={digest.digest} /> : null}
           </div>
+
+          {/*
+            The user's own events, below the digest. Their real home is the Timeline,
+            which is not built yet; until it is, this is the one place a user can see,
+            and edit, what they added. The header's "+ Add personal event" is the Add
+            here, so the list draws none of its own.
+          */}
+          <section aria-label="Your personal events" className="mt-16">
+            <PersonalEventsPanel events={personalEvents} addButton={false} />
+          </section>
         </>
       )}
     </AppShell>

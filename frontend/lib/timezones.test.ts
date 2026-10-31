@@ -38,6 +38,12 @@ describe("the zone list", () => {
     expect(new Set(values).size).toBe(values.length);
   });
 
+  it("offers Dhaka, so a user there is not defaulted to UTC", () => {
+    // `browserZone()` returns null for a zone that is not on the list, and the form then
+    // pre-selects UTC — a Dhaka user's 7 PM was stored as 7 PM UTC, six hours off.
+    expect(ZONE_CHOICES.some((choice) => choice.value === "Asia/Dhaka")).toBe(true);
+  });
+
   it("is a curated list, not the full IANA set", () => {
     expect(ZONE_CHOICES.length).toBeGreaterThan(5);
     expect(ZONE_CHOICES.length).toBeLessThan(50);

@@ -55,6 +55,25 @@ function bodyOf(onSubmit: ReturnType<typeof vi.fn>): SubmittedBody {
 }
 
 describe("PersonalEventForm", () => {
+  it("gives each form on the page its own field ids, so every label finds its own input", () => {
+    // The sidenav, the bottom-tab bar, the header's quick-add and the list each mount a
+    // form. With fixed ids, the open form's "Name" label pointed at a closed form's input.
+    const { container } = render(
+      <>
+        <PersonalEventForm open mode="create" onClose={() => {}} onSubmit={vi.fn()} />
+        <PersonalEventForm open mode="create" onClose={() => {}} onSubmit={vi.fn()} />
+      </>,
+    );
+
+    const ids = [...container.querySelectorAll("[id]")].map((element) => element.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const label of container.querySelectorAll("label[for]")) {
+      const control = (label as HTMLLabelElement).control;
+      expect(control, label.textContent ?? "").not.toBeNull();
+      expect(label.closest("form")).toBe(control?.closest("form"));
+    }
+  });
+
   it("renders the create heading and a close button", () => {
     renderForm();
 

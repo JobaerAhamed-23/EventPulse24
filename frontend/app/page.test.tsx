@@ -17,6 +17,7 @@ import HomePage from "@/app/page";
 
 const getSession = vi.fn();
 const readDigest = vi.fn();
+const readPersonalEvents = vi.fn();
 const redirect = vi.fn();
 
 vi.mock("@/lib/session", async () => {
@@ -28,6 +29,10 @@ vi.mock("@/lib/session", async () => {
 
 vi.mock("@/lib/digest-read", () => ({
   readDigest: () => readDigest(),
+}));
+
+vi.mock("@/components/personal-events-section", () => ({
+  readPersonalEvents: () => readPersonalEvents(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -86,6 +91,8 @@ beforeEach(() => {
   readDigest.mockReset();
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
   readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
+  readPersonalEvents.mockReset();
+  readPersonalEvents.mockResolvedValue([]);
 });
 
 describe("the routing decision", () => {
@@ -136,6 +143,35 @@ describe("the routing decision", () => {
     await HomePage(props());
 
     expect(readDigest).not.toHaveBeenCalled();
+  });
+});
+
+describe("the personal events", () => {
+  it("lists the user's own events below the digest, so an added event can be seen", async () => {
+    readPersonalEvents.mockResolvedValue([
+      {
+        id: "77777777-7777-7777-7777-777777777777",
+        name: "Dentist",
+        start_time_utc: "2026-11-03T15:00:00Z",
+        start_time_tz: "America/Chicago",
+        end_time_utc: null,
+        location: null,
+        notes: null,
+        version: 1,
+      },
+    ]);
+    render(await HomePage(props()));
+
+    const section = screen.getByRole("region", { name: "Your personal events" });
+    expect(section).toHaveTextContent("Dentist");
+    // The header's "+ Add personal event" is the Add here; the list draws none.
+    expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
+  });
+
+  it("says so when there are none", async () => {
+    render(await HomePage(props()));
+
+    expect(screen.getByText("You haven't added any personal events yet.")).toBeInTheDocument();
   });
 });
 
@@ -234,11 +270,14 @@ describe("the empty state", () => {
     expect(link).toHaveAttribute("href", "/suggest");
 
     // No CTA pair, no carousel, no upsell: the empty state is the message. The shell's
-    // own controls (the Add slot, the Search button) are not part of the empty state,
-    // so the assertion is scoped to the digest's region.
+    // own controls (the Add slot, the Search button) are not part of the empty state, and
+    // neither is the personal-events section below it, so the assertion is scoped to the
+    // digest's region.
     const main = container.querySelector("main");
-    expect(main?.querySelectorAll("button")).toHaveLength(0);
-    expect(main?.querySelectorAll("a")).toHaveLength(1);
+    const inDigest = (element: Element) =>
+      element.closest('section[aria-label="Your personal events"]') === null;
+    expect([...(main?.querySelectorAll("button") ?? [])].filter(inDigest)).toHaveLength(0);
+    expect([...(main?.querySelectorAll("a") ?? [])].filter(inDigest)).toHaveLength(1);
   });
 
   it("carries no terracotta, which is rationed to four uses", async () => {

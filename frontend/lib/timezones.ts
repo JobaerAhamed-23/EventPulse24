@@ -43,6 +43,7 @@ export const ZONE_CHOICES: readonly ZoneChoice[] = [
   { value: "Asia/Jerusalem", label: "Jerusalem" },
   { value: "Asia/Dubai", label: "Dubai" },
   { value: "Asia/Kolkata", label: "Kolkata" },
+  { value: "Asia/Dhaka", label: "Dhaka" },
   { value: "Asia/Singapore", label: "Singapore" },
   { value: "Asia/Shanghai", label: "Shanghai" },
   { value: "Asia/Tokyo", label: "Tokyo" },

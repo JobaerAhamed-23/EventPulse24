@@ -18,10 +18,12 @@
  *
  * The API is reached only through `api` from `@/lib/backend-client` (AD-19).
  */
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { components } from "@/lib/api/schema";
 import { api } from "@/lib/backend-client";
+import { cardTime } from "@/lib/detail-time";
 import { utcInstantToLocal } from "@/lib/timezones";
 
 import { ConflictResolution, type Conflict } from "./sheets/conflict-resolution";
@@ -53,10 +55,17 @@ export type PersonalEventsPanelProps = {
    * "Your personal events" between the routes and the footer; rendered whole beside the
    * bottom-tab bar, it became a third column of the shell's flex row and squeezed the
    * mobile page to a sliver. The sheets are native `<dialog>`s, so closed they take no
-   * space. The outcome line is announced, not shown: the closing sheet is the visible
-   * confirmation, and there is no panel to hold a line.
+   * space. The outcome line is announced, not shown: there is no panel to hold a line.
+   * The visible confirmation is the page's own list, which every successful write
+   * refreshes (`router.refresh()`).
    */
   sheetsOnly?: boolean;
+  /**
+   * Whether the panel draws its own "Add event" button. The home page's header already
+   * carries "+ Add personal event", and a second Add a few hundred pixels below it would
+   * be two controls for one action.
+   */
+  addButton?: boolean;
 };
 
 export function PersonalEventsPanel({
@@ -64,8 +73,14 @@ export function PersonalEventsPanel({
   createOpen,
   onCreateOpenChange,
   sheetsOnly = false,
+  addButton = true,
 }: PersonalEventsPanelProps) {
+  // **Every successful write refreshes the server's read.** The list is a server
+  // component's read (`PersonalEventsSection`), so a write in this island is invisible
+  // until the route re-renders; `router.refresh()` re-runs the server components and keeps
+  // this island's state. Without it, a saved event looked like nothing happened.
   // The panel's own create state, used when the caller does not drive it.
+  const router = useRouter();
   const [ownFormOpen, setOwnFormOpen] = useState(false);
   const [editing, setEditing] = useState<PersonalEvent | null>(null);
   const [highlightStartTime, setHighlightStartTime] = useState(false);
@@ -139,6 +154,7 @@ export function PersonalEventsPanel({
         setFormOpen(false);
         setEditing(null);
         setHighlightStartTime(false);
+        router.refresh();
         return;
       }
     }
@@ -147,7 +163,9 @@ export function PersonalEventsPanel({
       setMessage("We couldn't save that. Try again.");
       return;
     }
+    setMessage(editing ? `"${body.name}" was updated.` : `"${body.name}" was added.`);
     closeForm();
+    router.refresh();
   };
 
   /** The user's choice on the conflict prompt. */
@@ -166,6 +184,7 @@ export function PersonalEventsPanel({
     const resolved = conflict;
     setConflict(null);
     setPending(null);
+    router.refresh();
 
     if (resolution === "edit_new") {
       // The new event, opened in edit mode with the conflicting time pre-highlighted.
@@ -241,13 +260,15 @@ export function PersonalEventsPanel({
     <div>
       <div className="flex items-center justify-between gap-4">
         <h2 className="[font:var(--type-scale-headline-lg)]">Your personal events</h2>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="rounded-control bg-accent-terracotta px-4 py-2 [font:var(--type-scale-meta-md)] text-ink-inverse"
-        >
-          Add event
-        </button>
+        {addButton ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="rounded-control bg-accent-terracotta px-4 py-2 [font:var(--type-scale-meta-md)] text-ink-inverse"
+          >
+            Add event
+          </button>
+        ) : null}
       </div>
 
       {message ? (
@@ -282,8 +303,6 @@ export function PersonalEventsPanel({
  * Pulse Card in this item, so the rule is proven here and in the conflict sheet's cards.
  */
 function PersonalEventRow({ event, onEdit }: { event: PersonalEvent; onEdit: () => void }) {
-  const zone = event.start_time_tz || "UTC";
-  const local = utcInstantToLocal(new Date(event.start_time_utc), zone);
   return (
     <div className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-elevated px-4 py-3">
       <span aria-hidden="true" className="h-8 w-[3px] shrink-0 rounded-full bg-warm-personal" />
@@ -293,7 +312,7 @@ function PersonalEventRow({ event, onEdit }: { event: PersonalEvent; onEdit: () 
       <span className="min-w-0 flex-1">
         <span className="block truncate [font:var(--type-scale-meta-md)]">{event.name}</span>
         <span className="block [font:var(--type-scale-body-sm)] text-ink-muted">
-          {local.date} · {local.time}
+          {cardTime(event.start_time_utc, event.start_time_tz)}
         </span>
       </span>
       <button

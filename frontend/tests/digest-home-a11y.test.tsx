@@ -35,6 +35,11 @@ vi.mock("@/lib/digest-read", () => ({
   readDigest: () => readDigest(),
 }));
 
+// The user's own events, below the digest: none here, and never a network read.
+vi.mock("@/components/personal-events-section", () => ({
+  readPersonalEvents: async () => [],
+}));
+
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirect(...args),
   usePathname: () => "/",
