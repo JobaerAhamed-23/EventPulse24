@@ -4,10 +4,12 @@ title: The home page returns to the digest alone
 intent: timeline-and-conflicts
 complexity: low
 mode: autopilot
-status: in_progress
+status: completed
 depends_on:
   - frontend-timeline
 created: 2026-10-31
+run_id: run-eventpulse24-022
+completed_at: 2026-10-31T10:03:00.853Z
 ---
 
 # Work Item: The home page returns to the digest alone
@@ -18,10 +20,10 @@ Remove the stopgap "Your personal events" list added under the digest on 2026-10
 
 ## Acceptance Criteria
 
-- [ ] `/` no longer reads or renders the personal events list; the page's personal-events read is removed with it.
-- [ ] After a successful add from the header quick-add, one calm `Text.Meta`-weight line near the button says the event was added, with a "See it on your Timeline" link to the week containing it. Inline, not a toast (EXPERIENCE.md: "inline notice only").
-- [ ] Tests that asserted the stopgap list are removed or replaced; the empty-digest test returns to asserting no buttons in the whole digest region.
-- [ ] Spacing and terracotta rules hold.
+- [x] `/` no longer reads or renders the personal events list; the page's personal-events read is removed with it.
+- [x] After a successful add from the header quick-add, one calm `Text.Meta`-weight line near the button says the event was added, with a "See it on your Timeline" link to the week containing it. Inline, not a toast (EXPERIENCE.md: "inline notice only").
+- [x] Tests that asserted the stopgap list are removed or replaced; the empty-digest test returns to asserting no buttons in the whole digest region.
+- [x] Spacing and terracotta rules hold.
 
 ## Technical Notes
 

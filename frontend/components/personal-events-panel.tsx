@@ -24,7 +24,7 @@ import { useState } from "react";
 import type { components } from "@/lib/api/schema";
 import { api } from "@/lib/backend-client";
 import { cardTime } from "@/lib/detail-time";
-import { utcInstantToLocal } from "@/lib/timezones";
+import { utcInstantToLocal, formatLocalDate } from "@/lib/timezones";
 
 import { ConflictResolution, type Conflict } from "./sheets/conflict-resolution";
 import { PersonalEventForm, type PersonalEventFormValues } from "./sheets/personal-event-form";
@@ -136,6 +136,42 @@ export type PersonalEventsPanelProps = {
    * id: two sources of truth would show the wrong form in the render between them.
    */
   highlightStartTime?: boolean;
+  /**
+   * Called when an event was **created**, with the local day it landed on.
+   *
+   * **The panel owns the write, so the panel is what knows it succeeded.** The caller
+   * cannot see the panel's state, and a caller that guessed would be guessing. So the
+   * panel reports the fact: the event's name and the local date it starts on.
+   *
+   * **The local day, not the instant.** The week a personal event belongs to is the
+   * week of the day it starts *in the user's own zone* — the same rule the server uses
+   * to cut a week. An instant in UTC would put an 11pm Tokyo event on the previous
+   * day, and the link would take the user to the wrong week.
+   */
+  onCreated?: (event: { name: string; localDate: string }) => void;
+  /**
+   * Called when a write **failed**, with the calm message the panel would have shown.
+   *
+   * **A failure is as visible as a success.** A caller that takes over the success
+   * message has to take over the failure message too — otherwise a refused save
+   * would say nothing at all, and a sheet that closes with no word is the same as
+   * nothing happening.
+   */
+  onFailed?: (message: string) => void;
+  /**
+   * Whether the **caller** is the one showing the panel's message.
+   *
+   * **A message is announced once.** The panel's `sheetsOnly` mode has no visible
+   * message of its own — it announces through a hidden live region instead. But a
+   * caller that renders the confirmation itself (the digest header's quick-add does:
+   * a visible line with a link to the week) would then have **two** announcements of
+   * the same fact, and a screen reader would say it twice.
+   *
+   * So the caller says it owns the message, and the panel's hidden region goes quiet.
+   * The panel still *sets* the message — the caller reads it through its own
+   * `onCreated` and `onFailed` — it just does not also announce it.
+   */
+  messageShownByCaller?: boolean;
 };
 
 export function PersonalEventsPanel({
@@ -148,6 +184,9 @@ export function PersonalEventsPanel({
   editingEventId,
   onEditingEventChange,
   highlightStartTime: drivenHighlight,
+  onCreated,
+  onFailed,
+  messageShownByCaller = false,
 }: PersonalEventsPanelProps) {
   // **Every successful write refreshes the server's read.** The list is a server
   // component's read (`PersonalEventsSection`), so a write in this island is invisible
@@ -270,9 +309,21 @@ export function PersonalEventsPanel({
 
     if (response.error) {
       setMessage("We couldn't save that. Try again.");
+      // **A refused save is reported too.** A caller that shows the success message
+      // has to show this one — otherwise the sheet closes with no word at all, which
+      // reads as nothing happening.
+      onFailed?.("We couldn't save that. Try again.");
       return;
     }
     setMessage(editing ? `"${body.name}" was updated.` : `"${body.name}" was added.`);
+    // **A create is reported, an edit is not.** The caller's line says the event was
+    // added and points at the week it landed on — a week an edit does not change.
+    if (!editing) {
+      onCreated?.({
+        name: body.name,
+        localDate: localDateIn(body.start_time_utc, body.start_time_tz),
+      });
+    }
     closeForm();
     router.refresh();
   };
@@ -370,10 +421,16 @@ export function PersonalEventsPanel({
       <>
         {/* A live region without `role="status"`: the nav mounts this on every authed
             page, and a page's own status region (the digest's "ready" line) stays the
-            only one there is. */}
-        <p aria-live="polite" className="sr-only">
-          {message}
-        </p>
+            only one there is.
+
+            **And it is only here when the caller is not showing the message.** A
+            caller that renders the confirmation itself would otherwise hear the same
+            fact twice — once from the visible line, once from here. */}
+        {messageShownByCaller ? null : (
+          <p aria-live="polite" className="sr-only">
+            {message}
+          </p>
+        )}
         {sheets}
       </>
     );
@@ -465,4 +522,22 @@ function seedFrom(event: PersonalEventSeed): Partial<PersonalEventFormValues> {
     location: event.location ?? "",
     notes: event.notes ?? "",
   };
+}
+
+/**
+ * The calendar day an instant falls on, in the zone it was written in.
+ *
+ * **The zone is the event's own, not the browser's.** An event the user entered as
+ * "Nov 7, 11pm, Asia/Tokyo" starts on Nov 7 *in Tokyo* — which is Nov 6 in UTC. The
+ * week the event belongs to is the week of the day the user will see it on their own
+ * calendar, so the date has to be read in the zone the event was written in.
+ *
+ * **An unparseable instant falls back to UTC**, which is the same fallback the form
+ * makes for a missing zone. A wrong zone would put the event in the wrong week; a
+ * fallback at least puts it in a real one.
+ */
+function localDateIn(startTimeUtc: string, zone: string): string {
+  const instant = new Date(startTimeUtc);
+  if (Number.isNaN(instant.getTime())) return startTimeUtc.slice(0, 10);
+  return formatLocalDate(instant, zone || "UTC");
 }

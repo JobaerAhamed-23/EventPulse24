@@ -4,8 +4,12 @@ title: The end-to-end proof for the Timeline and the conflicts
 intent: timeline-and-conflicts
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [frontend-timeline, frontend-conflicts-page, detail-screen-conflict-prompt, home-back-to-digest]
+status: in_progress
+depends_on:
+  - frontend-timeline
+  - frontend-conflicts-page
+  - detail-screen-conflict-prompt
+  - home-back-to-digest
 created: 2026-10-31
 ---
 

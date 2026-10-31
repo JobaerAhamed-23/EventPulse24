@@ -47,18 +47,18 @@ work_items:
   - id: home-back-to-digest
     intent: timeline-and-conflicts
     mode: autopilot
-    status: in_progress
-    current_phase: plan
+    status: completed
+    current_phase: review
     checkpoint_state: none
     current_checkpoint: null
   - id: e2e-proof-and-contract-tests
     intent: timeline-and-conflicts
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
-current_item: home-back-to-digest
+    current_checkpoint: plan
+current_item: e2e-proof-and-contract-tests
 status: in_progress
 started: 2026-10-31T06:33:07.500Z
 completed: null
@@ -76,12 +76,12 @@ wide (8 work items)
 4. **frontend-timeline** (confirm) — completed
 5. **frontend-conflicts-page** (confirm) — completed
 6. **detail-screen-conflict-prompt** (confirm) — completed
-7. **home-back-to-digest** (autopilot) — in_progress
-8. **e2e-proof-and-contract-tests** (confirm) — pending
+7. **home-back-to-digest** (autopilot) — completed
+8. **e2e-proof-and-contract-tests** (confirm) — in_progress
 
 
 ## Current Item
-home-back-to-digest (autopilot)
+e2e-proof-and-contract-tests (confirm)
 
 ## Files Created
 (none yet)

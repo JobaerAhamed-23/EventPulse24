@@ -548,13 +548,15 @@ intents:
         run_id: run-eventpulse24-022
         completed_at: 2026-10-31T09:50:11.266Z
       - id: home-back-to-digest
-        status: in_progress
+        status: completed
         complexity: low
         mode: autopilot
         depends_on:
           - frontend-timeline
+        run_id: run-eventpulse24-022
+        completed_at: 2026-10-31T10:03:00.853Z
       - id: e2e-proof-and-contract-tests
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -618,18 +620,19 @@ runs:
         - id: home-back-to-digest
           intent: timeline-and-conflicts
           mode: autopilot
-          status: in_progress
-          current_phase: plan
+          status: completed
+          current_phase: review
           checkpoint_state: none
           current_checkpoint: null
+          completed_at: 2026-10-31T10:03:00.853Z
         - id: e2e-proof-and-contract-tests
           intent: timeline-and-conflicts
           mode: confirm
-          status: pending
-          current_phase: null
+          status: in_progress
+          current_phase: plan
           checkpoint_state: none
-          current_checkpoint: null
-      current_item: home-back-to-digest
+          current_checkpoint: plan
+      current_item: e2e-proof-and-contract-tests
       started: 2026-10-31T06:33:07.500Z
   completed:
     - id: run-eventpulse24-001
