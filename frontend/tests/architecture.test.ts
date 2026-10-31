@@ -118,13 +118,27 @@ describe("motion classes in markup", () => {
 describe("files", () => {
   const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+)*$/;
 
+  /**
+   * Next.js's own dynamic-route segment.
+   *
+   * **`[id]` is the framework's name for a parameterised segment, not a name we
+   * chose.** The App Router reads the brackets; a route directory called `event-id`
+   * would be a *literal* segment named `event-id`, and there would be no way to
+   * parameterise it. So the segment is exempt from the kebab-case rule — and only the
+   * segment: `app/events/[id]/page.tsx` is fine, `app/events/[id]/SomeFile.tsx` is not.
+   */
+  const DYNAMIC_SEGMENT = /^\[[a-z0-9]+\]$/;
+
   it("are kebab-case in every source folder", () => {
     const files = SOURCE_DIRS.flatMap((dir) => sourceFiles(path.join(ROOT, dir)));
     expect(files.length).toBeGreaterThan(0);
     const offenders = files
       .map((file) => path.relative(ROOT, file))
       .filter((rel) => rel !== path.join("lib", "api", "README.md"))
-      .filter((rel) => !rel.split(path.sep).every((part) => KEBAB.test(part)));
+      .filter(
+        (rel) =>
+          !rel.split(path.sep).every((part) => KEBAB.test(part) || DYNAMIC_SEGMENT.test(part)),
+      );
     expect(offenders).toEqual([]);
   });
 

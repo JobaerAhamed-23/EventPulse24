@@ -75,10 +75,10 @@ work_items:
   - id: frontend-event-detail
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: frontend-event-detail
+current_item: e2e-proof-and-contract-tests
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -108,12 +108,12 @@ wide (12 work items)
 8. **digest-scheduling** (confirm) — completed
 9. **frontend-pulse-card** (confirm) — completed
 10. **frontend-digest-home** (confirm) — completed
-11. **frontend-event-detail** (confirm) — pending
+11. **frontend-event-detail** (confirm) — completed
 12. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-frontend-event-detail (confirm)
+e2e-proof-and-contract-tests (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -236,6 +236,44 @@ frontend-event-detail (confirm)
   — D1–D21, the twelve-row drift table, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-frontend-digest-home.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-frontend-digest-home.md`
+- `frontend/app/events/[id]/page.tsx` — the Detail Screen: one server read, four answers,
+  and the locked element order asserted as document order
+- `frontend/app/events/[id]/loading.tsx` — the Detail Screen's own skeleton: one header
+  block, one meta row, three chip rectangles
+- `frontend/lib/event-detail-read.ts` — the server-side read, typed as `found` /
+  `anonymous` / `removed` / `unavailable`; the `found`/`anonymous` split is derived from
+  `personal === null`, never from the session
+- `frontend/lib/detail-time.ts` — the time arithmetic: the instant read in the reader's
+  zone, the venue's wall-clock when the two differ, and the weekday derived from the
+  *same* wall-clock as the date
+- `frontend/lib/detail-labels.ts` — the two vocabularies: the factor lines and the
+  neighbour prose
+- `frontend/components/detail/detail-header.tsx` — the trust row (badge → pulse), the
+  name, and when · where
+- `frontend/components/detail/detail-breakdown.tsx` — the Why-this Tags row and the
+  why-this breakdown, one `<li>` per persisted tag
+- `frontend/components/detail/detail-actions.tsx` — Save to Pulse and Share, in two
+  buttons
+- `frontend/components/detail/detail-reminder.tsx` — the display-only picker: four
+  `<span>` chips, ink inversion, no terracotta
+- `frontend/components/detail/detail-neighbors.tsx` — the neighbour line, or nothing at
+  all
+- `frontend/components/detail/detail-states.tsx` — the skeleton, the removed state and
+  the error state
+- `frontend/components/detail/trigger-tip.tsx` — the shared tooltip: a `<button>`
+  trigger with `aria-describedby` pointing at a sibling `role="tooltip"`, dismissed by
+  `Esc` and by an outside tap
+- `frontend/app/events/[id]/page.test.tsx` — 44 tests
+- `frontend/tests/event-detail-a11y.test.tsx` — 6 tests, the axe-core gate over five
+  documents
+- `frontend/tests/event-detail-boundary.test.ts` — 24 tests, asserted against the source
+- `frontend/lib/detail-labels.test.ts` — 13 tests
+- `frontend/lib/detail-time.test.ts` — 9 tests
+- `frontend/components/detail/detail-actions.test.tsx` — 6 tests
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/frontend-event-detail-design.md`
+  — D1–D14 plus D3b, the twelve-row drift table, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-frontend-event-detail.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-frontend-event-detail.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -895,3 +933,89 @@ frontend-event-detail (confirm)
   lesson, recorded for the next item: **a test's name and its body must assert the same
   thing** — the name is what a reviewer reads and the body is what the runner checks,
   and when they disagree only the body is evidence.
+
+## The frontend-event-detail item's decisions
+
+- **The screen renders what it was given.** Every fact on it — the event's fields, the
+  persisted tags, the bucket, the saved state, the neighbour bucket — was decided by the
+  server and persisted. The page scores nothing, sorts nothing, re-buckets nothing and
+  generates no reason (AD-10).
+- **Four answers, four screens.** `found` and `anonymous` are two renderings of the same
+  payload; `removed` and `unavailable` are two different failures. The route is read on
+  the server, per request — the payload is per-user and neither it nor the 404 can be
+  baked into a build.
+- **The `found`/`anonymous` split is derived from `personal === null`,** never from the
+  session. "You are not signed in, so we looked up nothing" and "you are signed in and
+  have nothing here" are different claims, and the payload is what distinguishes them.
+- **`getSession()` is called only on the `found` branch.** The anonymous branch never
+  reads the session, so the read cannot fail because of it — and an anonymous visitor
+  is never redirected away from a route the IA marks "Authed + Anon (read-only)".
+- **The locked order is asserted on the document, not on the component tree.** The order
+  is a claim about what a reader sees first, so the test indexes each marker's **parent**
+  within `article.children` and asserts those indices increase.
+- **The order has gaps, and the gaps are recorded rather than filled.** The Dismiss
+  button, the similar-events section and the Source Badge without a composition do not
+  ship. A missing element in a locked order is a recorded deviation; a substituted one is
+  a lie.
+- **The Source Badge is absent without a composition (D3b).** `EventDetailFactsOut`
+  carries no `source_badge`; the only badge in the payload is the composition's
+  persisted one. Resolving a badge fresh at read time would be a recomputation at view
+  time, so no substitute is shown. **The gap belongs to `event-detail-api`:** the badge
+  needs to be persisted on the *event*, so it is available to every reader.
+- **The Confidence Pulse is absent without a composition (D4).** Its value is the
+  persisted Relevance Pulse bucket, and there is no other source for it on this screen.
+  The Event Fit's bucket belongs to the anonymous preview — reaching for it is the
+  substitution the API design calls "company-ending".
+- **The factor vocabulary is closed, and it is the tag vocabulary.** Each factor line is
+  derived from one persisted tag. Four of the mockup's five factors state facts this
+  codebase cannot compute — FR-16 is unbuilt, there are no coordinates, no price field
+  and no attendance model — and a line stating a reliability score nobody computed is
+  exactly what AD-10 exists to prevent.
+- **An unknown tag falls back to its own label.** A new server tag appears as a plain
+  line rather than vanishing or acquiring a fabricated reason.
+- **The neighbour suppression is silence.** No row, no "0 neighbors", no "not enough
+  yet" — a line that says the count was withheld is itself a signal about how many people
+  are near the event. The four bucket keys are the only prose the client has; an unknown
+  key renders nothing rather than inventing a fifth.
+- **The neighbour line carries no digits and no emoji.** The `👥` prefix is the PRD's
+  superseded draft, revised by EXPERIENCE.md §12's `_RECONCILE_` note under the
+  emoji-as-CTA ban.
+- **The reminder picker is display-only.** Four `<span>` chips, no `<button>`, ink
+  inversion for the selection and never terracotta. Nothing schedules sends yet, and a
+  button that could not be persisted is a control that silently does nothing.
+- **The action row is two buttons, not three.** FR-25's dismissal is a swipe on the
+  Pulse Card and there is no dismissal endpoint, so a "Dismiss" button here would be
+  exactly that failure. The swipe stays on the card.
+- **The picker and the action row are behind the signed-in guard.** A reminder plan and
+  a save both belong to an account. **The review caught the picker rendering for an
+  anonymous visitor** — a control that could not be persisted for anyone — and the fix
+  moved both behind `personal`.
+- **The Detail Screen has its own tooltip component.** The card's is CSS-only, which
+  covers hover and keyboard focus but cannot dismiss on an outside tap or on `Esc`. The
+  tooltip stays in the DOM with `hidden={!open}`, so `aria-describedby` always resolves
+  and there is no hover-only state on touch.
+- **The time is converted at the presentation edge.** The payload carries the instant
+  and the venue's IANA zone; the user's zone comes from the browser, with no second
+  round trip.
+- **The venue's time is shown when the wall-clock differs,** not when the zone name
+  differs. `America/Toronto` and `America/New_York` are different names for the same
+  hour, and showing both would be noise rather than information.
+- **The weekday and the date come from one wall-clock.** The weekday is derived with
+  `Date.UTC(y, m-1, d).getUTCDay()` from the same `Intl` parts as the date, because two
+  independent `Intl` calls could straddle a DST boundary.
+- **The skeleton is the Detail Screen's own shape** — a header block, a meta row and
+  three chips — and not the digest's `skeleton-pulse`, which is the digest's vocabulary.
+- **The removed and the unavailable states are different documents.** A 404 is not an
+  error, and neither carries the app shell: there is no event to be in the app about.
+- **The axe gate runs over five documents,** not just the happy one. A page can be
+  accessible when it is full and inaccessible when it is empty — an empty state with no
+  heading hierarchy, an error state whose action is an unnamed control — each is a
+  different document and a different set of rules.
+- **The `opened` signal is not fired by this item.** It is a client-side POST on mount,
+  with CSRF, that must not block the render and must not fire for anonymous visitors.
+  The neighbour bucket therefore counts saves and opens recorded before this screen
+  shipped — which is correct, because the count is *other people's* behaviour.
+- **The screen has never been seen in a browser.** jsdom has no layout engine, no
+  stacking order and no hit-testing, so the rendered contrast, the Lighthouse score, the
+  LCP and the touch behaviour are all unmeasured. `e2e-proof-and-contract-tests` is the
+  item that puts the product in front of a real browser.
