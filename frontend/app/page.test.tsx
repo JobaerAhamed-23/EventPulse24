@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { cleanup, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
-import { cookieStore, type CookieStore } from "@/tests/cookie-store";
 
 /**
  * `/` — the Pulse Digest: the routing decision and the four states.
@@ -17,9 +19,6 @@ const getSession = vi.fn();
 const readDigest = vi.fn();
 const redirect = vi.fn();
 
-/** The request's cookie jar. The failure count lives in it. */
-let jar: CookieStore;
-
 vi.mock("@/lib/session", async () => {
   // `homeRoute` is the real one: it is the rule under test, and `lib/session.test.ts`
   // pins it directly. Stubbing it here would let the page and the rule drift apart.
@@ -29,10 +28,6 @@ vi.mock("@/lib/session", async () => {
 
 vi.mock("@/lib/digest-read", () => ({
   readDigest: () => readDigest(),
-}));
-
-vi.mock("next/headers", () => ({
-  cookies: async () => jar,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -80,13 +75,15 @@ const COMPOSED = {
   timezone: "America/New_York",
 };
 
+/** The props Next passes the page: no route params, and the query string given. */
+function props(query: Record<string, string | string[]> = {}): PageProps<"/"> {
+  return { params: Promise.resolve({}), searchParams: Promise.resolve(query) };
+}
+
 beforeEach(() => {
   getSession.mockReset();
   redirect.mockReset();
   readDigest.mockReset();
-  // A fresh jar per test: the failure count is stateful, and a count left over from
-  // one test would decide the label in the next.
-  jar = cookieStore();
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
   readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
 });
@@ -95,7 +92,7 @@ describe("the routing decision", () => {
   it("sends an anonymous visitor to the public preview", async () => {
     getSession.mockResolvedValue({ kind: "anonymous" });
 
-    await HomePage();
+    await HomePage(props());
 
     expect(redirect).toHaveBeenCalledWith("/preview");
   });
@@ -106,13 +103,13 @@ describe("the routing decision", () => {
       user: { ...USER, onboarding: { completed: false, current_step: 1 } },
     });
 
-    await HomePage();
+    await HomePage(props());
 
     expect(redirect).toHaveBeenCalledWith("/onboarding");
   });
 
   it("keeps an onboarded user here", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(redirect).not.toHaveBeenCalled();
     expect(
@@ -123,7 +120,7 @@ describe("the routing decision", () => {
   it("shows the calm error, and does not redirect, when the session can't be read", async () => {
     getSession.mockResolvedValue({ kind: "unavailable" });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(redirect).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -136,7 +133,7 @@ describe("the routing decision", () => {
     // be an anonymous read of a personal endpoint.
     getSession.mockResolvedValue({ kind: "unavailable" });
 
-    await HomePage();
+    await HomePage(props());
 
     expect(readDigest).not.toHaveBeenCalled();
   });
@@ -157,14 +154,14 @@ describe("the digest", () => {
       },
     });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const headlines = screen.getAllByRole("heading", { level: 3 }).map((el) => el.textContent);
     expect(headlines).toEqual(titles);
   });
 
   it("renders no more cards than the server sent", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(COMPOSED.cards.length);
   });
@@ -175,7 +172,7 @@ describe("the digest", () => {
       digest: { ...COMPOSED, local_date: "2026-11-07", city: "Brooklyn" },
     });
 
-    render(await HomePage());
+    render(await HomePage(props()));
 
     // The weekday is read in the digest's own zone, so it is the server's Saturday —
     // and 2026-11-07 is a Saturday.
@@ -184,7 +181,7 @@ describe("the digest", () => {
   });
 
   it("announces the digest once, in a live region, with the card count", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const region = screen.getByRole("status", { name: "" });
     expect(region).toHaveAttribute("aria-live", "polite");
@@ -194,7 +191,7 @@ describe("the digest", () => {
 
   it("announces the digest with a comma, not a full stop", async () => {
     // The full stop would change the sentence boundary a screen reader hears.
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const region = screen.getByRole("status", { name: "" });
     expect(region.textContent).toContain("ready, 2 events");
@@ -217,7 +214,7 @@ describe("the empty state", () => {
   });
 
   it("reads the locked copy", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(
       screen.getByRole("heading", { name: "Nothing on the pulse today. The calendar is yours." }),
@@ -225,13 +222,13 @@ describe("the empty state", () => {
   });
 
   it("names the city in the line below the card", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(screen.getByText("No qualifying events in Brooklyn.")).toBeInTheDocument();
   });
 
   it("offers one low-weight link, and no button", async () => {
-    const { container } = render(await HomePage());
+    const { container } = render(await HomePage(props()));
 
     const link = screen.getByRole("link", { name: "Suggest an event" });
     expect(link).toHaveAttribute("href", "/suggest");
@@ -245,7 +242,7 @@ describe("the empty state", () => {
   });
 
   it("carries no terracotta, which is rationed to four uses", async () => {
-    const { container } = render(await HomePage());
+    const { container } = render(await HomePage(props()));
 
     // The shell's brand mark is terracotta, and so is the header's `Indicator.Today`
     // dot — both are sanctioned uses. The *empty state* may carry neither: the
@@ -256,7 +253,7 @@ describe("the empty state", () => {
   });
 
   it("is distinct from the not-yet-composed state", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(screen.queryByRole("heading", { name: /being prepared/i })).not.toBeInTheDocument();
   });
@@ -271,7 +268,7 @@ describe("the not-yet-composed state", () => {
   });
 
   it("says the digest is being prepared, and claims nothing about the world", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(
       screen.getByRole("heading", { name: "Your Pulse is being prepared." }),
@@ -284,7 +281,7 @@ describe("the not-yet-composed state", () => {
   });
 
   it("is not the empty state", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(
       screen.queryByRole("heading", { name: "Nothing on the pulse today. The calendar is yours." }),
@@ -298,45 +295,57 @@ describe("the error state", () => {
   });
 
   it("says so, and offers one retry", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(screen.getByRole("heading", { name: /Couldn't reach Pulse/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("says 'Refresh page.' on the second consecutive failure", async () => {
-    // The first failure renders "Try again" and records the failure in the cookie.
-    await HomePage();
-
-    // The second failure — the same page, rendered again with the cookie still set —
-    // is the one that changes the label.
-    render(await HomePage());
+    // The second failure is the render the first failure's retry link asked for.
+    render(await HomePage(props({ retry: "1" })));
 
     expect(screen.getByRole("link", { name: "Refresh page." })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Try again" })).not.toBeInTheDocument();
   });
 
-  it("counts consecutive failures, and a success breaks the run", async () => {
-    // Two failures in a row: the label changes.
-    await HomePage();
-    await HomePage();
-    expect(jar.get("pulse-digest-attempt")?.value).toBe("2");
+  it("follows its own retry link to the second-failure label", async () => {
+    // The two halves of the count have to agree: the link the first failure renders is
+    // the URL that makes the next failure the second.
+    render(await HomePage(props()));
+    const href = screen.getByRole("link", { name: "Try again" }).getAttribute("href") ?? "";
+    const query = Object.fromEntries(new URL(href, "http://pulse.test").searchParams);
+    cleanup();
 
-    // A success clears the count, so the *next* failure is a first failure again.
-    readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
-    await HomePage();
-    expect(jar.get("pulse-digest-attempt")).toBeUndefined();
+    render(await HomePage(props(query)));
+    expect(screen.getByRole("link", { name: "Refresh page." })).toBeInTheDocument();
+  });
 
-    readDigest.mockResolvedValue({ kind: "unavailable" });
-    render(await HomePage());
+  it("treats a malformed retry value as a first failure", async () => {
+    render(await HomePage(props({ retry: "junk" })));
     expect(screen.getByRole("link", { name: "Try again" })).toBeInTheDocument();
   });
 
-  it("retries the read rather than reloading the document on the first failure", async () => {
-    render(await HomePage());
+  it("renders the digest on a retry that succeeds", async () => {
+    readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
+    render(await HomePage(props({ retry: "1" })));
+    expect(screen.queryByRole("link", { name: "Refresh page." })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Brooklyn Symphony open rehearsal")).not.toHaveLength(0);
+  });
 
-    // The retry carries a nonce, so the server renders again rather than serving the
-    // failure it already rendered.
+  it("writes no cookie, because a page render may not", async () => {
+    // The cookie version of the count threw "Cookies can only be modified in a Server
+    // Action or Route Handler" on every render of `/` in the real Next runtime. The
+    // page must not reach for the cookie store at all.
+    const source = readFileSync(path.join(__dirname, "page.tsx"), "utf8");
+    expect(source).not.toMatch(/next\/headers|cookies\(/);
+  });
+
+  it("retries the read rather than reloading the document on the first failure", async () => {
+    render(await HomePage(props()));
+
+    // The retry carries `retry=1`, so the server renders again rather than serving the
+    // failure it already rendered, and knows the next failure is the second.
     const retry = screen.getByRole("link", { name: "Try again" });
     expect(retry).toHaveAttribute("href", "/?retry=1");
   });
@@ -344,7 +353,7 @@ describe("the error state", () => {
   it("is not the session error", async () => {
     // The session is fine here; the digest read failed. Two different failures, and the
     // digest's error is the one inside the page's main region.
-    const { container } = render(await HomePage());
+    const { container } = render(await HomePage(props()));
 
     const main = container.querySelector("main");
     expect(main?.querySelectorAll("h2")).toHaveLength(1);
@@ -363,7 +372,7 @@ describe("the shell", () => {
   }
 
   it("carries the six routes, in the locked order", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     // The route list is the nav's own `<ul>`. Each route's name is a span of its own;
     // the inert ones also carry a "Coming soon" note, the Add row carries a button,
@@ -384,7 +393,7 @@ describe("the shell", () => {
   });
 
   it("marks the active route with an ink pill, never a terracotta fill", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     const active = sidenav().querySelector('a[aria-current="page"]');
     expect(active).not.toBeNull();
@@ -394,7 +403,7 @@ describe("the shell", () => {
   });
 
   it("does not let an inert route navigate", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     // Four of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
     // with aria-disabled still navigates.
@@ -409,7 +418,7 @@ describe("the shell", () => {
   });
 
   it("keeps the topbar brand-only", async () => {
-    const { container } = render(await HomePage());
+    const { container } = render(await HomePage(props()));
 
     const header = container.querySelector("header");
     expect(header?.textContent).toContain("EventPulse24");
@@ -420,7 +429,7 @@ describe("the shell", () => {
   });
 
   it("constrains the content to the reading width, so a wide screen does not reflow it", async () => {
-    const { container } = render(await HomePage());
+    const { container } = render(await HomePage(props()));
 
     // "Desktop adds whitespace, never features, screens, actions or copy" (§10). A wide
     // viewport stretches a card; a wide *card* changes how the card reads. So the
@@ -430,7 +439,7 @@ describe("the shell", () => {
   });
 
   it("shows the account row in the sidenav footer", async () => {
-    render(await HomePage());
+    render(await HomePage(props()));
 
     expect(screen.getByRole("link", { name: /Account: Maya/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search events" })).toBeInTheDocument();

@@ -7,7 +7,7 @@ import { DigestError } from "@/components/digest/digest-error";
 import { DigestHeader } from "@/components/digest/digest-header";
 import { DigestPreparing } from "@/components/digest/digest-preparing";
 import { AppShell } from "@/components/shell/app-shell";
-import { clearAttempt, readAttempt, recordFailure } from "@/lib/digest-attempt";
+import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
 import { getSession, homeRoute } from "@/lib/session";
 
@@ -39,7 +39,7 @@ import { getSession, homeRoute } from "@/lib/session";
  */
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: PageProps<"/">) {
   const session = await getSession();
   const destination = homeRoute(session);
   // `redirect` throws, so it is called outside any try/catch.
@@ -52,15 +52,11 @@ export default async function HomePage() {
   /**
    * **The failure count is the server's, and it is consecutive.**
    *
-   * A failed read records the failure and renders the error state; a successful read
-   * clears the count, because "the second *consecutive* failure" means the second one
-   * in a row — one good read in between breaks the run.
-   *
-   * `recordFailure` returns the number of **prior** failures, so the first failure
-   * renders "Try again" and the second renders "Refresh page.".
+   * It is read from the URL and never written: the first failure's retry link carries
+   * `?retry=1`, so a failure on that render is the second in a row and renders "Refresh
+   * page.". `lib/digest-attempt.ts` says why it is not a cookie.
    */
-  const attempt = digest.kind === "unavailable" ? await recordFailure() : await readAttempt();
-  if (digest.kind !== "unavailable") await clearAttempt();
+  const attempt = attemptFromQuery((await searchParams)[RETRY_PARAM]);
 
   return (
     <AppShell name={displayName(session.user.email)}>
