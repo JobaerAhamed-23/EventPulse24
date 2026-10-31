@@ -664,6 +664,78 @@ class PersonalizationAuditEntry(AuditEntry):
     retention_category = RetentionCategory.AUDIT_LOG
 
 
+class EventDetailOpen(UUIDv7Model):
+    """That a user opened the Detail Screen for a public catalog Event (FR-24).
+
+    **This is one of the two halves of FR-24's "qualifying user"** — the other is a save,
+    and `SavedEvent` already records that. This row records the half that did not exist.
+
+    **It is a signal about the user's behaviour, so it is `PREFERENCE_SIGNALS`.** Not
+    `ACCOUNT_CONTENT`: this is not the user's own content, it is a record of what they
+    looked at. Not `AUDIT_LOG`: it is not a record of a change. `PREFERENCE_SIGNALS` is
+    the category whose own words are "dwell, swipes, dismissals" — this is a dwell.
+
+    **One row per `(user, event)`, holding the *most recent* open.** An append-only log of
+    every open would answer the same question with a query that counts rows, and it would
+    store the user's entire viewing history of the catalog — a far larger privacy cost
+    than the feature needs. The count asks one question ("has this user opened this
+    event in the last 30 days?") and the answer is a boolean per pair, so the row holds
+    the latest time and nothing else.
+
+    **The last-open timestamp is enough for the window.** A user who opened an event
+    sixty days ago and again today has a row saying "today", and qualifies; a user who
+    opened it sixty days ago and never again has a row saying so, and does not. Because
+    the row holds the most recent open, the 30-day window is exact: there is no stale
+    open that survives the window, because the most recent open is the only one that
+    matters.
+
+    **What is not stored.** No IP address, no user agent, no referrer, no duration, no
+    count of views. The row answers exactly one question and nothing more — and nothing
+    that would be PII reaches a table (AD-13).
+
+    **Every relation is by value (OQ-8).** `event_id` is the catalog Event's id by value,
+    never a foreign key: AD-3 forbids a relation across the schema wall.
+
+    **This row is not append-only.** It is *updated* when the user opens the same event
+    again — the most recent open replaces the older one. It is not append-only because
+    the whole point is to hold the most recent, and an append-only table could not do
+    that without holding every open forever.
+
+    Design: .specs-fire/intents/pulse-digest-and-trust/work-items/
+    event-detail-api-design.md (decision D5).
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The catalog Event's id, by value. No FK: AD-3 forbids the relation.
+    event_id = models.UUIDField()
+    # When the user last opened the Detail Screen for this event.
+    opened_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # One row per pair. The count counts distinct users, and a second row for
+            # the same pair would make the pair ambiguous — and would let a repeated
+            # open inflate the count.
+            models.UniqueConstraint(
+                fields=["user_id", "event_id"], name="event_detail_open_user_event_uq"
+            ),
+        ]
+        indexes = [
+            # The neighbor count: every qualifying user for one event, within the
+            # 30-day window. The index is on the event and the time, because the query
+            # asks about one event and a recent window.
+            models.Index(fields=["event_id", "-opened_at"], name="event_detail_open_event_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The event id and nothing else. The event's title is untrusted source text, and
+        # this string reaches every log line (AD-9, AD-13).
+        return f"detail open {self.event_id}"
+
+
 class PulseDigest(UUIDv7Model):
     """One user's Pulse Digest for one local calendar day (FR-5, FR-8, AD-10).
 

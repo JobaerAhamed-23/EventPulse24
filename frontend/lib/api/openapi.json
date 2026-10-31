@@ -369,6 +369,39 @@
         "title": "CurrentUserOut",
         "type": "object"
       },
+      "DetailPersonalOut": {
+        "description": "The signed-in user's own state for an event (FR-24).\n\n**Three independent facts, and none of them implies another.** \"There is no\nexplanation\" and \"you have not saved this\" are different, and a client that cannot\ntell them apart renders the wrong thing.\n\n**`why_this` is `None` when no composition exists** for this `(user, event)` pair.\nThat is an **explicit absence**: not an empty breakdown, not a zero bucket, and not\na recomputed one. AD-10 says the screen \"renders no explanation rather than\nrecomputing one if none exists\".",
+        "properties": {
+          "neighbor_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Neighbor Bucket"
+          },
+          "saved": {
+            "default": false,
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "why_this": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WhyThisOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "DetailPersonalOut",
+        "type": "object"
+      },
       "DigestCardOut": {
         "description": "One Pulse Card on the digest (FR-6).\n\n**The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;\nthe card shows 1-5 dots. Sending the score would invite the frontend to re-bucket it\n— which is the \"recomputed at render\" failure wearing a different hat, and would break\nthe no-flicker rule, since the bucket the user saw this morning is a **persisted fact\nabout their day**. The Detail Screen's own read carries the score; the card's\ncontract is the card's.\n\n**The tags are the persisted keys, in the persisted order.** They are not recomputed\nand not re-sorted — the order is the priority order, and it is what the card and the\nDetail Screen must agree on (AD-10). The client owns the labels.\n\n**The times are instants plus the IANA zone.** AD-6: \"display-time conversion happens\nat the presentation edge, never in domain logic\". The API does not send a\npre-formatted local string.\n\n**The display facts are optional.** They live in the catalog (for a public event) or\nin the user's own agenda (for a personal one), and either place may have moved on\nsince the composition. When they have, `catalog_event_missing` says so and the\n*explanation* is still there — the composition is a fact about the day, and its\nexplanation must not change because a source moved.\n\n**`source_badge` is the variant key, or `None`.** A personal event has no source, so\nit has no badge; `None` here means \"there is no source\", not \"unknown\". The client\nowns the label and the glyph.",
         "properties": {
@@ -711,6 +744,145 @@
           "message"
         ],
         "title": "ErrorOut",
+        "type": "object"
+      },
+      "EventDetailFactsOut": {
+        "description": "The event's public facts, as the Detail Screen shows them.\n\n**These are the catalog's own fields**, read through the published read interface.\nThe description is the *stripped* field — `formats.text.plain_text` removed the\nmarkup, decoded the entities and truncated it before it was stored — so it is\ndisplay content, not raw source payload (AD-9).\n\n**The times are instants plus the IANA zone.** AD-6: \"display-time conversion happens\nat the presentation edge, never in domain logic\".",
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "event_version": {
+            "title": "Event Version",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_sold_out": {
+            "default": false,
+            "title": "Is Sold Out",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tz_review_pending": {
+            "default": false,
+            "title": "Tz Review Pending",
+            "type": "boolean"
+          },
+          "venue_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue City"
+          },
+          "venue_country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Country Code"
+          },
+          "venue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Name"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "canonical_url",
+          "start_time_utc",
+          "start_time_tz",
+          "status",
+          "event_version",
+          "source_name"
+        ],
+        "title": "EventDetailFactsOut",
+        "type": "object"
+      },
+      "EventDetailOut": {
+        "description": "One event's Detail Screen (FR-24).\n\n**The public facts are the catalog's,** read through `catalog_read`'s published\ninterface — never from `apps.ingestion.models` directly, and never through the\nEvent Fit.\n\n**`personal` is `None` for an anonymous caller.** It is `None` rather than an empty\n`DetailPersonalOut` because \"you are not signed in, so we looked up nothing\" and\n\"you are signed in and have nothing here\" are different claims — and the anonymous\npath never queries the `personal` schema at all.\n\n**Reviews and similar-events are absent from this contract**, not present and empty.\nReviews are ASSUM-6, deferred to Phase 3+. Similar-events needs attendance data that\ndoes not exist — there is no attendance record anywhere in the codebase. An empty\n`similar_events: []` would say \"we looked and there are none\", which is a lie for a\nuser who *has* attended events the app does not know about.\n\n**\"Same area\" is city equality, and the deviation is named.** FR-24 defines it as\n\"haversine distance ≤ 2 km OR same city-zip-cluster\", and neither is computable:\n`Venue` has no coordinates and there is no zip data. The count is the qualifying\nusers of *this* event, whose area is the event's own city. FR-24's country rule is\nnot applied either: the user's home country is not recorded.",
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/EventDetailFactsOut"
+          },
+          "personal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetailPersonalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "title": "EventDetailOut",
         "type": "object"
       },
       "EventListOut": {
@@ -1856,6 +2028,50 @@
         },
         "title": "SignUpOut",
         "type": "object"
+      },
+      "WhyThisOut": {
+        "description": "The persisted why-this breakdown (FR-24, AD-10).\n\n**This is a persisted fact, not a computation.** The tags, the bucket and the badge\nare the `DigestComposition` row's own values, read back from the most recent\ncomposition for that `(user, event)` pair. AD-10 says an explanation \"is never\ngenerated at view time\", and this is where that either holds or is quietly broken.\n\n**The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;\nthe screen shows 1–5 dots. Sending the score would invite the frontend to re-bucket\nit — the \"recomputed at render\" failure wearing a different hat.\n\n**The tags are the persisted keys, in the persisted order.** The client owns the\nlabels; the server states the facts.\n\n**The Source Badge is the variant key, or `None`.** A personal event has no source,\nso it has no badge; `None` here means \"there is no source\", not \"unknown\".",
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "integer"
+          },
+          "composed_at": {
+            "format": "date-time",
+            "title": "Composed At",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          },
+          "source_badge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Badge"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bucket",
+          "composed_at",
+          "slot"
+        ],
+        "title": "WhyThisOut",
+        "type": "object"
       }
     }
   },
@@ -2325,6 +2541,77 @@
         "summary": "Get one public event",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/events/{event_id}": {
+      "get": {
+        "description": "The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, and the k-anonymous neighbor count; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.",
+        "operationId": "apps_personalization_detail_api_get_event_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Get one event's Detail Screen",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event_id}/opened": {
+      "post": {
+        "description": "Records that the signed-in user opened this event's Detail Screen, which is one of the two signals that make a user count as a neighbor (FR-24). The signal is recorded once per `(user, event)`: opening the screen again refreshes the timestamp rather than adding a row. Anonymous callers are refused.",
+        "operationId": "apps_personalization_detail_api_post_event_opened",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "summary": "Record that the Detail Screen was opened",
+        "tags": [
+          "events"
         ]
       }
     },

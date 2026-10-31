@@ -47,10 +47,10 @@ work_items:
   - id: event-detail-api
     intent: pulse-digest-and-trust
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: digest-scheduling
     intent: pulse-digest-and-trust
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: event-detail-api
+current_item: digest-scheduling
 status: in_progress
 started: 2026-10-30T12:40:28.978Z
 completed: null
@@ -104,7 +104,7 @@ wide (12 work items)
 4. **digest-candidate-reads** (confirm) — completed
 5. **digest-composition-service** (validate) — completed
 6. **digest-read-api** (confirm) — completed
-7. **event-detail-api** (confirm) — pending
+7. **event-detail-api** (confirm) — completed
 8. **digest-scheduling** (confirm) — pending
 9. **frontend-pulse-card** (confirm) — pending
 10. **frontend-digest-home** (confirm) — pending
@@ -113,7 +113,7 @@ wide (12 work items)
 
 
 ## Current Item
-event-detail-api (confirm)
+digest-scheduling (confirm)
 
 ## Files Created
 - `backend/apps/personalization/migrations/0007_digestcomposition_pulsedigest.py`
@@ -160,6 +160,25 @@ event-detail-api (confirm)
   — D1–D12 plus D4b, and what the code review changed
 - `.specs-fire/runs/run-eventpulse24-021/test-report-digest-read-api.md`
 - `.specs-fire/runs/run-eventpulse24-021/review-report-digest-read-api.md`
+- `backend/apps/personalization/detail_api.py` — the Detail Screen's two endpoints:
+  `GET /api/events/{id}` and `POST /api/events/{id}/opened`. The router has **no**
+  `auth=`, because the route serves two audiences and a router's `auth=` is
+  all-or-nothing: the read calls `unauthenticated_user` and branches, the write calls
+  `current_user`
+- `backend/apps/personalization/services/detail_read.py` — the read of the persisted
+  rows: `read_event_detail(*, event_id, user_id, now) -> EventDetail`, with the public
+  facts, the persisted breakdown, the saved state and the bucketed neighbour count
+- `backend/apps/personalization/services/neighbor_count.py` — the k-anonymous count,
+  suppressed **before** the number is formed: `NeighborCount` holds a bucket key and
+  **no count field**, so there is nothing for a later change to leak
+- `backend/apps/personalization/services/detail_opens.py` — the named command that
+  records the detail-open signal, with its audit row in the same transaction (AD-5)
+- `backend/apps/personalization/migrations/0010_eventdetailopen.py`
+- `backend/tests/personalization/test_event_detail_api.py` — 52 tests
+- `.specs-fire/intents/pulse-digest-and-trust/work-items/event-detail-api-design.md`
+  — D1–D13, and what the code review changed
+- `.specs-fire/runs/run-eventpulse24-021/test-report-event-detail-api.md`
+- `.specs-fire/runs/run-eventpulse24-021/review-report-event-detail-api.md`
 
 ## Files Modified
 - `backend/apps/personalization/models.py` — `PulseDigest`, `DigestComposition`, `DIGEST_SLOT_ORDER`
@@ -199,6 +218,18 @@ event-detail-api (confirm)
 - `backend/apps/personalization/api.py` — `GET /api/personal/digest`
 - `backend/apps/personalization/services/digest_composition.py` — `_local_date` replaced
   by the shared `local_date_for`
+- `backend/apps/ingestion/services/catalog_read.py` — `PublicEventDetail` and
+  `get_public_event_detail`: a **new** published read, because widening `PublicEvent`
+  would have silently changed the public catalog's wire shape
+- `backend/apps/personalization/models.py` — `EventDetailOpen`, the qualifying-signal
+  model: one row per `(user, event)`, `PREFERENCE_SIGNALS`
+- `backend/apps/personalization/schemas.py` — `WhyThisOut`, `DetailPersonalOut`,
+  `EventDetailFactsOut`, `EventDetailOut`
+- `backend/config/api.py` — the `/events` router mounted, with the two-audience rule
+  written down
+- `backend/tests/architecture/test_write_ownership.py` —
+  `personalization_eventdetailopen` added to `TABLE_OWNERS`
+- `backend/tests/personalization/factories.py` — `EventDetailOpenFactory`
 - `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` — the regenerated contract
 
 ## Decisions
@@ -405,3 +436,107 @@ event-detail-api (confirm)
   resolves `now` itself, so the test has to write the digest for *today's* local date.
   The first run answered `not_composed` for a digest that existed — and the fix was in
   the test, not the code.
+
+---
+
+## The `event-detail-api` item's decisions
+
+- **The detail-open signal is a separate `POST`, because a `GET` that writes is
+  forgeable.** Django's `require_csrf` returns early on **safe** methods, so a `GET`
+  that recorded the signal would carry no CSRF check at all — and any third-party page
+  can make a browser issue a `GET`. The neighbor count says "other people near you are
+  interested in this"; a forgeable signal inflates it, and the count is a *trust*
+  signal. So the read writes **nothing** (a test pins it) and the signal is
+  `POST /api/events/{id}/opened` — session required, CSRF checked, 401 for an
+  anonymous caller. The cost is a second round trip, and the trade is stated rather
+  than hidden.
+- **The router has no `auth=`, and that is deliberate.** The route serves two audiences
+  with different rights — a signed-in user may see their own explanation, an anonymous
+  visitor may see the event and nothing personal (AD-12). A router's `auth=` is
+  all-or-nothing, so the two rules live in the two handlers: the read calls
+  `unauthenticated_user` and branches, the write calls `current_user`.
+- **`PublicEvent` was not widened.** `EventOut.from_public_event` does
+  `cls(**vars(event))`, so adding a field to `PublicEvent` would have **silently
+  changed the public catalog's wire shape** — and the catalog's contract is not this
+  item's to change. `catalog_read` grew a **new** published read,
+  `get_public_event_detail`, carrying `PublicEvent`'s fields plus `is_sold_out` and
+  `description`. The design's heading said the opposite of its body; the body was
+  right and the heading was corrected.
+- **The description is served but never logged.** `Event.description` is *already* the
+  stripped field — the ingestion pipeline strips it before storing — so it is not raw
+  payload (AD-9). It is untrusted source text that is **display content**: the Detail
+  Screen has to show it. It may never reach a log line, an audit row or a sort key —
+  the same rule the catalog's own `EventOut` follows for the title.
+- **The count is suppressed before the number is formed.** `NeighborCount` holds a
+  bucket key and **no count field**; the schema has `neighbor_bucket` and no count.
+  There is nothing for a later change to log, cache or leak, because there is nothing
+  to leak. The test asserts the whole `personal` key set is exactly
+  `{"why_this", "saved", "neighbor_bucket"}`, so a later `neighbor_count` field fails
+  the test rather than shipping.
+- **The threshold is 5, and the reason is stated.** FR-24's body says "≥5 qualifying
+  users"; the PRD's glossary says "at least 1". The stricter rule governs, and not out
+  of deference to the body text: **k-anonymity at k=1 is not anonymity**. A count of
+  exactly one is the identity of one person, and the whole point of the signal is that
+  it says "other people near you are interested in this" rather than "one specific
+  person is".
+- **The count is two reads unioned in Python, not one `COUNT(DISTINCT)` aggregate.**
+  *(Revised by the code review — the design said one aggregate.)* The two signals
+  live in two tables with two shapes, and a single aggregate across them needs a
+  `UNION` subquery — raw SQL in an otherwise pure-ORM service. The union is also the
+  shape that **cannot multiply** a user who both saved and opened: the ids go into a
+  set, so a user qualifies once. The cost is one extra query, and it is a constant —
+  the signed-in read is five queries, not four.
+- **"Same area" is city equality, and the deviation is named.** FR-24 defines it as
+  "≤2 km or same city-zip-cluster", and neither is computable — `Venue` has no
+  coordinates and there is no zip data anywhere in the schema. The clause filters on
+  the **event side**: a user qualifies for *this* event by saving *this* event, so
+  there is no per-user city to compare against, and the event's own city is the area.
+  The event's city is still read, for one reason: **an event with no venue has no area,
+  and therefore no neighbours.**
+- **The three states are three independent facts.** "There is no explanation" and "you
+  have not saved this" are different claims, and a client that cannot tell them apart
+  renders the wrong thing. `why_this`, `saved` and `neighbor_bucket` are three separate
+  fields, each carried explicitly.
+- **The signal stores one row per `(user, event)`, holding the most recent open.** A
+  user who opened the screen ten times is still one row, so the row count is bounded
+  by the number of events a user opened and not by the number of times. The 30-day
+  query window is therefore exact.
+- **The signal's retention category is `PREFERENCE_SIGNALS`, and a gap is recorded.**
+  The count looks back 30 days; `PREFERENCE_SIGNALS`' policy is 12 months. A row can
+  outlive the window that made it relevant, holding a record of what a named person
+  looked at. The shape is right and the deletion job is a separate concern, so the gap
+  is **recorded rather than closed** — a 30-day deletion policy on this table would
+  match the window exactly, and that is a one-line change to a policy table.
+- **Reviews and similar-events are absent, not present-and-empty.** Reviews are
+  ASSUM-6, deferred to Phase 3+; similar-events needs attendance data that does not
+  exist. A key that is always null is a promise the backend cannot keep.
+- **The neighbouring sources contradict each other on the count, and the bucketed
+  prose governs.** `EXPERIENCE.md` §12's own example breakdown line says "12 of your
+  neighbors saved this", and `event-detail-desktop.html` renders "12 neighbors tracking
+  this in Brooklyn" — both exposing an exact count that FR-24 and §12's "Neighbor Count
+  Privacy" subsection explicitly forbid ("Exact counts are never exposed"). Both
+  examples are wrong. Recorded because the mockup is the more persuasive artifact, and
+  a later reader looking at it will find an exact count and think the implementation is
+  missing it.
+- **The window's boundary is pinned at the service, not at the endpoint.** The
+  endpoint resolves `now` from the wall clock, so a timestamp pinned at import time is
+  a few milliseconds older than the service's own `now` — and an **inclusive** boundary
+  that should have qualified was one hair outside the window. `count_neighbors` takes
+  `now` as a parameter, so the instant is exactly expressible there. The same lesson
+  the `digest-read-api` item learned about its own `NOW`: the surface decides whether
+  "now" is a parameter or a wall clock, and the test has to follow it.
+- **The tier-agnostic test asserts on the SQL, not on the prose.** The first version
+  read the module's source and asserted the word "pro" was absent — and the module's
+  own docstring says "Pro and Free users count identically", so it failed on its own
+  explanation. The assertion is now on the SQL that actually runs: the two signal
+  queries are located in the captured query log and asserted to carry no tier
+  predicate. A prose grep was never a meaningful test of a query's shape.
+- **The anonymous path's zero-query assertion is genuine.** An anonymous request has
+  no session row, so the session middleware never touches `personal` — the count of
+  personal queries really is zero, not zero-after-filtering. The strongest statement
+  about a leak is that the query never happened.
+- **The read's query bound excludes the framework's auth seam.** Django's session
+  middleware reads the session row and the user row on every request; those belong to
+  the request, not to the Detail Screen's read. What is counted is the read's own work
+  — the composition, the save and the count's two signal reads — and that is at most
+  four, whatever the neighbour count is.

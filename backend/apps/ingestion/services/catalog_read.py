@@ -426,6 +426,100 @@ def get_public_events(*, event_ids: set[UUID]) -> dict[UUID, PublicEvent]:
     return {event.id: _to_public_event(event) for event in events}
 
 
+@dataclass(frozen=True)
+class PublicEventDetail:
+    """One public event, with the facts the **Detail Screen** shows.
+
+    **This is not `PublicEvent`, and widening `PublicEvent` was the alternative.** The
+    public catalog's wire shape is built by `cls(**vars(event))` in
+    `apps/catalog/schemas.py`, so a field added here would appear on the *public
+    catalog's* contract as well — and the public catalog's contract is not the Detail
+    Screen's to change. FR-24 says the Detail Screen shows the full description and the
+    sold-out state; it does not say the catalog listing starts showing either.
+
+    So this is a separate dataclass, read by a separate function, and the two never
+    have to agree about which fields exist.
+
+    **The description is display content, not raw payload (AD-9).** `Event.description`
+    is the *stripped* field: `formats.text.plain_text` removed the markup, decoded the
+    entities, dropped the control characters and truncated it before it was stored. The
+    raw source payload (`ExtractedRecord.payload`) never reaches this dataclass — that is
+    the line AD-9 draws, and the description is on the right side of it.
+
+    **It is still untrusted source text.** It may be *served* to a reader, and it may
+    never reach a log line, an audit row or a sort key (AD-13). The same rule the
+    catalog's own `EventOut` follows for the title.
+    """
+
+    id: UUID
+    slug: str
+    title: str
+    #: The stripped, truncated description. Empty when the source had none.
+    description: str
+    canonical_url: str
+    start_time_utc: datetime
+    start_time_tz: str
+    end_time_utc: datetime | None
+    venue_name: str | None
+    venue_city: str | None
+    venue_country_code: str | None
+    status: str
+    event_version: int
+    source_name: str
+    tz_review_pending: bool
+    #: A-15 / FR-53: the event is sold out.
+    is_sold_out: bool
+
+
+def _to_public_event_detail(event: Event) -> PublicEventDetail:
+    venue = event.venue
+    return PublicEventDetail(
+        id=event.id,
+        slug=event.slug,
+        title=event.title,
+        description=event.description,
+        canonical_url=event.canonical_url,
+        start_time_utc=event.start_time_utc,
+        start_time_tz=event.start_time_tz,
+        end_time_utc=event.end_time_utc,
+        venue_name=venue.name if venue else None,
+        venue_city=venue.city if venue else None,
+        venue_country_code=venue.country_code if venue else None,
+        status=event.status,
+        event_version=event.event_version,
+        source_name=event.source.name,
+        tz_review_pending=event.tz_review_pending,
+        is_sold_out=event.is_sold_out,
+    )
+
+
+def get_public_event_detail(*, event_id: UUID, now: datetime | None = None) -> PublicEventDetail:
+    """One public event's Detail Screen facts, by id.
+
+    **The same visibility rule as `get_public_event`.** An event that is unpublished, in
+    review or superseded is not found, and an event that has already started is not found
+    when `now` bounds it — the Detail Screen must not show an event the public catalog
+    does not list, because a link to a detail page for a hidden event would leak that it
+    exists.
+
+    **Why a separate function and not a wider `PublicEvent`.** See `PublicEventDetail`.
+    The catalog's own contract is built from `PublicEvent`'s fields, so widening it would
+    change the public listing's wire shape.
+
+    **The country comes with it** because the neighbor count needs the event's city and
+    country to decide "same area" (D6). `PublicEvent` carries the city but not the
+    country, and the count's rule needs both.
+    """
+    queryset = _public_events()
+    if now is not None:
+        queryset = queryset.filter(start_time_utc__gte=now)
+    try:
+        event = queryset.get(pk=event_id)
+    except Event.DoesNotExist:
+        raise EventNotFoundError(details={"event_id": str(event_id)}) from None
+    return _to_public_event_detail(event)
+
+
 __all__ = [
     "CANDIDATE_OVERFETCH_FACTOR",
     "CANDIDATE_POOL_SIZE",
@@ -435,7 +529,9 @@ __all__ = [
     "EventNotFoundError",
     "PublicEvent",
     "PublicEventCandidate",
+    "PublicEventDetail",
     "get_public_event",
+    "get_public_event_detail",
     "get_public_events",
     "list_public_candidates",
     "list_public_events",

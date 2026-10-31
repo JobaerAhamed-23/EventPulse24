@@ -503,6 +503,133 @@ class DigestOut(Schema):
     cards: list[DigestCardOut] = []
 
 
+class WhyThisOut(Schema):
+    """The persisted why-this breakdown (FR-24, AD-10).
+
+    **This is a persisted fact, not a computation.** The tags, the bucket and the badge
+    are the `DigestComposition` row's own values, read back from the most recent
+    composition for that `(user, event)` pair. AD-10 says an explanation "is never
+    generated at view time", and this is where that either holds or is quietly broken.
+
+    **The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;
+    the screen shows 1–5 dots. Sending the score would invite the frontend to re-bucket
+    it — the "recomputed at render" failure wearing a different hat.
+
+    **The tags are the persisted keys, in the persisted order.** The client owns the
+    labels; the server states the facts.
+
+    **The Source Badge is the variant key, or `None`.** A personal event has no source,
+    so it has no badge; `None` here means "there is no source", not "unknown".
+    """
+
+    #: The persisted Why-this Tag keys, in the persisted order.
+    tags: list[str] = []
+    #: FR-22's Confidence Pulse: 1 to 5.
+    bucket: int
+    #: The Source Badge variant key, or `None` for a personal event.
+    source_badge: str | None = None
+    #: When the explanation was composed.
+    composed_at: datetime
+    #: The slot the event occupied in that composition.
+    slot: str
+
+
+class DetailPersonalOut(Schema):
+    """The signed-in user's own state for an event (FR-24).
+
+    **Three independent facts, and none of them implies another.** "There is no
+    explanation" and "you have not saved this" are different, and a client that cannot
+    tell them apart renders the wrong thing.
+
+    **`why_this` is `None` when no composition exists** for this `(user, event)` pair.
+    That is an **explicit absence**: not an empty breakdown, not a zero bucket, and not
+    a recomputed one. AD-10 says the screen "renders no explanation rather than
+    recomputing one if none exists".
+    """
+
+    #: The persisted breakdown, or `None` when there is no composition for this event.
+    why_this: WhyThisOut | None = None
+    #: Whether the signed-in user has saved this event.
+    saved: bool = False
+    #: FR-24's neighbor count, **already bucketed** and never exact.
+    #:
+    #: The keys are `few` (5–9), `some` (10–24), `many` (25–99) and `a_lot` (100+).
+    #: `None` means the count is **below the k-anonymity threshold and suppressed** —
+    #: there is no key for "suppressed", because a key would tell the client the count
+    #: was computed and discarded, which is itself a signal.
+    #:
+    #: **There is no count field, and there is no number anywhere in this contract.**
+    #: FR-24: "Exact counts are never exposed." The count is bucketed inside the
+    #: service, before it becomes a number the response-building code could log or
+    #: leak.
+    neighbor_bucket: str | None = None
+
+
+class EventDetailFactsOut(Schema):
+    """The event's public facts, as the Detail Screen shows them.
+
+    **These are the catalog's own fields**, read through the published read interface.
+    The description is the *stripped* field — `formats.text.plain_text` removed the
+    markup, decoded the entities and truncated it before it was stored — so it is
+    display content, not raw source payload (AD-9).
+
+    **The times are instants plus the IANA zone.** AD-6: "display-time conversion happens
+    at the presentation edge, never in domain logic".
+    """
+
+    id: UUID
+    slug: str
+    title: str
+    #: The stripped description. Empty when the source had none.
+    description: str = ""
+    canonical_url: str
+    start_time_utc: datetime
+    start_time_tz: str
+    end_time_utc: datetime | None = None
+    venue_name: str | None = None
+    venue_city: str | None = None
+    venue_country_code: str | None = None
+    status: str
+    event_version: int
+    source_name: str
+    #: Whether the event's timezone is still under review — the time is approximated and
+    #: the client marks it as such.
+    tz_review_pending: bool = False
+    #: A-15 / FR-53: the event is sold out.
+    is_sold_out: bool = False
+
+
+class EventDetailOut(Schema):
+    """One event's Detail Screen (FR-24).
+
+    **The public facts are the catalog's,** read through `catalog_read`'s published
+    interface — never from `apps.ingestion.models` directly, and never through the
+    Event Fit.
+
+    **`personal` is `None` for an anonymous caller.** It is `None` rather than an empty
+    `DetailPersonalOut` because "you are not signed in, so we looked up nothing" and
+    "you are signed in and have nothing here" are different claims — and the anonymous
+    path never queries the `personal` schema at all.
+
+    **Reviews and similar-events are absent from this contract**, not present and empty.
+    Reviews are ASSUM-6, deferred to Phase 3+. Similar-events needs attendance data that
+    does not exist — there is no attendance record anywhere in the codebase. An empty
+    `similar_events: []` would say "we looked and there are none", which is a lie for a
+    user who *has* attended events the app does not know about.
+
+    **"Same area" is city equality, and the deviation is named.** FR-24 defines it as
+    "haversine distance ≤ 2 km OR same city-zip-cluster", and neither is computable:
+    `Venue` has no coordinates and there is no zip data. The count is the qualifying
+    users of *this* event, whose area is the event's own city. FR-24's country rule is
+    not applied either: the user's home country is not recorded.
+    """
+
+    #: The event's public facts.
+    event: EventDetailFactsOut
+    #: The signed-in user's own state, or `None` for an anonymous caller.
+    personal: DetailPersonalOut | None = None
+
+
 class OnboardingStatusOut(Schema):
     """How far through the onboarding the user is.
 
@@ -644,11 +771,14 @@ __all__ = [
     "ConflictResolutionOut",
     "ConflictResolutionValue",
     "ConflictSideOut",
+    "DetailPersonalOut",
     "DigestCardOut",
     "DigestOut",
     "DigestPreferenceIn",
     "DigestPreferenceOut",
     "DigestStatus",
+    "EventDetailFactsOut",
+    "EventDetailOut",
     "InterestChipOut",
     "InterestChipsOut",
     "InterestsIn",
@@ -665,4 +795,5 @@ __all__ = [
     "SavedEventOut",
     "SchedulingConflictDetails",
     "SchedulingConflictOut",
+    "WhyThisOut",
 ]

@@ -186,6 +186,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one event's Detail Screen
+         * @description The Detail Screen's data. A signed-in caller also receives their own why-this breakdown, their saved state, and the k-anonymous neighbor count; an anonymous caller receives the public facts and nothing personal. An event that is not public — or that has already started — reads as not found, the same set the public catalog shows.
+         */
+        get: operations["apps_personalization_detail_api_get_event_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that the Detail Screen was opened
+         * @description Records that the signed-in user opened this event's Detail Screen, which is one of the two signals that make a user count as a neighbor (FR-24). The signal is recorded once per `(user, event)`: opening the screen again refreshes the timestamp rather than adding a row. Anonymous callers are refused.
+         */
+        post: operations["apps_personalization_detail_api_post_event_opened"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -832,6 +872,29 @@ export interface components {
             onboarding: components["schemas"]["OnboardingStatusOut"];
         };
         /**
+         * DetailPersonalOut
+         * @description The signed-in user's own state for an event (FR-24).
+         *
+         *     **Three independent facts, and none of them implies another.** "There is no
+         *     explanation" and "you have not saved this" are different, and a client that cannot
+         *     tell them apart renders the wrong thing.
+         *
+         *     **`why_this` is `None` when no composition exists** for this `(user, event)` pair.
+         *     That is an **explicit absence**: not an empty breakdown, not a zero bucket, and not
+         *     a recomputed one. AD-10 says the screen "renders no explanation rather than
+         *     recomputing one if none exists".
+         */
+        DetailPersonalOut: {
+            /** Neighbor Bucket */
+            neighbor_bucket?: string | null;
+            /**
+             * Saved
+             * @default false
+             */
+            saved: boolean;
+            why_this?: components["schemas"]["WhyThisOut"] | null;
+        };
+        /**
          * DigestCardOut
          * @description One Pulse Card on the digest (FR-6).
          *
@@ -1028,6 +1091,96 @@ export interface components {
             } | null;
             /** Message */
             message: string;
+        };
+        /**
+         * EventDetailFactsOut
+         * @description The event's public facts, as the Detail Screen shows them.
+         *
+         *     **These are the catalog's own fields**, read through the published read interface.
+         *     The description is the *stripped* field — `formats.text.plain_text` removed the
+         *     markup, decoded the entities and truncated it before it was stored — so it is
+         *     display content, not raw source payload (AD-9).
+         *
+         *     **The times are instants plus the IANA zone.** AD-6: "display-time conversion happens
+         *     at the presentation edge, never in domain logic".
+         */
+        EventDetailFactsOut: {
+            /** Canonical Url */
+            canonical_url: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Sold Out
+             * @default false
+             */
+            is_sold_out: boolean;
+            /** Slug */
+            slug: string;
+            /** Source Name */
+            source_name: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /**
+             * Tz Review Pending
+             * @default false
+             */
+            tz_review_pending: boolean;
+            /** Venue City */
+            venue_city?: string | null;
+            /** Venue Country Code */
+            venue_country_code?: string | null;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * EventDetailOut
+         * @description One event's Detail Screen (FR-24).
+         *
+         *     **The public facts are the catalog's,** read through `catalog_read`'s published
+         *     interface — never from `apps.ingestion.models` directly, and never through the
+         *     Event Fit.
+         *
+         *     **`personal` is `None` for an anonymous caller.** It is `None` rather than an empty
+         *     `DetailPersonalOut` because "you are not signed in, so we looked up nothing" and
+         *     "you are signed in and have nothing here" are different claims — and the anonymous
+         *     path never queries the `personal` schema at all.
+         *
+         *     **Reviews and similar-events are absent from this contract**, not present and empty.
+         *     Reviews are ASSUM-6, deferred to Phase 3+. Similar-events needs attendance data that
+         *     does not exist — there is no attendance record anywhere in the codebase. An empty
+         *     `similar_events: []` would say "we looked and there are none", which is a lie for a
+         *     user who *has* attended events the app does not know about.
+         *
+         *     **"Same area" is city equality, and the deviation is named.** FR-24 defines it as
+         *     "haversine distance ≤ 2 km OR same city-zip-cluster", and neither is computable:
+         *     `Venue` has no coordinates and there is no zip data. The count is the qualifying
+         *     users of *this* event, whose area is the event's own city. FR-24's country rule is
+         *     not applied either: the user's home country is not recorded.
+         */
+        EventDetailOut: {
+            event: components["schemas"]["EventDetailFactsOut"];
+            personal?: components["schemas"]["DetailPersonalOut"] | null;
         };
         /**
          * EventListOut
@@ -1641,6 +1794,43 @@ export interface components {
              */
             status: string;
         };
+        /**
+         * WhyThisOut
+         * @description The persisted why-this breakdown (FR-24, AD-10).
+         *
+         *     **This is a persisted fact, not a computation.** The tags, the bucket and the badge
+         *     are the `DigestComposition` row's own values, read back from the most recent
+         *     composition for that `(user, event)` pair. AD-10 says an explanation "is never
+         *     generated at view time", and this is where that either holds or is quietly broken.
+         *
+         *     **The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;
+         *     the screen shows 1–5 dots. Sending the score would invite the frontend to re-bucket
+         *     it — the "recomputed at render" failure wearing a different hat.
+         *
+         *     **The tags are the persisted keys, in the persisted order.** The client owns the
+         *     labels; the server states the facts.
+         *
+         *     **The Source Badge is the variant key, or `None`.** A personal event has no source,
+         *     so it has no badge; `None` here means "there is no source", not "unknown".
+         */
+        WhyThisOut: {
+            /** Bucket */
+            bucket: number;
+            /**
+             * Composed At
+             * Format: date-time
+             */
+            composed_at: string;
+            /** Slot */
+            slot: string;
+            /** Source Badge */
+            source_badge?: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -1968,6 +2158,57 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
+            };
+        };
+    };
+    apps_personalization_detail_api_get_event_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetailOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_detail_api_post_event_opened: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -14,6 +14,7 @@ from apps.personalization.models import (
     ConflictPair,
     DigestComposition,
     DigestPreference,
+    EventDetailOpen,
     PersonalEvent,
     PersonalizationAuditEntry,
     PulseDigest,
@@ -182,3 +183,21 @@ class DigestCompositionFactory(PersonalFactory):
     source_badge = "official_site"
     event_version = 1
     composed_at = COMPOSED_AT
+
+
+class EventDetailOpenFactory(PersonalFactory):
+    """One user's record of having opened an event's Detail Screen (FR-24).
+
+    **The opened time defaults to a fixed instant**, so a test that cares about the
+    30-day qualifying window says so explicitly rather than inheriting a value that
+    happens to be in range today.
+    """
+
+    class Meta:
+        model = EventDetailOpen
+
+    user_id = factory.LazyFunction(uuid7)
+    # The catalog Event's id, by value. There is no catalog Event behind it: the tests
+    # that need one create it in the catalog schema.
+    event_id = factory.LazyFunction(uuid7)
+    opened_at = COMPOSED_AT

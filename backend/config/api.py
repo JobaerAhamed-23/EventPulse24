@@ -9,6 +9,7 @@ from apps.catalog.api import router as catalog_router
 from apps.catalog.preview_api import router as preview_router
 from apps.identity.api import router as auth_router
 from apps.personalization.api import router as personal_router
+from apps.personalization.detail_api import router as detail_router
 from config.errors import install_error_handlers
 from config.health import router as health_router
 
@@ -30,3 +31,10 @@ api.add_router("/auth", auth_router)
 # session-based by design: every endpoint resolves exactly one user from the session and
 # takes no user id as input, so the scoping cannot be talked out of by a payload.
 api.add_router("/personal", personal_router)
+# FR-24: the Detail Screen. It has no `auth=` of its own, because it serves **two**
+# audiences — a signed-in caller gets their own explanation, an anonymous caller gets the
+# public facts and nothing personal (AD-12). The two handlers apply their own rules.
+#
+# This is not the public catalog's endpoint: `/api/catalog/events/{id}` is the session-free
+# listing, and this one reads `personal`.
+api.add_router("/events", detail_router)
