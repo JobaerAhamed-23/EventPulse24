@@ -337,12 +337,14 @@ def test_audit_entry_user_actor_allowed():
 INGESTION_MODELS = list(apps.get_app_config("ingestion").get_models())
 
 
-def test_ingestion_has_the_eight_designed_models():
-    # The seven from catalog-data-model-design.md, plus EventFit (AD-10, FR-26).
+def test_ingestion_has_the_nine_designed_models():
+    # The seven from catalog-data-model-design.md, plus EventFit (AD-10, FR-26) and
+    # City (FR-27, city-canonicalization-design.md).
     assert {m.__name__ for m in INGESTION_MODELS} == {
         "Source",
         "TosReview",
         "Venue",
+        "City",
         "Event",
         "ExtractedRecord",
         "EventFit",
@@ -367,6 +369,7 @@ def test_every_ingestion_foreign_key_is_protect():
 
 def test_ingestion_retention_categories():
     assert {m.__name__: m.retention_category for m in INGESTION_MODELS} == {
+        "City": RetentionCategory.SOURCE_REGISTRY,
         "Source": RetentionCategory.SOURCE_REGISTRY,
         "TosReview": RetentionCategory.TOS_REVIEW_RECORDS,
         "Venue": RetentionCategory.SOURCE_REGISTRY,

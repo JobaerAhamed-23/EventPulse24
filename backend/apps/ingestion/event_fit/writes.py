@@ -56,6 +56,16 @@ def _city_of(event: Event) -> str:
     return event.venue.city.strip() if event.venue_id and event.venue else ""
 
 
+def _city_ref_of(event: Event):
+    """The venue's canonical City (FR-27), or None.
+
+    None has two meanings and neither is an error: the venue named no city, or the backfill
+    has not reached this venue yet. Both are states the city page reads as "not in a city",
+    and the backfill makes the second one temporary.
+    """
+    return event.venue.city_ref_id if event.venue_id and event.venue else None
+
+
 def _confidence_of(event: Event) -> Decimal | None:
     """The event's extraction confidence, or None when it was never scored.
 
@@ -122,6 +132,7 @@ def write_event_fit(
     city = _city_of(event)
     if not city:
         return None
+    city_ref_id = _city_ref_of(event)
 
     computed = compute_fit_for_event(event, now=now)
     if computed is None:  # pragma: no cover — the city check above already returned
@@ -141,6 +152,13 @@ def write_event_fit(
         # `computed_at`, which says when the fit was last *computed*, and it has not
         # been computed again.
         row = existing
+        if row.city_ref_id != city_ref_id:
+            # The canonical city is a different fact from the fit. Resolving one for the
+            # first time (or following a venue's correction) is not a recomputation, so
+            # `computed_at` must not move: the strong idempotence this function documents
+            # is "nothing about the row changes", and the fit itself has not changed.
+            row.city_ref_id = city_ref_id
+            row.save(using=CATALOG, update_fields=["city_ref"])
     else:
         row, _created = EventFit.objects.using(CATALOG).update_or_create(
             event_id=event.pk,
@@ -148,6 +166,7 @@ def write_event_fit(
             defaults={
                 "score": score,
                 "tags": list(tags),
+                "city_ref_id": city_ref_id,
                 "event_version": event.event_version,
                 "computed_at": now,
             },

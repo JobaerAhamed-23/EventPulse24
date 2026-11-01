@@ -141,13 +141,69 @@ class TosReview(UUIDv7Model):
     notes = models.TextField(blank=True)
 
 
+class City(UUIDv7Model):
+    """A canonical place, and the FR-27 URL it is published at (design: city-canonicalization).
+
+    Cities arrive as free text on a venue — "Brooklyn", "brooklyn ", "Brooklyn, NY". This row
+    is the one place each of those resolves to, so a city page has a stable address and a name
+    a human chose rather than whichever spelling happened to be ingested first.
+
+    **Identity is `(normalized_key, region, country_code)`, never the key alone.** `Portland,
+    OR` and `Portland, ME` both key as `portland`; the region is what keeps them apart, and
+    `domain.cities` refuses to discard it for exactly that reason. The consequence is accepted:
+    "Brooklyn" and "Brooklyn, NY" are two rows here, and FR-27's ">5 events" threshold is what
+    keeps the thinner one from being published.
+
+    `slug` is minted once and never re-minted, like `Event.slug`: an indexed city page must
+    not move.
+
+    `retention_category` is `SOURCE_REGISTRY`: a city holds no user-derived data.
+    """
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    # The FR-27 URL segment: "brooklyn", "brooklyn-ny", "brooklyn-ny-us" as collisions escalate.
+    slug = models.SlugField(max_length=120)
+    # As written by the first venue to name it; never re-cased (NYC, Sao Paulo keep their shape).
+    name = models.CharField(max_length=100)
+    country_code = models.CharField(max_length=2)
+    # `domain.cities.normalize_city`: case, whitespace, punctuation and accents folded.
+    normalized_key = models.CharField(max_length=100)
+    # The trailing qualifier when one was written ("ny", "or"); "" when none was.
+    region = models.CharField(max_length=16, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["slug"], name="city_slug_uq"),
+            models.UniqueConstraint(
+                fields=["normalized_key", "region", "country_code"],
+                name="city_identity_uq",
+            ),
+            models.CheckConstraint(condition=~Q(slug=""), name="city_slug_nonempty_ck"),
+            models.CheckConstraint(condition=~Q(name=""), name="city_name_nonempty_ck"),
+            models.CheckConstraint(condition=~Q(normalized_key=""), name="city_key_nonempty_ck"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name}{f', {self.region.upper()}' if self.region else ''}"
+
+
 class Venue(UUIDv7Model):
     """Venue registry: the FR-60 `partial` tier's timezone source and the identity venue key."""
 
     retention_category = RetentionCategory.SOURCE_REGISTRY
 
     name = models.CharField(max_length=200)
+    # The city **as written**. Never rewritten: `domain.dedup.venue_fingerprint` is computed
+    # from this string, so changing it would re-identify the venue and corrupt event dedup.
     city = models.CharField(max_length=100)
+    # The canonical city this resolves to (FR-27). Null when the venue named no city — the
+    # rule Event Fit already follows: no row, rather than a guess.
+    city_ref = models.ForeignKey(
+        City, on_delete=models.PROTECT, null=True, blank=True, related_name="venues"
+    )
     country_code = models.CharField(max_length=2)
     venue_fingerprint = models.CharField(max_length=128)
     # IANA name; unknown until editorial adds it. Without it a venue can't rescue a partial-tier
@@ -369,6 +425,11 @@ class EventFit(UUIDv7Model):
     # city gets no Event Fit row and doesn't appear in the preview, rather than being
     # guessed").
     city = models.CharField(max_length=100)
+    # The canonical city, copied from the venue as `city` already is. Null for a fit written
+    # before the backfill reached it; the city page reads by this, the preview still by `city`.
+    city_ref = models.ForeignKey(
+        City, on_delete=models.PROTECT, null=True, blank=True, related_name="event_fits"
+    )
     score = models.PositiveSmallIntegerField()
     tags = models.JSONField(default=list, encoder=DjangoJSONEncoder)
     # The Event version this fit was computed from. A mismatch means stale.
@@ -389,6 +450,8 @@ class EventFit(UUIDv7Model):
         indexes = [
             # The preview reads by city, ordered by score then start time.
             models.Index(fields=["city", "score"], name="event_fit_city_score_idx"),
+            # The FR-27 city page reads the same way, but by the canonical city.
+            models.Index(fields=["city_ref", "score"], name="event_fit_city_ref_score_idx"),
         ]
 
     def __str__(self) -> str:

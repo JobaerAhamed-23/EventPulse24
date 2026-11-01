@@ -14,6 +14,7 @@ names three specific facts:
 | `personalization_interest` | `personalization` |
 | `personalization_calendarconnection` | `personalization` |
 | `ingestion_eventfit` | `ingestion` |
+| `ingestion_city` | `ingestion` |
 
 A sentence — "`personalization` writes interests" — is a claim about one table. A table
 is a claim about all of them at once, and a new table that nobody has claimed fails
@@ -77,6 +78,10 @@ TABLE_OWNERS = {
     "ingestion_source": "ingestion",
     "ingestion_tosreview": "ingestion",
     "ingestion_venue": "ingestion",
+    # AD-16: `ingestion` owns the canonical City too (FR-27). It is written only by
+    # `services/cities.py` — `apps.catalog` reads the city page through a published service
+    # and holds no write path, the same division `apps/catalog/api.py` already states.
+    "ingestion_city": "ingestion",
     "ingestion_event": "ingestion",
     "ingestion_extractedrecord": "ingestion",
     "ingestion_eventstatechange": "ingestion",

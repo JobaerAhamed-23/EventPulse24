@@ -35,6 +35,7 @@ INGESTION_TABLES = {
     "ingestion_source",
     "ingestion_tosreview",
     "ingestion_venue",
+    "ingestion_city",
     "ingestion_event",
     "ingestion_extractedrecord",
     "ingestion_eventfit",

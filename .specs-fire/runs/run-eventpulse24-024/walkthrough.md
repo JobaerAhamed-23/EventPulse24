@@ -1,0 +1,88 @@
+---
+run: run-eventpulse24-024
+work_item: city-canonicalization
+intent: public-pages-and-seo
+generated: 2026-11-01
+---
+
+# Walkthrough: A city is one place
+
+## What this was for
+
+FR-27 wants a page per city. The database had no city — only a free-text string copied onto `Venue.city` and again onto `EventFit.city`, unnormalized and 100 characters wide. This work item introduces the **`City`** noun that those strings resolve to, so a city page can have a stable address and a name a human chose.
+
+## What changed, in plain terms
+
+A city now exists as a row. When a venue is registered, its free-text city is matched to that row — or a new one is created for it. Venues registered before today are caught up by a command you run once. Nothing a user sees changes yet; this is the foundation the next three work items read from.
+
+## The decision that changed mid-run
+
+The plan said to unify `Brooklyn` and `Brooklyn, NY` by dropping a trailing two-letter token. Writing the first test showed what else that rule does:
+
+```
+"Portland, OR"  →  ["portland", "or"]  →  drop  →  "portland"
+"Portland, ME"  →  ["portland", "me"]  →  drop  →  "portland"
+```
+
+Two cities 4,600 km apart, merged into one page — and `country_code` can't separate them, since both are `US`. The codebase had already written this hazard down, in `domain/dedup.venue_fingerprint`'s own docstring:
+
+> *"The country keeps Portland, Oregon apart from Portland, Maine."*
+
+That rule was removed before any of it was built. The region is now kept as its own field and carried into the slug. **The accepted cost:** `Brooklyn` and `Brooklyn, NY` remain two cities. FR-27's ">5 events" threshold is what keeps the thin one from being published, and an editorial merge — a human decision, not a guess — is the proper fix later.
+
+## The risk this was always about
+
+`Venue.city` is an input to `domain.dedup.venue_fingerprint`, and **that fingerprint is venue identity**. If normalization had leaked into it, venues would have re-identified silently and event dedup would have corrupted across the whole catalog — invisibly, and long after the change that caused it.
+
+Two things prevent it. The normalizer is a separate function that only *reads* `dedup`'s tokenizer, and `Venue.city` is never written. `TestFingerprintInvariance` snapshots every venue's fingerprint, runs the backfill, and asserts the set is byte-identical.
+
+## How to see it work
+
+```bash
+cd backend
+
+# The rules, with no database at all
+uv run pytest tests/domain/test_cities.py -q
+
+# The catalog side, including the fingerprint guard
+uv run pytest tests/ingestion/test_cities.py -q
+
+# Catch up the venues registered before Cities existed
+uv run python manage.py backfill_cities --dry-run    # count first
+uv run python manage.py backfill_cities              # then do it
+uv run python manage.py backfill_cities              # safe to repeat: reports 0
+```
+
+## Files
+
+**Created (7)**
+
+| File | What it is |
+|---|---|
+| `backend/domain/cities.py` | The rules: what folds into one city, what must not. Pure — no Django. |
+| `backend/apps/ingestion/services/cities.py` | `resolve_city` and the backfill. The database side. |
+| `backend/apps/ingestion/migrations/0005_city.py` | The table and the two nullable FKs |
+| `backend/config/management/commands/backfill_cities.py` | The one-time catch-up |
+| `backend/tests/domain/test_cities.py` | 39 tests |
+| `backend/tests/ingestion/test_cities.py` | 33 tests |
+
+**Modified (6)** — `apps/ingestion/models.py` (`City`; `city_ref` on `Venue` and `EventFit`), `services/venue_registry.py` (resolve on registration), `event_fit/writes.py` (carry the city onto the fit), and three architecture registries that required the new table to be declared and owned.
+
+## What was deliberately left alone
+
+- **`Venue.city` and `EventFit.city`** — untouched, byte for byte. They carry provenance and feed venue identity.
+- **`event_fit_city_score_idx` and `list_event_fit_for_city`** — untouched, so the live Pulse Preview on `/preview` cannot regress. Its tests pass unmodified.
+- **A pre-existing N+1** in the fit refresh (`_fit_published_events` has no `select_related("venue")`). Noted in the review report; not this item's scope, and this change does not worsen it.
+
+## Verification
+
+4844 tests pass (4836 before, 72 added, none removed or weakened). 100% coverage on both new modules. `ruff` clean across 487 files, 19 import contracts kept, `manage.py check` clean, no migration drift.
+
+Three defects were found by tests during the run and fixed: the Portland merge (critical), `normalize_city` not being a safe identity on its own, and slug escalation that let ingest order decide which Portland owned `/events-in-portland`.
+
+## What this unblocks
+
+`city-page-read-api` (next in dependency order) reads `EventFit` by `city_ref` through the new `(city_ref, score)` index, applies the >5 threshold, and pages — and `frontend-city-page` renders `/events-in-{slug}` from it.
+
+---
+*Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-024*
