@@ -567,6 +567,112 @@ intents:
           - home-back-to-digest
         run_id: run-eventpulse24-022
         completed_at: 2026-10-31T10:28:08.146Z
+  - id: delivery-and-reminders
+    title: Delivery, Reminders & Pulse Ping
+    status: in_progress
+    created: 2026-10-31
+    work_items:
+      - id: quiet-hours-domain
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: notification-preferences
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: scheduled-send-model
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: send-minting-and-rescheduling
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - quiet-hours-domain
+          - notification-preferences
+          - scheduled-send-model
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: delivery-sweep-and-send
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - scheduled-send-model
+          - send-minting-and-rescheduling
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: email-templates-and-unsubscribe
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - scheduled-send-model
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: pulse-ping-and-suppression
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - send-minting-and-rescheduling
+          - email-templates-and-unsubscribe
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: reminder-plan-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - send-minting-and-rescheduling
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: notification-preferences-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - notification-preferences
+          - send-minting-and-rescheduling
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: frontend-reminder-picker
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - reminder-plan-api
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: frontend-settings-reminders-and-quiet-hours
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - notification-preferences-api
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
+      - id: e2e-proof-and-contract-tests
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - delivery-sweep-and-send
+          - pulse-ping-and-suppression
+          - frontend-reminder-picker
+          - frontend-settings-reminders-and-quiet-hours
+        run_id: run-eventpulse24-023
+        completed_at: 2026-11-01T08:46:50.158Z
 runs:
   active: []
   completed:
@@ -860,3 +966,44 @@ runs:
           mode: confirm
       started: 2026-10-31T06:33:07.500Z
       completed: 2026-10-31T10:28:08.146Z
+    - id: run-eventpulse24-023
+      scope: wide
+      work_items:
+        - id: quiet-hours-domain
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: notification-preferences
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: scheduled-send-model
+          intent: delivery-and-reminders
+          mode: validate
+        - id: send-minting-and-rescheduling
+          intent: delivery-and-reminders
+          mode: validate
+        - id: delivery-sweep-and-send
+          intent: delivery-and-reminders
+          mode: validate
+        - id: email-templates-and-unsubscribe
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: pulse-ping-and-suppression
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: reminder-plan-api
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: notification-preferences-api
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: frontend-reminder-picker
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: frontend-settings-reminders-and-quiet-hours
+          intent: delivery-and-reminders
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: delivery-and-reminders
+          mode: confirm
+      started: 2026-10-31T12:47:59.669Z
+      completed: 2026-11-01T08:46:50.158Z

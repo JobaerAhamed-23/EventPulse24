@@ -86,6 +86,15 @@ TABLE_OWNERS = {
     # with no owner is a table nobody is responsible for, and the map is only
     # meaningful if it is complete.
     "delivery_reminderplan": "delivery",
+    # AD-16: `delivery` owns the notification preference too — the Quiet Hours window and the
+    # user's default Reminder Plan (FR-12, FR-20). It sits here rather than on
+    # `personalization`'s `DigestPreference` because `delivery` reads the window on the hot
+    # path of every `due_at` computation; the decision is recorded in the model's docstring
+    # and in the `delivery-and-reminders` brief.
+    "delivery_notificationpreference": "delivery",
+    # AD-16: `delivery` owns the schedule itself. AD-7 makes SCHEDULED_SEND rows "the sole
+    # source of truth for what is due", and the minting service is their single writer.
+    "delivery_scheduledsend": "delivery",
 }
 
 #: The apps that may write. `worker` and `config` are excluded deliberately: the worker

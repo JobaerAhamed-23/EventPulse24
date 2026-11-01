@@ -30,6 +30,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -40,6 +41,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
                 "worker.tasks.reconcile_outbox",
             ],
         ),
@@ -49,6 +51,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -59,6 +62,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
             ],
         ),
         (
@@ -67,6 +71,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
             ],
         ),
         # Minute 30 is a multiple of 15 and of 5, so both the refresh and the reconciler run.
@@ -76,6 +81,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -88,6 +94,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_sources",
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
+                "worker.tasks.sweep_due_sends",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -105,6 +112,10 @@ def test_tick_enqueues_scheduling_every_time_and_the_reconciler_every_5_minutes(
     would compose everyone at the same instant regardless of the hour they asked for.
     So the digest dispatcher appears in every row above, and the two cadences that
     nest (the reconciler's and the refresh's) are the ones that vary.
+
+    **The send sweep appears in every row too**, for the same kind of reason: a send's
+    `due_at` is a *point in time*, not a minute-of-day, so a minute-modulo rule would be
+    arbitrary. It runs on every beat; an empty batch is a no-op.
     """
     _at(monkeypatch, NOW.replace(minute=minute))
 

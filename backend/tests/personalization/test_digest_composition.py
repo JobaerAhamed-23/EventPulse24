@@ -785,6 +785,181 @@ def test_the_result_carries_the_composition_count():
     assert len(result.compositions) == 2
 
 
+# --- the pool counts, which answer FR-10's question -------------------------------------------
+
+
+def test_the_result_carries_the_public_pool_count():
+    """**The pool, not the cards.** A user with forty eligible events still gets three
+    cards, and FR-10's rule asks about the pool."""
+    user_id = make_preference(_user_id()).user_id
+    for hours in (2, 3, 4, 5):
+        make_event(hours=hours, title=f"Event {hours}")
+
+    result = compose(user_id)
+
+    assert result.public_qualifying_count == 4
+    assert len(result.compositions) == 3
+
+
+def test_the_result_carries_the_personal_pool_count():
+    user_id = make_preference(_user_id()).user_id
+    make_personal(user_id, hours=3)
+    make_personal(user_id, hours=5)
+
+    result = compose(user_id)
+
+    assert result.personal_qualifying_count == 2
+
+
+def test_the_personal_pool_count_is_zero_for_an_opted_out_user():
+    """**FR-19's opt-out reaches the count.** A user who asked not to see their personal
+    events must not be kept subscribed to a Ping *by* them."""
+    user_id = make_preference(_user_id(), include_personal_events=False).user_id
+    make_personal(user_id, hours=3)
+
+    result = compose(user_id)
+
+    assert result.personal_qualifying_count == 0
+
+
+def test_the_counts_ignore_events_beyond_the_forty_eight_hour_horizon():
+    """**The horizon is FR-10's "next 48 hours".** An event four days out is in the pool
+    but is not a reason to ping today."""
+    user_id = make_preference(_user_id()).user_id
+    make_event(hours=2, title="Soon")
+    make_event(hours=96, title="Later")
+
+    result = compose(user_id)
+
+    assert result.public_qualifying_count == 1
+
+
+def test_the_horizon_is_the_users_own_zone_and_not_utc():
+    """**The 48-hour window is drawn in the user's zone**, so the cutoff is not
+    `now + 48h` in UTC.
+
+    `NOW` is 16:00 UTC, which is 08:00 in Los Angeles. 48 wall-clock hours on is 08:00
+    on the 6th — and the naive UTC arithmetic would have said 16:00.
+    """
+    user_id = make_preference(_user_id()).user_id
+
+    result = compose(user_id)
+
+    assert result.horizon_utc == datetime(2026, 11, 6, 16, 0, tzinfo=UTC)
+
+
+def test_the_personal_pool_is_not_narrower_than_the_local_horizon_on_a_fall_back_day():
+    """**The pool and the count must agree about "the next 48 hours", even on a DST
+    day.** This is the negative control for the two windows drifting apart.
+
+    **On a fall-back day the local horizon is an hour *later* than the elapsed
+    arithmetic.** 2026-11-01 is 00:00 PDT; 48 wall-clock hours on is 00:00 on the 3rd
+    — `2026-11-03 08:00 UTC` — while `now + 48h` says `07:00 UTC`.
+
+    So a personal event at 07:30 UTC on the 3rd is **within 48 local hours of the
+    user**, but only 47.5 *elapsed* hours away. It has to be counted: a user with a
+    real event in the next 48 hours must not be suppressed for having it.
+
+    **This is where the pool would have dropped it.** The read's own bound was
+    `now + 48h` — elapsed arithmetic — so an event in this band was never read at all,
+    and the count had nothing to count. The read is now widened to cover the local
+    horizon, so the pool is a superset and this comparison is what narrows it.
+    """
+    # 00:00 PDT on the US fall-back day.
+    fall = datetime(2026, 11, 1, 7, 0, tzinfo=UTC)
+    # The local horizon is 08:00 UTC; the elapsed arithmetic would say 07:00 UTC.
+    horizon = datetime(2026, 11, 3, 8, 0, tzinfo=UTC)
+
+    user_id = make_preference(_user_id()).user_id
+    # 07:30 UTC on the 3rd: inside the local horizon, outside the elapsed window.
+    start = datetime(2026, 11, 3, 7, 30, tzinfo=UTC)
+    make_personal(user_id, start_utc=start, end_utc=start + timedelta(hours=2))
+
+    result = compose(user_id, now=fall)
+
+    assert result.horizon_utc == horizon
+    assert result.personal_qualifying_count == 1
+    assert result.has_qualifying_events
+
+
+def test_an_event_past_the_local_horizon_is_not_counted_on_a_spring_forward_day():
+    """**The other DST day, and the other direction.** On a spring-forward day the
+    local horizon is an hour *earlier* than the elapsed arithmetic — `07:00` UTC
+    rather than `08:00` — so it is the *binding* constraint, and an event between the
+    two is correctly **outside** the user's next 48 local hours.
+
+    The point of the test is that the **pool's** bound is not what excludes it. The
+    event is still read (the read is widened to cover the horizon), and the count
+    excludes it on the horizon's own terms. If the read were the thing excluding it,
+    the two windows would still be drifting apart — just in the other direction.
+    """
+    # 00:00 PST on the US spring-forward day.
+    spring = datetime(2026, 3, 8, 8, 0, tzinfo=UTC)
+    # The local horizon is 07:00 UTC; the elapsed arithmetic would say 08:00 UTC.
+    horizon = datetime(2026, 3, 10, 7, 0, tzinfo=UTC)
+
+    user_id = make_preference(_user_id()).user_id
+    # 07:30 UTC on the 10th: inside the elapsed window, outside the local horizon.
+    start = datetime(2026, 3, 10, 7, 30, tzinfo=UTC)
+    make_personal(user_id, start_utc=start, end_utc=start + timedelta(hours=2))
+
+    result = compose(user_id, now=spring)
+
+    assert result.horizon_utc == horizon
+    assert result.personal_qualifying_count == 0
+    assert not result.has_qualifying_events
+
+
+def test_the_counts_are_the_same_on_a_re_run():
+    """**A re-run reports the same counts.** The composition is idempotent, and a
+    second run that reported different counts would make the Ping decision depend on
+    whether the job had been retried."""
+    user_id = make_preference(_user_id()).user_id
+    make_event(hours=2, title="One")
+    make_event(hours=3, title="Two")
+
+    first = compose(user_id)
+    second = compose(user_id)
+
+    assert second.created is False
+    assert second.public_qualifying_count == first.public_qualifying_count
+    assert second.personal_qualifying_count == first.personal_qualifying_count
+
+
+def test_has_qualifying_events_is_the_and_of_the_two_counts():
+    """**One place, so the rule cannot be written twice.** FR-10's first consequence is
+    "0 qualifying public events AND 0 personal events → no Ping"; this is the `AND`."""
+    user_id = make_preference(_user_id()).user_id
+    make_event(hours=2, title="One")
+
+    result = compose(user_id)
+
+    assert result.has_qualifying_events is True
+
+
+def test_has_qualifying_events_is_false_when_both_counts_are_zero():
+    user_id = make_preference(_user_id()).user_id
+
+    result = compose(user_id)
+
+    assert result.public_qualifying_count == 0
+    assert result.personal_qualifying_count == 0
+    assert result.has_qualifying_events is False
+
+
+def test_a_personal_event_alone_makes_it_qualifying():
+    """**FR-10's second consequence, at the composition's end**: a personal event is a
+    qualifying event even with nothing public."""
+    user_id = make_preference(_user_id()).user_id
+    make_personal(user_id, hours=3)
+
+    result = compose(user_id)
+
+    assert result.public_qualifying_count == 0
+    assert result.personal_qualifying_count == 1
+    assert result.has_qualifying_events is True
+
+
 def _user_id():
     from shared.ids import uuid7
 

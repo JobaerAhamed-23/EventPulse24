@@ -42,6 +42,8 @@ REQUEST_MODULES = (
     "apps/catalog/api.py",
     "apps/catalog/preview_api.py",
     "apps/delivery/api.py",
+    "apps/delivery/email_api.py",
+    "apps/delivery/preferences_api.py",
     "apps/editorial/api.py",
     "apps/identity/api.py",
     "apps/ingestion/api.py",
