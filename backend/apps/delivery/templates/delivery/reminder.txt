@@ -1,0 +1,15 @@
+Reminder: {{ display_title }}
+{% if local_time_text %}
+When: {{ local_time_text }}
+{% endif %}
+{% if location %}
+Where: {{ location }}
+{% endif %}
+{% if slot %}
+Reminder slot: {{ slot }}
+{% endif %}
+
+This is a reminder you asked for. Change it in your reminder settings.
+{% if unsubscribe_url %}
+Stop reminders for this event: {{ unsubscribe_url }}
+{% endif %}

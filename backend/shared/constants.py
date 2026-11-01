@@ -120,6 +120,30 @@ DEFAULT_REMINDER_PLAN = (ReminderSlot.ONE_DAY, ReminderSlot.ONE_HOUR)
 # one so it can never be mistaken for a named tier (`5d`, `2d`, `1d`, `1hr`).
 CUSTOM_SLOT_PREFIX = "custom:"
 
+# **The custom slot's id IS its offset** — `custom:90` means "90 minutes before the event".
+#
+# The offset used to live nowhere: a custom slot was stored, listed, and **never minted**,
+# because there was no column and no encoding carrying the number. The choice was a new
+# column or an encoded id, and the encoded id wins for three reasons:
+#
+# - AD-7's send key already names the custom slot **by its id**, so the id is already a
+#   first-class part of the key. A slot whose id *is* its offset cannot disagree with
+#   itself; a second column would be a second place for the same fact.
+# - No migration. `REMINDER_PLAN.slots` is a JSON array of strings and stays one.
+# - The id is self-describing: a stored slot says what it means without a lookup.
+#
+# The bounds are the UX spec's, exactly: EXPERIENCE.md — *"Min: 15 minutes before; max:
+# 30 days before. Out-of-range snaps back."* The minimum keeps a reminder from landing at
+# the moment of the event itself; the maximum keeps it inside the window the named tiers
+# span, so a custom slot is a finer choice among them and not a way to schedule years
+# ahead.
+CUSTOM_SLOT_MIN_MINUTES = 15
+CUSTOM_SLOT_MAX_MINUTES = 43200  # 30 days
+
+# The custom slot's id format. One place, read by the validator (AD-8): the grammar is
+# `custom:<minutes>`, and the minutes are a plain integer — no sign, no decimal point.
+CUSTOM_SLOT_FORMAT = "custom:{minutes}"
+
 # FR-9: at most this many slots in one plan (the four named tiers, or the named tiers plus
 # one custom slot).
 REMINDER_PLAN_MAX_SLOTS = 4
@@ -140,6 +164,75 @@ DUPLICATE_START_WINDOW = timedelta(hours=24)
 
 # AD-7: joins send-key parts. ":" keeps each UUID a 36-char run, so keys survive log scrubbing.
 SEND_KEY_SEPARATOR = ":"
+
+# FR-12 / AD-7: the default Quiet Hours window, as **local wall clocks** paired with the user's
+# zone — never instants. The PRD glossary and EXPERIENCE.md both spell it "10pm–8am", and the
+# locked microcopy says "10pm–8am. Nothing during this window."
+#
+# AD-16: one literal. `domain.quiet_hours` computes the shift and `delivery` stores the user's
+# window; both read these, and neither declares its own.
+#
+# **It crosses midnight, and that is the normal case, not an edge case.** Every piece of code
+# that compares a time against this window must handle `start > end`, where "inside" is
+# `t >= start or t < end` rather than a range.
+DEFAULT_QUIET_HOURS_START = time(22, 0)
+DEFAULT_QUIET_HOURS_END = time(8, 0)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email unsubscribe and click tracking (FR-11, FR-10, AD-20, SM-2)
+#
+# Stdlib only, like the sections below.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# FR-11: "A reminder email contains 1-click unsubscribe for that event's reminders (does
+# not unsubscribe from Pulse Ping)."
+#
+# **Two scopes, not one.** A reminder's link stops *that event's* reminders; the digest's
+# link stops the Pulse Ping. They are different user decisions about different things, and
+# conflating them would mean a user who stops one event's reminders silently loses their
+# daily digest — or that stopping the Ping cannot stop the reminders.
+#
+# AD-16: one literal each. The token builder, the renderers and the unsubscribe command
+# all read these, so the scope strings cannot drift apart. The values are also what the
+# signed token's payload carries, so a change here is a change to what an already-sent
+# link means — which is exactly why they live in one place and are never spelled inline.
+UNSUBSCRIBE_SCOPE_EVENT_REMINDERS = "event_reminders"
+# The name is `PING`, not `PULSE_PING`: `ScheduledSend.Kind.PULSE_PING` is **reserved** and
+# nothing may mint it (the MVP's digest email *is* the Pulse Ping, so there is no separate
+# send kind for it). This constant names an *unsubscribe scope*, which is a different
+# vocabulary, and it is deliberately spelled differently so the two can never be confused —
+# and so a grep for the reserved kind does not land on this file.
+UNSUBSCRIBE_SCOPE_PING = "pulse_ping"
+
+# The scopes, as a closed set. A token carrying a scope outside it is refused rather than
+# applied, so a forged payload with an invented scope cannot reach the command layer.
+UNSUBSCRIBE_SCOPES = (UNSUBSCRIBE_SCOPE_EVENT_REMINDERS, UNSUBSCRIBE_SCOPE_PING)
+
+# AD-20 / RFC 8058: the salt Django's `Signer` uses to derive its signing key. A distinct
+# salt per purpose, so a click-tracker token and an unsubscribe token are different
+# signatures over different payloads and neither can be replayed as the other.
+#
+# **These are salts, not secrets.** A salt is a public label that says what a signature is
+# *for*; the secret is Django's `SECRET_KEY`, which is configuration and never appears in
+# the code. Nothing here is a credential, which is why the names say "salt" and not
+# "secret" — a name that read like a secret would be one somebody eventually pasted into
+# a public repository.
+UNSUBSCRIBE_SIGNING_SALT = "eventpulse24.email.unsubscribe"
+CLICK_SIGNING_SALT = "eventpulse24.email.click"
+
+# SM-2: the digest CTA's click is measured, and **open-pixel measurement is rejected as
+# unreliable** — a pixel is blocked by mail clients, and a blocked pixel is indistinguishable
+# from an unclicked link. So the CTA is a server-side redirect with a signed token.
+#
+# The redirect is its own path rather than a query on the frontend's route, because the
+# click has to be *recorded* server-side before the user is sent onward.
+CLICK_REDIRECT_PATH = "/api/email/click"
+
+# The path the RFC 8058 one-click endpoint lives at. RFC 8058 says the endpoint is a
+# **POST**, precisely because mail clients and link scanners follow `GET` links
+# automatically — a `GET` that unsubscribed would let a scanner unsubscribe every user
+# whose mail it touched.
+UNSUBSCRIBE_PATH = "/api/email/unsubscribe"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Accounts and auth (FR-4, AD-18, PRD §11.2)
@@ -698,3 +791,71 @@ PREVIEW_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidat
 # response to another. The preview sets no cookie and reads no session, so the response
 # is identical for everyone and the cache key is the URL.
 PREVIEW_VARY = "Accept-Encoding"
+
+# AD-7: how long a sweep's claim on a `SCHEDULED_SEND` row stays valid.
+#
+# The sweep claims with `FOR UPDATE SKIP LOCKED` but releases the lock before calling the
+# email provider, so an in-flight row is marked by `claimed_at` rather than held. A claim
+# older than this is a worker that died mid-send, and the row becomes claimable again.
+#
+# **Shorter than `DIGEST_CLAIM_TTL` (15 minutes) on purpose.** A digest has a 24-hour gap
+# before the next one is due, so a lost claim has all day to be recovered. A reminder has
+# the ±5-minute delivery budget of AD-7, so a dead worker's row has to come back quickly or
+# the reminder is late. Re-sending is safe: the send key is the provider's idempotency key.
+SEND_CLAIM_TTL = timedelta(minutes=5)
+
+# AD-7 scheduling: at most this many due sends are claimed per sweep run.
+#
+# **Its own number, not `SCHEDULE_BATCH` / `CALENDAR_SYNC_BATCH` / `DIGEST_DISPATCH_BATCH`
+# reused by name.** Those pace per-source ingestion, per-connection calendar fetches and
+# per-user digest compositions. This paces per-*send* deliveries — a different unit of work,
+# with a different cost (one provider call each, against one fetch or one scoring pass). Two
+# schedulers pacing different work must not share a number, or a change to one silently
+# changes the other.
+SEND_SWEEP_BATCH = 100
+
+# AD-7: how many times a provider failure is retried before the row is recorded as failed.
+#
+# **A bound, not a hope.** A permanently-refused address — a full mailbox, a bounced domain —
+# would otherwise be retried on every 60-second tick, forever. `ScheduledSend.Status.FAILED`
+# is the terminal answer: the row is *recorded*, never retried past the bound and never
+# silently dropped.
+#
+# Three attempts is two retries after the first. It is deliberately modest: the sweep runs
+# every 60 seconds, so three attempts are exhausted inside two minutes, and the user is not
+# left waiting on a retry ladder that takes hours to climb. The send key is the provider's
+# idempotency key (AD-7), so a retry cannot produce a second email.
+SEND_MAX_ATTEMPTS = 3
+
+
+class LifecycleSendBehaviour(StrEnum):
+    """What an event state change does to a user's scheduled sends (AD-17)."""
+
+    #: Cancel the stale pending rows and mint fresh ones against the new version.
+    REMINT = "remint"
+    #: Cancel the stale pending rows and mint nothing — the event is not happening.
+    CANCEL = "cancel"
+    #: Keep the sends; only re-stamp the working version. The event still happens.
+    KEEP = "keep"
+
+
+# AD-17's "what each change does" table, mapped for `delivery`. Keyed by
+# `apps.ingestion.models.EventStateChange.Kind` values — by value, because `shared` is below
+# `apps` in the layer order and cannot import the enum.
+#
+# **Every kind is mapped explicitly and there is no default.** A new kind added in `ingestion`
+# fails `test_every_lifecycle_kind_is_mapped` rather than silently falling through and doing
+# nothing to anyone's reminders — which is how a new lifecycle kind would otherwise ship
+# looking like it worked.
+#
+# `sold_out` is the one that reads wrong at a glance: a sold-out event **still happens**, and a
+# user who saved it still wants their reminder. AD-17 says "keep sends, queue a notice".
+LIFECYCLE_SEND_BEHAVIOUR = {
+    "time_moved": LifecycleSendBehaviour.REMINT,
+    "postponed": LifecycleSendBehaviour.REMINT,
+    "reinstated": LifecycleSendBehaviour.REMINT,
+    "cancelled": LifecycleSendBehaviour.CANCEL,
+    "superseded": LifecycleSendBehaviour.CANCEL,
+    "sold_out": LifecycleSendBehaviour.KEEP,
+    "detail_changed": LifecycleSendBehaviour.KEEP,
+}

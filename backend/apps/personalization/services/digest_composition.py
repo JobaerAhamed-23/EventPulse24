@@ -36,6 +36,14 @@ children is what tells them apart.
 is the backstop, but the command takes a per-user advisory lock and checks first, so a
 race serialises rather than surfacing as an `IntegrityError` to the caller.
 
+**It also reports the candidate pools, not just the cards.** FR-10's rule asks whether
+the user has anything worth sending a Pulse Ping about, and that question is about the
+**pool** — a user with forty eligible events still gets three cards. So the result
+carries `public_qualifying_count` and `personal_qualifying_count`, counted within the
+48-hour horizon in the user's own zone. They are counted over the pools this command
+already read, not re-queried: the composition knows what its own candidates are, and a
+second definition of "qualifying" is a second thing that can disagree with the first.
+
 **The catalog reads happen outside the transaction** (AD-3). No transaction may span
 both schemas, so the shape is: read the catalog, score, then open one transaction on
 `personal` and write the digest, its compositions and the audit row atomically.
@@ -67,6 +75,7 @@ from apps.personalization.services.digest_candidates import (
     list_saved_candidates,
 )
 from apps.personalization.services.digest_dates import local_date_for
+from domain.horizon import local_horizon
 from domain.ranking import (
     RankingInputs,
     apply_hysteresis,
@@ -79,7 +88,7 @@ from domain.ranking import (
     why_this_tags,
 )
 from shared.actor import Actor
-from shared.constants import DEFAULT_DIGEST_TIMEZONE
+from shared.constants import DEFAULT_DIGEST_TIMEZONE, RANKING_PERSONAL_EVENT_WINDOW
 from shared.db import PERSONAL
 
 #: The lock key namespace for the per-user advisory lock.
@@ -123,6 +132,21 @@ class DigestCompositionResult:
     `created` is the difference between "composed" and "returned what was already
     there". A re-run returns the existing digest with `created=False` and writes
     nothing.
+
+    **The two `qualifying_count` fields are the *pools*, not the cards.** They answer
+    FR-10's question — "does this user have anything worth sending a Ping about?" —
+    and the answer cannot be read off `compositions`, because a user with forty eligible
+    events still gets three cards. The slots pick three; the pool is what was eligible.
+
+    **They are counted within the 48-hour horizon, in the user's own zone.** The
+    horizon is `horizon_utc`, and the counts are the pools narrowed to it. A public event
+    three weeks out is in the pool but not in the count, because FR-10 asks about "the
+    next 48 hours".
+
+    **`personal_qualifying_count` is zero when the user opted out.** FR-19's opt-out
+    means personal events are not in the user's digest, so they cannot keep the user
+    subscribed to a Ping either — a user who asked not to see those events must not be
+    kept subscribed *by* them.
     """
 
     digest_id: UUID
@@ -132,6 +156,25 @@ class DigestCompositionResult:
     is_empty: bool
     compositions: tuple[DigestCompositionRow, ...]
     created: bool
+    #: The 48-hour horizon the counts below were taken against, in the user's own zone.
+    horizon_utc: datetime
+    #: How many public events were eligible within the horizon.
+    public_qualifying_count: int
+    #: How many personal events were eligible within the horizon — zero if the user
+    #: opted out of personal events.
+    personal_qualifying_count: int
+
+    @property
+    def has_qualifying_events(self) -> bool:
+        """Whether there is anything worth sending a Pulse Ping about (FR-10).
+
+        **One place, so the rule cannot be written twice.** FR-10's first consequence is
+        "0 qualifying public events AND 0 personal events → no Ping", and this is the
+        **negation of that AND** — a Ping is worth sending when *either* pool has
+        something in it. The ping command asks this question rather than re-deriving
+        it.
+        """
+        return self.public_qualifying_count > 0 or self.personal_qualifying_count > 0
 
 
 def _user_lock_key(user_id: UUID) -> int:
@@ -572,12 +615,58 @@ def compose_digest(
     local_date = local_date_for(now=now, zone_name=zone_name)
     user_chip_keys = _read_interest_keys(user_id)
 
+    # **The 48-hour horizon, in the user's own zone.** FR-10 asks about "events in the
+    # next 48 hours", and the acceptance criteria pin that window to the user's zone
+    # rather than UTC — so the horizon is a local wall clock advanced by the window, not
+    # an instant advanced by a `timedelta`. `domain.horizon.local_horizon` owns that
+    # arithmetic; this module only supplies the zone and the one constant.
+    #
+    # **This is the *suppression* horizon, not the Slot 1 horizon.**
+    # `list_personal_candidates` applies FR-5's own 48-hour window to decide Slot 1
+    # eligibility, and that window is deliberately left alone: changing it would change
+    # which cards a digest holds for every user, which is a different decision from
+    # whether to send a Ping at all.
+    #
+    # **It is computed before the reads**, because the personal read is widened to cover
+    # it — see below.
+    horizon = local_horizon(
+        now=now,
+        zone_name=zone_name,
+        window=RANKING_PERSONAL_EVENT_WINDOW,
+    )
+
     # --- the reads, outside the transaction (AD-3) --------------------------------
-    personal_candidates = list_personal_candidates(user_id=user_id, now=now)
+    # **The personal read is widened to the local horizon.** The read's own bound is
+    # *elapsed* arithmetic (`now + 48h`), so on a spring-forward day it stops an hour
+    # **after** the wall-clock horizon, and on a fall-back day an hour before it. A
+    # personal event in that one-hour band would be in the pool on one day and missing
+    # on the other — and a user with a real event in the next 48 hours would be
+    # suppressed for having it.
+    #
+    # Widening (rather than narrowing) is what keeps the two decisions separate: the
+    # pool becomes a superset, and the counts below narrow it by comparing against the
+    # horizon. Which *cards* a digest holds is still decided by the Slot 1 window.
+    personal_candidates = list_personal_candidates(user_id=user_id, now=now, window_end=horizon)
     saved_candidates = list_saved_candidates(user_id=user_id, now=now)
     public_candidates = list_public_candidates(now=now, city=user_city or None)
 
     saved_event_ids = {saved.event_id for saved in saved_candidates}
+
+    # **The counts are the pools narrowed to the horizon.** The pools are already in
+    # hand — this is a count over what was read, not a second query — and the
+    # composition's own gates (confidence, staleness, publication, city) have already
+    # been applied by the reads themselves.
+    public_qualifying_count = sum(
+        1 for candidate in public_candidates if candidate.start_time_utc <= horizon
+    )
+    # **An opted-out user's personal events are not qualifying events.** FR-19's opt-out
+    # means those events are not in the user's digest, so they cannot be the reason the
+    # user keeps receiving a Ping.
+    personal_qualifying_count = (
+        sum(1 for candidate in personal_candidates if candidate.start_utc <= horizon)
+        if include_personal_events
+        else 0
+    )
 
     scored = _assign_slots(
         personal_candidates=personal_candidates,
@@ -603,6 +692,9 @@ def compose_digest(
                 is_empty=existing.is_empty,
                 compositions=tuple(_rows_for(existing)),
                 created=False,
+                horizon_utc=horizon,
+                public_qualifying_count=public_qualifying_count,
+                personal_qualifying_count=personal_qualifying_count,
             )
 
         is_empty = not scored
@@ -666,6 +758,9 @@ def compose_digest(
             for slot, item in zip(DIGEST_SLOT_ORDER, scored, strict=False)
         ),
         created=True,
+        horizon_utc=horizon,
+        public_qualifying_count=public_qualifying_count,
+        personal_qualifying_count=personal_qualifying_count,
     )
 
 

@@ -1,0 +1,16 @@
+Your Pulse for {{ local_date|date:"j F Y" }}
+{% if city %}
+{{ city }}
+{% endif %}
+{% if cards %}
+{% for card in cards %}
+- {{ card.title|default:"an event you saved" }}{% if card.local_time_text %} — {{ card.local_time_text }}{% endif %}
+  Fit: {{ card.bucket }} of 5{% if card.tags %} · {{ card.tags|join:", " }}{% endif %}{% if card.location %} · {{ card.location }}{% endif %}
+
+{% endfor %}
+{% else %}
+Nothing on the Pulse{% if city %} in {{ city }}{% endif %} today.
+{% endif %}
+Open the digest: {{ cta_url }}
+
+Stop the Pulse Ping: {{ unsubscribe_url }}

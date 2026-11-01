@@ -33,6 +33,8 @@ Design: .specs-fire/intents/pulse-digest-and-trust/work-items/
 digest-user-preferences-design.md (decisions D1-D14).
 """
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, time
 from hashlib import blake2b
 from uuid import UUID
@@ -401,3 +403,54 @@ __all__ = [
     "set_include_personal_events",
     "store_fallback_city",
 ]
+
+
+@dataclass(frozen=True)
+class DeliverySettings:
+    """When and where a user's digest is due — the half `delivery` needs (AD-7).
+
+    Plain data, never a model instance: `personalization` owns `DIGEST_PREFERENCE` (AD-16) and
+    a caller holding the model could write it.
+
+    **The zone is the reason this read exists.** `delivery` computes every `due_at` through
+    `domain.quiet_hours`, which needs the user's IANA zone — and the zone lives here, on
+    `DIGEST_PREFERENCE`, deliberately kept in one place so it cannot drift from a second copy
+    (see `NotificationPreference`'s docstring). This is the published interface `delivery`
+    reads it through, once per command rather than once per row.
+    """
+
+    user_id: UUID
+    delivery_time: time
+    timezone: str
+
+
+def get_delivery_settings(*, user_id: UUID) -> DeliverySettings | None:
+    """This user's digest delivery time and zone, or None if they have no preference row.
+
+    None is a real state — an account that predates the preference, or one that has not
+    finished onboarding. The caller decides what to do with it; `delivery` falls back to the
+    constants rather than guessing a zone, because a guessed zone sends a reminder at the
+    wrong hour and looks like a bug in the reminder rather than in the guess.
+    """
+    row = _read_preference(user_id)
+    if row is None:
+        return None
+    return DeliverySettings(
+        user_id=row.user_id, delivery_time=row.delivery_time, timezone=row.timezone
+    )
+
+
+def get_delivery_settings_for(*, user_ids: Sequence[UUID]) -> dict[UUID, DeliverySettings]:
+    """The same, for many users in **one** query.
+
+    The batched form exists so a command that touches many users' sends reads zones once
+    rather than once per user — the same move `catalog_read.get_public_events` makes for
+    titles. A user with no preference row is simply absent from the map.
+    """
+    rows = DigestPreference.objects.using(PERSONAL).filter(user_id__in=list(user_ids))
+    return {
+        row.user_id: DeliverySettings(
+            user_id=row.user_id, delivery_time=row.delivery_time, timezone=row.timezone
+        )
+        for row in rows
+    }

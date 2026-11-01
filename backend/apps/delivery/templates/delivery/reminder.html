@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reminder</title>
+  </head>
+  <body style="margin:0;padding:24px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f6f5f3;color:#1c1a17;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;">
+      <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;font-weight:600;">Reminder: {{ display_title }}</h1>
+
+      {% if local_time_text %}
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.5;">When: {{ local_time_text }}</p>
+      {% endif %}
+      {% if location %}
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.5;">Where: {{ location }}</p>
+      {% endif %}
+      {% if slot %}
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#6b6560;">Reminder slot: {{ slot }}</p>
+      {% endif %}
+
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">This is a reminder you asked for. Change it in your reminder settings.</p>
+
+      {% if unsubscribe_url %}
+      <p style="margin:0;font-size:14px;line-height:1.5;">
+        <a href="{{ unsubscribe_url }}" style="color:#6b6560;">Stop reminders for this event</a>
+      </p>
+      {% endif %}
+    </div>
+  </body>
+</html>

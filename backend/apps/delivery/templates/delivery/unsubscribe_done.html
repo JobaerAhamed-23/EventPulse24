@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Turned off</title>
+  </head>
+  <body style="margin:0;padding:24px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f6f5f3;color:#1c1a17;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;">
+      <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;font-weight:600;">{{ headline }}</h1>
+
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.5;">{{ detail }}</p>
+      {% if is_event_scope %}
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.5;">Your daily Pulse digest will keep arriving.</p>
+      {% else %}
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.5;">Your event reminders will keep arriving.</p>
+      {% endif %}
+
+      <p style="margin:0;font-size:15px;line-height:1.5;"><a href="{{ resubscribe_url }}" style="color:#1c1a17;">Turn it back on in your settings</a></p>
+    </div>
+  </body>
+</html>

@@ -44,6 +44,23 @@ class InvalidIntervalError(ValidationError):
     default_message = "That time range doesn't make sense."
 
 
+class InvalidQuietHoursWindowError(ValidationError):
+    """A Quiet Hours window whose start equals its end (FR-12).
+
+    With a pair of local wall clocks that is the only way to express "the whole day", and
+    there is no reading of it worth storing: "defer every send forever" is the worst
+    possible behaviour for a product whose promise is one notification a day.
+
+    **`domain.quiet_hours` treats `start == end` as disabled and returns the instant
+    unchanged** — it never raises, because a pure shift must stay total. The refusal lives
+    in the command layer instead, which rejects the window on write so that "no quiet
+    hours" has exactly one spelling: a null pair. This error is what it raises.
+    """
+
+    code = "invalid_quiet_hours_window"
+    default_message = "A quiet window needs a start and an end that differ."
+
+
 class PermissionDeniedError(DomainError):
     """For personal data the caller doesn't own, raise NotFoundError instead (no existence leak)."""
 
