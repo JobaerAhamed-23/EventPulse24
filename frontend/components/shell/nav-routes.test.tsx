@@ -110,11 +110,51 @@ describe("the sidenav", () => {
   it("leaves the routes that do not exist inert", () => {
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
-    for (const label of ["Browse", "Settings"]) {
+    // **Browse is the only route left that does not exist.** Settings has one now —
+    // the Default Reminder Plan and the Quiet Hours window.
+    for (const label of ["Browse"]) {
       const item = sidenavItem(label);
       expect(item?.querySelector("a"), label).toBeNull();
       expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
     }
+  });
+
+  it("makes Settings a real route, because the settings screens exist", () => {
+    render(<Sidenav name="Maya" email="maya@example.test" />);
+
+    const item = sidenavItem("Settings");
+    const link = item?.querySelector("a");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("href")).toBe("/settings/reminders");
+    expect(item?.querySelector("[aria-disabled='true']")).toBeNull();
+  });
+
+  it("marks Settings active on both settings routes", () => {
+    // **The prefix rule, like Digest's.** The user has not left Settings on
+    // `/settings/quiet-hours`, and a rail that marks nothing active on half of
+    // Settings reads as "you have left Settings".
+    for (const path of ["/settings/reminders", "/settings/quiet-hours"]) {
+      pathname.mockReturnValue(path);
+
+      render(<Sidenav name="Maya" email="maya@example.test" />);
+
+      const link = [...sidenavRail().querySelectorAll("a")].find(
+        (anchor) => anchor.getAttribute("href") === "/settings/reminders",
+      );
+      expect(link?.getAttribute("aria-current"), path).toBe("page");
+      cleanup();
+    }
+  });
+
+  it("does not mark Settings active on another page", () => {
+    pathname.mockReturnValue("/");
+
+    render(<Sidenav name="Maya" email="maya@example.test" />);
+
+    const link = [...sidenavRail().querySelectorAll("a")].find(
+      (anchor) => anchor.getAttribute("href") === "/settings/reminders",
+    );
+    expect(link?.getAttribute("aria-current")).toBeNull();
   });
 });
 
@@ -154,10 +194,31 @@ describe("the bottom tab", () => {
   it("keeps the routes that do not exist inert", () => {
     render(<BottomTabNav name="Maya" email="maya@example.test" />);
 
-    for (const label of ["Settings"]) {
-      expect(screen.queryByRole("link", { name: label }), label).toBeNull();
-      const slot = bottomBar().querySelector(`[aria-disabled="true"]`);
-      expect(slot, label).not.toBeNull();
+    // **The mobile rail gets the same treatment as the desktop one.** A route that
+    // only exists on desktop is not a route, and the onboarding copy — *"You can
+    // change these later in Settings"* — has to be true on a phone too.
+    //
+    // **Browse is still inert**, and it is the bar's one `aria-disabled` slot — so the
+    // assertion is about *Settings* not being one, not about the bar having none.
+    const link = screen.getByRole("link", { name: "Settings" });
+    expect(link).toHaveAttribute("href", "/settings/reminders");
+
+    const settingsSlot = [...bottomBar().querySelectorAll("a, [aria-disabled]")].find(
+      (slot) => slot.textContent?.trim() === "Settings",
+    );
+    expect(settingsSlot?.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("marks Settings as the current route on both settings routes", () => {
+    for (const path of ["/settings/reminders", "/settings/quiet-hours"]) {
+      pathname.mockReturnValue(path);
+
+      render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+      expect(screen.getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBe(
+        "page",
+      );
+      cleanup();
     }
   });
 

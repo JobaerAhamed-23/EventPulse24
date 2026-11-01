@@ -32,7 +32,7 @@ const FILES = [
   "components/detail/detail-breakdown.tsx",
   "components/detail/detail-header.tsx",
   "components/detail/detail-neighbors.tsx",
-  "components/detail/detail-reminder.tsx",
+  "components/detail/detail-reminder-link.tsx",
   "components/detail/detail-states.tsx",
   "components/detail/trigger-tip.tsx",
   "lib/conflict-open.ts",
@@ -237,19 +237,27 @@ describe("the sections that do not ship", () => {
   });
 });
 
-describe("the reminder picker", () => {
-  it("contains no button", () => {
-    // A button that does nothing is a broken control, and a screen reader announcing
-    // "5 days before, button" for something unpressable is worse than silence.
-    const source = code.get("components/detail/detail-reminder.tsx") ?? "";
+describe("the reminder section on the Detail Screen", () => {
+  it("is a link to the picker, and contains no control of its own", () => {
+    // **The section is a link now.** It used to render the plan's chips as `<span>`s,
+    // because "nothing schedules sends" — the delivery intent had not built the
+    // scheduler. That reason is gone: the plan is written through
+    // `PUT /api/reminders/…`, and the Reminder Picker is where it is edited.
+    //
+    // **So the section links out and holds no control.** A `<span>` that looks like a
+    // control and is not one is worse than a link that plainly is — and a button here
+    // would be a second, redundant route into the picker.
+    const source = code.get("components/detail/detail-reminder-link.tsx") ?? "";
+    expect(source).toContain("/reminders");
     expect(source).not.toContain("<button");
     expect(source).not.toContain("onClick");
   });
 
-  it("carries no terracotta on a chip", () => {
+  it("carries no terracotta on the section", () => {
     // `EXPERIENCE.md` §4 `Input.ReminderSlot`: selection is communicated by ink
-    // inversion, not by accent.
-    const source = code.get("components/detail/detail-reminder.tsx") ?? "";
+    // inversion, not by accent. The section carries no selection at all, so it carries
+    // no accent either.
+    const source = code.get("components/detail/detail-reminder-link.tsx") ?? "";
     expect(source).not.toContain("terracotta");
   });
 });

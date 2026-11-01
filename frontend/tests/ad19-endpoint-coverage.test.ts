@@ -119,6 +119,45 @@ const NEW_ENDPOINTS = [
     operationId: "apps_personalization_api_save_public_event",
     caller: ["components/detail/detail-actions.tsx"],
   },
+  // ── The Reminder Plan ─────────────────────────────────────────────────────────
+  {
+    path: "/api/reminders/{target_kind}/{target_id}",
+    method: "get",
+    operationId: "apps_delivery_api_get_plan",
+    // **The plan's read.** It is on the server, in the read module — the route's page
+    // calls it and renders the chips from what it returns.
+    caller: ["lib/reminder-plan-read.ts"],
+  },
+  {
+    path: "/api/reminders/{target_kind}/{target_id}",
+    method: "put",
+    operationId: "apps_delivery_api_put_plan",
+    // **The plan's write.** It is in the picker island, because the save is the one
+    // thing the island does that the server cannot do for it.
+    caller: ["components/reminders/reminder-picker.tsx"],
+  },
+  {
+    path: "/api/settings/notifications",
+    method: "get",
+    operationId: "apps_delivery_preferences_api_get_notification_settings",
+    // **The default plan's read** — what "Reset to default" restores.
+    caller: ["lib/reminder-plan-read.ts"],
+  },
+  {
+    path: "/api/settings/notifications",
+    method: "put",
+    operationId: "apps_delivery_preferences_api_put_notification_settings",
+    // **The settings writes.** Three islands, three narrow patches of the same endpoint:
+    // the default plan, the quiet window and the digest's delivery time. Each sends
+    // only the field it owns — the patch's `quiet_hours` field is the one where `null`
+    // is a value, so a payload that re-sent the window on every chip change could turn
+    // quiet hours off by accident.
+    caller: [
+      "components/settings/default-reminder-slots.tsx",
+      "components/settings/quiet-hours-window.tsx",
+      "components/settings/digest-delivery-time.tsx",
+    ],
+  },
 ] as const;
 
 /**
@@ -293,7 +332,14 @@ describe("AD-19: the new endpoints are in the generated schema", () => {
 
         // And the call goes through `api`, the generated client — not through a raw
         // `fetch`, which would bypass the generated types entirely.
-        expect(caller, `${callerPath} must call the generated client`).toMatch(/api\.(GET|POST)\(/);
+        //
+        // **The method set is every verb the client exposes.** `PUT` and `PATCH` and
+        // `DELETE` are the same door as `GET` and `POST` — a call site that reached an
+        // endpoint through `api.PUT` is exactly as bound to the generated types as one
+        // that reached it through `api.GET`, and the Reminder Plan's save is a `PUT`.
+        expect(caller, `${callerPath} must call the generated client`).toMatch(
+          /api\.(GET|POST|PUT|PATCH|DELETE)\(/,
+        );
         expect(caller, `${callerPath} must not call fetch`).not.toMatch(/\bfetch\(/);
       }
     });

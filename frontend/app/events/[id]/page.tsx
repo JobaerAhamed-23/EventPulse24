@@ -4,7 +4,7 @@ import { DetailActions } from "@/components/detail/detail-actions";
 import { DetailBreakdown, DetailTags } from "@/components/detail/detail-breakdown";
 import { DetailHeader } from "@/components/detail/detail-header";
 import { DetailNeighbors } from "@/components/detail/detail-neighbors";
-import { DetailReminder } from "@/components/detail/detail-reminder";
+import { DetailReminderLink } from "@/components/detail/detail-reminder-link";
 import { DetailError, DetailRemoved, DetailSkeleton } from "@/components/detail/detail-states";
 import { BrandTopbar } from "@/components/brand-topbar";
 import { PreAuthFooter } from "@/components/pre-auth/pre-auth-footer";
@@ -131,9 +131,20 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
           */}
           {personal ? (
             <>
-              {/* The picker is display-only: nothing schedules sends yet. */}
+              {/*
+                **The reminder plan is a link now, not a display.**
+
+                The section used to render the plan's chips as `<span>`s, because
+                *"nothing schedules sends"* — the delivery intent had not built the
+                scheduler. **That is no longer true**: the plan is written through
+                `PUT /api/reminders/…`, and the Reminder Picker is where it is edited.
+
+                So the section became a link to the picker, and the display-only
+                component was deleted. A `<span>` that looks like a control and is not
+                one is worse than a link that plainly is.
+              */}
               <div className="mt-8">
-                <DetailReminder />
+                <DetailReminderLink eventId={event.id} />
               </div>
 
               <div className="mt-8">
