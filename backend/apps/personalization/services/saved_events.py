@@ -307,6 +307,29 @@ def update_saved_event_snapshot(
         return True
 
 
+def get_saved_event(*, user_id: UUID, event_id: UUID) -> SavedEventSnapshot:
+    """One of the user's own saves, or `SavedEventNotFoundError`.
+
+    **Keyed by the catalog event's id**, not by the save row's own id — the tree's
+    convention for a saved event's target (see `delivery_messages._public_event_facts`,
+    which reads the target through `get_public_event`, and `send_keys.event_reminder_key`,
+    which puts the catalog event id in the key). A plan for a saved event is addressed by
+    that id, so the read that resolves the target is addressed by it too.
+
+    **A save belonging to another user reads as not found, not as forbidden.** A 403 would
+    confirm that the record exists, so the endpoint could be used to probe for other
+    users' saved event ids. A 404 says nothing about what exists.
+
+    This is also what makes *"a saved event the user has since un-saved"* a 404: the save
+    is the target, and without a published read for one save there is no way to tell
+    "never saved" from "un-saved".
+    """
+    saved = SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
+    if saved is None:
+        raise SavedEventNotFoundError(details={"event_id": str(event_id)})
+    return _snapshot(saved)
+
+
 def list_saved_events(
     *,
     user_id: UUID,
@@ -362,6 +385,7 @@ __all__ = [
     "SaveResult",
     "SavedEventNotFoundError",
     "SavedEventSnapshot",
+    "get_saved_event",
     "list_saved_events",
     "save_event",
     "unsave_event",

@@ -87,6 +87,22 @@ VIOLATIONS = {
         {"apps/catalog/_planted.py": "import apps.ingestion.models\n"},
         {"models-ingestion"},
     ),
+    # AD-2's `delivery` half, and the one this intent's eleven items are most likely to
+    # break. `delivery` owns `ScheduledSend` and `ReminderPlan`, and every other app
+    # reaches them through `delivery`'s **services** — so another app importing
+    # `apps.delivery.models` directly is reaching past the service boundary.
+    #
+    # **The contract protects the module, so the violation is an import *of* it.** The
+    # planted file is in `apps.ingestion`, importing `apps.delivery.models` — which is
+    # what breaks `models-delivery` and **nothing else**. `delivery` importing
+    # `apps.ingestion.models` would break `models-ingestion` instead, because that
+    # contract protects *ingestion's* models; the two contracts are mirror images, and
+    # the test asserts the **exact** broken set, so a second break would fail the
+    # assertion rather than hide inside it.
+    "another app imports delivery's models": (
+        {"apps/ingestion/_planted.py": "import apps.delivery.models\n"},
+        {"models-delivery"},
+    ),
     "adapter imports another adapter": (
         {"adapters/email/_planted.py": "import adapters.llm\n"},
         {"adapters-independent"},

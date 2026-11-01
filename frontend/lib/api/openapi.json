@@ -1065,6 +1065,48 @@
         "title": "DigestPreferenceOut",
         "type": "object"
       },
+      "DigestScheduleIn": {
+        "description": "The digest delivery time and the zone it is a clock in.\n\n**Both or neither.** A wall clock without its zone is not a schedule, so the two cannot\nbe changed apart and cannot be half-applied.",
+        "properties": {
+          "delivery_time": {
+            "description": "When the daily digest is due, as a local wall clock.",
+            "format": "time",
+            "title": "Delivery Time",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The IANA zone the delivery time is a clock in.",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_time",
+          "timezone"
+        ],
+        "title": "DigestScheduleIn",
+        "type": "object"
+      },
+      "DigestScheduleOut": {
+        "description": "When and where the daily digest is due.\n\n`delivery_time` is a **local wall clock** — \"09:00\" means nine in the morning where the\nuser is — and `timezone` is the IANA zone it is a clock in. They are one object because\nthey are one fact: a clock without its zone is not a schedule.",
+        "properties": {
+          "delivery_time": {
+            "format": "time",
+            "title": "Delivery Time",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_time",
+          "timezone"
+        ],
+        "title": "DigestScheduleOut",
+        "type": "object"
+      },
       "ErrorOut": {
         "description": "`{code, message, details?}`. Validation errors use `details = {\"errors\": [ErrorItem]}`.",
         "properties": {
@@ -1541,6 +1583,82 @@
           "chip_keys"
         ],
         "title": "InterestsOut",
+        "type": "object"
+      },
+      "NotificationSettingsIn": {
+        "description": "The settings to save — **only the ones mentioned**.\n\n**Every field is optional, and an omitted field means \"leave it alone\".** This is a\npatch, not a replacement: a client that changes the quiet hours must not clear the\ndefault plan, and a client that only moves the delivery time must not reset the\nwindow.\n\n**`quiet_hours` is the one field where `null` is a value.** An omitted\n`quiet_hours` leaves the window alone; a `null` one turns quiet hours **off**. The\ntwo are told apart by the field's *presence in the request*, not by a sentinel, and\nthe distinction survives because the server reads which fields the client actually\nsent.\n\n**The default slots are validated by the same validator the per-event plan uses** — the\nsame 0-to-4 rule, the same named tiers, the same custom-slot grammar, the same errors.\nAn empty list is valid and means \"new plans start with no reminders\".",
+        "properties": {
+          "default_reminder_slots": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reminder slots a newly attached plan starts with: 0 to 4 of `5d`, `2d`, `1d`, `1hr`, plus at most one custom slot (`custom:<minutes>`, 15 minutes to 30 days before the event). **Omit this field to leave the default alone**; an empty list means 'no reminders by default'. Changing it does not alter plans that already exist.",
+            "title": "Default Reminder Slots"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DigestScheduleIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When and where the daily digest is due. **Omit this field to leave it alone.** The delivery time is a local wall clock and the timezone is the IANA zone it is a clock in; both are required together."
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHoursIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Quiet Hours window, as two local wall clocks. **Omit this field to leave the window alone; send `null` to turn quiet hours off.** A full-day window (the same clock twice) is refused."
+          }
+        },
+        "title": "NotificationSettingsIn",
+        "type": "object"
+      },
+      "NotificationSettingsOut": {
+        "description": "One user's notification settings — all four facts, in one response.\n\n**One call, one response.** The window and the default slots live on `delivery`'s\n`NotificationPreference`; the delivery time and the zone live on `personalization`'s\n`DigestPreference`. The split is real and the client should never see it.",
+        "properties": {
+          "default_reminder_slots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Default Reminder Slots",
+            "type": "array"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/DigestScheduleOut"
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHoursOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "quiet_hours",
+          "default_reminder_slots",
+          "digest"
+        ],
+        "title": "NotificationSettingsOut",
         "type": "object"
       },
       "OnboardingStateOut": {
@@ -2090,6 +2208,148 @@
           "items"
         ],
         "title": "PreviewOut",
+        "type": "object"
+      },
+      "QuietHoursIn": {
+        "description": "A Quiet Hours window to save — two local wall clocks.\n\n**A full-day window is refused.** `start == end` means \"quiet all day\", which is not a\nwindow but the absence of one, and it is the same statement spelled differently from\n\"no quiet hours\" — so it is refused rather than stored, and \"off\" has exactly one\nspelling on the wire (`null`).",
+        "properties": {
+          "end": {
+            "description": "When quiet hours end, as a local wall clock.",
+            "format": "time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "When quiet hours begin, as a local wall clock.",
+            "format": "time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "QuietHoursIn",
+        "type": "object"
+      },
+      "QuietHoursOut": {
+        "description": "The Quiet Hours window — two local wall clocks.\n\n`start` and `end` are **wall clocks in the user's own zone**, not instants. A window\nthat crosses midnight is the normal case, not a special one: `22:00` to `08:00` means\nthe night, and the server does the arithmetic.\n\nThe window is `null` on the wire when the user has turned quiet hours **off** — and\nonly then. \"Never configured\" is not a state the window can hold, because reading the\npreference creates it with the defaults.",
+        "properties": {
+          "end": {
+            "format": "time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "QuietHoursOut",
+        "type": "object"
+      },
+      "ReminderPlanIn": {
+        "description": "The plan to save.\n\n**0 to 4 slots**, and at most one custom slot. **Zero is a valid save** — FR-9: *\"0\nslots = no reminders (still in feed)\"* — and it is not a delete: the plan row\nsurvives, so \"the user chose no reminders\" stays distinguishable from \"the user never\nconfigured a plan\".\n\n**A custom slot's id carries its offset**: `custom:90` is 90 minutes before the\nevent. The bound is the product's — **15 minutes to 30 days** before the event, from\nEXPERIENCE.md — and an out-of-range offset is refused rather than snapped here; the\nclient snaps it back, and the server refuses it either way.",
+        "properties": {
+          "slots": {
+            "description": "The reminder slots to save: 0 to 4 of `5d`, `2d`, `1d`, `1hr`, plus at most one custom slot. A custom slot is `custom:<minutes>`, where `<minutes>` is an integer from 15 (fifteen minutes before the event) to 43200 (thirty days before the event). An empty list is valid and means 'no reminders'.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "title": "ReminderPlanIn",
+        "type": "object"
+      },
+      "ReminderPlanOut": {
+        "description": "One event's Reminder Plan, with each slot's computed delivery time.\n\n`slots` is the stored list in the stored order, and `deliveries` carries one entry\nper slot in the same order — the picker renders them together, so the two lists\ncannot disagree.",
+        "properties": {
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/ReminderSlotDeliveryOut"
+            },
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "slots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_kind": {
+            "enum": [
+              "personal_event",
+              "saved_event"
+            ],
+            "title": "Target Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_kind",
+          "target_id",
+          "slots",
+          "deliveries"
+        ],
+        "title": "ReminderPlanOut",
+        "type": "object"
+      },
+      "ReminderSlotDeliveryOut": {
+        "description": "One slot, and when its reminder will actually go out.\n\n`delivery_at` is the **post-Quiet-Hours** instant: the true send time, the same one\nstored in the send's `due_at`. A slot whose moment has already passed still carries\nits instant — the picker shows what the plan says, and the client decides whether a\npast instant is worth rendering differently.\n\n`deferred` says whether Quiet Hours moved it. `deferred_to` is the **window's end**\nwhen it did, and `None` when it did not — the tooltip reads *\"Will deliver at {end of\nquiet hours}\"*, so the client needs that instant and nothing else.\n\n`delivery_at` is `None` only for a slot with no computable offset, which the plan's\nown validator refuses on write; it is defensive, not expected.",
+        "properties": {
+          "deferred": {
+            "title": "Deferred",
+            "type": "boolean"
+          },
+          "deferred_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferred To"
+          },
+          "delivery_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery At"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "deferred"
+        ],
+        "title": "ReminderSlotDeliveryOut",
         "type": "object"
       },
       "SavedEventListOut": {
@@ -3030,6 +3290,85 @@
         "summary": "Get one public event",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/email/click": {
+      "get": {
+        "description": "Redirects to the link's destination. **A redirect, not an open pixel**: SM-2 measures the digest CTA click and rejects open-pixel measurement as unreliable. The click passes through our server, so it is trackable. The destination is inside the signed token, and it must be one of ours, so the link cannot be edited into an open redirect.",
+        "operationId": "apps_delivery_email_api_click",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          }
+        },
+        "summary": "Follow a tracked link",
+        "tags": [
+          "email"
+        ]
+      }
+    },
+    "/api/email/unsubscribe": {
+      "get": {
+        "description": "Renders a confirmation page for an unsubscribe link. **Nothing changes.** A `GET` must never unsubscribe anyone: mail clients and security scanners follow links in a message automatically, and a `GET` that unsubscribed would let a mail provider cancel a subscription the user never touched. The page says what would be turned off and offers the inverse.",
+        "operationId": "apps_delivery_email_api_unsubscribe_confirmation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "What an unsubscribe link would turn off",
+        "tags": [
+          "email"
+        ]
+      },
+      "post": {
+        "description": "Applies the unsubscribe the signed token names. **This is the RFC 8058 one-click path**, and it is deliberately unauthenticated: the provider that makes the request has no session, so the signed token is the authorisation. The token names the user, the scope and the target, and cannot be forged or edited.\n\nTwo scopes, and they never touch each other: an event scope turns off that event's reminders and leaves the daily digest alone; the Pulse Ping scope turns off the digest and leaves every reminder plan alone. Applying a scope also cancels that scope's pending sends, so the mail the user just turned off is not delivered afterwards.",
+        "operationId": "apps_delivery_email_api_unsubscribe",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Turn off a subscription",
+        "tags": [
+          "email"
         ]
       }
     },
@@ -4212,6 +4551,184 @@
         "summary": "The cities the Pulse Preview can serve",
         "tags": [
           "preview"
+        ]
+      }
+    },
+    "/api/reminders/{target_kind}/{target_id}": {
+      "get": {
+        "description": "The signed-in user's Reminder Plan for one event, and for each slot the instant its reminder will **actually** go out.\n\n**The delivery time is the server's answer, not the client's arithmetic.** It is the post-Quiet-Hours instant — already deferred, if the slot would have fallen inside the user's quiet window — so the picker can dim that chip and show *\"Will deliver at 8:00 am Saturday\"* without reimplementing the shift (where DST and midnight-crossing would be rediscovered and got wrong differently). `deferred` says whether the shift moved it, and `deferred_to` is the quiet window's end when it did.\n\n`target_kind` is `personal_event` or `saved_event`. A target that does not exist, is not yours, or is of the other kind is a **404** — never a 403, which would confirm that the record exists.",
+        "operationId": "apps_delivery_api_get_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target_kind",
+            "required": true,
+            "schema": {
+              "title": "Target Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderPlanOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "One event's Reminder Plan, with each slot's delivery time",
+        "tags": [
+          "reminders"
+        ]
+      },
+      "put": {
+        "description": "Replaces the signed-in user's Reminder Plan for one event with the given slots, and **reschedules the event's pending reminders in the same transaction** — a plan saved without its sends changing is a plan that does nothing.\n\n**0 to 4 slots**, and at most one custom slot. **An empty list is a valid save** and not a delete: it means 'no reminders, but I still see this event in the digest'. The plan row survives, so 'the user chose no reminders' stays distinguishable from 'the user never configured a plan'.\n\n**A custom slot's id carries its offset**: `custom:90` is 90 minutes before the event. The bound is **15 minutes to 30 days** before the event — an offset outside that range is refused.\n\nThe response is the saved plan, with each slot's computed delivery time, exactly as the `GET` returns it. A target that does not exist, is not yours, or is of the other kind is a **404** — never a 403, which would confirm that the record exists.",
+        "operationId": "apps_delivery_api_put_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target_kind",
+            "required": true,
+            "schema": {
+              "title": "Target Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderPlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderPlanOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Save one event's Reminder Plan",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
+    "/api/settings/notifications": {
+      "get": {
+        "description": "The Quiet Hours window, the default Reminder Plan, and the digest delivery time and zone — **in one response**.\n\n**The settings live in two places, and you do not have to care.** The window and the default plan are stored with the delivery service; the delivery time and the zone are stored with the digest service. This endpoint assembles them so the settings screen is one call.\n\n`quiet_hours` is **two local wall clocks** in your own timezone, not instants — `22:00` to `08:00` is the night wherever you are. It is `null` when you have turned quiet hours off, and that is the only way to say so.\n\n`digest.delivery_time` is likewise a **local wall clock** — `09:00` means nine in the morning where you are — and `digest.timezone` is the IANA zone it is a clock in.",
+        "operationId": "apps_delivery_preferences_api_get_notification_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The signed-in user's notification settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Saves the settings the request mentions, and **re-times the pending reminders and digests in the same transaction** — a setting that does not change what is already scheduled is a setting that does nothing.\n\n**This is a patch.** Every field is optional, and an **omitted field is left alone**: changing your quiet hours does not clear your default plan, and moving your delivery time does not reset your window. The one field where `null` means something is `quiet_hours` — **omit it to leave the window alone, send `null` to turn quiet hours off.**\n\n**The quiet-hours window is two local wall clocks.** A window that covers the whole day (the same clock twice) is refused, because that is the absence of a window rather than a window, and \"off\" already has one spelling.\n\n**The default Reminder Plan is 0 to 4 slots**, validated by exactly the same rule as a per-event plan — the same named reminders, the same custom-reminder grammar, the same errors. An empty list is valid and means \"new reminders start with none\". **Changing it does not change plans that already exist**: it applies to events saved from now on.\n\n**The delivery time and the zone are one setting.** A wall clock without its zone is not a schedule, so they are sent together and are applied together.",
+        "operationId": "apps_delivery_preferences_api_put_notification_settings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Save the signed-in user's notification settings",
+        "tags": [
+          "settings"
         ]
       }
     }

@@ -22,50 +22,43 @@ Plain data in and out, `now` passed explicitly rather than read from the clock, 
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from django.db import transaction
 
 from apps.delivery.models import ReminderPlan
+from apps.delivery.services import slots as slots_rule
 from apps.delivery.services.audit import write_audit
+from apps.delivery.services.notification_preferences import default_slots_for
+from apps.delivery.services.scheduled_sends import (
+    SendTarget,
+    cancel_sends_for_targets,
+    resync_plan,
+)
+from apps.delivery.services.slots import custom_slot_minutes
 from domain.errors import NotFoundError, ValidationError
 from shared.actor import Actor
 from shared.constants import (
     CUSTOM_SLOT_PREFIX,
-    DEFAULT_REMINDER_PLAN,
-    REMINDER_PLAN_MAX_SLOTS,
     REMINDER_SLOT_OFFSET,
-    ReminderSlot,
 )
 from shared.db import PERSONAL
 
-# FR-9: "up to 4 reminder slots". The database enforces the same bound
-# (`reminder_plan_slots_max_4_ck`); the service checks it too, so the rule reads in one place
-# and the caller gets a readable error instead of a database error.
-MAX_SLOTS = REMINDER_PLAN_MAX_SLOTS
-
-# The four named tiers, by value. A custom slot is identified by its own id and is not a
-# member of the enum, so it is looked up separately.
-_NAMED_SLOTS = frozenset(slot.value for slot in ReminderSlot)
+# FR-9's slot rule lives in `slots.py`, not here: `notification_preferences` validates the
+# same list for the stored default (FR-20) and this module reads that default, so keeping the
+# rule here would make the dependency circular. Re-exported so existing callers and tests that
+# import these names from `reminder_plans` keep working.
+MAX_SLOTS = slots_rule.MAX_SLOTS
+TooManySlotsError = slots_rule.TooManySlotsError
+UnknownSlotError = slots_rule.UnknownSlotError
+_validate_slots = slots_rule.validate_slots
 
 
 class ReminderPlanNotFoundError(NotFoundError):
     """The event has no reminder plan."""
 
     default_message = "We couldn't find that reminder plan."
-
-
-class TooManySlotsError(ValidationError):
-    """More than FR-9's four slots were requested."""
-
-    default_message = f"A reminder plan holds at most {MAX_SLOTS} reminders."
-
-
-class UnknownSlotError(ValidationError):
-    """A slot that is neither a named tier nor a custom slot id."""
-
-    default_message = "That reminder time isn't one we recognise."
 
 
 class UnknownTargetKindError(ValidationError):
@@ -82,21 +75,6 @@ class PlanSlots:
     target_kind: str
     target_id: UUID
     slots: tuple[str, ...]
-
-
-def _validate_slots(slots: tuple[str, ...]) -> None:
-    if len(slots) > MAX_SLOTS:
-        raise TooManySlotsError(details={"max_slots": MAX_SLOTS, "given": len(slots)})
-    for slot in slots:
-        # A named tier, or a custom slot: the user's own id (AD-7's send key names the custom
-        # slot by id). A custom slot is identified by a prefix, so it can never be mistaken
-        # for one of the four named tiers.
-        if slot in _NAMED_SLOTS:
-            continue
-        if not slot.startswith(CUSTOM_SLOT_PREFIX):
-            raise UnknownSlotError(details={"slot": slot})
-    if len(set(slots)) != len(slots):
-        raise ValidationError("A reminder plan holds each slot once.")
 
 
 def _target_kind_value(target_kind: ReminderPlan.TargetKind | str) -> str:
@@ -131,15 +109,24 @@ def attach_default_plan(
     actor: Actor,
     now: datetime,
 ) -> PlanSlots:
-    """Give an event the default plan — 1d + 1hr (FR-20).
+    """Give an event the user's default plan (FR-20).
 
-    FR-9 and FR-20 share one default, `shared.constants.DEFAULT_REMINDER_PLAN`; it is never a
-    second literal (AD-16). Attaching to an event that already has a plan **replaces** it with
-    the default, so the command is idempotent: calling it twice leaves one plan with the
-    default slots.
+    **The default is the user's own**, read from `NOTIFICATION_PREFERENCE`, falling back to
+    `shared.constants.DEFAULT_REMINDER_PLAN` (1d + 1hr) for a user who has never set one. Until
+    `/settings/reminders` existed the constant *was* the default, with no way to change it —
+    which is why TRACEABILITY.md could only find FR-20 "by adjacency". The constant is still
+    the one literal and is never duplicated (AD-16); it is now the fallback rather than the
+    only answer.
+
+    An explicitly empty default is honoured: a user who chose "no reminders by default" gets a
+    plan with no slots, which FR-9 makes a valid state ("0 slots = no reminders (still in
+    feed)").
+
+    Attaching to an event that already has a plan **replaces** it, so the command is
+    idempotent: calling it twice leaves one plan with the same slots.
     """
     kind = _target_kind_value(target_kind)
-    slots = tuple(slot.value for slot in DEFAULT_REMINDER_PLAN)
+    slots = default_slots_for(user_id=user_id)
     _validate_slots(slots)
     with transaction.atomic(using=PERSONAL):
         plan, created = ReminderPlan.objects.using(PERSONAL).update_or_create(
@@ -166,6 +153,7 @@ def set_plan_slots(
     slots: tuple[str, ...],
     actor: Actor,
     now: datetime,
+    send_target: SendTarget | None = None,
 ) -> PlanSlots:
     """Replace the event's slots with the user's choice (FR-9).
 
@@ -184,12 +172,79 @@ def set_plan_slots(
             raise ReminderPlanNotFoundError(details={"target_id": str(target_id)}) from None
         plan.slots = list(slots)
         plan.save(update_fields=["slots", "updated_at"])
+        # The plan and its sends move together or not at all. `send_target` carries the start
+        # time and version the keys are minted from, which only the caller knows — `delivery`
+        # may not read `apps.personalization.models` (AD-3). A caller that omits it (an
+        # internal command with no event in hand) still cancels nothing silently: the plan is
+        # the source of truth and `resync_plan` is called by the API that has the target.
+        if send_target is not None:
+            resync_plan(
+                user_id=user_id, target=send_target, slots=tuple(slots), actor=actor, now=now
+            )
         write_audit(
             actor=actor,
             action="reminder_plan.slots_set",
             target_type=kind,
             target_id=target_id,
             details={"slots": list(slots), "at": now.isoformat()},
+        )
+    return _to_plan_slots(plan)
+
+
+def save_plan_slots(
+    *,
+    user_id: UUID,
+    target_kind: ReminderPlan.TargetKind | str,
+    target_id: UUID,
+    slots: tuple[str, ...],
+    actor: Actor,
+    now: datetime,
+    send_target: SendTarget,
+) -> PlanSlots:
+    """Save the event's slots, **attaching the plan when it has none** (FR-9).
+
+    **`set_plan_slots` plus one branch, in one transaction.** The branch exists because
+    **a saved public event has no plan at all**: `create_personal_event` calls
+    `attach_default_plan` (FR-20), but `save_event` does not. So `set_plan_slots` — which
+    raises `ReminderPlanNotFoundError` when the row is missing — would 404 for every saved
+    event, and the picker would be dead on arrival for the surface it is built for.
+
+    Attaching first and setting second would be **two transactions**, and the plan's sends
+    would move separately from the plan. Here both happen inside one
+    `transaction.atomic(using=PERSONAL)`, so the plan and its sends move together or not
+    at all — the same guarantee `set_plan_slots` gives, extended to the attach case.
+
+    **`set_plan_slots` itself is unchanged.** Other callers depend on its 404 — a command
+    that names an event with no plan is a command that named the wrong event, and a
+    silent attach would paper over that.
+
+    `send_target` is **required**, not optional: this is the API's entry point, and the
+    target has already been resolved by the caller (which is what proves the target
+    exists and is the caller's). The send target carries the start time and version the
+    keys are minted from, which only the caller knows — `delivery` may not read
+    `apps.personalization.models` (AD-3).
+    """
+    kind = _target_kind_value(target_kind)
+    _validate_slots(slots)
+    with transaction.atomic(using=PERSONAL):
+        plan, created = ReminderPlan.objects.using(PERSONAL).get_or_create(
+            user_id=user_id,
+            target_kind=kind,
+            target_id=target_id,
+            defaults={"slots": list(slots)},
+        )
+        if not created:
+            plan.slots = list(slots)
+            plan.save(update_fields=["slots", "updated_at"])
+        # The plan and its sends move together or not at all. This is the whole point of
+        # the command: a plan saved without its sends changing is a plan that does nothing.
+        resync_plan(user_id=user_id, target=send_target, slots=tuple(slots), actor=actor, now=now)
+        write_audit(
+            actor=actor,
+            action="reminder_plan.slots_set",
+            target_type=kind,
+            target_id=target_id,
+            details={"slots": list(slots), "created": created, "at": now.isoformat()},
         )
     return _to_plan_slots(plan)
 
@@ -201,11 +256,12 @@ def remove_all_reminders(
     target_id: UUID,
     actor: Actor,
     now: datetime,
+    send_target: SendTarget | None = None,
 ) -> PlanSlots:
     """Remove every reminder from the event's plan (FR-9, FR-20).
 
     The plan row survives with no slots: "no reminders" is a state the user chose, not the
-    absence of a plan.
+    absence of a plan. Its pending sends are cancelled in the same transaction.
     """
     return set_plan_slots(
         user_id=user_id,
@@ -214,6 +270,7 @@ def remove_all_reminders(
         slots=(),
         actor=actor,
         now=now,
+        send_target=send_target,
     )
 
 
@@ -258,6 +315,15 @@ def remove_plans_for_targets(
             return 0
         target_ids_removed = [plan.target_id for plan in plans]
         ReminderPlan.objects.using(PERSONAL).filter(pk__in=[plan.pk for plan in plans]).delete()
+        # The target is gone, so its pending sends must go with it — **in this transaction**.
+        # A plan deleted without its sends cancelled leaves reminders for an event that no
+        # longer exists, and nothing would ever come back to clean them up.
+        cancel_sends_for_targets(
+            user_id=user_id,
+            targets=[(kind, target_id) for target_id in target_ids_removed],
+            actor=actor,
+            now=now,
+        )
         for target_id in target_ids_removed:
             write_audit(
                 actor=actor,
@@ -290,17 +356,23 @@ def slot_offsets(*, start_utc: datetime, slots: tuple[str, ...]) -> tuple[dateti
     """The absolute times of the given slots, each before the event start.
 
     `shared.constants.REMINDER_SLOT_OFFSET` is the single source of slot → offset
-    arithmetic (AD-16). A custom slot has no offset here — the caller supplies its own — so
-    it is left out of the result rather than guessed at.
+    arithmetic for the named tiers (AD-16), and a custom slot's offset is **in its id** —
+    `custom:90` is 90 minutes. Both are read here, so a custom slot is no longer left out
+    of the result the way it was when its offset lived nowhere.
     """
     offsets = []
     for slot in slots:
         # `ReminderSlot` is a StrEnum, so its members hash as their string value and the
         # mapping can be looked up by the slot's own value. A custom slot is not a member of
-        # the enum, so the lookup simply finds nothing for it.
+        # the enum, so the lookup simply finds nothing for it — and its own offset is read
+        # from its id instead.
         offset = REMINDER_SLOT_OFFSET.get(slot)
-        if offset is not None:
-            offsets.append(start_utc - offset)
+        if offset is None:
+            minutes = custom_slot_minutes(slot)
+            if minutes is None:
+                continue
+            offset = timedelta(minutes=minutes)
+        offsets.append(start_utc - offset)
     return tuple(sorted(offsets))
 
 
@@ -316,6 +388,7 @@ __all__ = [
     "get_plan",
     "remove_all_reminders",
     "remove_plans_for_targets",
+    "save_plan_slots",
     "set_plan_slots",
     "slot_offsets",
 ]

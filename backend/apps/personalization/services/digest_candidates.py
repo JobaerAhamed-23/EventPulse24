@@ -191,6 +191,7 @@ def list_personal_candidates(
     *,
     user_id: UUID,
     now: datetime,
+    window_end: datetime | None = None,
 ) -> list[PersonalEventCandidate]:
     """The user's own events starting within the next 48 hours, soonest first.
 
@@ -212,13 +213,38 @@ def list_personal_candidates(
 
     The conflict pairs come from the persisted rows, never from an overlap computed here
     (AD-21).
+
+    ---
+    **`window_end` widens the read; it never narrows it.**
+
+    The default upper bound is `now + 48h` — **elapsed** arithmetic, and therefore a UTC
+    horizon. FR-10's suppression rule asks a different question ("events in the next 48
+    hours", in the **user's own zone**), and the local horizon is a *wall clock* — on a
+    spring-forward day it is an hour **earlier** than the elapsed arithmetic, and on a
+    fall-back day an hour later.
+
+    So when the caller knows the local horizon, it passes it in, and the read is widened
+    to cover it. The pool is then a **superset** of the horizon-filtered set, and the
+    caller narrows it by comparing against the horizon itself.
+
+    **Why widen rather than narrow.** The Slot 1 window is a deliberate, separate
+    decision — it governs which *cards* a digest holds, and it is not this function's
+    business to change it. Narrowing the read to the local horizon would change which
+    cards a digest holds for every user on the two DST days a year. Widening it changes
+    nothing about the cards, because the caller's own comparison still applies the
+    Slot 1 window.
+
+    **The bound is a maximum, not a replacement.** `max` of the two, so a caller can
+    only ever ask for *more* rows, never fewer — the function cannot silently drop an
+    event the caller wanted to see.
     """
-    window_end = now + RANKING_PERSONAL_EVENT_WINDOW
+    default_end = now + RANKING_PERSONAL_EVENT_WINDOW
+    upper_bound = default_end if window_end is None else max(default_end, window_end)
     events = list(
         PersonalEvent.objects.using(PERSONAL)
         .filter(user_id=user_id)
         .filter(start_utc__gte=now)
-        .filter(start_utc__lte=window_end)
+        .filter(start_utc__lte=upper_bound)
         .order_by("start_utc", "id")
     )
     pairs = _open_conflict_pairs(user_id=user_id)

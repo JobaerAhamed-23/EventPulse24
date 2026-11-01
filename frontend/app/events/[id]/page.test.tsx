@@ -606,27 +606,37 @@ describe("the action row and the reminder picker", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("names the default reminder plan and the channel", async () => {
+  it("names the channel and the choice, without claiming a particular plan", async () => {
+    // **The section must not assert what the plan contains.** The Detail payload does
+    // not carry the reminder slots, so a sentence like "the day before and the hour
+    // before" is a claim the page cannot check — and it is false for a user whose
+    // plan is the default, carries a custom slot, or is empty.
     readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
 
     await renderPage();
 
     expect(
-      screen.getByText("Reminders come by email the day before and the hour before."),
+      screen.getByText("Reminders go by email. Choose when you'll hear from us about this event."),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/day before and the hour before/i)).not.toBeInTheDocument();
   });
 
-  it("renders the reminder chips as non-interactive spans", async () => {
-    // A button that does nothing is a broken control, and a screen reader announcing
-    // "5 days before, button" for something unpressable is worse than silence.
+  it("links to the Reminder Picker, and holds no control of its own", async () => {
+    // **The section used to render the plan's chips as `<span>`s**, because "nothing
+    // schedules sends" — the delivery intent had not built the scheduler. That reason
+    // is gone: the plan is written through `PUT /api/reminders/…`, and the picker is
+    // where it is edited.
+    //
+    // **So the section links out and holds no control.** A `<span>` that looks like a
+    // control and is not one is worse than a link that plainly is — and a button here
+    // would be a second, redundant route into the picker.
     readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
 
     await renderPage();
 
-    const slots = document.querySelector("[data-detail-reminder-slots]");
-    expect(slots).not.toBeNull();
-    expect(slots?.querySelectorAll("button")).toHaveLength(0);
-    expect(slots?.querySelectorAll("li")).toHaveLength(4);
+    const link = screen.getByRole("link", { name: "Edit reminders" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("/reminders"));
+    expect(document.querySelector("[data-detail-reminder] button")).toBeNull();
   });
 });
 

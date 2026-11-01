@@ -67,7 +67,22 @@ export function BottomTabNav({ name, email }: AccountProps) {
           active={pathname === "/conflicts"}
           glyph={<ConflictsGlyph />}
         />
-        <TabSlot label="Settings" glyph={<SettingsGlyph />} />
+        {/*
+          **Settings is a real route now.** The product's first `/settings/*` screens
+          exist — the Default Reminder Plan and the Quiet Hours window — so this slot is
+          a link and not a "Coming soon" label.
+
+          **The mobile rail gets the same treatment as the desktop one.** Leaving this
+          one inert would mean that on a phone the product says *"You can change these
+          later in Settings"* and then Settings is a row that does nothing. A route that
+          only exists on desktop is not a route.
+        */}
+        <TabSlot
+          href="/settings/reminders"
+          label="Settings"
+          active={pathname.startsWith("/settings/")}
+          glyph={<SettingsGlyph />}
+        />
 
         {/*
           The More slot is a control, not a route: it opens the overflow sheet, where

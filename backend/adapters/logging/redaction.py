@@ -49,6 +49,28 @@ ALLOWED_FIELDS = frozenset(
         "entry_count",
         "skipped_count",
         "skipped",
+        # The send sweep's outcome counts (AD-7, AD-13). Integer counts, one per outcome:
+        # how many rows were claimed, sent, failed and cancelled. They are counts of rows,
+        # never of addresses or titles, so they are exactly what the allowlist carries.
+        "claimed",
+        "sent",
+        "failed",
+        "cancelled",
+        # The Pulse Ping's suppression record (FR-10, SM-C1, AD-13). `reason` is one of
+        # our own vocabulary slugs — "unsubscribed" or "no_qualifying_events" — never a
+        # title or a sentence, and `local_date` is an ISO date. Without these the
+        # suppression line would reach the sink with every field redacted, and SM-C1
+        # would be unmeasurable: a product that cannot say *why* it stayed quiet
+        # cannot tell its own intelligence apart from a broken pipe.
+        "reason",
+        "local_date",
+        "public_qualifying_count",
+        "personal_qualifying_count",
+        # The composition job's line for the Ping's outcome. Three booleans and a slug,
+        # so the one line that describes a user's day says what happened to it.
+        "ping_minted",
+        "ping_suppressed",
+        "ping_reason",
     }
 )
 

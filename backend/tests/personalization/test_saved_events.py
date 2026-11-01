@@ -13,6 +13,7 @@ from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, PersonalizationAuditEntry, SavedEvent
 from apps.personalization.services.saved_events import (
     SavedEventNotFoundError,
+    get_saved_event,
     list_saved_events,
     save_event,
     unsave_event,
@@ -344,11 +345,11 @@ def test_the_snapshot_update_re_evaluates_the_conflicts():
 # --- Listing ---------------------------------------------------------------------------------
 
 
-def _saved_row(*, user_id=USER, start_utc):
+def _saved_row(*, user_id=USER, start_utc, event_id=None):
     """A saved row written directly, so the list is tested without the save command."""
     return SavedEvent.objects.using(PERSONAL).create(
         user_id=user_id,
-        event_id=uuid7(),
+        event_id=event_id or uuid7(),
         start_utc=start_utc,
         end_utc=start_utc + timedelta(hours=2),
         event_version=1,
@@ -397,3 +398,46 @@ def test_listing_without_bounds_returns_every_save():
     listed = list_saved_events(user_id=USER)
 
     assert len(listed) == 2
+
+
+# --- The single-save read ----------------------------------------------------------------------
+#
+# `get_saved_event` is the published read `delivery` needs to resolve a plan's target
+# (AD-3). It is keyed by the **catalog event's id**, not by the save row's own id — the
+# tree's convention for a saved event's target.
+
+
+def test_get_saved_event_finds_the_callers_own_save():
+    saved = _saved_row(user_id=USER, start_utc=START, event_id=uuid7())
+
+    found = get_saved_event(user_id=USER, event_id=saved.event_id)
+
+    assert found.id == saved.id
+    assert found.event_id == saved.event_id
+
+
+def test_get_saved_event_refuses_another_users_save():
+    """A save belonging to another user reads as not found, not as forbidden.
+
+    A 403 would confirm that the record exists, so the endpoint could be used to probe
+    for other users' saved event ids.
+    """
+    saved = _saved_row(user_id=OTHER, start_utc=START, event_id=uuid7())
+
+    with pytest.raises(SavedEventNotFoundError):
+        get_saved_event(user_id=USER, event_id=saved.event_id)
+
+
+def test_get_saved_event_raises_when_there_is_no_save():
+    with pytest.raises(SavedEventNotFoundError):
+        get_saved_event(user_id=USER, event_id=uuid7())
+
+
+def test_get_saved_event_raises_for_an_unsaved_event():
+    """Un-saved and never-saved are the same fact — the save *is* the target."""
+    event_id = uuid7()
+    saved = _saved_row(user_id=USER, start_utc=START, event_id=event_id)
+    unsave_event(user_id=USER, event_id=event_id, actor=Actor.user(USER), now=NOW)
+
+    with pytest.raises(SavedEventNotFoundError):
+        get_saved_event(user_id=USER, event_id=saved.event_id)

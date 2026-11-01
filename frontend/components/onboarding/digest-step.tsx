@@ -17,10 +17,11 @@
  * personal-event form already uses — one list, one idea of which zones exist.
  */
 
+import {
+  DigestTimeControl,
+  DIGEST_TIME_PRESETS,
+} from "@/components/onboarding/digest-time-control";
 import { ZONE_CHOICES, browserZone } from "@/lib/timezones";
-
-/** The mockup's presets, as 24-hour values for the time input. */
-const PRESETS = ["08:00", "07:00", "09:00", "12:00", "18:00"];
 
 /** The server's default when the step is skipped (`DEFAULT_DIGEST_DELIVERY_TIME`). */
 export const DEFAULT_DELIVERY_TIME = "09:00";
@@ -40,7 +41,7 @@ export function initialDigestValues(stored: {
 }): DigestValues {
   return {
     // A stored time arrives as `HH:MM:SS`; the input wants `HH:MM`.
-    deliveryTime: stored.delivery_time ? stored.delivery_time.slice(0, 5) : PRESETS[0],
+    deliveryTime: stored.delivery_time ? stored.delivery_time.slice(0, 5) : DIGEST_TIME_PRESETS[0],
     timezone: stored.timezone ?? browserZone() ?? "UTC",
   };
 }
@@ -50,56 +51,19 @@ export function DigestStep({ values, onChange, error }: DigestStepProps) {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <label
-          htmlFor="digest-time"
-          className="mb-2 block text-[12px] font-semibold tracking-[0.06em] text-ink-secondary uppercase"
-        >
-          Pulse Digest delivery time
-        </label>
-        <input
-          id="digest-time"
-          name="delivery_time"
-          type="time"
-          value={values.deliveryTime}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? "digest-time-error" : undefined}
-          onChange={(event) => set({ deliveryTime: event.target.value })}
-          className={[
-            "w-full max-w-[200px] rounded-control border bg-surface-subtle px-3 py-2 [font:var(--type-scale-body-md)]",
-            error ? "border-signal-warn" : "border-border-subtle",
-          ].join(" ")}
-        />
-        {error ? (
-          <p
-            id="digest-time-error"
-            role="alert"
-            className="mt-2 flex items-start gap-2 [font:var(--type-scale-body-sm)] text-signal-warn"
-          >
-            <span aria-hidden="true">⚠</span>
-            <span>{error}</span>
-          </p>
-        ) : null}
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              aria-pressed={values.deliveryTime === preset}
-              onClick={() => set({ deliveryTime: preset })}
-              className={[
-                "rounded-control border px-3 py-2 [font:var(--type-scale-meta-sm)]",
-                values.deliveryTime === preset
-                  ? "border-accent-terracotta text-ink-primary"
-                  : "border-border-subtle text-ink-secondary",
-              ].join(" ")}
-            >
-              {preset}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/*
+        **The time control is shared with the settings route.** It was extracted out of
+        this step so `/settings/quiet-hours` could reuse the same control rather than
+        grow a second copy of it — two copies of a time control is how two screens come
+        to disagree about what a time means.
+      */}
+      <DigestTimeControl
+        id="digest-time"
+        label="Pulse Digest delivery time"
+        value={values.deliveryTime}
+        onChange={(deliveryTime) => set({ deliveryTime })}
+        error={error}
+      />
 
       <div>
         <label

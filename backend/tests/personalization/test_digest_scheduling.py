@@ -19,7 +19,7 @@
 exact instant rather than "roughly 9am".
 """
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -59,6 +59,39 @@ def make_preference(user_id=None, *, delivery_time=time(9, 0), timezone=ZONE, **
     return DigestPreferenceFactory(**fields)
 
 
+#: **The instant the command's clock is frozen at**, for the tests that need the command
+#: to compose against a known "now".
+#:
+#: 2026-11-04 17:00 UTC is **09:00 in Los Angeles** (PST, UTC-8) — the same instant the
+#: module's `NOW` names, and the hour the zone offsets are chosen for.
+#:
+#: **Why a frozen clock, and not a clock-relative one.** The due rule compares
+#: *time-of-day*, and the time-of-day circle wraps at midnight — so "one hour back" is
+#: *ahead* of now when it runs at 00:53. A test that derived its delivery times from the
+#: wall clock therefore failed for one hour every night, for a reason that had nothing
+#: to do with the code. Pinning both the instant **and** the delivery times makes the
+#: test say the same thing at every hour it is ever run.
+FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
+
+#: The delivery times the `--all` tests use against `FROZEN_NOW`. At 09:00 in Los
+#: Angeles, 08:00 is **due** and 10:00 is **not**.
+DUE_AT_FROZEN_NOW = time(8, 0)
+NOT_DUE_AT_FROZEN_NOW = time(10, 0)
+
+
+def freeze_the_command_clock(monkeypatch, when: datetime = FROZEN_NOW) -> None:
+    """Pin the command's clock, so "now" is a fact and not a race with the wall clock.
+
+    **The standards ask for this explicitly** — "Freeze time explicitly. Never depend on
+    wall-clock or local timezone." The command reaches the scheduler through a real
+    `datetime.now`, so without a seam a test of the `--all` mode has to guess what "now"
+    is, and its answer changes with the hour it runs.
+    """
+    from config.management.commands import compose_digest as command_module
+
+    monkeypatch.setattr(command_module, "_now", lambda: when)
+
+
 def claim_of(user_id):
     return (
         DigestPreference.objects.using(PERSONAL)
@@ -69,6 +102,35 @@ def claim_of(user_id):
 
 
 # --- The due rule (D2) --------------------------------------------------------------------
+
+
+def test_the_pinned_delivery_times_are_unambiguous_against_the_frozen_clock():
+    """**The pinned pair is a due / not-due pair at the frozen instant.**
+
+    The `--all` tests use `DUE_AT_FROZEN_NOW` and `NOT_DUE_AT_FROZEN_NOW`; this says
+    what those two names mean, against the rule itself. Without it, a reader of the
+    tests has to work out the local hour out of the frozen UTC instant to know why one
+    user is due and the other is not.
+    """
+    assert is_due(delivery_time=DUE_AT_FROZEN_NOW, now=FROZEN_NOW, zone_name=ZONE)
+    assert not is_due(delivery_time=NOT_DUE_AT_FROZEN_NOW, now=FROZEN_NOW, zone_name=ZONE)
+
+
+def test_the_command_reads_its_clock_through_the_seam(monkeypatch):
+    """**The command's "now" is the seam's, not the wall clock's.**
+
+    This is the property the whole fix rests on. The command calls `_now()` rather than
+    `datetime.now(UTC)`, so a test can pin the instant — and the `--all` tests' answer
+    stops depending on the hour the suite runs. A command that went back to reading the
+    wall clock directly would still pass every test here, so this asserts the seam
+    *itself*.
+    """
+    from config.management.commands import compose_digest as command_module
+
+    pinned = datetime(2026, 3, 14, 15, 9, 26, tzinfo=UTC)
+    monkeypatch.setattr(command_module, "_now", lambda: pinned)
+
+    assert command_module._now() == pinned
 
 
 def test_a_user_is_not_due_before_their_delivery_time():
@@ -353,20 +415,20 @@ def test_the_command_rejects_a_user_that_is_not_a_uuid():
         call_command("compose_digest", "--user-id", "not-a-uuid")
 
 
-def test_the_command_composes_only_the_due_users():
+def test_the_command_composes_only_the_due_users(monkeypatch):
     """`--all` asks the scheduler's own rule, so "everyone due" means exactly what the
     dispatcher means by it.
 
-    **The delivery times are relative to the real now**, because the command composes
-    against the wall clock — a test that pinned them to a fixed hour would be due (or
-    not due) depending on the day it ran. One hour back is always past; one hour
-    forward is always ahead.
+    **The clock is frozen** at `FROZEN_NOW`, which is 09:00 in Los Angeles. So 08:00 is
+    due and 10:00 is not — and the test says the same thing at every hour it is ever
+    run, which is what the standards ask for.
     """
     from django.core.management import call_command
 
-    now_local = datetime.now(UTC).astimezone(ZoneInfo(ZONE)).replace(microsecond=0)
-    due = make_preference(delivery_time=(now_local - HOUR).time())
-    not_due = make_preference(delivery_time=(now_local + HOUR).time())
+    freeze_the_command_clock(monkeypatch)
+
+    due = make_preference(delivery_time=DUE_AT_FROZEN_NOW)
+    not_due = make_preference(delivery_time=NOT_DUE_AT_FROZEN_NOW)
 
     call_command("compose_digest", "--all")
 
@@ -387,13 +449,19 @@ def test_the_command_counts_a_digest_that_already_existed(monkeypatch):
 
     from config.management.commands import compose_digest as command_module
 
-    now_local = datetime.now(UTC).astimezone(ZoneInfo(ZONE)).replace(microsecond=0)
-    preference = make_preference(delivery_time=(now_local - HOUR).time())
+    freeze_the_command_clock(monkeypatch)
+
+    preference = make_preference(delivery_time=DUE_AT_FROZEN_NOW)
 
     def already_there(*, user_id, actor, now):
         class Result:
             created = False
             is_empty = False
+            user_id = preference.user_id
+            local_date = date(2026, 11, 4)
+            public_qualifying_count = 0
+            personal_qualifying_count = 0
+            has_qualifying_events = False
 
         return Result()
 
@@ -404,13 +472,122 @@ def test_the_command_counts_a_digest_that_already_existed(monkeypatch):
     assert PulseDigest.objects.using(PERSONAL).filter(user_id=preference.user_id).count() == 0
 
 
-def test_the_command_releases_its_claims():
+def test_the_command_mints_the_ping_alongside_the_digest(monkeypatch):
+    """**The digest email *is* the Pulse Ping** (FR-10), so the command has to mint it.
+
+    It used to compose only, and that was correct when there was no send to mint. Now
+    it would leave a user with a composed digest and no email — and, worse, **no
+    counted suppression either**, so the day's silence would be invisible to SM-C1.
+
+    **The composition is stubbed to report a qualifying event**, because this test is
+    about the *command's* behaviour — it mints what the composition reports. The
+    composition's own counting is tested where it lives.
+    """
+    from django.core.management import call_command
+
+    from apps.delivery.models import ScheduledSend
+    from config.management.commands import compose_digest as command_module
+
+    preference = make_preference()
+    _stub_a_qualifying_composition(monkeypatch, command_module, preference.user_id)
+
+    call_command("compose_digest", "--user-id", str(preference.user_id))
+
+    assert ScheduledSend.objects.using(PERSONAL).filter(user_id=preference.user_id).count() == 1
+
+
+def test_the_command_mints_one_ping_when_run_twice(monkeypatch):
+    """**The command is idempotent for the send too**, exactly as it is for the
+    digest — the unique key is the guard, and it is the same guard the worker relies
+    on."""
+    from django.core.management import call_command
+
+    from apps.delivery.models import ScheduledSend
+    from config.management.commands import compose_digest as command_module
+
+    preference = make_preference()
+    _stub_a_qualifying_composition(monkeypatch, command_module, preference.user_id)
+
+    call_command("compose_digest", "--user-id", str(preference.user_id))
+    call_command("compose_digest", "--user-id", str(preference.user_id))
+
+    assert ScheduledSend.objects.using(PERSONAL).filter(user_id=preference.user_id).count() == 1
+
+
+def test_the_command_records_a_suppression_when_there_is_nothing_to_say():
+    """**A user with nothing qualifying gets no row — and the reason is counted.**
+    This is the command's `--all` mode standing in for the dispatcher, so its silence
+    has to be visible for the same reason the scheduler's silence is."""
+    from django.core.management import call_command
+
+    from apps.delivery.models import DeliveryAuditEntry, ScheduledSend
+
+    preference = make_preference()
+
+    call_command("compose_digest", "--user-id", str(preference.user_id))
+
+    assert not ScheduledSend.objects.using(PERSONAL).filter(user_id=preference.user_id).exists()
+    row = DeliveryAuditEntry.objects.using(PERSONAL).get(
+        target_id=preference.user_id, action="pulse_ping.suppressed"
+    )
+    assert row.details["reason"] == "no_qualifying_events"
+
+
+def test_the_all_mode_mints_the_ping_for_the_due_users(monkeypatch):
+    """**`--all` stands in for the dispatcher**, so it has to do what the dispatcher
+    does — compose *and* mint.
+
+    A dispatcher that composed without minting would leave every due user with a
+    digest and no email, and with no counted suppression either. The mode is the
+    operator's way of saying "run the dispatcher's job now", so it runs both halves.
+    """
+    from django.core.management import call_command
+
+    from apps.delivery.models import ScheduledSend
+    from config.management.commands import compose_digest as command_module
+
+    freeze_the_command_clock(monkeypatch)
+
+    preference = make_preference(delivery_time=DUE_AT_FROZEN_NOW)
+    _stub_a_qualifying_composition(monkeypatch, command_module, preference.user_id)
+
+    call_command("compose_digest", "--all")
+
+    assert ScheduledSend.objects.using(PERSONAL).filter(user_id=preference.user_id).count() == 1
+
+
+def _stub_a_qualifying_composition(monkeypatch, command_module, user_id) -> None:
+    """Stub the composition to report one qualifying public event.
+
+    **The stub carries the counts the command hands to the Ping decision**, because
+    the decision refuses a caller whose counts and flag disagree — the stub has to
+    describe the same world the flag describes.
+    """
+    from dataclasses import replace
+
+    original = command_module.compose_digest
+
+    def qualifying(*, user_id, actor, now):
+        result = original(user_id=user_id, actor=actor, now=now)
+        # `has_qualifying_events` is a *property* derived from the two counts, so
+        # replacing the counts replaces the flag too — one definition, as everywhere.
+        return replace(
+            result,
+            public_qualifying_count=1,
+            personal_qualifying_count=0,
+        )
+
+    monkeypatch.setattr(command_module, "compose_digest", qualifying)
+
+
+def test_the_command_releases_its_claims(monkeypatch):
     """The command claims through the scheduler, so it must release — otherwise the
     user is claimed until the TTL expires and the dispatcher skips them."""
     from django.core.management import call_command
 
-    now_local = datetime.now(UTC).astimezone(ZoneInfo(ZONE)).replace(microsecond=0)
-    preference = make_preference(delivery_time=(now_local - HOUR).time())
+    freeze_the_command_clock(monkeypatch)
+
+    preference = make_preference(delivery_time=DUE_AT_FROZEN_NOW)
 
     call_command("compose_digest", "--all")
 
@@ -425,8 +602,9 @@ def test_the_command_releases_the_claim_when_a_composition_fails(monkeypatch):
 
     from config.management.commands import compose_digest as command_module
 
-    now_local = datetime.now(UTC).astimezone(ZoneInfo(ZONE)).replace(microsecond=0)
-    preference = make_preference(delivery_time=(now_local - HOUR).time())
+    freeze_the_command_clock(monkeypatch)
+
+    preference = make_preference(delivery_time=DUE_AT_FROZEN_NOW)
 
     def crash(*, user_id, actor, now):
         raise RuntimeError("boom")

@@ -65,7 +65,27 @@ export function Sidenav({ name, email }: SidenavProps) {
 
       <nav aria-label="Main">
         <ul className="flex flex-col gap-1">
-          <SidenavItem href="/" label="Digest" active={pathname === "/"} glyph={<DigestGlyph />} />
+          {/*
+            **Digest is active on every path under `/events/`.**
+
+            The Detail Screen is reached by tapping a Digest card, and the Reminder
+            Picker hangs off the Detail Screen — so both hang off Digest in the IA. The
+            mockup says the same thing: *"Parent surface in IA is Digest (Detail is
+            reached by tapping a Digest card; Reminder Picker hangs off Detail). So
+            6-route sidenav uses Digest as the active nav-item, mirroring
+            event-detail-desktop.html."*
+
+            **The rule is a prefix, not an equality.** An equality would mark Digest
+            active on the digest home and nowhere else, and every screen the user
+            reaches *from* the digest would show no active route at all — which reads as
+            "you have left the digest" rather than "you are still in it".
+          */}
+          <SidenavItem
+            href="/"
+            label="Digest"
+            active={pathname === "/" || pathname.startsWith("/events/")}
+            glyph={<DigestGlyph />}
+          />
           <SidenavItem
             href="/timeline"
             label="Timeline"
@@ -80,7 +100,25 @@ export function Sidenav({ name, email }: SidenavProps) {
             active={pathname === "/conflicts"}
             glyph={<ConflictsGlyph />}
           />
-          <SidenavItem label="Settings" glyph={<SettingsGlyph />} />
+          {/*
+            **Settings is a real route now.** The product's first `/settings/*` screens
+            exist — the Default Reminder Plan and the Quiet Hours window — so this row
+            is a link and not a "Coming soon" label.
+
+            **It points at `/settings/reminders`, and it is active on both settings
+            routes.** There is no `/settings` index page — the work item does not build
+            one — so the link goes to the first of the two, and the **prefix** rule marks
+            Settings active on `/settings/quiet-hours` too. That is the same rule Digest
+            uses for `/events/`, and the same reason: the user has not left Settings, and
+            a rail that marks nothing active on half of Settings reads as "you have left
+            Settings".
+          */}
+          <SidenavItem
+            href="/settings/reminders"
+            label="Settings"
+            active={pathname.startsWith("/settings/")}
+            glyph={<SettingsGlyph />}
+          />
         </ul>
       </nav>
 

@@ -108,6 +108,13 @@ AUDIT_DETAIL_KEYS = frozenset(
         "conflicts",
         # The detail open's own facts.
         "opened_at",
+        # The Pulse Ping's suppression record (FR-10, SM-C1). `reason` is one of our
+        # own vocabulary slugs — "unsubscribed" or "no_qualifying_events" — and the
+        # counts are integers. The audit row is where "why did *this* user get no ping
+        # on this day?" is answered, so these are the keys that answer it.
+        "reason",
+        "public_qualifying_count",
+        "personal_qualifying_count",
     }
 )
 

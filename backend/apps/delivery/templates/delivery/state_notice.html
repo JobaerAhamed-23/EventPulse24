@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Update</title>
+  </head>
+  <body style="margin:0;padding:24px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f6f5f3;color:#1c1a17;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;">
+      <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;font-weight:600;">Update: {{ display_title }}</h1>
+
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.5;">{{ change_kind }}{% if local_time_text %} — {{ local_time_text }}{% endif %}</p>
+      {% if previous_time_text %}
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.5;">It was previously {{ previous_time_text }}.</p>
+      {% endif %}
+      {% if location %}
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.5;">Where: {{ location }}</p>
+      {% endif %}
+
+      <p style="margin:0;font-size:15px;line-height:1.5;">Open EventPulse24 to see the current details.</p>
+    </div>
+  </body>
+</html>

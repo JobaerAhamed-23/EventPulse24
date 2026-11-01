@@ -151,7 +151,11 @@ def test_setting_slots_replaces_the_previous_slots():
 
 def test_setting_slots_accepts_a_custom_slot():
     # FR-9: "The system also supports a custom slot." AD-7's send key names it by its id.
-    custom = f"{CUSTOM_SLOT_PREFIX}my-slot"
+    #
+    # The id **is** the offset now: `custom:90` is 90 minutes before the event. The slot
+    # carries its own meaning, so there is no second place for the number and the two
+    # cannot disagree — and a custom slot is finally computable, so it can be minted.
+    custom = f"{CUSTOM_SLOT_PREFIX}90"
     attach_default_plan(
         user_id=USER,
         target_kind="personal_event",
@@ -446,12 +450,29 @@ def test_slot_offsets_are_measured_back_from_the_start():
     )
 
 
-def test_slot_offsets_leaves_out_a_custom_slot():
-    # A custom slot has no offset in `REMINDER_SLOT_OFFSET`: the caller supplies its own, so
-    # the service leaves it out rather than guessing.
+def test_slot_offsets_reads_a_custom_slots_offset_from_its_id():
+    # A custom slot's id **is** its offset now: `custom:90` is 90 minutes before the event.
+    # So the offset is not looked up in `REMINDER_SLOT_OFFSET` and not left out — it is read
+    # from the slot itself, and the two cannot disagree.
     start = datetime(2026, 11, 6, 3, 30, tzinfo=UTC)
 
-    offsets = slot_offsets(start_utc=start, slots=("1d", "custom:mine"))
+    offsets = slot_offsets(start_utc=start, slots=("1d", "custom:90"))
+
+    assert offsets == (
+        datetime(2026, 11, 5, 3, 30, tzinfo=UTC),
+        datetime(2026, 11, 6, 2, 0, tzinfo=UTC),
+    )
+
+
+def test_slot_offsets_leaves_out_a_slot_that_carries_no_offset():
+    """A slot whose id is neither a named tier nor a custom slot has no offset at all.
+
+    The validator refuses such a slot on write, so this is defensive — and the answer is
+    "leave it out", never a guessed offset.
+    """
+    start = datetime(2026, 11, 6, 3, 30, tzinfo=UTC)
+
+    offsets = slot_offsets(start_utc=start, slots=("1d", "custom:soon"))
 
     assert offsets == (datetime(2026, 11, 5, 3, 30, tzinfo=UTC),)
 
@@ -524,3 +545,82 @@ def test_removing_the_plans_writes_one_audit_row_per_plan():
     )
     assert rows.count() == 2
     assert {row.target_id for row in rows} == {first, second}
+
+
+# --- The default plan is the user's own (FR-20) -------------------------------------------------
+
+
+def test_attaching_the_default_plan_uses_the_users_stored_default():
+    """FR-20 closes here: the default stopped being a constant the user could not change."""
+    from apps.delivery.services.notification_preferences import set_default_reminder_slots
+
+    user, target = uuid7(), uuid7()
+    set_default_reminder_slots(
+        user_id=user, slots=[ReminderSlot.FIVE_DAYS.value], actor=Actor.user(user), now=NOW
+    )
+
+    plan = attach_default_plan(
+        user_id=user,
+        target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT,
+        target_id=target,
+        actor=Actor.user(user),
+        now=NOW,
+    )
+
+    assert plan.slots == (ReminderSlot.FIVE_DAYS.value,)
+
+
+def test_attaching_the_default_plan_falls_back_to_the_constant():
+    """AD-16: the constant is still the one literal, now as the fallback."""
+    user = uuid7()
+
+    plan = attach_default_plan(
+        user_id=user,
+        target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT,
+        target_id=uuid7(),
+        actor=Actor.user(user),
+        now=NOW,
+    )
+
+    assert plan.slots == tuple(slot.value for slot in DEFAULT_REMINDER_PLAN)
+
+
+def test_attaching_the_default_plan_honours_an_empty_default():
+    """A user who chose "no reminders by default" means it — FR-9 makes 0 slots valid."""
+    from apps.delivery.services.notification_preferences import set_default_reminder_slots
+
+    user = uuid7()
+    set_default_reminder_slots(user_id=user, slots=[], actor=Actor.user(user), now=NOW)
+
+    plan = attach_default_plan(
+        user_id=user,
+        target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT,
+        target_id=uuid7(),
+        actor=Actor.user(user),
+        now=NOW,
+    )
+
+    assert plan.slots == ()
+
+
+def test_changing_the_default_does_not_rewrite_existing_plans():
+    """The misreading that would silently rewrite choices the user made deliberately."""
+    from apps.delivery.services.notification_preferences import set_default_reminder_slots
+
+    user, target = uuid7(), uuid7()
+    attach_default_plan(
+        user_id=user,
+        target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT,
+        target_id=target,
+        actor=Actor.user(user),
+        now=NOW,
+    )
+
+    set_default_reminder_slots(
+        user_id=user, slots=[ReminderSlot.FIVE_DAYS.value], actor=Actor.user(user), now=NOW
+    )
+
+    unchanged = get_plan(
+        user_id=user, target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT, target_id=target
+    )
+    assert unchanged.slots == tuple(slot.value for slot in DEFAULT_REMINDER_PLAN)

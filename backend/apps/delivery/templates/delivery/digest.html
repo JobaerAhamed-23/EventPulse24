@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your Pulse</title>
+  </head>
+  <body style="margin:0;padding:24px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f6f5f3;color:#1c1a17;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;">
+      <h1 style="margin:0 0 4px;font-size:20px;line-height:1.3;font-weight:600;">Your Pulse for {{ local_date|date:"j F Y" }}</h1>
+      {% if city %}
+      <p style="margin:0 0 20px;font-size:14px;line-height:1.5;color:#6b6560;">{{ city }}</p>
+      {% else %}
+      <div style="height:20px;"></div>
+      {% endif %}
+
+      {% if cards %}
+      {% for card in cards %}
+      <div style="border-left:4px solid #b4573f;padding:0 0 0 12px;margin:0 0 20px;">
+        {% if card.url %}
+        <p style="margin:0 0 4px;font-size:16px;line-height:1.4;font-weight:600;"><a href="{{ card.url }}" style="color:#1c1a17;text-decoration:none;">{{ card.title|default:"an event you saved" }}</a></p>
+        {% else %}
+        <p style="margin:0 0 4px;font-size:16px;line-height:1.4;font-weight:600;">{{ card.title|default:"an event you saved" }}</p>
+        {% endif %}
+        {% if card.local_time_text %}
+        <p style="margin:0 0 4px;font-size:14px;line-height:1.5;color:#4a4540;">When: {{ card.local_time_text }}</p>
+        {% endif %}
+        {% if card.location %}
+        <p style="margin:0 0 4px;font-size:14px;line-height:1.5;color:#4a4540;">Where: {{ card.location }}</p>
+        {% endif %}
+        <p style="margin:0;font-size:14px;line-height:1.5;color:#6b6560;">
+          Fit: {{ card.bucket }} of 5{% if card.tags %} &middot; {{ card.tags|join:", " }}{% endif %}
+        </p>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">Nothing on the Pulse{% if city %} in {{ city }}{% endif %} today.</p>
+      {% endif %}
+
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">
+        <a href="{{ cta_url }}" style="display:inline-block;background:#1c1a17;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:15px;">Open the digest</a>
+      </p>
+
+      <p style="margin:0;font-size:14px;line-height:1.5;">
+        <a href="{{ unsubscribe_url }}" style="color:#6b6560;">Stop the Pulse Ping</a>
+      </p>
+    </div>
+  </body>
+</html>

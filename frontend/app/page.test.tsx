@@ -437,9 +437,9 @@ describe("the shell", () => {
   it("does not let an inert route navigate", async () => {
     render(await HomePage(props()));
 
-    // Two of the six routes do not exist yet. A link to a 404 is a lie, and an anchor
-    // with aria-disabled still navigates.
-    for (const label of ["Browse", "Settings"]) {
+    // **Browse is the only route left that does not exist.** A link to a 404 is a lie,
+    // and an anchor with aria-disabled still navigates.
+    for (const label of ["Browse"]) {
       const item = [...sidenav().querySelectorAll("li")].find((li) =>
         [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
       );
@@ -447,6 +447,18 @@ describe("the shell", () => {
       expect(item?.querySelector("a"), label).toBeNull();
       expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
     }
+  });
+
+  it("makes Settings a real route, because the settings screens exist", async () => {
+    render(await HomePage(props()));
+
+    const item = [...sidenav().querySelectorAll("li")].find((li) =>
+      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Settings"),
+    );
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/settings/reminders");
+    // "Coming soon" is gone — the route is here.
+    expect(item?.textContent).not.toContain("Coming soon");
   });
 
   it("makes Conflicts a real route, because the Conflict Review exists", async () => {

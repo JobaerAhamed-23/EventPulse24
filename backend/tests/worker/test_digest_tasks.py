@@ -11,11 +11,13 @@
 - The composition job **releases the claim in a `finally`** — a crash cannot leave a
   user claimed until the TTL expires.
 - The composition job **re-raises** an unexpected failure, so Celery sees it and retries.
+- The composition job **mints the Pulse Ping** after the composition, and **running it
+  twice mints one row** (FR-10) — the composition is idempotent and the send matches it.
 - The tick **does not change the beat schedule**: one static 60-second tick, still.
 """
 
 import logging
-from datetime import time
+from datetime import date, time
 
 import pytest
 
@@ -34,6 +36,23 @@ def make_preference(user_id=None, *, delivery_time=time(9, 0), timezone=ZONE):
     if user_id is not None:
         fields["user_id"] = user_id
     return DigestPreferenceFactory(**fields)
+
+
+class FakeResult:
+    """The shape of `DigestCompositionResult`, as the composition job reads it.
+
+    **The four attributes the Ping decision needs are part of the contract.** The job
+    hands the composition's own pool counts to `mint_ping_send` rather than re-querying
+    them, so a stubbed composition must carry them — otherwise the job would be reading
+    counts from somewhere the real composition never reads them.
+    """
+
+    created = True
+    is_empty = True
+    local_date = date(2026, 11, 4)
+    public_qualifying_count = 0
+    personal_qualifying_count = 0
+    has_qualifying_events = False
 
 
 def claim_of(user_id):
@@ -137,11 +156,7 @@ def test_the_composition_job_composes_the_digest(monkeypatch):
             is_empty=True,
         )
 
-        class Result:
-            created = True
-            is_empty = True
-
-        return Result()
+        return FakeResult()
 
     monkeypatch.setattr(tasks, "compose_digest", fake_compose)
 
@@ -154,11 +169,7 @@ def test_the_composition_job_releases_the_claim(monkeypatch):
     user_id = make_preference().user_id
 
     def fake_compose(*, user_id, actor, now):
-        class Result:
-            created = True
-            is_empty = True
-
-        return Result()
+        return FakeResult()
 
     monkeypatch.setattr(tasks, "compose_digest", fake_compose)
 
@@ -212,6 +223,89 @@ def test_the_composition_job_logs_the_error_type_and_no_pii(monkeypatch, caplog)
     assert record.getMessage() == "Digest composition failed"
     assert record.error_type == "RuntimeError"
     assert record.user_id == str(user_id)
+
+
+# --- The composition job, end to end (FR-10) ---------------------------------------------------
+
+
+def test_running_the_composition_job_twice_mints_one_send(monkeypatch):
+    """**"Tested by running the job twice"** (FR-10's second consequence).
+
+    The composition is idempotent and the send must match it: a duplicated job — the
+    first lost to a broker hiccup, a retried enqueue — must not produce a second email.
+    The unique key `user_id · digest · local_date` is what makes it so, so the row
+    count is the assertion rather than a return value.
+    """
+    from apps.delivery.models import ScheduledSend
+
+    user_id = make_preference().user_id
+
+    def fake_compose(*, user_id, actor, now):
+        PulseDigest.objects.using(PERSONAL).get_or_create(
+            user_id=user_id,
+            local_date=date(2026, 11, 4),
+            defaults={"timezone": ZONE, "composed_at": now, "is_empty": True},
+        )
+
+        class Qualifying(FakeResult):
+            public_qualifying_count = 3
+            has_qualifying_events = True
+
+        return Qualifying()
+
+    monkeypatch.setattr(tasks, "compose_digest", fake_compose)
+
+    tasks.compose_digest_task(str(user_id))
+    tasks.compose_digest_task(str(user_id))
+
+    rows = ScheduledSend.objects.using(PERSONAL).filter(user_id=user_id)
+    assert rows.count() == 1
+    row = rows.get()
+    assert row.kind == ScheduledSend.Kind.DIGEST
+    assert row.status == ScheduledSend.Status.PENDING
+    assert row.send_key == f"{user_id}:digest:2026-11-04"
+
+
+def test_a_user_with_nothing_to_say_gets_no_send_from_the_job(monkeypatch):
+    """**FR-10's first consequence, through the job.** A composition that found
+    nothing qualifying mints no row at all — not a `pending` row that is later
+    skipped."""
+    from apps.delivery.models import ScheduledSend
+
+    user_id = make_preference().user_id
+
+    def fake_compose(*, user_id, actor, now):
+        return FakeResult()
+
+    monkeypatch.setattr(tasks, "compose_digest", fake_compose)
+
+    tasks.compose_digest_task(str(user_id))
+
+    assert not ScheduledSend.objects.using(PERSONAL).filter(user_id=user_id).exists()
+
+
+def test_the_job_logs_the_pings_outcome(monkeypatch, caplog):
+    """**The Ping's outcome rides on the composition's own log line.** It is the one
+    line that says what happened to this user's day: a row was minted, the Ping was
+    suppressed, or the user had unsubscribed."""
+    user_id = make_preference().user_id
+
+    def fake_compose(*, user_id, actor, now):
+        class Qualifying(FakeResult):
+            public_qualifying_count = 1
+            has_qualifying_events = True
+
+        return Qualifying()
+
+    monkeypatch.setattr(tasks, "compose_digest", fake_compose)
+
+    with caplog.at_level(logging.INFO, logger="worker.tasks"):
+        tasks.compose_digest_task(str(user_id))
+
+    [record] = [r for r in caplog.records if r.getMessage() == "Digest composed"]
+    assert record.ping_minted is True
+    assert record.ping_suppressed is False
+    assert record.ping_reason is None
 
 
 # --- The task names ---------------------------------------------------------------------------

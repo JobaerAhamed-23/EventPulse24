@@ -4,7 +4,14 @@
  * no UI kit or animation library, motion only through .fade-in, kebab-case files, and the
  * reserved generated-client folder.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -112,6 +119,190 @@ describe("motion classes in markup", () => {
     '<p className="mt-4">transition</p>',
   ])("allows %s", (source) => {
     expect(motionClasses(source)).toEqual([]);
+  });
+});
+
+/**
+ * The server/client boundary.
+ *
+ * **A `"use client"` module may not reach `next/headers`.** The App Router's
+ * `cookies()` and `headers()` are server-only, and a client bundle that imports them
+ * fails to build:
+ *
+ * > You're importing a module that depends on "next/headers". This API is only
+ * > available in Server Components in the App Router.
+ *
+ * **The unit tests do not catch it** — jsdom resolves `next/headers` to a stub, so the
+ * island renders happily and every test passes. The **build** is what knows the
+ * difference between a server module and a client one, and this rule makes the suite
+ * know it too, so the defect is caught by `pnpm test` rather than by CI's build step.
+ *
+ * **The rule is about the module graph, not the file.** A client component may import
+ * a helper that happens to live in `lib/`; what it may not do is import a module that
+ * *transitively* reaches `next/headers`. So the check follows the imports.
+ *
+ * **Three things are deliberately not followed**, because following them would make the
+ * rule cry wolf:
+ *
+ * - **Type-only imports.** `import type { ConflictPair } from "@/lib/conflict-list-read"`
+ *   names a server module but imports no code from it — TypeScript erases the whole
+ *   statement, so the client bundle never reaches it. Only the *values* cross the
+ *   boundary.
+ * - **The directive's position.** A module is a client module when `"use client"` is
+ *   its **first statement**. A file that merely mentions the phrase — in a docstring,
+ *   or in this test's own planted source — is not a client module.
+ * - **The test files.** They are run by Vitest, not bundled by Next, and they mock
+ *   `next/headers` away.
+ */
+describe("the server/client boundary", () => {
+  /** Every `.ts`/`.tsx` source file, by its path relative to the frontend root. */
+  const allSource = SOURCE_DIRS.flatMap((dir) => sourceFiles(path.join(ROOT, dir))).filter(
+    (file) => file.endsWith(".ts") || file.endsWith(".tsx"),
+  );
+
+  /**
+   * Whether a file's **first statement** is the `"use client"` directive.
+   *
+   * **The directive has to come first.** That is the App Router's own rule, and it is
+   * what makes the check a statement about the file's *role* rather than a search for
+   * a phrase anywhere in it. A docstring that quotes `"use client"` — as this very
+   * test's and the server-only read module's do — must not turn those files into
+   * client modules.
+   */
+  function isClientModule(file: string): boolean {
+    const source = readFileSync(file, "utf8");
+    // A directive prologue is a run of string-literal statements before any real code.
+    const first = source.match(/^\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*"([^"]+)"\s*;?/);
+    return first?.[1] === "use client";
+  }
+
+  /**
+   * The import specifiers a file names **as values**, from `import … from "…"` and
+   * `import("…")`.
+   *
+   * **Type-only imports are skipped.** `import type { X } from "…"` is erased by
+   * TypeScript before the bundler ever sees it, so it creates no edge in the client
+   * bundle. Following it would flag every island that borrows a *type* from a
+   * server-side read module — which is safe, and common, and not the defect.
+   */
+  function importsOf(file: string): string[] {
+    const source = readFileSync(file, "utf8");
+    const valueImports = [
+      ...source.matchAll(/(?:^|\n)\s*import\s(?!type\s)[^;]*?from\s+["']([^"']+)["']/g),
+    ];
+    const dynamicImports = [...source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)];
+    return [...valueImports, ...dynamicImports].map((m) => m[1]);
+  }
+
+  /** The `@/lib/...` module a specifier names, or null if it names something else. */
+  function localModule(specifier: string): string | null {
+    if (!specifier.startsWith("@/")) return null;
+    return path.join(ROOT, specifier.slice(2));
+  }
+
+  /** The file a module specifier resolves to, trying the extensions a module may have. */
+  function resolveModule(specifier: string): string | null {
+    const base = localModule(specifier);
+    if (base === null) return null;
+    for (const candidate of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+    }
+    return null;
+  }
+
+  /**
+   * Whether a file reaches `next/headers` — directly, or through what it imports.
+   *
+   * **The walk is bounded by the files it has already seen**, so an import cycle is a
+   * loop that terminates rather than a stack overflow.
+   */
+  function reachesServerOnly(file: string, seen = new Set<string>()): boolean {
+    if (seen.has(file)) return false;
+    seen.add(file);
+    const source = readFileSync(file, "utf8");
+    if (/from\s+["']next\/headers["']/.test(source)) return true;
+    for (const specifier of importsOf(file)) {
+      const resolved = resolveModule(specifier);
+      if (resolved !== null && reachesServerOnly(resolved, seen)) return true;
+    }
+    return false;
+  }
+
+  it("keeps every client module off the server-only API", () => {
+    // **Only the client modules.** A server component may import `next/headers` — that
+    // is what it is for.
+    const clients = allSource.filter(
+      (file) => !file.endsWith(".test.tsx") && !file.endsWith(".test.ts") && isClientModule(file),
+    );
+    expect(clients.length).toBeGreaterThan(0);
+
+    const offenders = clients
+      .filter((file) => reachesServerOnly(file))
+      .map((file) => path.relative(ROOT, file));
+    expect(offenders).toEqual([]);
+  });
+
+  it("catches a client module that imports next/headers", () => {
+    // **The rule has to be able to fail**, or it is a rule that proves nothing.
+    const planted = path.join(ROOT, "components", "planted-server-import.tsx");
+    try {
+      writeFileSync(
+        planted,
+        [
+          '"use client";',
+          'import { cookies } from "next/headers";',
+          "export const c = cookies;",
+        ].join("\n"),
+      );
+      expect(isClientModule(planted)).toBe(true);
+      expect(reachesServerOnly(planted)).toBe(true);
+    } finally {
+      if (existsSync(planted)) unlinkSync(planted);
+    }
+  });
+
+  it("does not follow a type-only import", () => {
+    // **A type is not a dependency.** `import type { ConflictPair } from
+    // "@/lib/conflict-list-read"` names a server module but imports no code from it —
+    // TypeScript erases the statement, so the client bundle never reaches it. The
+    // islands that borrow those types are not defects, and this rule must not say
+    // they are.
+    const planted = path.join(ROOT, "components", "planted-type-import.tsx");
+    try {
+      writeFileSync(
+        planted,
+        [
+          '"use client";',
+          'import type { ConflictPair } from "@/lib/conflict-list-read";',
+          "export type P = ConflictPair;",
+        ].join("\n"),
+      );
+      expect(reachesServerOnly(planted)).toBe(false);
+    } finally {
+      if (existsSync(planted)) unlinkSync(planted);
+    }
+  });
+
+  it("does not mistake a docstring for the client directive", () => {
+    // **The directive has to be the first statement.** A module whose docstring
+    // *quotes* `"use client"` — as `lib/notification-settings-read.ts` does, to warn
+    // readers off it — is a server module, and this rule must leave it alone.
+    const planted = path.join(ROOT, "components", "planted-mention.tsx");
+    try {
+      writeFileSync(
+        planted,
+        [
+          "/**",
+          ' * A docstring that mentions "use client" without being one.',
+          " */",
+          'import { cookies } from "next/headers";',
+          "export const c = cookies;",
+        ].join("\n"),
+      );
+      expect(isClientModule(planted)).toBe(false);
+    } finally {
+      if (existsSync(planted)) unlinkSync(planted);
+    }
   });
 });
 
