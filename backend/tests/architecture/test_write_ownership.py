@@ -14,6 +14,7 @@ names three specific facts:
 | `personalization_interest` | `personalization` |
 | `personalization_calendarconnection` | `personalization` |
 | `ingestion_eventfit` | `ingestion` |
+| `ingestion_city` | `ingestion` |
 
 A sentence — "`personalization` writes interests" — is a claim about one table. A table
 is a claim about all of them at once, and a new table that nobody has claimed fails
@@ -77,10 +78,19 @@ TABLE_OWNERS = {
     "ingestion_source": "ingestion",
     "ingestion_tosreview": "ingestion",
     "ingestion_venue": "ingestion",
+    # AD-16: `ingestion` owns the canonical City too (FR-27). It is written only by
+    # `services/cities.py` — `apps.catalog` reads the city page through a published service
+    # and holds no write path, the same division `apps/catalog/api.py` already states.
+    "ingestion_city": "ingestion",
     "ingestion_event": "ingestion",
     "ingestion_extractedrecord": "ingestion",
     "ingestion_eventstatechange": "ingestion",
     "ingestion_eventfit": "ingestion",
+    # AD-16: `ingestion` owns the revalidation outbox too (FR-26, FR-27). It is the
+    # catalog side of the signal — one public page set that must be rebuilt — and it is
+    # written only by `services/revalidation.py`. The frontend owns no table at all; it
+    # receives the signal and rebuilds from the catalog's own public read.
+    "ingestion_revalidationrequest": "ingestion",
     # AD-16: `delivery` owns the reminder plan. It is here because the check covers
     # every app that owns tables, not only the three this intent added to — a table
     # with no owner is a table nobody is responsible for, and the map is only

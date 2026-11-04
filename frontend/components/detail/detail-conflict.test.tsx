@@ -61,6 +61,7 @@ function renderScreen() {
       <DetailConflictMark eventId="event-1" />
       <DetailActions
         eventId="event-1"
+        slug="free-tech-meetup-2026-11-03-a1b2c3"
         saved
         conflict={PAYLOAD_CONFLICT}
         eventName="Free tech meetup"
@@ -104,6 +105,7 @@ describe("the mark and the prompt", () => {
         <DetailConflictMark eventId="event-2" />
         <DetailActions
           eventId="event-1"
+          slug="free-tech-meetup-2026-11-03-a1b2c3"
           saved
           conflict={PAYLOAD_CONFLICT}
           eventName="Free tech meetup"

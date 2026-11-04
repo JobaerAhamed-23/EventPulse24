@@ -26,6 +26,7 @@
 import Link from "next/link";
 
 import { ConflictIndicator } from "@/components/conflicts/conflict-indicator";
+import { ShareControl } from "@/components/share/share-control";
 import type { components } from "@/lib/api/schema";
 import { sourceBadge, tagLabel } from "@/lib/digest-labels";
 import { cardTime } from "@/lib/detail-time";
@@ -46,6 +47,14 @@ export type PulseCardProps = {
   card: DigestCard;
   /** Which explanation the card carries. The caller must say. */
   explanation: Explanation;
+  /**
+   * The site's public origin, resolved on the server.
+   *
+   * **`PUBLIC_SITE_URL` has no `NEXT_PUBLIC_` prefix**, so a client component cannot
+   * read it — the page resolves it (`lib/site-url.ts`) and passes it down. The share
+   * control falls back to the browser's own origin when it is absent.
+   */
+  shareOrigin?: string | null;
 };
 
 /** The confidence indicator's five positions, always (`DESIGN.md` `component.indicator.confidence`). */
@@ -89,7 +98,7 @@ export function categoryFor(card: DigestCard): Category {
   return { label: "Public event", stripe: "bg-accent-slate", discovery: false };
 }
 
-export function PulseCard({ card, explanation }: PulseCardProps) {
+export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardProps) {
   const category = categoryFor(card);
   const tags = card.tags.slice(0, MAX_WHY_THIS_TAGS);
 
@@ -100,6 +109,20 @@ export function PulseCard({ card, explanation }: PulseCardProps) {
   const time = cardTime(card.start_time_utc, card.start_time_tz);
   const tooltipId = `confidence-${card.event_id}`;
   const badgeTooltipId = `badge-${card.event_id}`;
+
+  /**
+   * **Whether this card can be shared at all (FR-28).**
+   *
+   * **The server states it.** `card.public_slug` is the event's public page slug, or
+   * `null` — and `null` has three honest reasons: the card is a **personal** event
+   * (the user's own agenda row, with no public page), the catalog does not currently
+   * hold the event publicly (`in_review`, unpublished or superseded), or the event has
+   * no slug. A share control on any of those would produce a link that 404s for the
+   * friend who opened it — so **the control is not rendered**, rather than rendered
+   * and broken.
+   */
+  const publicSlug = card.public_slug ?? null;
+  const shareable = publicSlug !== null;
 
   return (
     <article
@@ -194,6 +217,36 @@ export function PulseCard({ card, explanation }: PulseCardProps) {
         <p className="[font:var(--type-scale-body-sm)] text-ink-muted">
           The source listing has changed, so some details are missing.
         </p>
+      ) : null}
+
+      {/*
+        **The card's action row — and the share affordance (FR-28).**
+
+        **Why here and not in the trust row.** The trust row is at capacity: it holds
+        the conflict indicator, the five-dot confidence pulse *with* its visible
+        "Relevance" label and the Source Badge *with* its visible label, beside the
+        category kicker, in a `flex items-center gap-2` that does not wrap. A fourth
+        control with a visible label would overflow a 360px viewport. The mockup's own
+        answer is a footer — `.card-footer` → `.card-actions` → `.ghostbtn` — and the
+        card's actions live at its foot.
+
+        **`relative z-10` is load-bearing here too**, for the same reason it is on the
+        trust row: the stretched `<Link>` below is `absolute inset-0 z-0` and comes
+        later in DOM order, so it paints *over* anything in the normal flow. Without
+        the raise, the Share button would be covered by the link and could never be
+        pressed — the same inertness the trust row's comment records.
+
+        **`EXPERIENCE.md` §13 is amended here, deliberately.** Its mobile default
+        enumerated *"No description, no image, no map, no price, no attendee count, no
+        share button."* FR-28 puts the share affordance on the card, so that sentence
+        changes — **and only that sentence.** Everything else §13 excludes stays
+        excluded, and §13's anti-pattern (progressive disclosure that *hides* trust
+        signals) is not violated: this row **adds** an action and moves nothing.
+      */}
+      {shareable ? (
+        <div className="relative z-10 flex items-start justify-end">
+          <ShareControl slug={publicSlug} title={title} origin={shareOrigin} weight="card" />
+        </div>
       ) : null}
 
       {/* The whole card is the tap target. The link is stretched over the card so the hit

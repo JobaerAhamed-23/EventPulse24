@@ -272,15 +272,28 @@ def test_the_event_fit_wall_is_a_package_and_not_a_list_of_names():
 
 
 def test_every_adapter_is_covered_by_the_sdk_contracts():
+    """Every adapter is held to every SDK contract, except the one it owns.
+
+    **A contract may have more than one owner.** `http-client` has two: `adapters.crawl`,
+    which fetches third-party sources (AD-9), and `adapters.revalidation`, which POSTs to
+    our own frontend to tell it a public page is stale (FR-26, FR-27). Both are the
+    adapters allowed to hold an HTTP client; every other adapter, and every package, is
+    held to the contract.
+
+    So the check is: **every adapter except the contract's owners appears in its
+    `source_modules`, and no owner does.** A new HTTP-capable adapter therefore cannot
+    appear without this contract being amended in the same commit — the widening is
+    forced to be a deliberate, visible edit rather than something that happened.
+    """
     adapters = _packages(BACKEND_DIR / "adapters")
-    for contract_id, owner in (
-        ("llm-sdk", "llm"),
-        ("stripe-sdk", "billing"),
-        ("http-client", "crawl"),
+    for contract_id, owners in (
+        ("llm-sdk", {"llm"}),
+        ("stripe-sdk", {"billing"}),
+        ("http-client", {"crawl", "revalidation"}),
     ):
         sources = set(CONTRACTS[contract_id]["source_modules"])
-        assert {f"adapters.{a}" for a in adapters - {owner}} <= sources, contract_id
-        assert f"adapters.{owner}" not in sources
+        assert {f"adapters.{a}" for a in adapters - owners} <= sources, contract_id
+        assert not sources & {f"adapters.{o}" for o in owners}
 
 
 def test_only_the_throttle_adapter_and_the_health_check_talk_to_redis():

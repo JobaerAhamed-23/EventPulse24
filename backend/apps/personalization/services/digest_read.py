@@ -139,6 +139,23 @@ class DigestCard:
     #: user's own calendar, read from the persisted pairs and never computed here
     #: (AD-21) — so the indicator on a card and the one on the Timeline cannot disagree.
     conflict: bool
+    #: The event's **public page slug**, or `None`.
+    #:
+    #: **This is the shareability fact, and the server states it (FR-28).** The client
+    #: does not infer it: `get_public_events` returns published, non-superseded events
+    #: and *"an id that is not public is simply absent from the result"*, so a slug here
+    #: means the public page exists and a `None` means it does not.
+    #:
+    #: **`None` has three honest reasons,** and they are all facts rather than gaps:
+    #: the card is a **personal** event (the user's own agenda row — there is no public
+    #: page for a personal event, and none should ever be); the catalog does not
+    #: currently hold the event publicly (unpublished, `in_review` or superseded); or
+    #: the event has no slug at all.
+    #:
+    #: **Why it matters.** A share control needs a public URL. Without this field the
+    #: card could only build `/events/{event_id}` — the *personal* URL — and a friend
+    #: who opened it would meet a sign-in wall instead of the event.
+    public_slug: str | None
 
 
 @dataclass(frozen=True)
@@ -342,6 +359,7 @@ def _card_for_public(
             tz_review_pending=False,
             catalog_event_missing=True,
             conflict=conflict,
+            public_slug=None,
         )
     return DigestCard(
         event_id=row.event_id,
@@ -361,6 +379,10 @@ def _card_for_public(
         tz_review_pending=public.tz_review_pending,
         catalog_event_missing=False,
         conflict=conflict,
+        # **The public page's slug, because the event is public.** `public` came from
+        # `get_public_events`, which returns published, non-superseded events only —
+        # so reaching this branch at all means the public page exists.
+        public_slug=public.slug,
     )
 
 
@@ -375,6 +397,14 @@ def _card_for_personal(
     **The place is the free-text `location`, verbatim.** It is not matched against a
     city and it is not turned into a venue — the codebase refuses guesses of that kind
     (the same call the composition service makes for the personal event's city band).
+
+    **A personal event is never shareable, so its card carries no public slug.** A
+    personal event is *the user's own agenda row* — their dinner, their anniversary,
+    their location — and it has no catalog event and therefore no public page. A share
+    control on one would produce a link to `/events/{personal_event_id}`, which the
+    public page 404s; and if it did not, it would publish a stranger's private calendar.
+    So `public_slug` is `None` on both personal branches, and the client renders no
+    share control at all.
     """
     if event is None:
         return DigestCard(
@@ -395,6 +425,7 @@ def _card_for_personal(
             tz_review_pending=False,
             catalog_event_missing=True,
             conflict=conflict,
+            public_slug=None,
         )
     return DigestCard(
         event_id=row.event_id,
@@ -414,6 +445,7 @@ def _card_for_personal(
         tz_review_pending=False,
         catalog_event_missing=False,
         conflict=conflict,
+        public_slug=None,
     )
 
 

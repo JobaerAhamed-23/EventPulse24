@@ -146,6 +146,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/cities/by-slug/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one city page, by slug
+         * @description One city page — the read behind `/events-in-{city}` (FR-27). A paged listing of the city's upcoming public events, best Event Fit first, each with the persisted fit's score and tags. A city below the publishing threshold comes back with `is_published=false` and no events, which the page renders as 'coming soon' — it does not 404, because a URL that vanishes after ranking throws away every bit of ranking it earned. An unknown slug is a 404. No session is used and none is set.
+         */
+        get: operations["apps_catalog_api_get_city"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/events": {
         parameters: {
             query?: never;
@@ -166,6 +186,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/events/by-slug/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one public event page, by slug
+         * @description One published event by slug — the read behind `/events/{slug}` (FR-26). Unlike the listing's read, an event that has already happened still resolves: the page stays addressable and stays indexed. An event that is not public reads as not found. No session is used and none is set.
+         */
+        get: operations["apps_catalog_api_get_event_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/events/{event_id}": {
         parameters: {
             query?: never;
@@ -178,6 +218,26 @@ export interface paths {
          * @description One published event by id. An event that is not public — or that has already started — reads as not found, the same set the list shows. No session is used and none is set.
          */
         get: operations["apps_catalog_api_get_event"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/url-feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the site's publicly addressable URLs
+         * @description One page of the public URL feed: every publicly addressable page — a public event's page and a qualifying city's page — with the time each last really changed. This is the sitemap's source, so it lists exactly the URLs the site serves: no unpublished event, no superseded event, and no city below the publishing threshold. The read is paged and bounded, because it grows with the catalog. No session is used and none is set.
+         */
+        get: operations["apps_catalog_api_get_url_feed"];
         put?: never;
         post?: never;
         delete?: never;
@@ -905,6 +965,121 @@ export interface components {
              */
             display_label: string;
         };
+        /**
+         * CityPageEventOut
+         * @description One event on a city page.
+         *
+         *     **The score and the tags are the persisted Event Fit, served as stored** (AD-10).
+         *     The page shows what the fit says, not what a fresh computation would say — so a
+         *     score of 1 on an event that would now score 5 is shown as 1, and the reason is that
+         *     the fit has not been recomputed yet.
+         */
+        CityPageEventOut: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** City */
+            city: string;
+            /** Description */
+            description: string;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Sold Out */
+            is_sold_out: boolean;
+            /** Score */
+            score: number;
+            /** Slug */
+            slug: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Status */
+            status: string;
+            /** Tags */
+            tags: string[];
+            /** Title */
+            title: string;
+            /**
+             * Tz Review Pending
+             * @default false
+             */
+            tz_review_pending: boolean;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * CityPageOut
+         * @description One city page: the city's identity, its events, and whether it is published.
+         *
+         *     **`is_published` is FR-27's threshold, computed by the listing's own filters.** A
+         *     city with more than the threshold's events is published; a city with fewer is not,
+         *     and the frontend renders "coming soon" rather than a listing. **The city page
+         *     degrades; it does not 404** — a URL that vanishes after ranking throws away every
+         *     bit of ranking it earned.
+         *
+         *     **`event_count` is the qualifying count**, not the number of items on this page. It
+         *     is the number the threshold was decided on. `has_next` is measured against the
+         *     **listing's** total instead — the two counts answer different questions, and a city
+         *     between seasons has the first without the second.
+         */
+        CityPageOut: {
+            /** Country Code */
+            country_code: string;
+            /** Event Count */
+            event_count: number;
+            /** Has Next */
+            has_next: boolean;
+            /** Is Published */
+            is_published: boolean;
+            /** Items */
+            items: components["schemas"]["CityPageEventOut"][];
+            /** Name */
+            name: string;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Region */
+            region: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * CityPageQuery
+         * @description The city page endpoint's query parameters.
+         *
+         *     **`page` and `page_size` are bounded at the edge, and the edge is a refusal.**
+         *     A page below one or a page size above the ceiling is a **422**, not a silent
+         *     adjustment — a caller that asks for 10,000 events a page has made a mistake, and
+         *     quietly handing it 50 would hide the mistake from it.
+         *
+         *     The service below the surface **clamps** rather than refuses, because it is also
+         *     called directly by code that is not an HTTP request and should not raise a
+         *     validation error. The two layers answer the same question in the way that suits
+         *     each: a bad request is refused, a bad internal call is bounded.
+         */
+        CityPageQuery: {
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 20
+             */
+            page_size: number;
+        };
         /** ComponentOut */
         ComponentOut: {
             /** Reason */
@@ -1377,6 +1552,8 @@ export interface components {
             event_kind: string;
             /** Location */
             location?: string | null;
+            /** Public Slug */
+            public_slug?: string | null;
             /** Slot */
             slot: string;
             /** Source Badge */
@@ -2109,6 +2286,77 @@ export interface components {
             items: components["schemas"]["PreviewCardOut"][];
         };
         /**
+         * PublicEventPageOut
+         * @description One public event's page facts.
+         *
+         *     **A separate shape from `EventOut`, deliberately.** `EventOut` is built by
+         *     `cls(**vars(event))` over `PublicEvent`, so widening it would change the *catalog
+         *     listing's* contract as well — and the listing's contract is not the public page's to
+         *     change. The same reasoning that gave the Detail Screen its own shape applies here.
+         *
+         *     **The fields are the JSON-LD's inputs (AD-12).** ARCHITECTURE-SPINE.md:166 requires
+         *     the Schema.org `Event` JSON-LD to be *"emitted from the same data the page renders"*.
+         *     So the page's payload carries the title, the description, both times, the zone, the
+         *     venue's name and address parts, the canonical URL, the status, the sold-out flag and
+         *     the version — one read, everything the page needs.
+         *
+         *     **`schema_org` is the finished structured data**, projected from the fields above by
+         *     `domain.schema_org` and carried on the DTO. The page embeds it verbatim: it does not
+         *     build a second object, so it cannot disagree with the one it renders.
+         *
+         *     **`event_version` is here because the revalidation work item needs it** to prove a
+         *     cached page is current.
+         */
+        PublicEventPageOut: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** Description */
+            description: string;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Sold Out */
+            is_sold_out: boolean;
+            /** Schema Org */
+            schema_org: {
+                [key: string]: unknown;
+            };
+            /** Slug */
+            slug: string;
+            /** Source Name */
+            source_name: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /**
+             * Tz Review Pending
+             * @default false
+             */
+            tz_review_pending: boolean;
+            /** Venue Address */
+            venue_address?: string | null;
+            /** Venue City */
+            venue_city?: string | null;
+            /** Venue Country Code */
+            venue_country_code?: string | null;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
          * QuietHoursIn
          * @description A Quiet Hours window to save — two local wall clocks.
          *
@@ -2539,6 +2787,82 @@ export interface components {
             week?: string | null;
         };
         /**
+         * UrlFeedEntryOut
+         * @description One publicly addressable URL, and when it last changed.
+         *
+         *     **`path` is a path, not a URL.** The origin is the frontend's business — the sitemap
+         *     resolves each path against the site's own public origin — so the backend hands over
+         *     a path and never an absolute URL. That keeps the backend free of any knowledge of
+         *     how the frontend is deployed, and it keeps one origin in one place.
+         *
+         *     **`kind` is a closed vocabulary.** `event` and `city` are the two kinds of public
+         *     page the site serves, and a third kind would have to be declared here too — a kind
+         *     that exists on only one side of the wire is a kind nobody can serve.
+         *
+         *     **`last_modified` is the page's real last change.** It is derived from the event's
+         *     state history, not from a timestamp of convenience, so a crawler is told the truth
+         *     about what moved.
+         */
+        UrlFeedEntryOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "event" | "city";
+            /**
+             * Last Modified
+             * Format: date-time
+             */
+            last_modified: string;
+            /** Path */
+            path: string;
+        };
+        /**
+         * UrlFeedOut
+         * @description One page of the public URL feed, and what the caller needs to page through it.
+         *
+         *     **`total` is the size of the whole feed**, so a caller can decide how many children
+         *     its sitemap index needs before it fetches the first child — and that is exactly what
+         *     the sitemap's index route does.
+         *
+         *     **`has_next` is measured against `total`**, so a caller knows when to stop without
+         *     fetching a page that would be empty.
+         */
+        UrlFeedOut: {
+            /** Has Next */
+            has_next: boolean;
+            /** Items */
+            items: components["schemas"]["UrlFeedEntryOut"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * UrlFeedQuery
+         * @description The URL feed endpoint's query parameters.
+         *
+         *     **Bounded at the edge, and the edge is a refusal** — the same rule the city page's
+         *     query follows, for the same reason: this read grows with the catalog, and a caller
+         *     that asks for a million URLs at once has made a mistake. The service below the
+         *     surface clamps rather than refuses, because it is also called directly by code that
+         *     is not an HTTP request.
+         */
+        UrlFeedQuery: {
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 1000
+             */
+            page_size: number;
+        };
+        /**
          * WhyThisOut
          * @description The persisted why-this breakdown (FR-24, AD-10).
          *
@@ -2848,6 +3172,40 @@ export interface operations {
             };
         };
     };
+    apps_catalog_api_get_city: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityPageOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_catalog_api_list_events: {
         parameters: {
             query?: {
@@ -2870,6 +3228,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventListOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_api_get_event_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicEventPageOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };
@@ -2901,6 +3290,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_api_get_url_feed: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UrlFeedOut"];
                 };
             };
         };

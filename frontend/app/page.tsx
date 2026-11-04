@@ -10,6 +10,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
 import { getSession, homeRoute } from "@/lib/session";
+import { siteUrl } from "@/lib/site-url";
 
 /**
  * `/` — the Pulse Digest: the signed-in home, and the route decision that gets people
@@ -82,7 +83,9 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
             {digest.kind === "empty" ? <DigestEmpty city={digest.digest.city ?? null} /> : null}
 
-            {digest.kind === "composed" ? <DigestCards digest={digest.digest} /> : null}
+            {digest.kind === "composed" ? (
+              <DigestCards digest={digest.digest} origin={siteUrl()?.origin ?? null} />
+            ) : null}
           </div>
         </>
       )}
@@ -107,13 +110,25 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
  * preview. The card names itself "Relevance" on screen, which is the words keeping the
  * two indicators apart.
  */
-function DigestCards({ digest }: { digest: { cards: Parameters<typeof PulseCard>[0]["card"][] } }) {
+function DigestCards({
+  digest,
+  origin,
+}: {
+  digest: { cards: Parameters<typeof PulseCard>[0]["card"][] };
+  /** The site's public origin, resolved on the server (FR-28). */
+  origin: string | null;
+}) {
   return (
     <>
       {/*
         The live region announces once, when the cards are in the DOM — not on the
         server, where it would be read before the cards exist. It is visually hidden
         and carries the count, so "Pulse Digest ready, 3 events for today."
+
+        **It is the page's one `role="status"`, and it stays the only one.** The cards'
+        own share confirmations are bare `aria-live="polite"` regions — two status
+        regions on a page would make "which one is the page talking?" a question the
+        DOM cannot answer.
       */}
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         Pulse Digest ready, {digest.cards.length} events for today.
@@ -125,6 +140,7 @@ function DigestCards({ digest }: { digest: { cards: Parameters<typeof PulseCard>
             key={card.event_id}
             card={card}
             explanation={{ kind: "relevance", value: card.bucket }}
+            shareOrigin={origin}
           />
         ))}
       </div>

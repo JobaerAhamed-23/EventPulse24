@@ -21,6 +21,9 @@ def make_env(**overrides) -> Settings:
         "django_db_role": "runtime",
         # AD-18: required, with no default and no fallback.
         "calendar_credential_key": "k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieXQ",
+        # The revalidation shared secret (FR-26, FR-27): required, with no default and no
+        # fallback — a deployment that boots without it cannot authenticate a signal.
+        "revalidation_secret": "test-revalidation-secret",
         **URLS,
         **overrides,
     }

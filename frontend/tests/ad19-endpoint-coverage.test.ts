@@ -79,6 +79,48 @@ const NEW_ENDPOINTS = [
     operationId: "apps_personalization_api_read_digest_endpoint",
     caller: ["lib/digest-read.ts"],
   },
+  // ── The public event page ─────────────────────────────────────────────────────
+  {
+    path: "/api/catalog/events/by-slug/{slug}",
+    method: "get",
+    operationId: "apps_catalog_api_get_event_page",
+    /**
+     * **The public page's read.** It is in its own module rather than in the route,
+     * because the route calls it twice — once for the page and once for the metadata —
+     * and both calls have to reach the backend the same way. A hand-written fetch at
+     * either call site would bypass the generated types entirely, which is exactly
+     * what this file exists to catch.
+     */
+    caller: ["lib/public-event-read.ts"],
+  },
+  // ── The city page ─────────────────────────────────────────────────────────────
+  {
+    path: "/api/catalog/cities/by-slug/{slug}",
+    method: "get",
+    operationId: "apps_catalog_api_get_city",
+    /**
+     * **The city page's read.** It is in its own module rather than in the route,
+     * because the route calls it twice — once for the page and once for the metadata —
+     * and both calls have to reach the backend the same way. A hand-written fetch at
+     * either call site would bypass the generated types entirely, which is exactly
+     * what this file exists to catch.
+     */
+    caller: ["lib/city-page-read.ts"],
+  },
+  // ── The public URL feed ────────────────────────────────────────────────────────
+  {
+    path: "/api/catalog/url-feed",
+    method: "get",
+    operationId: "apps_catalog_api_get_url_feed",
+    /**
+     * **The sitemap's source.** It is in its own module rather than in the route,
+     * because the route calls it twice — once for the index and once for a child — and
+     * both calls have to reach the backend the same way. A hand-written fetch at
+     * either call site would bypass the generated types entirely, which is exactly
+     * what this file exists to catch.
+     */
+    caller: ["lib/url-feed-read.ts"],
+  },
   // ── The Unified Timeline and the Conflict Review ───────────────────────────────
   {
     path: "/api/personal/timeline",

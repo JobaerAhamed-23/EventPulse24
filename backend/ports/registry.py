@@ -17,6 +17,7 @@ from ports.embedding import EmbeddingPort
 from ports.fetch import SourceFetchPort
 from ports.geo import GeoPort
 from ports.llm import LLMPort
+from ports.revalidation import RevalidationPort
 from ports.throttle import ThrottlePort
 
 # settings.ADAPTERS key for each port.
@@ -29,6 +30,7 @@ PORT_KEYS: dict[type, str] = {
     SourceFetchPort: "fetch",
     GeoPort: "geo",
     ThrottlePort: "throttle",
+    RevalidationPort: "revalidation",
 }
 
 
@@ -78,3 +80,7 @@ def get_geo_port() -> GeoPort:
 
 def get_throttle_port() -> ThrottlePort:
     return get_adapter(ThrottlePort)
+
+
+def get_revalidation_port() -> RevalidationPort:
+    return get_adapter(RevalidationPort)

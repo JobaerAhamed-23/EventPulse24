@@ -9,6 +9,9 @@ workspace:
   run_scope_preference: wide
   run_scope_history:
     - choice: wide
+      items_count: 10
+      timestamp: 2026-11-01T15:18:49Z
+    - choice: wide
       items_count: 9
       timestamp: 2026-10-29T00:00:00Z
   planning_sources:
@@ -569,8 +572,9 @@ intents:
         completed_at: 2026-10-31T10:28:08.146Z
   - id: delivery-and-reminders
     title: Delivery, Reminders & Pulse Ping
-    status: in_progress
+    status: completed
     created: 2026-10-31
+    completed_at: 2026-11-01T08:46:47.709Z
     work_items:
       - id: quiet-hours-domain
         status: completed
@@ -673,6 +677,97 @@ intents:
           - frontend-settings-reminders-and-quiet-hours
         run_id: run-eventpulse24-023
         completed_at: 2026-11-01T08:46:50.158Z
+  - id: public-pages-and-seo
+    title: Public Pages, SEO & Share Links
+    status: completed
+    created: 2026-11-01
+    work_items:
+      - id: city-canonicalization
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: public-event-read-by-slug
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: schema-org-jsonld
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - public-event-read-by-slug
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: city-page-read-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-canonicalization
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: revalidation-signal
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - public-event-read-by-slug
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: frontend-public-event-page
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - public-event-read-by-slug
+          - schema-org-jsonld
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: frontend-city-page
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-page-read-api
+          - frontend-public-event-page
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: sitemap-and-robots
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - public-event-read-by-slug
+          - city-page-read-api
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: share-control
+        status: completed
+        complexity: medium
+        mode: validate
+        depends_on:
+          - frontend-public-event-page
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+      - id: e2e-proof-and-contract-tests
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - revalidation-signal
+          - frontend-public-event-page
+          - frontend-city-page
+          - sitemap-and-robots
+          - share-control
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+    completed_at: 2026-11-04T11:56:14.537Z
 runs:
   active: []
   completed:
@@ -1007,3 +1102,38 @@ runs:
           mode: confirm
       started: 2026-10-31T12:47:59.669Z
       completed: 2026-11-01T08:46:50.158Z
+    - id: run-eventpulse24-024
+      scope: wide
+      work_items:
+        - id: city-canonicalization
+          intent: public-pages-and-seo
+          mode: validate
+        - id: public-event-read-by-slug
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: schema-org-jsonld
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: city-page-read-api
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: revalidation-signal
+          intent: public-pages-and-seo
+          mode: validate
+        - id: frontend-public-event-page
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: frontend-city-page
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: sitemap-and-robots
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: share-control
+          intent: public-pages-and-seo
+          mode: validate
+        - id: e2e-proof-and-contract-tests
+          intent: public-pages-and-seo
+          mode: confirm
+      started: 2026-11-01T15:18:49.012Z
+      completed: 2026-11-04T11:56:14.537Z

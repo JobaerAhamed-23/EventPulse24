@@ -792,6 +792,56 @@ PREVIEW_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidat
 # is identical for everyone and the cache key is the URL.
 PREVIEW_VARY = "Accept-Encoding"
 
+# The public event page's cache headers (FR-26). The browser holds it for an hour, a
+# shared cache for an hour too, and a shared cache may serve a slightly stale copy while
+# it refreshes in the background.
+#
+# **The TTL is longer than the preview's, because this page is indexed.** A crawler that
+# has spent months earning a ranking on `/events/{slug}` must not be told to come back in
+# sixty seconds. The revalidation work item is what makes the page *current*; the cache
+# TTL is only how long a page may sit without being revalidated, and the two are separate
+# facts.
+#
+# `stale-while-revalidate` is the point of the third number: a crawler is never made to
+# wait on the origin for a page it could have had a moment ago.
+PUBLIC_PAGE_CACHE_CONTROL = "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400"
+
+# The public event page's `Vary` header. **Nothing session-related may appear here.**
+#
+# A response that varies on the cookie is not cacheable, and — worse — a shared cache
+# that stores one variant under a key that ignores the cookie would serve one visitor's
+# response to another. The public page sets no cookie and reads no session (AD-12), so
+# the response is identical for everyone and the cache key is the URL.
+PUBLIC_PAGE_VARY = "Accept-Encoding"
+
+# The revalidation signal's retry bound and cadence (FR-26, FR-27).
+#
+# **A revalidation that cannot be delivered is retried, and the retry is bounded.** The
+# signal is delivered by the worker to the frontend's revalidation route handler; if the
+# frontend is down, the request row stays open and a reconciler re-delivers it on the next
+# cadence, exactly as AD-17's outbox does for personal propagation.
+#
+# The bound is what makes "stale-but-correct, never wrong" a promise rather than a hope: a
+# request that has failed this many times is **exhausted** — it is kept and surfaced, not
+# retried forever, because a page that is stale and a queue that retries forever are both
+# facts an operator needs to see.
+#
+# **The cadence matches `OUTBOX_RECONCILE_EVERY_MINUTES` on purpose.** The two reconcilers
+# are the same shape — find the rows nobody finished, offer them again — and running them on
+# one cadence means one mental model for "a job that did not happen".
+REVALIDATION_MAX_ATTEMPTS = 5
+REVALIDATION_RECONCILE_AFTER = timedelta(minutes=5)
+REVALIDATION_RECONCILE_BATCH = 500
+REVALIDATION_RECONCILE_EVERY_MINUTES = 5  # the tick enqueues the reconciler when minute % 5 == 0
+
+# How long the backend waits for the frontend's revalidation route handler to answer.
+#
+# **Bounded, and short.** The delivery is on the worker, not on a user's request, so a slow
+# frontend delays a background job rather than a request. Five seconds is long enough for a
+# warm serverless function to cold-start and short enough that a hung frontend does not
+# hold the worker slot.
+REVALIDATION_TIMEOUT_SECONDS = 5.0
+
 # AD-7: how long a sweep's claim on a `SCHEDULED_SEND` row stays valid.
 #
 # The sweep claims with `FOR UPDATE SKIP LOCKED` but releases the lock before calling the
@@ -859,3 +909,99 @@ LIFECYCLE_SEND_BEHAVIOUR = {
     "sold_out": LifecycleSendBehaviour.KEEP,
     "detail_changed": LifecycleSendBehaviour.KEEP,
 }
+
+
+# Schema.org's vocabulary for the public event page's structured data (FR-26, AD-12).
+#
+# These strings are Schema.org's, not ours, and they live here so they exist exactly once
+# (`shared` is stdlib-only, so `domain` may import them — the `domain-pure` contract).
+#
+# **Every value is a full IRI**, not a bare term. `https://schema.org/EventScheduled` is what
+# a crawler resolves; `EventScheduled` is a local convenience that would not validate.
+SCHEMA_ORG_CONTEXT = "https://schema.org"
+SCHEMA_ORG_EVENT_TYPE = "Event"
+SCHEMA_ORG_PLACE_TYPE = "Place"
+SCHEMA_ORG_POSTAL_ADDRESS_TYPE = "PostalAddress"
+SCHEMA_ORG_OFFER_TYPE = "Offer"
+
+#: `Event.status` -> Schema.org's `eventStatus`.
+#:
+#: **Keyed by value and there is no default**, for the same reason `LIFECYCLE_SEND_BEHAVIOUR`
+#: is: a status added to the model must fail a test rather than silently produce an event with
+#: no `eventStatus` at all — which is a structured-data warning a crawler would raise.
+#:
+#: `superseded` is deliberately **absent**. It is terminal, the public read 404s it before it
+#: ever builds a payload, and Schema.org's `EventStatus` vocabulary has no term for it. There is
+#: no honest mapping, so there is no mapping.
+SCHEMA_ORG_EVENT_STATUS = {
+    "scheduled": "https://schema.org/EventScheduled",
+    "postponed": "https://schema.org/EventPostponed",
+    "cancelled": "https://schema.org/EventCancelled",
+}
+
+#: `Event.is_sold_out` -> Schema.org's `offers.availability`.
+#:
+#: The registry knows whether an event is sold out. It does **not** know a price, so no price
+#: is ever emitted: an `Offer` carrying only `availability` says exactly what we know, and a
+#: fabricated `"price": "0"` says something we do not.
+SCHEMA_ORG_AVAILABILITY_SOLD_OUT = "https://schema.org/SoldOut"
+SCHEMA_ORG_AVAILABILITY_IN_STOCK = "https://schema.org/InStock"
+
+#: Schema.org's `eventAttendanceMode` vocabulary, for the day the registry learns one.
+#:
+#: **The registry has no attendance mode today** — no column on `Event`, none on `Venue`. So
+#: the projection omits the property entirely rather than defaulting to `Offline` for an
+#: event the registry says nothing about. These constants exist so that the vocabulary is
+#: written down once, ready for the schema change that would make the value knowable.
+SCHEMA_ORG_ATTENDANCE_MODE_OFFLINE = "https://schema.org/OfflineEventAttendanceMode"
+SCHEMA_ORG_ATTENDANCE_MODE_ONLINE = "https://schema.org/OnlineEventAttendanceMode"
+SCHEMA_ORG_ATTENDANCE_MODE_HYBRID = "https://schema.org/MixedEventAttendanceMode"
+
+
+# ── The SEO city page (FR-27) ───────────────────────────────────────────────────────
+#
+# FR-27: *"A city page exists for every city in the Source Registry with >5 events."*
+#
+# **The threshold is one number, and it is here.** FR-27 says ">5", which means **more
+# than five** — so a city with exactly five does not qualify and a city with exactly six
+# does. The comparison is `>`, not `>=`, and the boundary is a test rather than a reading
+# of the sentence.
+CITY_PAGE_EVENT_THRESHOLD = 5
+
+#: How far back a city page's *qualification* looks, when it is not counting only what's
+#: happening next.
+#:
+#: **The listing and the qualification deliberately measure different things.** The
+#: listing shows upcoming events, because a page headed "events in Brooklyn" that leads
+#: with last week's is a page nobody comes back to. The qualification asks a different
+#: question — *has this city ever had enough events to deserve a page?* — and a city that
+#: had six events last season still deserves its URL.
+#:
+#: Without this window, a city's page would **wink out of existence** the moment its last
+#: event started: a URL that 404s after ranking is worse than one that never ranked. With
+#: it, the page persists and shows "coming soon" between seasons, which is exactly what
+#: FR-27 asks for ("a city page degrades gracefully when no events are present").
+#:
+#: A year is the window. It is long enough to carry a city across a quiet season and short
+#: enough that a city that has genuinely stopped having events stops qualifying.
+CITY_PAGE_QUALIFICATION_WINDOW = timedelta(days=365)
+
+#: A page of city-page events. The ceiling keeps one request from asking for a city's
+#: whole history.
+CITY_PAGE_DEFAULT_PAGE_SIZE = 20
+CITY_PAGE_MAX_PAGE_SIZE = 50
+
+# ── The public URL feed (the sitemap's source) ─────────────────────────────────────
+#
+# The feed lists every publicly addressable page, so it **grows with the catalog** — and
+# a read that grows with the catalog must never be an unbounded scan. These two numbers
+# are the bound on that scan (AD-8: a threshold lives in one place).
+#
+# **The default is small enough to be cheap and large enough to be useful.** The sitemap
+# handler pages the feed; at a thousand URLs a page, a 50,000-URL sitemap child is fifty
+# bounded requests, which is measurable rather than one enormous one.
+URL_FEED_DEFAULT_PAGE_SIZE = 1000
+
+#: The ceiling on one feed page. A caller asking for more has made a mistake, and the
+#: HTTP edge refuses it with a 422 — the same rule the city page's query follows.
+URL_FEED_MAX_PAGE_SIZE = 1000

@@ -141,6 +141,17 @@ CALENDAR_CREDENTIAL_KEY = env.calendar_credential_key
 # frontend is a different origin from this runtime.
 FRONTEND_BASE_URL = env.frontend_base_url
 
+# The revalidation signal's edge (FR-26, FR-27). The backend POSTs a cache instruction to
+# the frontend's route handler when an event's public page has gone stale.
+#
+# **The secret is separate from `CALENDAR_CREDENTIAL_KEY`**: one key per capability, and
+# the calendar key is encrypted at rest (AD-18) so it could not be compared in plaintext
+# anyway. The URL is server-to-server — the backend dials the frontend, so it needs the
+# server's address, not the browser's.
+REVALIDATION_SECRET = env.revalidation_secret
+FRONTEND_REVALIDATION_URL = env.frontend_revalidation_url
+REVALIDATION_TIMEOUT_SECONDS = env.revalidation_timeout_seconds
+
 # Whether the caller's IP may be read from `X-Forwarded-For`. Off by default: the header
 # is attacker-controlled unless a trusted edge overwrites it, and trusting it let any
 # caller mint a fresh throttle bucket per request. See `env.trust_forwarded_for`.

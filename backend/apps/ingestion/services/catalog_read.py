@@ -38,6 +38,7 @@ from apps.ingestion.models import Event
 from apps.ingestion.services.chip_matching import chip_keys_for
 from apps.ingestion.services.source_badges import source_badge_for_type
 from domain.errors import NotFoundError
+from domain.schema_org import project_schema_org_event
 from shared.constants import (
     DIGEST_STALE_TTL_MULTIPLIER,
     EXTRACTION_CONFIDENCE_PUBLISH,
@@ -520,6 +521,185 @@ def get_public_event_detail(*, event_id: UUID, now: datetime | None = None) -> P
     return _to_public_event_detail(event)
 
 
+@dataclass(frozen=True)
+class PublicEventPage:
+    """One public event's **page** facts, read by slug.
+
+    **This is not `PublicEvent`, and widening `PublicEvent` was the alternative.** The
+    catalog listing's contract is built by `cls(**vars(event))` in
+    `apps/catalog/schemas.py`, so a field added there would appear on the *listing*'s
+    wire shape as well — and the listing's contract is not the public page's to change.
+    The same reasoning that gave `PublicEventDetail` its own dataclass applies here.
+
+    **The fields are the JSON-LD's inputs (AD-12).** ARCHITECTURE-SPINE.md:166 requires
+    the Schema.org `Event` JSON-LD to be *"emitted from the same data the page renders"*.
+    So this carries everything the page and its structured data need, from one read: the
+    title, the description, both times, the IANA zone, the venue's name and address parts,
+    the canonical URL, the status, the sold-out flag and the version.
+
+    **The description is display content, not raw payload (AD-9)** — the same rule
+    `PublicEventDetail` follows. `Event.description` is the *stripped* field; the raw
+    source payload never reaches here.
+
+    **`event_version` is the Event's own counter**, read from the row and never
+    re-derived. The `catalog.guard_event_write` trigger bumps it on every lifecycle
+    change, and the revalidation work item compares it against a cached copy to decide
+    whether a page is current. A re-derived number would not be the number the trigger
+    wrote.
+
+    **`schema_org` is the finished structured data**, projected from the fields above by
+    `domain.schema_org`. It is carried on the DTO rather than built at the surface, so the
+    projection happens **once, from the same read** — which is what makes AD-12's *"the
+    same data the page renders"* a property of the code rather than a convention. The page
+    embeds what it is given, verbatim.
+    """
+
+    id: UUID
+    slug: str
+    title: str
+    #: The stripped, truncated description. Empty when the source had none.
+    description: str
+    canonical_url: str
+    start_time_utc: datetime
+    #: The IANA zone name (AD-6). The JSON-LD needs it, and it is the only display
+    #: conversion input the payload carries.
+    start_time_tz: str
+    end_time_utc: datetime | None
+    venue_name: str | None
+    #: The venue's address, as the schema holds it: the venue's own name with its city
+    #: and country. `Venue` has no street line — there is no address column — so this is
+    #: everything the address can honestly say. Inventing a street field here would be
+    #: inventing a fact the registry does not have.
+    venue_address: str | None
+    venue_city: str | None
+    venue_country_code: str | None
+    status: str
+    #: A-15 / FR-53: the event is sold out.
+    is_sold_out: bool
+    event_version: int
+    source_name: str
+    tz_review_pending: bool
+    #: The Schema.org `Event` object, projected from the fields above (AD-12). A plain
+    #: dict, because JSON-LD is JSON — the page embeds it without reshaping it.
+    schema_org: dict[str, object]
+
+
+def _to_public_event_page(event: Event) -> PublicEventPage:
+    venue = event.venue
+    venue_address = None
+    if venue:
+        parts = [venue.name, venue.city, venue.country_code]
+        venue_address = ", ".join(part for part in parts if part)
+        venue_address = venue_address or None
+
+    # The structured data is projected here, from the fields below, so the page and its
+    # JSON-LD come from **one** read (AD-12). The projection is pure — no second query,
+    # no clock — so it cannot disagree with what the page renders.
+    #
+    # `attendance_mode` is not passed: the registry has no attendance mode to read, and
+    # ASSUMPTION-9 says a missing value is omitted rather than filled with a plausible one.
+    schema_org = project_schema_org_event(
+        title=event.title,
+        description=event.description,
+        start_time_utc=event.start_time_utc,
+        start_time_tz=event.start_time_tz,
+        end_time_utc=event.end_time_utc,
+        status=event.status,
+        is_sold_out=event.is_sold_out,
+        venue_name=venue.name if venue else None,
+        venue_city=venue.city if venue else None,
+        venue_country_code=venue.country_code if venue else None,
+        canonical_url=event.canonical_url,
+    )
+
+    return PublicEventPage(
+        id=event.id,
+        slug=event.slug,
+        title=event.title,
+        description=event.description,
+        canonical_url=event.canonical_url,
+        start_time_utc=event.start_time_utc,
+        start_time_tz=event.start_time_tz,
+        end_time_utc=event.end_time_utc,
+        venue_name=venue.name if venue else None,
+        venue_address=venue_address,
+        venue_city=venue.city if venue else None,
+        venue_country_code=venue.country_code if venue else None,
+        status=event.status,
+        is_sold_out=event.is_sold_out,
+        event_version=event.event_version,
+        source_name=event.source.name,
+        tz_review_pending=event.tz_review_pending,
+        schema_org=schema_org,
+    )
+
+
+def get_public_event_by_slug(*, slug: str) -> PublicEventPage:
+    """One public event's page facts, by slug.
+
+    **This is a different question from `get_public_event`.** That one answers "what may
+    a person browse?" and bounds the answer by *has not started yet* — the right rule for
+    a digest and the wrong rule for a page. This one answers "what is this URL?", and
+    **there is no time bound**: a page for an event that already happened stays
+    addressable and stays indexed. A page that 404s the moment the doors open throws
+    away every bit of ranking it spent months earning, and a Schema.org page for a
+    concert last month is legitimate content, not an error.
+
+    **The slug alone addresses the event.** `Event.slug` carries `event_slug_uq`, a
+    global unique constraint, so no city or date segment is needed and there is no
+    ambiguity to resolve.
+
+    **The lookup is exact, not case-insensitive.** Slugs are lowercase by construction, so
+    a case-insensitive match would make `/events/Brooklyn-Summer-Fest` and
+    `/events/brooklyn-summer-fest` two URLs for one page — a duplicate-URL fault for a
+    crawler, and the wrong answer for a link somebody was given.
+
+    **The row is fetched unfiltered and the visibility rules are applied to it.** A
+    filtered query — published, not superseded — can answer "is this public?", but it
+    cannot answer "was this superseded, and by what?" And that second question is the one
+    this read has to answer: a superseded event is 404 at its own slug, but the 404
+    carries the successor's slug so the link a crawler already holds resolves *forward*
+    rather than dying.
+
+    **The successor costs no extra query.** `superseded_by` is a self-FK, so
+    `select_related("superseded_by")` brings the replacement's row along with the
+    original.
+
+    **An `in_review` event is never publicly addressable.** The model's own comment says
+    it — "not digest-eligible, not publicly listed" (AD-6, AD-8) — so it is a 404, the
+    same answer as an unknown slug, and not a 200 with a hidden flag.
+
+    **Nothing here writes.** The slug is minted once at creation and never re-minted on
+    retitle (`services/slugs.py`), so these URLs are permanent by construction, and this
+    read adds no path that could rewrite one.
+    """
+    try:
+        event = (
+            Event.objects.using(CATALOG)
+            .filter(slug=slug)
+            .select_related("venue", "source", "superseded_by")
+            .get()
+        )
+    except Event.DoesNotExist:
+        raise EventNotFoundError(details={"slug": slug}) from None
+
+    if event.publication_status != Event.PublicationStatus.PUBLISHED:
+        # `in_review` is not publicly listed (AD-6, AD-8). It reads as absent, exactly as
+        # an unknown slug does — a 403 would confirm that it exists.
+        raise EventNotFoundError(details={"slug": slug})
+
+    if event.status == Event.Status.SUPERSEDED:
+        # The event existed and was replaced. The successor's slug travels with the 404 so
+        # the caller can send the crawler forward instead of leaving a dead link.
+        successor = event.superseded_by
+        details: dict = {"slug": slug}
+        if successor is not None:
+            details["superseded_by_slug"] = successor.slug
+        raise EventNotFoundError(details=details)
+
+    return _to_public_event_page(event)
+
+
 __all__ = [
     "CANDIDATE_OVERFETCH_FACTOR",
     "CANDIDATE_POOL_SIZE",
@@ -530,7 +710,9 @@ __all__ = [
     "PublicEvent",
     "PublicEventCandidate",
     "PublicEventDetail",
+    "PublicEventPage",
     "get_public_event",
+    "get_public_event_by_slug",
     "get_public_event_detail",
     "get_public_events",
     "list_public_candidates",

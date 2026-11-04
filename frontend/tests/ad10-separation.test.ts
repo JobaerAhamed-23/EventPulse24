@@ -57,6 +57,17 @@ const AUTHENTICATED_ROUTES = ["app/page.tsx", "app/events/[id]/page.tsx"];
 const PUBLIC_ROUTE = "app/preview/page.tsx";
 
 /**
+ * The public city page, which **is** allowed the Event Fit.
+ *
+ * **The city page is a second public surface, and it is allowed the same vocabulary.**
+ * The backend's city read projects the *persisted* Event Fit — the score and the tags
+ * are carried as stored (`CityPageEventOut`'s own docstring says so, AD-10) — and FR-27's
+ * page is where that score is shown. So the wall's direction holds: the Event Fit is
+ * public vocabulary, and only public surfaces reach it.
+ */
+const CITY_ROUTE = "app/events-in/[slug]/page.tsx";
+
+/**
  * The frontend's own modules, by their `@/…` path.
  *
  * The graph is walked over the `@/` alias, which is what every frontend module uses.
@@ -219,10 +230,15 @@ describe("the public preview still reaches the Event Fit", () => {
     expect(reached.has("@/lib/event-fit")).toBe(true);
   });
 
-  it("the Event Fit's vocabulary has exactly one importer", () => {
-    // **One home.** The Event Fit's range and clamp are imported by exactly one file
-    // — the preview's card. A second importer would be a second surface carrying the
-    // public explanation, and the next one could be an authenticated one.
+  it("the Event Fit's vocabulary has exactly two importers, both public", () => {
+    // **One home per surface, and both surfaces are public.** The Event Fit's range and
+    // clamp are imported by exactly two files — the preview's card and the city page's
+    // card. A third importer would be a third surface carrying the public explanation,
+    // and the next one could be an authenticated one.
+    //
+    // **The list is asserted exactly, not as a set.** A new importer has to be *added*
+    // here — which is the point: adding one is a decision, and the decision is visible
+    // in the diff, and this test fails until it is made.
     //
     // **The Event Fit's own modules are excluded.** `lib/preview-labels.ts` imports
     // `lib/event-fit.ts` because the label and the range are one vocabulary — that is
@@ -240,7 +256,22 @@ describe("the public preview still reaches the Event Fit", () => {
       }
     }
 
-    expect(importers).toEqual(["@/components/preview/preview-card"]);
+    expect(importers).toEqual([
+      "@/components/city-page/city-event-card",
+      "@/components/preview/preview-card",
+    ]);
+  });
+
+  it("the city page reaches the Event Fit's vocabulary", () => {
+    // **The city page shows the persisted fit.** The backend's city read carries the
+    // score and the tags *as stored* (AD-10), and FR-27's page is where they are shown
+    // — so the wall's direction holds: the Event Fit is public vocabulary, and the
+    // public surfaces reach it.
+    discoverModules();
+    const reached = reachable(`@/${CITY_ROUTE.replace(/\.tsx$/, "")}`);
+
+    expect(reached.has("@/lib/event-fit")).toBe(true);
+    expect(reached.has("@/lib/preview-labels")).toBe(true);
   });
 });
 

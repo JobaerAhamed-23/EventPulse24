@@ -102,6 +102,7 @@ function renderActions(props: Partial<React.ComponentProps<typeof DetailActions>
   return render(
     <DetailActions
       eventId="event-1"
+      slug="free-tech-meetup-2026-11-03-a1b2c3"
       saved={false}
       conflict={null}
       eventName="Free tech meetup"
@@ -122,7 +123,7 @@ describe("the action row", () => {
     renderActions();
 
     expect(screen.getByRole("button", { name: "Save to Pulse" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /share/i })).toBeInTheDocument();
   });
 
   it("shows the saved state when the user has already saved the event", () => {
@@ -176,6 +177,93 @@ describe("the action row", () => {
     screen.getByRole("button", { name: "Saved to your Pulse" }).click();
 
     expect(POST).not.toHaveBeenCalled();
+  });
+});
+
+describe("the share", () => {
+  /** The Web Share API stub, restored after every test. */
+  let share: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", {
+      value: share,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it("shares the public page, not this screen's own address", async () => {
+    // **The bug this fixes.** The old button shared `window.location.href`, which on
+    // the Detail Screen *is* `/events/{uuid}` — the signed-in URL. A friend who opened
+    // it met a sign-in wall instead of the event.
+    renderActions();
+
+    screen.getByRole("button", { name: /share/i }).click();
+
+    await waitFor(() => expect(share).toHaveBeenCalled());
+    const payload = share.mock.calls[0]?.[0] as { url: string };
+    expect(payload.url).toContain("/events/free-tech-meetup-2026-11-03-a1b2c3");
+    expect(payload.url).not.toContain("event-1");
+  });
+
+  it("shares the event's own title, not a constant string", async () => {
+    renderActions({ eventName: "Free tech meetup" });
+
+    screen.getByRole("button", { name: /share/i }).click();
+
+    await waitFor(() => expect(share).toHaveBeenCalled());
+    expect((share.mock.calls[0]?.[0] as { title: string }).title).toBe("Free tech meetup");
+  });
+
+  it("names the event in its accessible name", () => {
+    // Three surfaces, three cards — a screen-reader user needs to know *which* event
+    // they are about to share.
+    renderActions();
+
+    expect(screen.getByRole("button", { name: "Share Free tech meetup" })).toBeInTheDocument();
+  });
+
+  it("keeps the row's existing secondary-button styling", () => {
+    // `EXPERIENCE.md` §4 puts the Detail Screen's three buttons in `Button.Secondary`
+    // weight, and the old Share button's classes are preserved exactly.
+    renderActions();
+
+    const button = screen.getByRole("button", { name: /share/i });
+    expect(button.className).toContain("bg-surface-elevated");
+    expect(button.className).toContain("border-border-subtle");
+    expect(button.className).toContain("text-ink-secondary");
+    expect(button.className).toContain("px-6");
+    expect(button.className).toContain("py-3");
+  });
+
+  it("announces its confirmation without adding a second status region", async () => {
+    // The row already owns a `role="status"` — the conflict-failure line. Two status
+    // regions on one surface would make "which one is the page talking?" a question
+    // the DOM cannot answer.
+    renderActions();
+
+    screen.getByRole("button", { name: /share/i }).click();
+
+    await waitFor(() => expect(screen.getByText("Shared.")).toBeInTheDocument());
+    expect(screen.queryAllByRole("status")).toHaveLength(0);
+  });
+});
+
+describe("the sold-out event", () => {
+  it("loses the Save button", () => {
+    // There is nothing to save: the ticket is gone.
+    renderActions({ soldOut: true });
+
+    expect(screen.queryByRole("button", { name: /Save to Pulse/ })).toBeNull();
+  });
+
+  it("keeps the Share control", () => {
+    // **A sold-out event is still published and still public.** It has lost its
+    // tickets, not its page — so a friend can still open it.
+    renderActions({ soldOut: true });
+
+    expect(screen.getByRole("button", { name: /share/i })).toBeInTheDocument();
   });
 });
 

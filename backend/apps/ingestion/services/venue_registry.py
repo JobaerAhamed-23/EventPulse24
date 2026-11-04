@@ -12,6 +12,7 @@ from django.db import transaction
 
 from apps.ingestion.models import Venue
 from apps.ingestion.services.audit import write_audit
+from apps.ingestion.services.cities import resolve_city
 from domain.dedup import venue_fingerprint
 from domain.errors import ConflictError, InvalidTimezoneError, NotFoundError, ValidationError
 from domain.timezones import canonical_zone
@@ -107,7 +108,10 @@ def register_venue(
     """Add a venue to the registry. Its fingerprint is `domain.dedup.venue_fingerprint`."""
     with transaction.atomic(using=CATALOG):
         fields = check_new_venue(name=name, city=city, country_code=country_code, tz=tz)
-        venue = Venue.objects.using(CATALOG).create(**fields)
+        # The canonical city (FR-27). `fields["city"]` is left exactly as written: it feeds
+        # `venue_fingerprint`, which is this venue's identity.
+        city_ref = resolve_city(city=fields["city"], country_code=fields["country_code"])
+        venue = Venue.objects.using(CATALOG).create(**fields, city_ref=city_ref)
         write_audit(
             actor=actor,
             action="register_venue",

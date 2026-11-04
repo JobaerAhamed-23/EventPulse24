@@ -12,6 +12,17 @@
  * **Save is terracotta.** It is a `Button.Primary`, and the primary fill is one of the
  * four sanctioned terracotta uses. Share is a `Button.Secondary` — no fill.
  *
+ * **Share hands over the *public* page (FR-28).** It used to share
+ * `window.location.href`, which on this screen is `/events/{uuid}` — *this* screen's
+ * address, and a sign-in wall for anyone who was not already signed in. The shared link
+ * is now `/events/{slug}`: the FR-26 public page, with its Open Graph metadata and its
+ * "Save to Pulse →" CTA. The share itself lives in `components/share/share-control.tsx`,
+ * which the Pulse Card uses too — so the two surfaces cannot drift apart.
+ *
+ * **A sold-out event keeps its Share control.** It is still published and still public;
+ * what it has lost is its tickets, not its page. So the row narrows — Save and the
+ * reminder link go, Share stays — rather than disappearing.
+ *
  * **The Save button's state is known before the user presses it.** `personal.saved` is
  * the user's own save row, read by the API — not a tag on the composition, which may
  * have been composed days ago.
@@ -50,6 +61,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { PersonalEventsPanel, type PersonalEventSeed } from "@/components/personal-events-panel";
 import { ConflictResolution, type Conflict } from "@/components/sheets/conflict-resolution";
+import { ShareControl } from "@/components/share/share-control";
 import type { components } from "@/lib/api/schema";
 import { api } from "@/lib/backend-client";
 import { onConflictOpen } from "@/lib/conflict-open";
@@ -58,6 +70,21 @@ import { actionSide, type Resolution } from "@/lib/conflict-wording";
 export type DetailActionsProps = {
   /** The event's id, as the API's path parameter takes it. */
   eventId: string;
+  /**
+   * The event's **minted public slug** — the FR-26 public page's URL segment.
+   *
+   * **Never the id.** The id is this screen's own address (`/events/{uuid}`), and a
+   * friend who opened it would meet a sign-in wall instead of the event. The detail
+   * read only ever answers for a public event, so the slug is always present here.
+   */
+  slug: string;
+  /**
+   * The site's public origin, resolved on the server.
+   *
+   * **`PUBLIC_SITE_URL` has no `NEXT_PUBLIC_` prefix**, so a client component cannot
+   * read it. The page resolves it (`lib/site-url.ts`) and passes it down.
+   */
+  shareOrigin?: string | null;
   /** Whether the user has already saved it. */
   saved: boolean;
   /**
@@ -81,6 +108,15 @@ export type DetailActionsProps = {
   startTimeUtc: string;
   /** The event's end time, for the prompt's saved-side card. */
   endTimeUtc?: string | null;
+  /**
+   * Whether the event is sold out (A-15, FR-53).
+   *
+   * **A sold-out event is still published and still public.** So it keeps its share
+   * control — the public page still exists and a friend can still open it — and it
+   * loses the Save button and the reminder link, which are about *this* user's
+   * relationship with a ticket that no longer exists.
+   */
+  soldOut?: boolean;
 };
 
 /**
@@ -94,11 +130,14 @@ export type DetailConflict = components["schemas"]["DetailConflictOut"];
 
 export function DetailActions({
   eventId,
+  slug,
+  shareOrigin = null,
   saved,
   conflict: serverConflict,
   eventName,
   startTimeUtc,
   endTimeUtc = null,
+  soldOut = false,
 }: DetailActionsProps) {
   const [isSaved, setIsSaved] = useState(saved);
   const [busy, setBusy] = useState(false);
@@ -169,22 +208,6 @@ export function DetailActions({
       setBusy(false);
     }
   }, [eventId]);
-
-  const onShare = useCallback(async () => {
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    const title = "Event on EventPulse24";
-    try {
-      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-        await navigator.share({ title, url });
-        return;
-      }
-      await navigator.clipboard?.writeText(url);
-      setFailed(false);
-    } catch {
-      // A cancelled share sheet is not a failure, and there is nothing to say about it.
-      setFailed(false);
-    }
-  }, []);
 
   /**
    * The user's choice.
@@ -375,28 +398,40 @@ export function DetailActions({
       />
 
       <div className="flex flex-wrap items-center gap-3" data-detail-actions>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={busy || isSaved}
-          className={[
-            "rounded-control px-6 py-3 [font:var(--type-scale-meta-md)]",
-            isSaved
-              ? "bg-surface-subtle text-ink-secondary"
-              : "bg-accent-terracotta text-ink-inverse",
-            "disabled:cursor-default",
-          ].join(" ")}
-        >
-          {isSaved ? "Saved to your Pulse" : "Save to Pulse"}
-        </button>
+        {/*
+          **The Save button — and not on a sold-out event.**
+          A sold-out event is still public and still shareable, but it is no longer
+          savable: there is nothing to save. So the row *narrows* rather than
+          disappearing, and Share stays.
+        */}
+        {soldOut ? null : (
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={busy || isSaved}
+            className={[
+              "rounded-control px-6 py-3 [font:var(--type-scale-meta-md)]",
+              isSaved
+                ? "bg-surface-subtle text-ink-secondary"
+                : "bg-accent-terracotta text-ink-inverse",
+              "disabled:cursor-default",
+            ].join(" ")}
+          >
+            {isSaved ? "Saved to your Pulse" : "Save to Pulse"}
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={onShare}
-          className="rounded-control border border-border-subtle bg-surface-elevated px-6 py-3 text-ink-secondary [font:var(--type-scale-meta-md)]"
-        >
-          Share
-        </button>
+        {/*
+          **The Share control — FR-28's sender side.**
+          It shares the **public** page, `/events/{slug}`, not this screen's own address:
+          the old button shared `window.location.href`, which on the Detail Screen *is*
+          `/events/{uuid}` — so a friend met a sign-in wall instead of the event.
+
+          **The confirmation is a bare live region, not a second `role="status"`.** The
+          row's conflict-failure line below is this surface's status region, and it
+          stays the only one.
+        */}
+        <ShareControl slug={slug} title={eventName} origin={shareOrigin} />
 
         {failed ? (
           <p className="text-ink-muted [font:var(--type-scale-body-sm)]">

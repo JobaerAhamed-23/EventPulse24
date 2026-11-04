@@ -16,6 +16,9 @@ FAKE_ADAPTERS = {
     "geo": "adapters.geo.fake.FakeGeoAdapter",
     # The throttle fake counts in memory, so its window is controlled by the test's clock.
     "throttle": "adapters.throttle.memory.InMemoryThrottleAdapter",
+    # The revalidation fake records the signals it is given instead of sending them, so a
+    # local run never calls the frontend and a test never needs a server.
+    "revalidation": "adapters.revalidation.fake.FakeRevalidationAdapter",
 }
 
 HTTP_FETCH_ADAPTER = "adapters.crawl.http.HttpFetchAdapter"
@@ -39,6 +42,10 @@ REAL_ADAPTERS: dict[str, str] = {
     # Redis is already in the stack (the Celery broker), so the throttle has a real
     # adapter from the start.
     "throttle": "adapters.throttle.redis.RedisThrottleAdapter",
+    # The frontend is always a real deploy, so the revalidation signal has a real adapter
+    # from the start. There is no "fake frontend" in production mode — a local run that
+    # never signals the frontend is a local run whose pages stay stale, which is honest.
+    "revalidation": "adapters.revalidation.http.HttpRevalidationAdapter",
 }
 
 

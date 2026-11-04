@@ -22,6 +22,7 @@ ENV_KEYS = [
     "SOURCE_FETCH_MAX_REDIRECTS",
     "SOURCE_FETCH_MAX_BYTES",
     "CALENDAR_CREDENTIAL_KEY",
+    "REVALIDATION_SECRET",
 ]
 
 REQUIRED = {
@@ -33,6 +34,9 @@ REQUIRED = {
     # AD-18: required, with no default and no fallback (a credential key must never be
     # derived from DJANGO_SECRET_KEY). The value is a valid `<key_id>.<base64url-32-bytes>`.
     "CALENDAR_CREDENTIAL_KEY": ("k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieXQ"),
+    # The revalidation shared secret (FR-26, FR-27): required, with no default and no
+    # fallback — a deployment that boots without it cannot authenticate a signal.
+    "REVALIDATION_SECRET": "test-revalidation-secret",
 }
 
 
@@ -59,6 +63,28 @@ def test_settings_secret_key_missing_raises(clean_env):
 
     with pytest.raises(ValidationError, match="django_secret_key"):
         Settings(_env_file=None)
+
+
+def test_settings_revalidation_secret_missing_raises(clean_env):
+    """**The revalidation secret is required, with no default and no fallback.**
+
+    A deployment that booted without it could not authenticate the signal — and a
+    deployment that accepted *every* signal would let anyone invalidate our caches. So
+    the missing value aborts the boot rather than degrading into an open endpoint.
+    """
+    clean_env.delenv("REVALIDATION_SECRET", raising=False)
+
+    with pytest.raises(ValidationError, match="revalidation_secret"):
+        Settings(_env_file=None)
+
+
+def test_settings_revalidation_defaults(clean_env):
+    """The revalidation URL and timeout have defaults; the secret does not."""
+    settings = Settings(_env_file=None)
+
+    assert settings.frontend_revalidation_url == "http://localhost:3000/revalidate"
+    assert settings.revalidation_timeout_seconds == 5.0
+    assert settings.revalidation_secret == REQUIRED["REVALIDATION_SECRET"]
 
 
 def test_settings_debug_unset_defaults_false(clean_env):

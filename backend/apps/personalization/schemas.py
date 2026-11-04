@@ -646,6 +646,22 @@ class DigestCardOut(Schema):
     #: user's own calendar, read from the persisted pairs — so the indicator on a card
     #: and the one on the Timeline cannot disagree.
     conflict: bool = False
+    #: The event's **public page slug**, or `None` (FR-28).
+    #:
+    #: **This is the shareability fact, and the server states it.** The client does not
+    #: infer it: the public catalog's read returns published, non-superseded events and
+    #: an event that is not public is *absent from the result*, so a slug here means the
+    #: public page exists and a `None` means it does not.
+    #:
+    #: **`None` covers three honest facts,** and none of them is a gap: the card is a
+    #: **personal** event (there is no public page for the user's own agenda row); the
+    #: catalog does not currently hold the event publicly (`in_review`, unpublished or
+    #: superseded); or the event has no slug.
+    #:
+    #: **Why it is on the wire.** Without it the card could only build
+    #: `/events/{event_id}` — the *personal* URL — and a friend who opened it would meet
+    #: a sign-in wall instead of the event.
+    public_slug: str | None = None
 
 
 class DigestOut(Schema):
