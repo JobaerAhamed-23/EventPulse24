@@ -9,6 +9,9 @@ workspace:
   run_scope_preference: wide
   run_scope_history:
     - choice: wide
+      items_count: 12
+      timestamp: 2026-11-04T13:11:36Z
+    - choice: wide
       items_count: 10
       timestamp: 2026-11-01T15:18:49Z
     - choice: wide
@@ -768,8 +771,176 @@ intents:
         run_id: run-eventpulse24-024
         completed_at: 2026-11-04T11:56:14.537Z
     completed_at: 2026-11-04T11:56:14.537Z
+  - id: event-state-sync
+    title: Event State Sync — Propagation, Notices & Conflict Re-evaluation
+    status: in_progress
+    created: 2026-11-04
+    work_items:
+      - id: saved-event-lifecycle-state
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: held-for-propagation-status
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: state-change-notice-model
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: propagation-consumer
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - saved-event-lifecycle-state
+          - held-for-propagation-status
+          - state-change-notice-model
+      - id: notice-composition-and-email
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - state-change-notice-model
+      - id: notice-and-mute-api
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - state-change-notice-model
+      - id: digest-card-state-fields
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: detail-overlap-notice
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - saved-event-lifecycle-state
+      - id: polling-cadence-floors
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: frontend-pulse-card-state
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-card-state-fields
+      - id: frontend-digest-strip-and-detail-banner
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - notice-and-mute-api
+          - frontend-pulse-card-state
+      - id: e2e-proof-and-contract-tests
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - propagation-consumer
+          - notice-composition-and-email
+          - detail-overlap-notice
+          - polling-cadence-floors
+          - frontend-digest-strip-and-detail-banner
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-025
+      scope: wide
+      work_items:
+        - id: held-for-propagation-status
+          intent: event-state-sync
+          mode: validate
+          status: in_progress
+          current_phase: plan
+          checkpoint_state: approved
+          current_checkpoint: design
+        - id: saved-event-lifecycle-state
+          intent: event-state-sync
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: state-change-notice-model
+          intent: event-state-sync
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: propagation-consumer
+          intent: event-state-sync
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: digest-card-state-fields
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: polling-cadence-floors
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: notice-composition-and-email
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: notice-and-mute-api
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: detail-overlap-notice
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-pulse-card-state
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: frontend-digest-strip-and-detail-banner
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: e2e-proof-and-contract-tests
+          intent: event-state-sync
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+      current_item: held-for-propagation-status
+      started: 2026-11-04T13:11:36.097Z
   completed:
     - id: run-eventpulse24-001
       scope: single
