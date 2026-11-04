@@ -35,6 +35,31 @@ class Settings(BaseSettings):
     # API, because the frontend is a different origin from this runtime.
     frontend_base_url: str = "http://localhost:3000"
 
+    # The frontend's revalidation endpoint — the URL the backend POSTs a cache instruction
+    # to when an event's public page has gone stale (FR-26, FR-27).
+    #
+    # **This is not `NEXT_PUBLIC_`-prefixed, and it is not the browser's URL.** The call is
+    # server-to-server: the backend dials the frontend, so it needs the *server's* address
+    # for the frontend, which in a deployed environment is not the public one.
+    frontend_revalidation_url: str = "http://localhost:3000/revalidate"
+
+    # The shared secret that authenticates the revalidation call (FR-26, FR-27).
+    #
+    # **It is separate from `CALENDAR_CREDENTIAL_KEY` on purpose, for three reasons.**
+    # The credential key is protected by the `credential-key` import contract, so the
+    # backend may not read it at all; AD-18 has it encrypted at rest, so it cannot be
+    # compared in plaintext at request time; and it is a *different credential* — one key
+    # per capability, so a single leaked key cannot both decrypt stored calendar
+    # credentials and force page rebuilds.
+    #
+    # Required, with no default and no fallback, exactly like `calendar_credential_key`. A
+    # missing value aborts the boot rather than leaving an app that boots healthy and
+    # fails later, when an event changes.
+    revalidation_secret: str
+
+    # How long the backend waits for the frontend's revalidation route handler to answer.
+    revalidation_timeout_seconds: PositiveFloat = 5.0
+
     # Whether the caller's IP may be read from the `X-Forwarded-For` header.
     #
     # The header is **attacker-controlled** unless something in front of this runtime

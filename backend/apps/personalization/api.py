@@ -523,6 +523,7 @@ def read_digest_endpoint(request):
                 tz_review_pending=card.tz_review_pending,
                 catalog_event_missing=card.catalog_event_missing,
                 conflict=card.conflict,
+                public_slug=card.public_slug,
             )
             for card in digest.cards
         ],

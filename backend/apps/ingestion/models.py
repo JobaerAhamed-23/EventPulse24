@@ -509,3 +509,79 @@ class IngestionAuditEntry(AuditEntry):
     """The `ingestion` audit log (AD-5). Append-only; written only through `write_audit`."""
 
     retention_category = RetentionCategory.AUDIT_LOG
+
+
+class RevalidationRequest(UUIDv7Model):
+    """The revalidation outbox: one public page set that must be rebuilt (FR-26, FR-27).
+
+    **This is the AD-17 outbox's shape, for a different consumer.** AD-17's outbox is
+    `EventStateChange.propagated_at`, and it cannot be reused here for two reasons. Its
+    `EventStateChange` table is append-only with exactly one mutable column — `propagated_at`
+    — and that column belongs to the *personal* propagation, which is still a reserved slot
+    (`worker.tasks.propagate_state_change`). And the two have genuinely different
+    lifecycles: AD-17's propagation is per-user and may happen long after any number of
+    changes, while a revalidation is per-event and must happen after a specific one.
+
+    **The row is written in the same transaction as the change that caused it.** That is
+    what makes "never lost" true: if the broker is down at enqueue time, or the process dies
+    between the commit and the enqueue, the row is still there, and the reconciler finds it.
+    AD-17's guarantee, applied to a new signal.
+
+    **`paths` is computed once, at enqueue time**, and holds the concrete paths to rebuild.
+    The frontend revalidates what it is given and infers nothing, so the cascade rules live
+    in one place — `domain.revalidation` — and a path computed at delivery time (from a row
+    that has since moved again) cannot drift from the change that caused it.
+
+    **One open request per event.** Two lifecycle changes in quick succession produce one
+    open request, not two: the second updates the open row's `event_version` and `paths`.
+    That is the enqueue-side idempotency. The delivery side needs no dedup table, because
+    rebuilding a page twice is harmless — `revalidatePath` is idempotent by construction.
+    """
+
+    class State(models.TextChoices):
+        OPEN = "open"  # waiting to be delivered
+        DELIVERED = "delivered"  # the frontend acknowledged it
+        EXHAUSTED = "exhausted"  # too many failed attempts; kept and surfaced, not retried
+        FAILED = "failed"  # permanently refused (a wrong secret); not retried
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    event = models.ForeignKey(Event, on_delete=models.PROTECT, related_name="revalidation_requests")
+    # The Event's version this signal is about. The frontend skips a rebuild whose data is
+    # older than this, so an older page can never be cached over a newer one.
+    event_version = models.PositiveIntegerField()
+    # The concrete paths to rebuild, computed by `domain.revalidation.paths_for_event`.
+    paths = models.JSONField(default=list, encoder=DjangoJSONEncoder)
+    state = models.CharField(max_length=16, choices=State.choices, default=State.OPEN)
+    attempts = models.PositiveIntegerField(default=0)
+    # A reason slug only (AD-13) — never a URL, never a response body, never a stack trace.
+    last_error = models.CharField(max_length=32, blank=True, default="")
+    requested_at = models.DateTimeField(default=timezone.now)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # One open request per event: a second change updates the open row rather than
+            # opening a second one.
+            models.UniqueConstraint(
+                fields=["event"],
+                condition=Q(state="open"),
+                name="revalidation_open_event_uq",
+            ),
+            models.CheckConstraint(
+                condition=Q(event_version__gte=1), name="revalidation_version_positive_ck"
+            ),
+            models.CheckConstraint(
+                condition=Q(attempts__gte=0), name="revalidation_attempts_nonnegative_ck"
+            ),
+        ]
+        indexes = [
+            # The reconciler's access path: the open rows, oldest first.
+            models.Index(
+                fields=["requested_at"],
+                condition=Q(state="open"),
+                name="revalidation_open_idx",
+            ),
+        ]

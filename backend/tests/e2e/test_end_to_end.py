@@ -8,7 +8,7 @@ HTTP API. Only two things are substituted, both deliberately:
 2. the broker, recorded by `tests/e2e/conftest.py`, with the jobs run inline.
 """
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.contrib.auth.models import Group
@@ -23,6 +23,21 @@ from worker import tasks
 pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 FIXTURE_CITY = "Fixtureville"
+
+#: The instant this module pretends it is.
+#:
+#: **The recorded fixtures carry fixed dates, and the catalog listing is bounded by the
+#: clock.** `list_public_events` answers "what has not started yet", so the JSON-LD
+#: fixture's `2026-11-03` event was listed while that date was in the future and is
+#: filtered out the day after. A test that reads the real clock therefore fails on a
+#: calendar boundary rather than on a fault in the code — and the fixture is a
+#: *recorded* feed, so its dates cannot follow the wall clock.
+#:
+#: **The clock is pinned rather than the fixture rewritten.** Rewriting the fixture
+#: would move the dates the assertions quote (`"2026-11-03T14:30:00"`) and the dates
+#: other packages' tests quote, so the fixture is the shared, fixed thing and the
+#: *reading* of it is what moves.
+PINNED_NOW = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
 
 EXPECTED_PERMISSIONS = {
     "ingestion.source": {"add", "change", "view"},
@@ -46,6 +61,25 @@ EXPECTED_CODENAMES = {
 def fake_fetch(settings):
     """The fake adapter, whatever SOURCE_FETCH says in the environment."""
     settings.ADAPTERS = {**settings.ADAPTERS, "fetch": "adapters.crawl.fake.FakeFetchAdapter"}
+
+
+@pytest.fixture(autouse=True)
+def pinned_clock(monkeypatch):
+    """The clock, pinned to `PINNED_NOW` for the whole module.
+
+    **Every reader of the wall clock in this chain is patched.** The listing reads
+    `django.utils.timezone.now` in `apps/catalog/api.py`, the tick reads it in
+    `worker.tasks._now`, and the ingest reads it in
+    `apps.ingestion.services.ingest_source`. Patching the one function on the module
+    they all share — `django.utils.timezone.now` — is the only patch that reaches all
+    three without touching production code.
+
+    **`django.utils.timezone.now` is patched, not `datetime.now`.** The readers ask
+    Django for the time, and Django is what the patch replaces; a module that had
+    reached for `datetime.now` directly would be a different question, and this suite
+    does not have one.
+    """
+    monkeypatch.setattr(timezone, "now", lambda *args, **kwargs: PINNED_NOW)
 
 
 @pytest.fixture

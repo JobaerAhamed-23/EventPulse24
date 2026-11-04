@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import RootLayout from "@/app/layout";
+import RootLayout, { metadata } from "@/app/layout";
 
 // next/font only works inside Next's compiler; each mock returns a distinct variable class.
 vi.mock("next/font/google", () => ({
@@ -44,5 +44,19 @@ describe("RootLayout", () => {
     for (const fontClass of FONT_CLASSES) {
       expect(body.props.className ?? "").not.toContain(fontClass);
     }
+  });
+});
+
+describe("the root layout's metadata", () => {
+  it("names the site's public origin as its metadataBase", () => {
+    // **Without a `metadataBase`, Next resolves a relative OG image against
+    // `http://localhost:3000`** — so a share card would point its image at a loopback
+    // address and render nothing. The origin is what turns a path into an address.
+    expect(metadata.metadataBase).toBeInstanceOf(URL);
+  });
+
+  it("keeps the site's own title and description", () => {
+    expect(metadata.title).toBe("EventPulse24");
+    expect(metadata.description).toBe("What's actually worth your attention right now.");
   });
 });

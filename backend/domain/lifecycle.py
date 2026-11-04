@@ -10,6 +10,7 @@
 from dataclasses import dataclass, fields
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from domain.timezones import canonical_zone, to_instant
 from shared.constants import POSTPONEMENT_WINDOW
@@ -56,6 +57,15 @@ class EventFacts:
     title: str
     description: str
     canonical_url: str
+    # The venue's id, or None.
+    #
+    # **This is not a lifecycle fact.** The trigger bumps `event_version` for a change to the
+    # `venue` column; `venue_id` and `venue_fingerprint` are two names for the same change,
+    # and `venue_fingerprint` is the one in `LIFECYCLE_FACTS`. Recording the *id* as well is
+    # what makes the **previous** city nameable: a fingerprint is a hash, and a hash cannot
+    # be reversed to "the old city was Brooklyn" — so an event that moved between cities
+    # could not have its old city page revalidated without it (FR-27).
+    venue_id: UUID | None = None
 
 
 # Facts whose change needs an event_version bump (mirrors Event.LIFECYCLE_FIELDS, which adds

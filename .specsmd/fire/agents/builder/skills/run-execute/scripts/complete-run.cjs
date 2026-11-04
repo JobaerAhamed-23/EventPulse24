@@ -199,6 +199,85 @@ function syncIntentWorkItemState(state, intentId, workItemId, status, runId, com
 }
 
 /**
+ * Promote an intent's own status in state.yaml once its work items are done.
+ *
+ * The brief's status is derived from state.intents[].work_items[], but the intent
+ * record's own `status` is a separate field — and the completion path never
+ * touched it. So an intent whose every work item was completed still read
+ * `in_progress` in state.yaml, and the state file did not tell the truth.
+ *
+ * The expected status is derived the same way the orchestrator's status check
+ * derives it:
+ *   - any work item in_progress  -> in_progress
+ *   - every work item completed   -> completed
+ *   - every work item pending     -> pending
+ *   - a mix of pending/completed  -> in_progress
+ */
+function syncIntentStatus(state, intentId, completedAt) {
+  const intent = state.intents?.find(i => i.id === intentId);
+  if (!intent || !Array.isArray(intent.work_items) || intent.work_items.length === 0) {
+    return false;
+  }
+
+  const statuses = intent.work_items.map(wi => wi.status);
+  let expected;
+  if (statuses.some(s => s === 'in_progress')) {
+    expected = 'in_progress';
+  } else if (statuses.every(s => s === 'completed')) {
+    expected = 'completed';
+  } else if (statuses.every(s => s === 'pending')) {
+    expected = 'pending';
+  } else {
+    expected = 'in_progress';
+  }
+
+  if (intent.status === expected) {
+    return false;
+  }
+
+  intent.status = expected;
+  if (expected === 'completed' && !intent.completed_at) {
+    intent.completed_at = completedAt;
+  }
+  return true;
+}
+
+/**
+ * Reconcile every intent's own status in state.yaml with its work items.
+ *
+ * The completion path now promotes an intent as its last work item completes, but
+ * an intent completed *before* that fix — or one whose work items were marked
+ * completed by another route — still reads `in_progress` in the state file. This
+ * is the repair for those, and it is deliberately derived rather than asserted:
+ * the expected status is a function of the work items, so it cannot drift from them.
+ */
+function syncIntentStatuses(rootPath) {
+  const statePath = path.join(rootPath, '.specs-fire', 'state.yaml');
+  const state = readState(statePath);
+  const changed = [];
+
+  for (const intent of state.intents || []) {
+    if (!Array.isArray(intent.work_items) || intent.work_items.length === 0) {
+      continue;
+    }
+    const before = intent.status;
+    const completedAt =
+      intent.completed_at ||
+      intent.work_items.find(wi => wi.completed_at)?.completed_at ||
+      new Date().toISOString();
+    if (syncIntentStatus(state, intent.id, completedAt)) {
+      changed.push({ id: intent.id, from: before, to: intent.status });
+    }
+  }
+
+  if (changed.length > 0) {
+    writeState(statePath, state);
+  }
+
+  return { success: true, changed, intents: (state.intents || []).length };
+}
+
+/**
  * Update intent brief.md frontmatter based on work item statuses.
  */
 function updateIntentMarkdown(rootPath, intentId, state) {
@@ -533,6 +612,9 @@ function completeCurrentItem(rootPath, runId, params = {}, options = {}) {
     );
     // Update intent status based on its work items
     updateIntentMarkdown(rootPath, completedWorkItem.intent, state);
+    // And promote the intent's own status in state.yaml, so the state file
+    // does not keep saying `in_progress` for a finished intent.
+    syncIntentStatus(state, completedWorkItem.intent, completedTime);
   }
 
   // Also update next item's markdown to in_progress
@@ -682,6 +764,11 @@ function completeRun(rootPath, runId, params = {}, options = {}) {
   state.runs.active.splice(runIndex, 1);
   if (!alreadyRecorded) {
     state.runs.completed.push(completedRun);
+  }
+
+  // Promote each affected intent's own status, now that its work items are settled.
+  for (const intentId of affectedIntents) {
+    syncIntentStatus(state, intentId, completedTime);
   }
 
   // Save state first (so markdown sync has correct state)
@@ -841,4 +928,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { completeRun, completeCurrentItem };
+module.exports = { completeRun, completeCurrentItem, syncIntentStatuses };

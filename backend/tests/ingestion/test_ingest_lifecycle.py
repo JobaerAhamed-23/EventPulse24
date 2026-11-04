@@ -6,11 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from apps.ingestion.models import Event, EventStateChange, ExtractedRecord
+from apps.ingestion.models import Event, EventStateChange, ExtractedRecord, RevalidationRequest
 from apps.ingestion.services import ingest_item as item_module
 from apps.ingestion.services import outbox
 from apps.ingestion.services.ingest_source import ingest_source
 from apps.ingestion.services.outbox import PROPAGATE_TASK
+from apps.ingestion.services.revalidation import REVALIDATE_TASK
 from shared.db import CATALOG, PERSONAL
 from tests.ingestion.pipeline_support import ScriptedFetchPort, calendar, ics_source, vevent
 
@@ -137,12 +138,44 @@ def test_title_only_change_is_a_silent_update(source, jazz):
 def test_state_changes_enqueue_propagation_after_commit(
     source, jazz, sent_jobs, django_capture_on_commit_callbacks
 ):
+    """**Both** outboxes fire on commit: AD-17's propagation and the revalidation signal.
+
+    The revalidation callback is registered on the same site as the propagation one, and
+    for the same reason: a rebuild fired from inside an uncommitted write would read the
+    old row back and re-cache exactly the stale page it was meant to fix.
+
+    **The two interleave — but not one pair per state change.** Django runs `on_commit`
+    callbacks in registration order. The **propagation** callback is registered per state
+    change, because a state change is the unit AD-17 propagates. The **revalidation**
+    callback is registered once per *logical* change, because a change of two kinds is two
+    statements and two state changes but **one** change to the public page — the page ends
+    up in one state, and the page that must be rebuilt is the same page either way.
+
+    **The two jobs carry different ids.** The propagation job names the state change; the
+    revalidation job names the *request* — its own outbox row, with its own id. That is
+    the point of the second outbox: `EventStateChange` has exactly one mutable column and
+    it is spoken for, so the revalidation marker is its own table.
+
+    **There is one request for the event, not one per change.** Two changes in quick
+    succession update the open request rather than opening a second one — the enqueue-side
+    idempotency. So both revalidation jobs name the same request, and the second carries
+    the newer version.
+    """
     with django_capture_on_commit_callbacks(using=CATALOG, execute=True) as callbacks:
         _run(source, vevent(UID, "20261112T193000", location="Blue Note"))
 
-    ids = [str(c.pk) for c in _changes(_event(source))]
-    assert len(callbacks) == 2
-    assert sent_jobs == [(PROPAGATE_TASK, [i]) for i in ids]
+    change_ids = [str(c.pk) for c in _changes(_event(source))]
+    [request] = list(RevalidationRequest.objects.using(CATALOG).all())
+    request_id = str(request.pk)
+    # Two state changes (a time move and a detail change), so two propagation callbacks —
+    # and **one** revalidation, because it is one logical change.
+    assert len(callbacks) == 3
+    assert request.event_version == 3  # the open request carries the newest version
+    assert sent_jobs == [
+        (PROPAGATE_TASK, [change_ids[0]]),
+        (PROPAGATE_TASK, [change_ids[1]]),
+        (REVALIDATE_TASK, [request_id]),
+    ], "one propagation per state change, and one revalidation per logical change"
 
 
 @pytest.mark.django_db(databases=[PERSONAL, CATALOG], transaction=True)

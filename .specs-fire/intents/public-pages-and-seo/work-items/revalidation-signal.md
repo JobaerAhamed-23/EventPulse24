@@ -4,10 +4,12 @@ title: The page goes stale the moment the event changes — the revalidation sig
 intent: public-pages-and-seo
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on:
   - public-event-read-by-slug
 created: 2026-11-01
+run_id: run-eventpulse24-024
+completed_at: 2026-11-02T10:30:01.208Z
 ---
 
 # Work Item: The page goes stale the moment the event changes — the revalidation signal
@@ -22,14 +24,14 @@ The signal already exists and has no listener. `Event.LIFECYCLE_FIELDS` names `s
 
 ## Acceptance Criteria
 
-- [ ] A change to any `LIFECYCLE_FIELD` on a published Event causes **that event's public page** to be rebuilt — not the whole site, and not on a timer.
-- [ ] A change to a **city's** membership (an event published, superseded, or moved between cities) revalidates the affected city page(s).
-- [ ] **Failure degrades to stale-but-correct, never to wrong.** A revalidation that cannot be delivered is retried and surfaced; it never leaves the system believing a page is fresh when it is not, and it never takes a page down.
-- [ ] The signal is **authenticated** — the rebuild endpoint is not an open door that any caller can use to force work on the frontend deploy.
-- [ ] The signal is **idempotent and safe to repeat**: the same bump delivered twice rebuilds once more, harmlessly.
-- [ ] Revalidation is triggered **after the transaction commits**, never inside it — a rebuild fired from an uncommitted write can read the old row back and re-cache exactly the stale page it was meant to fix.
-- [ ] An `in_review` or newly-`superseded` event **removes or 404s its page** rather than leaving a live page for content that is no longer public.
-- [ ] Tests: a status change to cancelled, a sold-out flip, a venue change, a time change, a publish and an unpublish, a delivery failure and its retry, a double delivery, and a test proving the trigger fires post-commit.
+- [x] A change to any `LIFECYCLE_FIELD` on a published Event causes **that event's public page** to be rebuilt — not the whole site, and not on a timer.
+- [x] A change to a **city's** membership (an event published, superseded, or moved between cities) revalidates the affected city page(s).
+- [x] **Failure degrades to stale-but-correct, never to wrong.** A revalidation that cannot be delivered is retried and surfaced; it never leaves the system believing a page is fresh when it is not, and it never takes a page down.
+- [x] The signal is **authenticated** — the rebuild endpoint is not an open door that any caller can use to force work on the frontend deploy.
+- [x] The signal is **idempotent and safe to repeat**: the same bump delivered twice rebuilds once more, harmlessly.
+- [x] Revalidation is triggered **after the transaction commits**, never inside it — a rebuild fired from an uncommitted write can read the old row back and re-cache exactly the stale page it was meant to fix.
+- [x] An `in_review` or newly-`superseded` event **removes or 404s its page** rather than leaving a live page for content that is no longer public.
+- [x] Tests: a status change to cancelled, a sold-out flip, a venue change, a time change, a publish and an unpublish, a delivery failure and its retry, a double delivery, and a test proving the trigger fires post-commit.
 
 ## Technical Notes
 

@@ -41,6 +41,10 @@ INGESTION_TABLES = {
     "ingestion_eventfit",
     "ingestion_eventstatechange",
     "ingestion_ingestionauditentry",
+    # FR-26, FR-27: the revalidation outbox is a catalog table. It records which public
+    # pages must be rebuilt, and it is written in the same transaction as the change that
+    # made them stale — so it belongs on the catalog side of the AD-3 wall.
+    "ingestion_revalidationrequest",
 }
 
 PERSONALIZATION_TABLES = {

@@ -1,8 +1,9 @@
 ---
 id: public-pages-and-seo
 title: Public Pages, SEO & Share Links
-status: in_progress
+status: completed
 created: 2026-11-01
+completed_at: 2026-11-04T11:56:14.570Z
 ---
 
 # Intent: Public Pages, SEO & Share Links

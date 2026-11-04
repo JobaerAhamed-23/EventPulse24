@@ -193,3 +193,25 @@ describe("the label tables", () => {
     expect(labelsCode).not.toContain("preview-labels");
   });
 });
+
+describe("the share control's row", () => {
+  it("is raised above the stretched link", () => {
+    // **The rule is load-bearing, so it is asserted on the source.** The stretched
+    // `<Link>` is `absolute inset-0 z-0` and comes later in DOM order, so it paints
+    // over anything in the normal flow — a control in the flow is *inert*, which is
+    // worse than no control at all. The trust row's own comment records that this is
+    // what made the confidence and badge buttons unpressable.
+    //
+    // The assertion is on the row that holds the share control, not on the control:
+    // a `z-10` on the control itself would not raise it above a later sibling that
+    // creates its own stacking context.
+    expect(cardCode).toContain("relative z-10 flex items-start justify-end");
+  });
+
+  it("holds the share control in that row", () => {
+    // The row and the control have to stay together — a row that is raised but holds
+    // nothing, or a control outside it, is the same defect.
+    const row = /relative z-10 flex items-start justify-end[\s\S]*?<\/div>/.exec(cardCode);
+    expect(row?.[0]).toContain("ShareControl");
+  });
+});

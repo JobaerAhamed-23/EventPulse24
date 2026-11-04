@@ -679,7 +679,7 @@ intents:
         completed_at: 2026-11-01T08:46:50.158Z
   - id: public-pages-and-seo
     title: Public Pages, SEO & Share Links
-    status: in_progress
+    status: completed
     created: 2026-11-01
     work_items:
       - id: city-canonicalization
@@ -688,59 +688,75 @@ intents:
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-024
-        completed_at: 2026-11-01T15:50:23.894Z
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: public-event-read-by-slug
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: schema-org-jsonld
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - public-event-read-by-slug
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: city-page-read-api
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - city-canonicalization
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: revalidation-signal
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on:
           - public-event-read-by-slug
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: frontend-public-event-page
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - public-event-read-by-slug
           - schema-org-jsonld
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: frontend-city-page
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - city-page-read-api
           - frontend-public-event-page
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: sitemap-and-robots
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - public-event-read-by-slug
           - city-page-read-api
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: share-control
-        status: pending
+        status: completed
         complexity: medium
         mode: validate
         depends_on:
           - frontend-public-event-page
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
       - id: e2e-proof-and-contract-tests
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
@@ -749,84 +765,11 @@ intents:
           - frontend-city-page
           - sitemap-and-robots
           - share-control
+        run_id: run-eventpulse24-024
+        completed_at: 2026-11-04T11:56:14.537Z
+    completed_at: 2026-11-04T11:56:14.537Z
 runs:
-  active:
-    - id: run-eventpulse24-024
-      scope: wide
-      work_items:
-        - id: city-canonicalization
-          intent: public-pages-and-seo
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-01T15:50:23.894Z
-        - id: public-event-read-by-slug
-          intent: public-pages-and-seo
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-        - id: schema-org-jsonld
-          intent: public-pages-and-seo
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: city-page-read-api
-          intent: public-pages-and-seo
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: revalidation-signal
-          intent: public-pages-and-seo
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: frontend-public-event-page
-          intent: public-pages-and-seo
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: frontend-city-page
-          intent: public-pages-and-seo
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: sitemap-and-robots
-          intent: public-pages-and-seo
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: share-control
-          intent: public-pages-and-seo
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: e2e-proof-and-contract-tests
-          intent: public-pages-and-seo
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: public-event-read-by-slug
-      started: 2026-11-01T15:18:49.012Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -1159,3 +1102,38 @@ runs:
           mode: confirm
       started: 2026-10-31T12:47:59.669Z
       completed: 2026-11-01T08:46:50.158Z
+    - id: run-eventpulse24-024
+      scope: wide
+      work_items:
+        - id: city-canonicalization
+          intent: public-pages-and-seo
+          mode: validate
+        - id: public-event-read-by-slug
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: schema-org-jsonld
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: city-page-read-api
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: revalidation-signal
+          intent: public-pages-and-seo
+          mode: validate
+        - id: frontend-public-event-page
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: frontend-city-page
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: sitemap-and-robots
+          intent: public-pages-and-seo
+          mode: confirm
+        - id: share-control
+          intent: public-pages-and-seo
+          mode: validate
+        - id: e2e-proof-and-contract-tests
+          intent: public-pages-and-seo
+          mode: confirm
+      started: 2026-11-01T15:18:49.012Z
+      completed: 2026-11-04T11:56:14.537Z

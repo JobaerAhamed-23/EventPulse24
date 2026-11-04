@@ -38,13 +38,42 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
 
+/**
+ * The action row is stubbed, and **the stub mirrors the real component's narrowing**:
+ * a sold-out event loses its Save button and keeps its Share control. That is the
+ * behaviour the page delegates to the row, so the stub reproduces it — and the page's
+ * own contribution (the reminder link going, the row surviving) is asserted on the
+ * stub's attributes.
+ */
 vi.mock("@/components/detail/detail-actions", () => ({
-  DetailActions: (props: { saved: boolean }) => (
-    <div data-detail-actions-stub data-saved={String(props.saved)}>
-      <button type="button">Save to Pulse</button>
+  DetailActions: (props: {
+    saved: boolean;
+    slug: string;
+    shareOrigin?: string | null;
+    soldOut?: boolean;
+  }) => (
+    <div
+      data-detail-actions-stub
+      data-saved={String(props.saved)}
+      data-slug={props.slug}
+      data-share-origin={props.shareOrigin ?? ""}
+      data-sold-out={String(props.soldOut ?? false)}
+    >
+      {props.soldOut ? null : <button type="button">Save to Pulse</button>}
       <button type="button">Share</button>
     </div>
   ),
+}));
+
+/**
+ * The site's public origin, resolved on the server.
+ *
+ * **`PUBLIC_SITE_URL` has no `NEXT_PUBLIC_` prefix**, so the page reads it and passes
+ * the result down — and the stub records what it was given, so the test can assert the
+ * wiring rather than the environment.
+ */
+vi.mock("@/lib/site-url", () => ({
+  siteUrl: () => new URL("https://eventpulse24.test"),
 }));
 
 const USER = {
@@ -666,6 +695,38 @@ describe("the sold-out state", () => {
     expect(document.querySelector("[data-detail-reminder]")).toBeNull();
   });
 
+  it("keeps the Share control, because a sold-out event is still public", async () => {
+    // **The row is narrowed, not removed.** A sold-out event is still published and
+    // still has a public page — what it has lost is its tickets, not its page. The
+    // Pulse Card offers a share for a sold-out event, so the Detail Screen must too;
+    // offering it in one place and not the other would be the inconsistency the AC
+    // names.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ is_sold_out: true }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(document.querySelector("[data-detail-actions-stub]")).not.toBeNull();
+  });
+
+  it("tells the action row that the event is sold out", async () => {
+    // The row draws the Save button; the page states the fact that removes it.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ is_sold_out: true }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-actions-stub]")).toHaveAttribute(
+      "data-sold-out",
+      "true",
+    );
+  });
+
   it("still renders the breakdown — a sold-out event is still an event the user was shown", async () => {
     readEventDetail.mockResolvedValue({
       kind: "found",
@@ -675,6 +736,48 @@ describe("the sold-out state", () => {
     await renderPage();
 
     expect(document.querySelector("[data-detail-breakdown]")).not.toBeNull();
+  });
+});
+
+/* ── the share's facts ────────────────────────────────────────────────────────── */
+
+describe("the share's wiring", () => {
+  it("hands the row the event's public slug", async () => {
+    // **The slug, never the id.** The shared link is the FR-26 public page,
+    // `/events/{slug}` — this screen's own address is `/events/{uuid}`, and a friend
+    // who opened it would meet a sign-in wall instead of the event.
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-actions-stub]")).toHaveAttribute(
+      "data-slug",
+      "designing-for-calm",
+    );
+  });
+
+  it("resolves the site's origin on the server, and hands it down", async () => {
+    // `PUBLIC_SITE_URL` has no `NEXT_PUBLIC_` prefix, so a client component cannot
+    // read it — the page resolves it and passes it down.
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-actions-stub]")).toHaveAttribute(
+      "data-share-origin",
+      "https://eventpulse24.test",
+    );
+  });
+
+  it("says the event is not sold out when it is not", async () => {
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-actions-stub]")).toHaveAttribute(
+      "data-sold-out",
+      "false",
+    );
   });
 });
 

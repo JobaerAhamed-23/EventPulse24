@@ -86,6 +86,11 @@ TABLE_OWNERS = {
     "ingestion_extractedrecord": "ingestion",
     "ingestion_eventstatechange": "ingestion",
     "ingestion_eventfit": "ingestion",
+    # AD-16: `ingestion` owns the revalidation outbox too (FR-26, FR-27). It is the
+    # catalog side of the signal — one public page set that must be rebuilt — and it is
+    # written only by `services/revalidation.py`. The frontend owns no table at all; it
+    # receives the signal and rebuilds from the catalog's own public read.
+    "ingestion_revalidationrequest": "ingestion",
     # AD-16: `delivery` owns the reminder plan. It is here because the check covers
     # every app that owns tables, not only the three this intent added to — a table
     # with no owner is a table nobody is responsible for, and the map is only

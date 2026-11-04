@@ -195,6 +195,7 @@ source_modules = [
     "adapters.geo",
     "adapters.logging",
     "adapters.throttle",
+    "adapters.revalidation",
 ]
 forbidden_modules = [
     "anthropic",
@@ -223,13 +224,14 @@ source_modules = [
     "adapters.llm",
     "adapters.logging",
     "adapters.throttle",
+    "adapters.revalidation",
 ]
 forbidden_modules = ["stripe"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "http-client"
-name = "AD-9 only adapters.crawl imports an HTTP client (source fetches go through SourceFetchPort)"
+name = "AD-9 only adapters.crawl and adapters.revalidation import an HTTP client"
 type = "forbidden"
 source_modules = [
     "domain",

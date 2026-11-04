@@ -4,10 +4,12 @@ title: Handing it to a friend — the share affordance
 intent: public-pages-and-seo
 complexity: medium
 mode: validate
-status: pending
+status: completed
 depends_on:
   - frontend-public-event-page
 created: 2026-11-01
+run_id: run-eventpulse24-024
+completed_at: 2026-11-04T08:53:36.567Z
 ---
 
 # Work Item: Handing it to a friend — the share affordance
@@ -20,13 +22,13 @@ FR-28's sender side: from a Pulse Card or the Detail screen, turn an event into 
 
 ## Acceptance Criteria
 
-- [ ] A share control on the **Pulse Card** and the **Detail screen**, producing the public `/events/{slug}` URL — no new route, no second link shape, no token.
-- [ ] Uses the **Web Share API** where available (EXPERIENCE.md notes it as a platform capability for FR-28), with a **copy-to-clipboard fallback** everywhere else, and visible confirmation that the copy happened.
-- [ ] The link opens the public page with its **"Save to Pulse" CTA**, for a recipient with no account — the FR-28 consequence stated in the PRD.
-- [ ] Sharing an event the sender can see but the public cannot (`in_review`) is **not offered**, rather than producing a link that 404s for the recipient.
-- [ ] The control is **keyboard reachable and screen-reader labelled**; the confirmation is announced, not only shown.
-- [ ] Visual language follows the existing design-system tokens and sits consistently on both surfaces.
-- [ ] Tests: the share action on both surfaces, the Web Share path and the clipboard fallback, the confirmation state, an unshareable event, and keyboard operation.
+- [x] A share control on the **Pulse Card** and the **Detail screen**, producing the public `/events/{slug}` URL — no new route, no second link shape, no token.
+- [x] Uses the **Web Share API** where available (EXPERIENCE.md notes it as a platform capability for FR-28), with a **copy-to-clipboard fallback** everywhere else, and visible confirmation that the copy happened.
+- [x] The link opens the public page with its **"Save to Pulse" CTA**, for a recipient with no account — the FR-28 consequence stated in the PRD.
+- [x] Sharing an event the sender can see but the public cannot (`in_review`) is **not offered**, rather than producing a link that 404s for the recipient.
+- [x] The control is **keyboard reachable and screen-reader labelled**; the confirmation is announced, not only shown.
+- [x] Visual language follows the existing design-system tokens and sits consistently on both surfaces.
+- [x] Tests: the share action on both surfaces, the Web Share path and the clipboard fallback, the confirmation state, an unshareable event, and keyboard operation.
 
 ## Technical Notes
 

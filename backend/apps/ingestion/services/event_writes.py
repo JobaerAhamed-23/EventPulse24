@@ -17,6 +17,7 @@ from django.db.models import F
 
 from apps.ingestion.models import Event, EventStateChange, ExtractedRecord, Source
 from apps.ingestion.services.outbox import enqueue_propagation
+from apps.ingestion.services.revalidation import enqueue_revalidation, request_revalidation
 from apps.ingestion.services.slugs import mint_slug
 from domain.lifecycle import Change, ChangeKind, EventFacts, EventStatus
 from shared.actor import Actor
@@ -66,6 +67,7 @@ class IncomingEvent:
             title=self.title,
             description=self.description,
             canonical_url=self.canonical_url,
+            venue_id=self.venue_id,
         )
 
     def columns(self) -> dict[str, object]:
@@ -108,6 +110,7 @@ def facts_of(event: Event) -> EventFacts:
         title=event.title,
         description=event.description,
         canonical_url=event.canonical_url,
+        venue_id=event.venue_id,
     )
 
 
@@ -152,7 +155,7 @@ def create_event(
 
 def _record_change(
     *,
-    event_id: UUID,
+    event: Event,
     kind: str,
     version: int,
     before: dict,
@@ -161,7 +164,7 @@ def _record_change(
     now: datetime,
 ) -> EventStateChange:
     change = EventStateChange.objects.using(CATALOG).create(
-        event_id=event_id,
+        event_id=event.pk,
         kind=kind,
         event_version=version,
         before=before,
@@ -175,6 +178,38 @@ def _record_change(
     # callbacks still run, and the reconciler re-sends what was lost (AD-17).
     transaction.on_commit(partial(enqueue_propagation, change.id), using=CATALOG, robust=True)
     return change
+
+
+def _request_revalidation(
+    *,
+    event: Event,
+    event_version: int,
+    previous_venue_id: UUID | None,
+) -> None:
+    """Record the revalidation signal for one change, and register its enqueue (FR-26, FR-27).
+
+    **This is called once per logical change, not once per kind.** A change of *k* kinds is
+    *k* statements and *k* state changes, but it is **one** change to the public page: the
+    page ends up in one state, and the page that must be rebuilt is the same page either
+    way. Registering the enqueue per kind would send the same request to the broker twice
+    for one change.
+
+    **The enqueue fires on commit too** — a rebuild fired from inside an uncommitted write
+    would read the old row back and re-cache exactly the stale page it was meant to fix.
+
+    **`previous_venue_id` is the event's venue *before* this change.** It is what makes the
+    **old** city nameable: the recorded `venue_fingerprint` is a hash, and a hash cannot be
+    reversed to a city, so an event that moved between cities could not have its old city
+    page revalidated without the id.
+    """
+    request = request_revalidation(
+        event=event,
+        event_version=event_version,
+        previous_venue_id=previous_venue_id,
+        enqueue=False,
+    )
+    if request is not None:
+        transaction.on_commit(partial(enqueue_revalidation, request.id), using=CATALOG, robust=True)
 
 
 def _kind_facts(kind: ChangeKind, changed: frozenset[str]) -> list[str]:
@@ -202,6 +237,10 @@ def apply_lifecycle_change(
     stored, new = facts_of(event), incoming.facts()
     rows = Event.objects.using(CATALOG).filter(pk=event.pk)
     version = event.event_version
+    # The event's venue *before* this change. Recorded on the state change so the previous
+    # city stays nameable: the recorded fingerprint is a hash, and a hash cannot be reversed
+    # to a city (FR-27).
+    previous_venue_id = event.venue_id
     changes = []
     for position, kind in enumerate(change.kinds, start=1):
         if position == 1:
@@ -213,7 +252,7 @@ def apply_lifecycle_change(
         names = _kind_facts(kind, change.fields)
         changes.append(
             _record_change(
-                event_id=event.pk,
+                event=event,
                 kind=kind.value,
                 version=version + position,
                 before={n: getattr(stored, n) for n in names},
@@ -222,12 +261,28 @@ def apply_lifecycle_change(
                 now=now,
             )
         )
+    # **One revalidation per logical change**, not one per kind. The change is *k*
+    # statements and *k* state changes, but it leaves the public page in one state, and the
+    # page that must be rebuilt is the same page either way. The version recorded is the
+    # change's **final** version — the last kind's — so the guard compares the rebuild
+    # against the newest state the change produced, not an intermediate one.
+    _request_revalidation(
+        event=event,
+        event_version=version + len(change.kinds),
+        previous_venue_id=previous_venue_id,
+    )
     return changes
 
 
 def apply_silent_update(*, event: Event, incoming: IncomingEvent, now: datetime) -> None:
     """Title, description and URL (and the gates) follow the source with no version bump and
     no state change (D9): live reads show the new text, and nobody is notified of a typo fix.
+
+    **But the public page still shows the old text until it is rebuilt**, so this does
+    enqueue a revalidation (FR-26). The version did not move, and that is fine: the
+    version guard says the rebuild must not be *older* than the signal, not that the
+    version must have *changed*. A signal at version N is satisfied by a rebuild at
+    version N.
     """
     Event.objects.using(CATALOG).filter(pk=event.pk).update(
         title=incoming.title,
@@ -236,6 +291,13 @@ def apply_silent_update(*, event: Event, incoming: IncomingEvent, now: datetime)
         title_fingerprint=incoming.title_fingerprint,
         last_seen_at=now,
         **incoming.gating(),
+    )
+    # The request row is written in this transaction, so it commits with the change that
+    # caused it; only the enqueue waits for the commit.
+    _request_revalidation(
+        event=event,
+        event_version=event.event_version,
+        previous_venue_id=None,
     )
 
 
@@ -267,7 +329,7 @@ def supersede_event(
     )
     ExtractedRecord.objects.using(CATALOG).filter(pk=record_id).update(event_id=new_id)  # 4.
     change = _record_change(  # 5. the old Event's terminal state change
-        event_id=old.pk,
+        event=old,
         kind=EventStateChange.Kind.SUPERSEDED,
         version=old.event_version + 1,
         before={"status": old.status, "start_utc": old.start_time_utc},
@@ -278,5 +340,13 @@ def supersede_event(
         },
         actor=actor,
         now=now,
+    )
+    # The revalidation signal for the old event (FR-27). The old event's venue is the one
+    # it is leaving, so the city page it leaves is revalidated too. The successor has its own
+    # slug and its own page, which has never been built and so has nothing stale to fix.
+    _request_revalidation(
+        event=old,
+        event_version=old.event_version + 1,
+        previous_venue_id=old.venue_id,
     )
     return new, change

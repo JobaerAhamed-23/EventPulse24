@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PulseCard, categoryFor, MAX_WHY_THIS_TAGS } from "@/components/digest/pulse-card";
 import type { Explanation } from "@/components/digest/pulse-card";
@@ -34,13 +34,27 @@ const CARD: DigestCard = {
   tz_review_pending: false,
   catalog_event_missing: false,
   conflict: false,
+  /**
+   * **The event's public page slug (FR-28).**
+   *
+   * **The server states shareability, and the card reads it.** `public_slug` is the
+   * slug when the event is public and `null` when it is not — a personal event, or an
+   * event the public catalog does not hold (`in_review`, unpublished, superseded).
+   */
+  public_slug: "brooklyn-symphony-open-rehearsal-2026-11-07-a1b2c3",
 };
 
 function renderCard(
   overrides: Partial<DigestCard> = {},
   explanation: Explanation = { kind: "relevance", value: 4 },
 ) {
-  render(<PulseCard card={{ ...CARD, ...overrides }} explanation={explanation} />);
+  render(
+    <PulseCard
+      card={{ ...CARD, ...overrides }}
+      explanation={explanation}
+      shareOrigin="https://eventpulse24.test"
+    />,
+  );
 }
 
 /**
@@ -600,11 +614,29 @@ describe("what the card does not do", () => {
     expect(cardText()).not.toContain("free");
   });
 
-  it("shows no attendee count, no share button and no description", () => {
+  /**
+   * **REWRITTEN — the old test asserted the absence of a share button.**
+   *
+   * It said: *"shows no attendee count, no share button and no description."* That
+   * sentence came from `EXPERIENCE.md` §13's mobile default for `Card.PulseDigest` —
+   * *"No description, no image, no map, no price, no attendee count, no share
+   * button."*
+   *
+   * **FR-28 puts the share affordance on the card** — *"From any Pulse Card or Detail
+   * Screen, the user can generate a public share-link URL"* — so that one clause of §13
+   * is **amended, deliberately and explicitly**, and only that clause. Everything else
+   * §13 excludes stays excluded, and §13's own anti-pattern (progressive disclosure
+   * that *hides* trust signals) is not violated: this **adds** an action and moves
+   * nothing.
+   *
+   * The attendee count and the description are still forbidden, and they are still
+   * asserted. The share button is now the one thing on the card that *is* present.
+   */
+  it("shows no attendee count and no description, and shares the public page", () => {
     renderCard();
 
-    expect(screen.queryByRole("button", { name: /share/i })).toBeNull();
     expect(cardText()).not.toMatch(/\d+ (neighbors|attendees|going)/);
+    expect(screen.getByRole("button", { name: /share/i })).toBeInTheDocument();
   });
 
   it("renders the headline whole rather than truncating it", () => {
@@ -655,5 +687,103 @@ describe("a card whose facts have moved on", () => {
     renderCard({ event_kind: "personal", location: "2 Example Street", venue_name: null });
 
     expect(screen.getByText(/2 Example Street/)).toBeInTheDocument();
+  });
+});
+
+describe("the share affordance", () => {
+  /** The Web Share API stub, restored after every test. */
+  let share: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", {
+      value: share,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shares the public page, not the card's own link", async () => {
+    // **The card's own stretched link points at `/events/{event_id}`** — the personal
+    // URL, which is correct for *this* user and wrong for a friend. The share must
+    // point at the public page instead, or the recipient meets a sign-in wall.
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: /share/i }));
+
+    await waitFor(() => expect(share).toHaveBeenCalled());
+    const payload = share.mock.calls[0]?.[0] as { url: string };
+    expect(payload.url).toBe(
+      "https://eventpulse24.test/events/brooklyn-symphony-open-rehearsal-2026-11-07-a1b2c3",
+    );
+    expect(payload.url).not.toContain(CARD.event_id);
+  });
+
+  it("shares the event's own title", async () => {
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: /share/i }));
+
+    await waitFor(() => expect(share).toHaveBeenCalled());
+    expect((share.mock.calls[0]?.[0] as { title: string }).title).toBe(
+      "Brooklyn Symphony open rehearsal",
+    );
+  });
+
+  it("offers no control for an event the public catalog does not hold", () => {
+    // **`public_slug` is the server's statement of shareability.** `null` covers a
+    // personal event and an `in_review` event alike, and a share control on either
+    // would produce a link that 404s for the friend who opened it — so the control is
+    // not rendered, rather than rendered and broken.
+    renderCard({ public_slug: null });
+
+    expect(screen.queryByRole("button", { name: /share/i })).toBeNull();
+  });
+
+  it("offers no control for a personal event", () => {
+    // A personal event is the user's own agenda row — their dinner, their location.
+    // It has no catalog event and no public page.
+    renderCard({ event_kind: "personal", public_slug: null });
+
+    expect(screen.queryByRole("button", { name: /share/i })).toBeNull();
+  });
+
+  it("keeps the card's own link on the personal URL", () => {
+    // The share and the card's link point at two different pages on purpose: the card
+    // is this user's own event, and the share is for everybody else.
+    renderCard();
+
+    expect(screen.getByRole("link")).toHaveAttribute(
+      "href",
+      "/events/11111111-1111-1111-1111-111111111111",
+    );
+  });
+
+  it("keeps the share control above the stretched link, so it can be pressed", () => {
+    // The link is `absolute inset-0 z-0` and comes *later* in the DOM, so it paints
+    // over anything in the normal flow. Without the raise the Share button would be
+    // covered and could never be pressed — the same inertness the trust row's comment
+    // records.
+    renderCard();
+
+    const button = screen.getByRole("button", { name: /share/i });
+    const row = button.closest("div.relative");
+    expect(row).not.toBeNull();
+    expect(row?.className).toContain("z-10");
+  });
+
+  it("announces its confirmation without adding a second status region", async () => {
+    // The digest page owns the page's `role="status"`; two status regions would make
+    // "which one is the page talking?" a question the DOM cannot answer.
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: /share/i }));
+
+    await waitFor(() => expect(screen.getByText("Shared.")).toBeInTheDocument());
+    expect(screen.queryAllByRole("status")).toHaveLength(0);
   });
 });

@@ -62,6 +62,14 @@ function card(overrides: Record<string, unknown> = {}) {
     tz_review_pending: false,
     venue_city: "Brooklyn",
     venue_name: "BAM Howard Gilman Opera House",
+    /**
+     * **The event's public page slug (FR-28).**
+     *
+     * The server states shareability and the card reads it: the slug when the event is
+     * public, `null` when it is not — a personal event, or one the public catalog does
+     * not hold.
+     */
+    public_slug: "brooklyn-symphony-open-rehearsal-2026-11-07-a1b2c3",
     ...overrides,
   };
 }
@@ -233,6 +241,38 @@ describe("the digest", () => {
     const page = await import("@/app/page");
 
     expect(page.dynamic).toBe("force-dynamic");
+  });
+});
+
+describe("the digest's share affordance", () => {
+  it("offers a share control on every card the server says is shareable", async () => {
+    // **The server states shareability** (`public_slug`), and the card renders a
+    // control exactly when it is set — it never infers it.
+    render(await HomePage(props()));
+
+    expect(screen.getAllByRole("button", { name: /share/i })).toHaveLength(COMPOSED.cards.length);
+  });
+
+  it("offers none on a card the server says is not shareable", async () => {
+    // A personal event, or an event the public catalog does not hold — either way, a
+    // share control would produce a link that 404s for the friend who opened it.
+    readDigest.mockResolvedValue({
+      kind: "composed",
+      digest: { ...COMPOSED, cards: [card({ public_slug: null })] },
+    });
+
+    render(await HomePage(props()));
+
+    expect(screen.queryByRole("button", { name: /share/i })).toBeNull();
+  });
+
+  it("keeps the digest's single status region, even with the cards' confirmations", async () => {
+    // The cards' own confirmations are **bare** `aria-live="polite"` regions. A second
+    // `role="status"` on the page would make "which one is the page talking?" a
+    // question the DOM cannot answer.
+    render(await HomePage(props()));
+
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 });
 

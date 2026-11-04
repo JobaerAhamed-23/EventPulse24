@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from apps.delivery.services.pulse_ping import mint_ping_send
 from apps.ingestion.event_fit.writes import refresh_stale_event_fits
-from apps.ingestion.services import outbox, scheduling
+from apps.ingestion.services import outbox, revalidation, scheduling
 from apps.ingestion.services.ingest_source import ingest_source as run_ingest
 from apps.ingestion.services.source_registry import (
     CrawlNeedsTosReviewError,
@@ -22,12 +22,14 @@ from apps.ingestion.services.source_registry import (
 )
 from apps.personalization.services import calendar_sync, digest_scheduling
 from apps.personalization.services.digest_composition import compose_digest
-from ports.registry import get_calendar_port, get_email_port
+from ports.registry import get_calendar_port, get_email_port, get_revalidation_port
+from ports.revalidation import RevalidationOutcome, RevalidationRequest
 from shared.actor import Actor
 from shared.constants import (
     EVENT_FIT_REFRESH_BATCH_SIZE,
     EVENT_FIT_REFRESH_EVERY_MINUTES,
     OUTBOX_RECONCILE_EVERY_MINUTES,
+    REVALIDATION_RECONCILE_EVERY_MINUTES,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,9 @@ def tick() -> None:
 
     Every tick: `schedule_sources`, `schedule_calendars`, `schedule_digests` and
     `sweep_due_sends`. When the UTC minute is a multiple of 5: `reconcile_outbox` (the
-    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent).
-    When the minute is a multiple of 15: `refresh_event_fits`, which recomputes the Event
+    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent)
+    and `reconcile_revalidation`, the revalidation outbox's own reconciler (FR-27). When
+    the minute is a multiple of 15: `refresh_event_fits`, which recomputes the Event
     Fit rows so that "tonight" does not go stale (AD-10).
 
     The two cadences nest — every multiple of 15 is also a multiple of 5 — so the refresh
@@ -78,6 +81,8 @@ def tick() -> None:
     _enqueue(sweep_due_sends)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
+    if _now().minute % REVALIDATION_RECONCILE_EVERY_MINUTES == 0:
+        _enqueue(reconcile_revalidation)
     if _now().minute % EVENT_FIT_REFRESH_EVERY_MINUTES == 0:
         _enqueue(refresh_event_fits)
     logger.info("Tick", extra={"job": "tick"})
@@ -233,6 +238,74 @@ def reconcile_outbox() -> None:
     """Re-enqueue state changes left unpropagated (AD-17). Scheduled by ingestion-scheduling."""
     count = outbox.reconcile_outbox()
     logger.info("Outbox reconciled", extra={"job": "reconcile_outbox", "count": count})
+
+
+@shared_task(name="worker.tasks.revalidate_public_pages")
+def revalidate_public_pages(request_id: str) -> None:
+    """Deliver one revalidation signal to the frontend (FR-26, FR-27).
+
+    **The delivery is a network call, so it happens here and not in the write path.** AD-11
+    says a request handler's job is to validate, enqueue and return: a frontend that is down
+    must never fail a user's saved write. The write path records the *intent*; this task
+    carries it out.
+
+    **Every failure is recorded on the row, and none of them is an exception.** The house
+    pattern is "record it on the row, retry at the next cadence" — there is no Celery retry
+    anywhere in this codebase. A 5xx or a timeout leaves the request **open**, so the
+    reconciler offers it again; a 401 leaves it **failed**, because retrying with the same
+    wrong secret forever is noise; and a request that has failed too many times is
+    **exhausted** — kept and surfaced, not retried forever.
+
+    **A double delivery is harmless.** The row is closed conditionally, so the second
+    attempt finds nothing open and does nothing.
+    """
+    identifier = UUID(request_id)
+    request = revalidation.open_request(identifier)
+    if request is None:
+        # Already delivered, exhausted or failed. Nothing to do — and doing something would
+        # be the bug.
+        logger.debug("Revalidation request not open", extra={"request_id": request_id})
+        return
+
+    result = get_revalidation_port().revalidate(
+        RevalidationRequest(paths=tuple(request.paths), event_version=request.event_version)
+    )
+    if result.outcome is RevalidationOutcome.DELIVERED:
+        revalidation.mark_delivered(identifier, now=_now())
+        logger.info(
+            "Revalidation delivered",
+            extra={"job": "revalidate_public_pages", "request_id": request_id},
+        )
+        return
+
+    revalidation.mark_failed(
+        identifier,
+        reason=result.outcome.reason,
+        permanent=not result.outcome.is_retryable,
+        now=_now(),
+    )
+    logger.warning(
+        "Revalidation not delivered",
+        extra={
+            "job": "revalidate_public_pages",
+            "request_id": request_id,
+            "outcome": result.outcome.value,
+            "status": result.status,
+        },
+    )
+
+
+@shared_task(name="worker.tasks.reconcile_revalidation")
+def reconcile_revalidation() -> None:
+    """Re-offer the revalidation requests nobody delivered (FR-27).
+
+    **This is the "never lost" half.** The reconciler re-offers the open requests that have
+    been waiting longer than `REVALIDATION_RECONCILE_AFTER`, oldest first. A broker outage
+    at enqueue time, or a crash between the commit and the enqueue, loses the *message* — never
+    the *row*, so nothing is silently dropped.
+    """
+    count = revalidation.reconcile_revalidation()
+    logger.info("Revalidation reconciled", extra={"job": "reconcile_revalidation", "count": count})
 
 
 @shared_task(name="worker.tasks.schedule_digests")

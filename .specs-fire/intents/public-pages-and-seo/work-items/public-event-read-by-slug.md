@@ -4,9 +4,11 @@ title: The public event read — by slug, and the past still counts
 intent: public-pages-and-seo
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-01
+run_id: run-eventpulse24-024
+completed_at: 2026-11-02T05:31:27.221Z
 ---
 
 # Work Item: The public event read — by slug, and the past still counts

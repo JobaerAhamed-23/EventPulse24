@@ -22,10 +22,23 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(__dirname, "..");
 
-/** The files the Detail Screen is made of. */
+/**
+ * The files the Detail Screen is made of.
+ *
+ * **There is no `loading.tsx` in this list, and there is no `loading.tsx` in the
+ * segment.** The Detail Screen's skeleton is the `<Suspense>` fallback *inside*
+ * `page.tsx`, and its markup lives in `components/detail/detail-states.tsx` — which is
+ * in this list, so the skeleton's classes are still asserted on.
+ *
+ * **A segment-level `loading.tsx` was removed deliberately.** It puts a Suspense
+ * boundary *above* the page, so the response streams before the page has decided
+ * anything — and a response that has already streamed cannot carry a 404 status. The
+ * public branch's unknown slug would answer **200** instead of **404**, which is a
+ * soft 404: a crawler records a page that does not exist. This was measured against a
+ * running production server.
+ */
 const FILES = [
   "app/events/[id]/page.tsx",
-  "app/events/[id]/loading.tsx",
   "components/conflicts/conflict-indicator.tsx",
   "components/conflicts/detail-conflict-mark.tsx",
   "components/detail/detail-actions.tsx",

@@ -4,10 +4,12 @@ title: Structured data a crawler believes — the Schema.org Event projection
 intent: public-pages-and-seo
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - public-event-read-by-slug
 created: 2026-11-01
+run_id: run-eventpulse24-024
+completed_at: 2026-11-02T06:12:08.387Z
 ---
 
 # Work Item: Structured data a crawler believes — the Schema.org Event projection

@@ -40,7 +40,7 @@ from apps.personalization.models import (
 from apps.personalization.services.digest_dates import local_date_for
 from apps.personalization.services.digest_read import read_digest
 from shared.db import CATALOG, PERSONAL
-from tests.ingestion.factories import EventFactory, VenueFactory
+from tests.ingestion.factories import EventFactory, VenueFactory, make_superseded_pair
 from tests.personalization.factories import (
     ConflictPairFactory,
     DigestCompositionFactory,
@@ -364,9 +364,92 @@ def test_a_personal_card_carries_the_agenda_row_and_no_badge():
     assert card["source_badge"] is None
 
 
+# --- the public slug: the shareability fact (FR-28) --------------------------------
+
+
+def test_a_public_card_carries_the_public_pages_slug():
+    """**The share control needs a public URL, and the server states it (FR-28).**
+
+    Without a slug the card could only build `/events/{event_id}` — the *personal* URL —
+    and a friend who opened it would meet a sign-in wall instead of the event.
+    """
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event()
+    make_composition(digest, event_id=event.id)
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["public_slug"] == event.slug
+
+
+def test_a_personal_card_carries_no_public_slug():
+    """**A personal event is the user's own agenda row** — their dinner, their
+    anniversary, their location. There is no public page for it, and a share control on
+    one would publish a stranger's private calendar."""
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    personal = PersonalEventFactory(
+        user_id=user.pk,
+        name="Dentist",
+        start_utc=NOW + timedelta(hours=3),
+        end_utc=NOW + timedelta(hours=4),
+    )
+    make_composition(
+        digest,
+        event_id=personal.id,
+        event_kind=DigestComposition.EventKind.PERSONAL,
+        source_badge=None,
+        event_version=None,
+        tags=["tonight"],
+    )
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["event_kind"] == "personal"
+    assert card["public_slug"] is None
+
+
+def test_a_card_whose_event_is_in_review_carries_no_public_slug():
+    """**The `in_review` case, stated as the server's fact rather than inferred by the
+    client (FR-28).**
+
+    An `in_review` event is not publicly listed, so the public page 404s for a friend
+    who opened the link. The card therefore carries no slug — and the client renders no
+    share control at all, rather than producing a link that dies.
+    """
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event()
+    make_composition(digest, event_id=event.id)
+    event.publication_status = event.PublicationStatus.IN_REVIEW
+    event.save()
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["public_slug"] is None
+    assert card["catalog_event_missing"] is True
+
+
+def test_a_card_whose_event_is_superseded_carries_no_public_slug():
+    """A superseded event's page resolves forward to its successor, so its own slug is
+    not a page to share — the successor's is."""
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event, _successor = make_superseded_pair(title="Superseded Meetup")
+    make_composition(digest, event_id=event.id)
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["public_slug"] is None
+
+
 def test_the_card_carries_the_time_as_an_instant_plus_the_zone():
     """AD-6: display-time conversion happens at the presentation edge.
-
     The card carries the **instant** and the **IANA zone** — never a pre-formatted local
     string. The instant is the catalog's own start time, and the zone is the catalog's
     own IANA name, so the client can convert it and nothing else has to.
