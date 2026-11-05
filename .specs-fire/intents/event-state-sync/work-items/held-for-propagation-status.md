@@ -1,12 +1,15 @@
 ---
 id: held-for-propagation-status
-title: The sweep will send a reminder for an event that already moved — the propagation hold
+title: The sweep will send a reminder for an event that already moved — the
+  propagation hold
 intent: event-state-sync
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-05T06:10:24.975Z
 ---
 
 # Work Item: The sweep will send a reminder for an event that already moved — the propagation hold

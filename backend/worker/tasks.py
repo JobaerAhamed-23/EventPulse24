@@ -50,8 +50,9 @@ def tick() -> None:
 
     Every tick: `schedule_sources`, `schedule_calendars`, `schedule_digests` and
     `sweep_due_sends`. When the UTC minute is a multiple of 5: `reconcile_outbox` (the
-    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent)
-    and `reconcile_revalidation`, the revalidation outbox's own reconciler (FR-27). When
+    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent),
+    `reconcile_revalidation`, the revalidation outbox's own reconciler (FR-27), and
+    `report_held_sends`, which reports sends stuck behind propagation (AD-17). When
     the minute is a multiple of 15: `refresh_event_fits`, which recomputes the Event
     Fit rows so that "tonight" does not go stale (AD-10).
 
@@ -81,6 +82,10 @@ def tick() -> None:
     _enqueue(sweep_due_sends)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
+        # Same cadence as the outbox reconciler, and for the same reason: propagation is what
+        # releases a held send (AD-17), so a hold that outlives the reconciler's own recovery
+        # window is evidence the consumer is failing rather than merely slow.
+        _enqueue(report_held_sends)
     if _now().minute % REVALIDATION_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_revalidation)
     if _now().minute % EVENT_FIT_REFRESH_EVERY_MINUTES == 0:
@@ -412,6 +417,35 @@ def compose_digest_task(user_id: str) -> None:
         raise
     finally:
         digest_scheduling.release_claim(identifier)
+
+
+@shared_task(name="worker.tasks.report_held_sends")
+def report_held_sends() -> None:
+    """Report sends held for propagation longer than `HELD_SEND_ALARM_AFTER` (AD-17).
+
+    **It reports; it never releases and never sends.** Releasing a held row is
+    `apply_lifecycle_change`'s decision, taken against a version. A job that released on a
+    timer would send exactly the mail the hold exists to prevent, and it would do it only
+    when the system was already known to be broken.
+
+    **Why an alarm at all.** A held row is correct — the catalog moved past it and it must
+    not go out. What is not correct is nobody releasing it: the user's reminders then stop
+    with no error raised anywhere, which is quieter and worse than the stale send this guard
+    replaced. Until the propagation consumer exists this count only grows, and that is the
+    expected reading rather than a surprise.
+
+    **Counts only, never a user id or an address** (AD-13).
+    """
+    from apps.delivery.services.delivery_sweep import count_stuck_holds
+
+    stuck = count_stuck_holds(now=_now())
+    if stuck:
+        logger.warning(
+            "Sends held for propagation past the alarm window",
+            extra={"job": "report_held_sends", "stuck": stuck},
+        )
+    else:
+        logger.info("No sends stuck behind propagation", extra={"job": "report_held_sends"})
 
 
 @shared_task(name="worker.tasks.sweep_due_sends")

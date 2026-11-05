@@ -347,6 +347,22 @@ class ScheduledSend(UUIDv7Model):
     # reading as `DigestPreference.digest_claimed_at` and `CalendarConnection.sync_claimed_at`.
     # A claim older than `SEND_CLAIM_TTL` is a dead worker's row and becomes claimable again.
     claimed_at = models.DateTimeField(null=True, blank=True)
+    # **AD-17's propagation hold.** Null means not held. Set by the sweep when it claims a row
+    # whose event the catalog has already moved past, and cleared when propagation releases it.
+    # A held row is **not sent** and is not re-claimed, but it is still `pending`.
+    #
+    # **Why this is a column and not a `Status` member.** AD-17's words are "the row goes to
+    # `held_for_propagation`", and a status is the obvious reading. It is the wrong one here:
+    # `scheduled_sends` — the module AD-17 itself calls the sole rewriter of this table —
+    # filters on `status = pending` in eight places, and a held row that is no longer `pending`
+    # becomes invisible to all of them. `apply_lifecycle_change`, whose whole job is to release
+    # these rows, would skip exactly the rows it exists for; the staleness gate would stop
+    # seeing them and mint duplicates; a quiet-hours rewrite would silently not re-time them.
+    # None of those raise. A nullable timestamp keeps the row `pending`, so every existing
+    # writer keeps working unchanged, and the hold costs one predicate on the claim instead.
+    # It is also the idiom already used twice above: `claimed_at` here, `sync_claimed_at` on
+    # `CalendarConnection`. (Decided with the user 2026-11-04; design doc D1.)
+    held_at = models.DateTimeField(null=True, blank=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     # A **kind**, never the provider's message: a provider error can quote the recipient

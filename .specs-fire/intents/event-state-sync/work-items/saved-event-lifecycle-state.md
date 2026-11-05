@@ -1,10 +1,11 @@
 ---
 id: saved-event-lifecycle-state
-title: A cancelled event still looks alive on the personal side — the save's lifecycle state
+title: A cancelled event still looks alive on the personal side — the save's
+  lifecycle state
 intent: event-state-sync
 complexity: high
 mode: validate
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-04
 ---

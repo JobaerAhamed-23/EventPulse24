@@ -864,6 +864,19 @@ SEND_CLAIM_TTL = timedelta(minutes=5)
 # changes the other.
 SEND_SWEEP_BATCH = 100
 
+# AD-17: how long a send may sit held for propagation before it is reported as stuck.
+#
+# **The hold itself is correct and has no timeout** — a held row is one the catalog has moved
+# past, and sending it would be the bug this guard exists to prevent. What needs a bound is
+# nobody *releasing* it: propagation is what clears `held_at`, and if propagation is broken
+# the user's reminders stop with no error anywhere. That failure is quieter than the one being
+# fixed, so it gets an alarm rather than a timeout. Nothing is ever sent because this elapsed.
+#
+# **Comfortably longer than the outbox's own recovery.** `OUTBOX_RECONCILE_AFTER` re-offers an
+# unpropagated change after 5 minutes, so a hold outliving 30 minutes means the consumer is
+# failing rather than merely slow — the thing worth waking someone for.
+HELD_SEND_ALARM_AFTER = timedelta(minutes=30)
+
 # AD-7: how many times a provider failure is retried before the row is recorded as failed.
 #
 # **A bound, not a hope.** A permanently-refused address — a full mailbox, a bounced domain —

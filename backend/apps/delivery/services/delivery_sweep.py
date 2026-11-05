@@ -81,11 +81,16 @@ from uuid import UUID
 from django.db import transaction
 from django.db.models import Q
 
-from apps.delivery.models import ScheduledSend
+from apps.delivery.models import ReminderPlan, ScheduledSend
 from apps.delivery.services.audit import write_audit
 from ports.email import EmailMessage, EmailPort, Stream
 from shared.actor import Actor
-from shared.constants import SEND_CLAIM_TTL, SEND_MAX_ATTEMPTS, SEND_SWEEP_BATCH
+from shared.constants import (
+    HELD_SEND_ALARM_AFTER,
+    SEND_CLAIM_TTL,
+    SEND_MAX_ATTEMPTS,
+    SEND_SWEEP_BATCH,
+)
 from shared.db import PERSONAL
 
 logger = logging.getLogger(__name__)
@@ -102,6 +107,8 @@ class SweepCounts:
     sent: int = 0
     failed: int = 0
     cancelled: int = 0
+    #: Claimed but not sent: the catalog had moved past the row (AD-17). Not an attempt.
+    held: int = 0
 
     @property
     def attempted(self) -> int:
@@ -130,9 +137,10 @@ def claim_due_sends(
 ) -> list[UUID]:
     """Claim up to `limit` due sends; returns their ids (D1, D2, D11).
 
-    **Due** means three things at once: `status = 'pending'`, `due_at <= now`, and the row is
-    not currently claimed by a live worker. `due_at` is **already shifted for Quiet Hours**
-    (AD-7), so this is the true send time and nothing else is tested against it.
+    **Due** means four things at once: `status = 'pending'`, `due_at <= now`, the row is
+    not currently claimed by a live worker, and it is **not held for propagation** (AD-17).
+    `due_at` is **already shifted for Quiet Hours** (AD-7), so this is the true send time and
+    nothing else is tested against it.
 
     **The claim is taken with `FOR UPDATE SKIP LOCKED`**, exactly as `claim_due_sources` and
     `claim_due_connections` do, so two overlapping sweeps never claim the same row: the second
@@ -155,6 +163,11 @@ def claim_due_sends(
             .filter(status=ScheduledSend.Status.PENDING)
             .filter(due_at__lte=now)
             .filter(Q(claimed_at__isnull=True) | Q(claimed_at__lte=_claim_expiry(now)))
+            # **AD-17's hold.** A held row is still `pending` — that is deliberate, so every
+            # other writer in `scheduled_sends` keeps seeing it — so the claim is where it is
+            # excluded. One null check on a column that is null for nearly every row; the
+            # partial `status = 'pending'` index still serves the query.
+            .filter(held_at__isnull=True)
             .order_by("due_at", "id")
             .values_list("id", flat=True)[:limit]
         )
@@ -323,6 +336,146 @@ def _stream_for(row: ScheduledSend) -> Stream:
         raise ValueError(f"send {row.id} carries an unknown stream") from exc
 
 
+def _event_ids_to_check(rows: list[ScheduledSend]) -> set[UUID]:
+    """The catalog event ids among these rows, which is not every row with a version.
+
+    **The discriminator is `target_kind`, not `event_version IS NOT NULL`.** Both kinds of
+    reminder carry `event_version`: for a saved event it is the catalog's version, and for a
+    personal event it is that event's own revision (`reminder_plan_read.resolve_target` sets
+    `version` from whichever applies). Partitioning on the column being populated would send
+    every personal reminder's `target_id` to the catalog, find nothing there, and hold it
+    forever — every personal reminder in the system, stuck, with no error.
+
+    **A saved event's `target_id` is the catalog event's id.** That is the tree's convention,
+    stated at `reminder_plan_read.py:155` and relied on by `delivery_messages._public_event_facts`
+    and `send_keys.event_reminder_key`.
+    """
+    return {
+        row.target_id
+        for row in rows
+        if row.target_kind == ReminderPlan.TargetKind.SAVED_EVENT.value
+        and row.target_id is not None
+        and row.event_version is not None
+    }
+
+
+def hold_stale_sends(*, send_ids: list[UUID], now: datetime) -> tuple[list[UUID], int]:
+    """Hold the claimed rows the catalog has moved past. Returns (still sendable, held count).
+
+    **This is AD-17's sweep guard**, and it was specified long before it was built: *"After
+    claiming a row, the sweep reads the Event's current `event_version` through `ingestion`'s
+    read interface — a separate, non-transactional read. If the catalog version is newer, the
+    row goes to `held_for_propagation` and is not sent; propagation then releases, rewrites or
+    cancels it."* Without it the sweep sends a reminder for an event that already moved, which
+    is the exact race the AD exists to prevent.
+
+    **It runs after the claim transaction has committed.** `claim_due_sends` returns ids, not
+    rows under lock, so no `personal` row lock is held across a `catalog` query — the same
+    rule that keeps the provider call outside the lock (AD-3, and D2 of this item's design).
+
+    **One batched read, never one per row.** The sweep is the hottest path in the system and
+    a per-row cross-module call would put a query on every due reminder.
+
+    **An absent event is NOT held — it is sent.** `get_public_events` omits an event that is
+    unpublished, `in_review` or superseded, and holding on that is tempting and wrong, for a
+    reason that only shows up when you ask who releases the hold. **Propagation releases it,
+    and propagation only runs on an `EVENT_STATE_CHANGE` row.** An event absent for any reason
+    that is not a lifecycle change produces no such row, so the hold would be permanent and
+    the alarm would fire forever over a condition propagation cannot fix.
+
+    The tree had already settled this, deliberately: `delivery_messages._public_event_facts`
+    documents that *"a missing event is not an error here… the reminder still goes out"*, with
+    a body that says the event is no longer listed rather than pretending otherwise. And if the
+    absence **was** caused by a real cancellation or supersede, the state change for it is
+    already in the outbox and `apply_lifecycle_change` will cancel the row properly — with a
+    version gate and an audit row — which is the mechanism AD-17 actually prescribes.
+
+    AD-17 names exactly one condition for the hold: *"If the catalog version is newer."* This
+    guard holds on that and nothing else.
+
+    **A hold is not a delivery attempt.** `attempts` and `last_attempt_at` are untouched —
+    counting a hold would walk the row toward the attempt bound and mark a live reminder
+    `failed` for something the user's mail server never saw.
+    """
+    if not send_ids:
+        return [], 0
+
+    by_id = {row.id: row for row in ScheduledSend.objects.using(PERSONAL).filter(pk__in=send_ids)}
+    event_ids = _event_ids_to_check(list(by_id.values()))
+    if not event_ids:
+        return send_ids, 0
+
+    # Imported inside the function, matching `delivery_messages._public_event_facts`: the
+    # module-level import would close a loop. The call itself is the ordinary published seam.
+    from apps.ingestion.services.catalog_read import get_public_events
+
+    current = get_public_events(event_ids=event_ids)
+
+    held: list[UUID] = []
+    sendable: list[UUID] = []
+    # Iterating `send_ids` rather than the rows keeps the claim's `due_at` ordering, so the
+    # most overdue rows still go first among the ones that survive the guard.
+    for send_id in send_ids:
+        row = by_id.get(send_id)
+        # **A row that vanished between the claim and here stays in the batch.** Before this
+        # guard existed every claimed id reached `send_one`, which reads the row, finds it
+        # gone and counts it `cancelled`. Dropping it here would silently shrink the sweep's
+        # counts — a row that disappeared would stop being reported at all.
+        if row is None:
+            sendable.append(send_id)
+            continue
+        if (
+            row.target_kind != ReminderPlan.TargetKind.SAVED_EVENT.value
+            or row.event_version is None
+        ):
+            sendable.append(send_id)
+            continue
+        public = current.get(row.target_id)
+        # Absent → sendable, not held. See the docstring: nothing would ever release it.
+        if public is not None and public.event_version > row.event_version:
+            held.append(send_id)
+        else:
+            sendable.append(send_id)
+
+    if held:
+        # **The hold and its audit rows commit together**, exactly as `claim_due_sends` pairs
+        # its claim with its audit. A row held with no audit row is a send that stopped with
+        # no record of why — the hardest version of this failure to diagnose.
+        with transaction.atomic(using=PERSONAL):
+            ScheduledSend.objects.using(PERSONAL).filter(pk__in=held).update(
+                held_at=now, claimed_at=None
+            )
+            for send_id in held:
+                write_audit(
+                    actor=SWEEPER,
+                    action="hold_scheduled_send",
+                    target_type="scheduled_send",
+                    target_id=send_id,
+                    details={"at": now.isoformat(), "reason": "propagation_pending"},
+                )
+
+    return sendable, len(held)
+
+
+def count_stuck_holds(*, now: datetime) -> int:
+    """How many sends have sat under a propagation hold past the alarm window (AD-17).
+
+    **Published for the worker**, which may not import `apps.delivery.models` itself — the
+    `models-delivery` contract keeps `delivery`'s tables behind `delivery`'s services (AD-2).
+
+    **A count, and deliberately nothing else.** The caller logs it, and a user id or an
+    address in that log line would be the AD-13 leak this shape exists to make impossible.
+    """
+    return (
+        ScheduledSend.objects.using(PERSONAL)
+        .filter(
+            status=ScheduledSend.Status.PENDING,
+            held_at__lt=now - HELD_SEND_ALARM_AFTER,
+        )
+        .count()
+    )
+
+
 def send_one(
     *,
     send_id: UUID,
@@ -455,9 +608,29 @@ def sweep_due_sends(
     sweep moves on. One user's bad address must not mean nobody gets mail.
     """
     claimed = claim_due_sends(now=now, limit=limit)
-    counts = SweepCounts(claimed=len(claimed))
 
-    for send_id in claimed:
+    # **AD-17's guard, between the claim and the send.** A failed catalog read must not become
+    # a send: the rows go back unclaimed and the next tick retries them. The degraded path
+    # degrades toward silence, because the one outcome this guard exists to prevent is mail
+    # about an event that already moved.
+    try:
+        sendable, held = hold_stale_sends(send_ids=claimed, now=now)
+    except Exception:
+        # `exc_info` on purpose: without it a programming error in the guard looks exactly
+        # like a catalog outage, and the sweep would send nothing, forever, with a tidy
+        # warning and no way to tell which it was.
+        logger.warning(
+            "Propagation guard unavailable; sending nothing this tick",
+            extra={"job": "sweep_due_sends", "claimed": len(claimed)},
+            exc_info=True,
+        )
+        for send_id in claimed:
+            release_claim(send_id)
+        return SweepCounts(claimed=len(claimed))
+
+    counts = SweepCounts(claimed=len(claimed), held=held)
+
+    for send_id in sendable:
         try:
             outcome = send_one(
                 send_id=send_id,
@@ -487,6 +660,8 @@ __all__ = [
     "SweepCounts",
     "VanishedTargetError",
     "claim_due_sends",
+    "count_stuck_holds",
+    "hold_stale_sends",
     "release_claim",
     "send_one",
     "sweep_due_sends",

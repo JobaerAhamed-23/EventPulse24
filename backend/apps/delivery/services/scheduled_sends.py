@@ -696,9 +696,22 @@ def apply_lifecycle_change(
         if behaviour is LifecycleSendBehaviour.KEEP:
             # Sold out or a detail change: the event still happens, so a user who saved it
             # still wants their reminder. Only the working version is re-stamped.
+            #
+            # **And the propagation hold is released here** (AD-17). A row the sweep held
+            # because the catalog had moved ahead is released by clearing `held_at`; the next
+            # sweep claims and sends it. `REMINT` and `CANCEL` need no equivalent — a re-minted
+            # row is born unheld and a cancelled one is terminal.
+            #
+            # **`due_at` is deliberately not recomputed.** Only `sold_out` and `detail_changed`
+            # map to `KEEP`, and a time change is always its own `time_moved` row (one state
+            # change per kind — `event_writes.py`), which is `REMINT`. So a `KEEP` change never
+            # moved the event, `due_at` is still the right instant, and re-timing it would move
+            # a reminder that nothing moved. The row is past due, so it goes out slightly late:
+            # the correct outcome for a send paused to verify it was still true.
             for row in stale:
                 row.event_version = target.version
-                row.save(using=PERSONAL, update_fields=["event_version", "updated_at"])
+                row.held_at = None
+                row.save(using=PERSONAL, update_fields=["event_version", "held_at", "updated_at"])
                 result["restamped"] += 1
         else:
             for row in stale:

@@ -24,10 +24,13 @@ from adapters.email.memory import InMemoryEmailAdapter
 from apps.delivery.models import ScheduledSend
 from apps.delivery.services.delivery_sweep import claim_due_sends, sweep_due_sends
 from ports.email import EmailMessage
-from shared.db import PERSONAL
+from shared.db import CATALOG, PERSONAL
 from tests.delivery.factories import ScheduledSendFactory
 
-pytestmark = pytest.mark.django_db(databases=[PERSONAL], transaction=True)
+# `CATALOG` joins the aliases because the sweep now reads the catalog's current
+# `event_version` for every event-bound row it claims (AD-17's propagation guard). These are
+# threaded workers, so the alias has to be declared for threaded connections too.
+pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG], transaction=True)
 
 DUE = datetime(2026, 11, 14, 8, 0, tzinfo=UTC)
 NOW = DUE + timedelta(minutes=1)
