@@ -2973,7 +2973,7 @@
         "type": "object"
       },
       "TimelineBlockOut": {
-        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.",
+        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.\n\n**`state` is the catalog's lifecycle word**, carried through unchanged — the same\n`str` the event detail and the public page already carry, because the vocabulary is\nthe backend's and a second one here would be a translation layer with nothing to\ntranslate. It is null for a personal block, which has no lifecycle, and for a public\nblock whose catalog event has disappeared, where the state is unknown rather than\nnormal — the same distinction `name` already draws.\n\nA `cancelled` block is still returned. FR-55 removes a cancelled event from the\n*digest*; the Timeline is the user's calendar, and a cancelled event is still on it\nuntil they take it off.",
         "properties": {
           "conflict": {
             "default": false,
@@ -3024,6 +3024,17 @@
             "format": "date-time",
             "title": "Start Time Utc",
             "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
           }
         },
         "required": [

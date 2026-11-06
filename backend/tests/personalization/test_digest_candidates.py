@@ -20,6 +20,7 @@ from uuid import uuid4
 
 import pytest
 
+from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, PersonalEvent
 from apps.personalization.services.digest_candidates import (
     list_conflict_pairs,
@@ -306,6 +307,65 @@ def test_a_saved_event_whose_catalog_event_is_gone_is_still_a_candidate():
     """The save is real. Dropping it would make a user's save vanish from their digest
     because a source dropped the event, with no way for the user to know why."""
     SavedEventFactory(user_id=USER, event_id=uuid4(), start_utc=at(2))
+
+    candidates = list_saved_candidates(user_id=USER, now=NOW)
+
+    assert len(candidates) == 1
+    assert candidates[0].public is None
+
+
+def test_a_saved_event_the_catalog_says_is_cancelled_is_not_a_candidate():
+    """FR-55: "event is removed from the digest".
+
+    The digest answers "what is worth your attention today", and a cancelled event is
+    not. The state is read from the catalog's `status` on the `PublicEvent` the read
+    already fetches — `_public_events()` excludes `superseded` but keeps `cancelled`, so
+    a cancelled event is still in the map and still has a fact to state.
+    """
+    catalog_event = EventFactory(status=Event.Status.CANCELLED, start_time_utc=at(5))
+    SavedEventFactory(user_id=USER, event_id=catalog_event.id, start_utc=at(2))
+
+    assert list_saved_candidates(user_id=USER, now=NOW) == []
+
+
+def test_a_cancelled_save_is_dropped_but_its_neighbours_are_kept():
+    """The drop is per candidate, not a short-circuit on the whole list."""
+    cancelled = EventFactory(status=Event.Status.CANCELLED, start_time_utc=at(5))
+    live = EventFactory(start_time_utc=at(6), title="Jazz Night")
+    SavedEventFactory(user_id=USER, event_id=cancelled.id, start_utc=at(2))
+    SavedEventFactory(user_id=USER, event_id=live.id, start_utc=at(3))
+
+    candidates = list_saved_candidates(user_id=USER, now=NOW)
+
+    assert [c.event_id for c in candidates] == [live.id]
+
+
+def test_a_postponed_save_is_still_a_candidate():
+    """Only `cancelled` is dropped. A postponed event is still happening.
+
+    This is the mutation that makes the drop a *decision* rather than "anything whose
+    status is not scheduled": `postponed` and `cancelled` are both non-scheduled, and
+    only one of them means the event is off.
+    """
+    catalog_event = EventFactory(status=Event.Status.POSTPONED, start_time_utc=at(5))
+    SavedEventFactory(user_id=USER, event_id=catalog_event.id, start_utc=at(2))
+
+    candidates = list_saved_candidates(user_id=USER, now=NOW)
+
+    assert [c.event_id for c in candidates] == [catalog_event.id]
+
+
+def test_a_save_whose_catalog_event_is_absent_is_kept_though_a_cancelled_one_is_not():
+    """The two absences are different claims, and the difference is the whole rule.
+
+    *Missing* means the catalog has stopped describing the event and cannot say why — a
+    guess, and the save is kept. *Cancelled* is the catalog stating a fact, and it is
+    acted on. A reader that treated them alike would drop a user's save because a source
+    went quiet.
+    """
+    cancelled = EventFactory(status=Event.Status.CANCELLED, start_time_utc=at(5))
+    SavedEventFactory(user_id=USER, event_id=cancelled.id, start_utc=at(2))
+    SavedEventFactory(user_id=USER, event_id=uuid4(), start_utc=at(3))
 
     candidates = list_saved_candidates(user_id=USER, now=NOW)
 

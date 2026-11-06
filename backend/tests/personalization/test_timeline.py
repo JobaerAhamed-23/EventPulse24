@@ -31,6 +31,7 @@ from django.contrib.auth import get_user_model
 from django.db import connections
 from django.test.utils import CaptureQueriesContext
 
+from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, DigestPreference
 from apps.personalization.services.timeline import TimelineBlockKind, read_timeline_week
 from apps.personalization.services.timeline_days import (
@@ -493,6 +494,103 @@ def test_a_public_block_carries_the_catalog_event_id_and_the_catalog_title():
     assert block.id == public.id
     assert block.id != saved.id
     assert block.name == public.title
+
+
+def test_a_public_block_carries_the_catalogs_lifecycle_word():
+    """The vocabulary is the backend's, carried through unchanged.
+
+    `public-event-page.tsx` already establishes the rule for the public page; a second
+    vocabulary here would be a translation layer with nothing to translate.
+    """
+    user = make_user()
+    saved_event(user)
+
+    week = read_timeline_week(user_id=user.pk, day=WEDNESDAY, now=local_midnight(WEDNESDAY))
+
+    wednesday = next(day for day in week.days if day.date == WEDNESDAY)
+    block = next(b for b in wednesday.blocks if b.kind == TimelineBlockKind.PUBLIC)
+    assert block.state == "scheduled"
+
+
+def test_a_cancelled_saved_event_is_still_on_the_timeline_and_says_so():
+    """FR-55 removes a cancelled event from the **digest**, not from the calendar.
+
+    The two surfaces answer different questions. The digest is "what is worth your
+    attention today", which a cancelled event is not. The Timeline is "what is on your
+    calendar", which it still is until the user takes it off — and silently deleting the
+    one block they most need in order to re-plan the evening is its own kind of wrong.
+    """
+    user = make_user()
+    start = local_midnight(WEDNESDAY) + timedelta(hours=17)
+    cancelled = EventFactory(
+        status=Event.Status.CANCELLED,
+        start_time_utc=start,
+        end_time_utc=start + timedelta(hours=2),
+    )
+    saved_event(user, event=cancelled, start=start)
+
+    week = read_timeline_week(user_id=user.pk, day=WEDNESDAY, now=local_midnight(WEDNESDAY))
+
+    wednesday = next(day for day in week.days if day.date == WEDNESDAY)
+    block = next(b for b in wednesday.blocks if b.kind == TimelineBlockKind.PUBLIC)
+    assert block.state == "cancelled"
+    assert block.name == cancelled.title
+    assert block.start_time_utc == start
+
+
+def test_a_personal_block_has_no_lifecycle_state():
+    """A personal event has no lifecycle — null is the honest answer, not "scheduled"."""
+    user = make_user()
+    personal_event(user)
+
+    week = read_timeline_week(user_id=user.pk, day=WEDNESDAY, now=local_midnight(WEDNESDAY))
+
+    wednesday = next(day for day in week.days if day.date == WEDNESDAY)
+    block = next(b for b in wednesday.blocks if b.kind == TimelineBlockKind.PERSONAL)
+    assert block.state is None
+
+
+def test_a_save_whose_catalog_event_disappeared_has_an_unknown_state():
+    """Absent is not "scheduled".
+
+    A save whose catalog event is gone has an *unknown* lifecycle, and claiming it is
+    going ahead would be a fact the server does not have. It is the same distinction
+    `name` already draws for the title.
+    """
+    user = make_user()
+    SavedEventFactory(
+        user_id=user.pk,
+        event_id=uuid4(),
+        start_utc=local_midnight(WEDNESDAY) + timedelta(hours=17),
+        end_utc=local_midnight(WEDNESDAY) + timedelta(hours=19),
+        event_version=1,
+    )
+
+    week = read_timeline_week(user_id=user.pk, day=WEDNESDAY, now=local_midnight(WEDNESDAY))
+
+    wednesday = next(day for day in week.days if day.date == WEDNESDAY)
+    block = next(b for b in wednesday.blocks if b.kind == TimelineBlockKind.PUBLIC)
+    assert block.state is None
+
+
+def test_the_state_survives_the_day_cells_a_multi_day_block_is_copied_onto():
+    """A block is rebuilt once per day it covers; every copy has to carry the state."""
+    user = make_user()
+    start = local_midnight(WEDNESDAY) + timedelta(hours=22)
+    cancelled = EventFactory(
+        status=Event.Status.CANCELLED,
+        start_time_utc=start,
+        end_time_utc=start + timedelta(hours=4),  # over midnight into Thursday
+    )
+    saved_event(user, event=cancelled, start=start, end=start + timedelta(hours=4))
+
+    week = read_timeline_week(user_id=user.pk, day=WEDNESDAY, now=local_midnight(WEDNESDAY))
+
+    public_blocks = [
+        block for day in week.days for block in day.blocks if block.kind == TimelineBlockKind.PUBLIC
+    ]
+    assert len(public_blocks) == 2
+    assert {block.state for block in public_blocks} == {"cancelled"}
 
 
 def test_a_save_whose_catalog_event_disappeared_has_no_title_and_is_still_shown():
@@ -1013,6 +1111,31 @@ def test_the_endpoint_returns_the_blocks_with_their_kind_and_indicator():
     assert block["start_time_tz"] == TZ
     assert block["conflict"] is True
     assert block["end_time_utc"] is not None
+
+
+def test_the_endpoint_carries_the_lifecycle_state_on_a_public_block():
+    """The state has to reach the wire, or the screen cannot draw the banner.
+
+    `state` is null for a personal block — a personal event has no lifecycle — so the
+    two kinds are asserted together: a single shape that always said "scheduled" would
+    pass a public-only check.
+    """
+    user = make_user()
+    personal_event(user, name="Coffee with Sam")
+    start = local_midnight(WEDNESDAY) + timedelta(hours=18)
+    cancelled = EventFactory(
+        status=Event.Status.CANCELLED,
+        start_time_utc=start,
+        end_time_utc=start + timedelta(hours=2),
+    )
+    saved_event(user, event=cancelled, start=start)
+
+    payload = signed_in(user).get("/api/personal/timeline?week=2026-11-04").json()
+
+    wednesday = next(day for day in payload["days"] if day["date"] == "2026-11-04")
+    by_kind = {block["kind"]: block for block in wednesday["blocks"]}
+    assert by_kind["public"]["state"] == "cancelled"
+    assert by_kind["personal"]["state"] is None
 
 
 def test_a_missing_week_means_the_current_week_in_the_users_zone():

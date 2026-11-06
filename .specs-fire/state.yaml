@@ -870,7 +870,7 @@ runs:
           mode: validate
           status: in_progress
           current_phase: plan
-          checkpoint_state: none
+          checkpoint_state: approved
           current_checkpoint: plan
         - id: state-change-notice-model
           intent: event-state-sync

@@ -1038,6 +1038,17 @@ class TimelineBlockOut(Schema):
     **`conflict` is already decided.** The server projects the pairs onto the blocks, so
     the screen does not have to know what a conflict pair is, and the two surfaces — the
     Pulse Card and the Timeline — cannot disagree about which block is flagged.
+
+    **`state` is the catalog's lifecycle word**, carried through unchanged — the same
+    `str` the event detail and the public page already carry, because the vocabulary is
+    the backend's and a second one here would be a translation layer with nothing to
+    translate. It is null for a personal block, which has no lifecycle, and for a public
+    block whose catalog event has disappeared, where the state is unknown rather than
+    normal — the same distinction `name` already draws.
+
+    A `cancelled` block is still returned. FR-55 removes a cancelled event from the
+    *digest*; the Timeline is the user's calendar, and a cancelled event is still on it
+    until they take it off.
     """
 
     kind: TimelineBlockKind
@@ -1047,6 +1058,7 @@ class TimelineBlockOut(Schema):
     end_time_utc: datetime | None = None
     start_time_tz: str
     conflict: bool = False
+    state: str | None = None
 
     @classmethod
     def from_block(cls, block: TimelineBlock) -> "TimelineBlockOut":
@@ -1059,6 +1071,7 @@ class TimelineBlockOut(Schema):
             end_time_utc=block.end_time_utc,
             start_time_tz=block.start_time_tz,
             conflict=block.conflict,
+            state=block.state,
         )
 
 

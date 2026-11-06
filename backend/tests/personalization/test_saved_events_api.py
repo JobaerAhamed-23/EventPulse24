@@ -16,7 +16,7 @@ must report it, because a stale snapshot presented as current is a wrong time on
 user's calendar.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -35,8 +35,19 @@ pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 User = get_user_model()
 
-#: A fixed instant far enough ahead that a test's events are always "upcoming".
-START = datetime(2026, 11, 6, 3, 30, tzinfo=UTC)
+#: An instant that is always ahead of the run.
+#:
+#: These endpoints read the wall clock themselves — `timezone.now()` at the view, with no
+#: clock to inject — and only an event that has not started is saveable. So the start has
+#: to be in the future *when the suite runs*, not on the day the test was written. It was
+#: a hardcoded `2026-11-06 03:30Z`, and at 03:30Z on that morning every save in this file
+#: became a 404: seventeen tests that had never been run against a started event suddenly
+#: were. Bumping the constant would only reset the timer.
+#:
+#: The time of day is still fixed. The ordering and bound assertions below compare these
+#: instants to each other, so a start carrying the wall clock's microseconds would make
+#: them depend on when the suite happened to start.
+START = (timezone.now() + timedelta(days=30)).replace(hour=3, minute=30, second=0, microsecond=0)
 HOUR = timedelta(hours=1)
 
 

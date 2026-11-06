@@ -31,6 +31,7 @@ from uuid import UUID
 
 from apps.ingestion.services.catalog_read import PublicEvent, get_public_events
 from apps.personalization.models import ConflictPair, PersonalEvent, SavedEvent
+from domain.lifecycle import EventStatus
 from shared.constants import RANKING_PERSONAL_EVENT_WINDOW
 from shared.db import PERSONAL
 
@@ -294,6 +295,22 @@ def list_saved_candidates(
     **A save the catalog no longer holds is still a candidate.** The save is real; the
     user made it. Dropping it would make a user's save vanish from their digest because a
     source dropped the event, with no way for the user to know why.
+
+    **A save the catalog says is cancelled is not.** FR-55 is explicit about the
+    consequence — "event is removed from the digest" — and the digest answers "what is
+    worth your attention today", which a cancelled event is not. This is the one place the
+    two absences differ, and the difference is the point: *missing* means the catalog has
+    stopped describing the event and cannot say why, while *cancelled* is the catalog
+    stating a fact. A guess is kept; a fact is acted on.
+
+    The user is not left to notice the gap on their own. FR-54's state-change notice is
+    what tells them, and the Timeline still shows the block — a cancelled event is off the
+    "worth your attention" list but still on the calendar they curated.
+
+    **`limit` is applied before the catalog read, so dropping a cancelled candidate can
+    return fewer than `limit`.** Re-querying to backfill would make the number of rows read
+    depend on how many of them were cancelled, and a digest slot left unfilled is a far
+    smaller cost than an unbounded read on the composition path.
     """
     if limit <= 0:
         return []
@@ -313,10 +330,13 @@ def list_saved_candidates(
     )
 
     public_by_id = get_public_events(event_ids={saved.event_id for saved in saved_events})
-    return [
-        _saved_candidate(saved, public_by_id.get(saved.event_id), by_side.get(saved.id, ()))
-        for saved in saved_events
-    ]
+    candidates = []
+    for saved in saved_events:
+        public = public_by_id.get(saved.event_id)
+        if public is not None and public.status == EventStatus.CANCELLED:
+            continue
+        candidates.append(_saved_candidate(saved, public, by_side.get(saved.id, ())))
+    return candidates
 
 
 def list_conflict_pairs(*, user_id: UUID) -> list[ConflictPairSnapshot]:

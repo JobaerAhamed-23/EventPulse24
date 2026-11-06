@@ -877,6 +877,19 @@ SEND_SWEEP_BATCH = 100
 # failing rather than merely slow — the thing worth waking someone for.
 HELD_SEND_ALARM_AFTER = timedelta(minutes=30)
 
+# AD-17: one page of the users affected by one event's state change.
+#
+# **A page, not a limit.** Propagation must reach *every* saver of a popular event, so the
+# read is paged to exhaustion — this number bounds one round trip, not the work. A cap that
+# silently dropped the tail would make a state change reach some users and not others, which
+# is the exact failure AD-17's per-user idempotency exists to rule out.
+#
+# **Keyset, not offset**, which is why the page can be this large without a long transaction:
+# each page is an index range scan on `saved_event_event_idx`, and no page holds a lock across
+# the next one. Propagation runs while people save and unsave, and an offset page would skip a
+# row whenever an earlier one was deleted between pages.
+SAVERS_PAGE = 500
+
 # AD-7: how many times a provider failure is retried before the row is recorded as failed.
 #
 # **A bound, not a hope.** A permanently-refused address — a full mailbox, a bounced domain —

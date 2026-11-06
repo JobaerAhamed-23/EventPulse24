@@ -118,6 +118,24 @@ class TimelineBlock:
     public event in Berlin, shown to a user in Los Angeles, is on a different Los Angeles
     day than its own clock suggests. The block carries both, so the screen can label it
     either way.
+
+    `state` is the catalog's lifecycle word for a public block — `scheduled`, `postponed`
+    or `cancelled` — and None for a personal block, which has no lifecycle, and for a
+    public one the catalog no longer holds, where the state is genuinely unknown rather
+    than normal.
+
+    **A cancelled block is shown, not hidden.** FR-55 removes a cancelled event from the
+    *digest*; it says nothing about the Timeline, and the two surfaces answer different
+    questions. The digest is "what is worth your attention today", which a cancelled event
+    is not. The Timeline is "what is on your calendar", which it still is until the user
+    removes it — and silently deleting a block from a calendar the user curated is its own
+    kind of wrong, especially for the one block they most need to see to re-plan the
+    evening around.
+
+    **The word is the catalog's, carried through unchanged.** The screen already works
+    this way (`public-event-page.tsx`: "the vocabulary is the backend's"), and a boolean
+    `cancelled` here would need a second field the moment `postponed` had to be rendered —
+    which FR-54 already names.
     """
 
     kind: str
@@ -127,6 +145,7 @@ class TimelineBlock:
     end_time_utc: datetime | None
     start_time_tz: str
     conflict: bool
+    state: str | None = None
 
 
 @dataclass(frozen=True)
@@ -423,6 +442,7 @@ def read_timeline_week(
                     end_time_utc=block.end_time_utc,
                     start_time_tz=block.start_time_tz,
                     conflict=lights,
+                    state=block.state,
                 )
             )
 
@@ -456,6 +476,10 @@ def read_timeline_week(
                 # otherwise, because the snapshot's display zone is then unknown.
                 start_time_tz=public.start_time_tz if public else zone_name,
                 conflict=False,
+                # The catalog's own word, or None when the catalog no longer holds the
+                # event: a save whose event has disappeared has an *unknown* state, which
+                # is not the same claim as "scheduled".
+                state=public.status if public else None,
             ),
             conflict_window=conflicted_saved.get(saved.id),
         )
