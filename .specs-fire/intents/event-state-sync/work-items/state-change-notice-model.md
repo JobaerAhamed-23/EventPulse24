@@ -4,7 +4,7 @@ title: One calm notice, once, and a way to silence it — the state-change notic
 intent: event-state-sync
 complexity: high
 mode: validate
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-04
 ---

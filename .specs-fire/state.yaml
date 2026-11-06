@@ -777,10 +777,12 @@ intents:
     created: 2026-11-04
     work_items:
       - id: saved-event-lifecycle-state
-        status: in_progress
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-06T07:56:29.500Z
       - id: held-for-propagation-status
         status: completed
         complexity: high
@@ -789,7 +791,7 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-05T06:10:24.975Z
       - id: state-change-notice-model
-        status: pending
+        status: in_progress
         complexity: high
         mode: validate
         depends_on: []
@@ -868,17 +870,18 @@ runs:
         - id: saved-event-lifecycle-state
           intent: event-state-sync
           mode: validate
-          status: in_progress
-          current_phase: plan
+          status: completed
+          current_phase: review
           checkpoint_state: approved
           current_checkpoint: plan
+          completed_at: 2026-11-06T07:56:29.500Z
         - id: state-change-notice-model
           intent: event-state-sync
           mode: validate
-          status: pending
-          current_phase: null
+          status: in_progress
+          current_phase: plan
           checkpoint_state: none
-          current_checkpoint: null
+          current_checkpoint: plan
         - id: propagation-consumer
           intent: event-state-sync
           mode: validate
@@ -942,7 +945,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: saved-event-lifecycle-state
+      current_item: state-change-notice-model
       started: 2026-11-04T13:11:36.097Z
   completed:
     - id: run-eventpulse24-001

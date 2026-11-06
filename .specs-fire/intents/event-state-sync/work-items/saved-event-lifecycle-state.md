@@ -5,9 +5,11 @@ title: A cancelled event still looks alive on the personal side — the save's
 intent: event-state-sync
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-06T07:56:29.500Z
 ---
 
 # Work Item: A cancelled event still looks alive on the personal side — the save's lifecycle state
