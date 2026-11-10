@@ -56,6 +56,7 @@ from apps.delivery.services.scheduled_sends import (
     zone_for,
 )
 from domain.lifecycle import PRECEDENCE, ChangeKind
+from domain.notices import is_notified
 from domain.timezones import to_instant
 from shared.actor import Actor
 from shared.db import PERSONAL
@@ -112,6 +113,8 @@ def raise_state_notice(
     event_start_utc: datetime | None,
     actor: Actor,
     now: datetime,
+    before: dict | None = None,
+    after: dict | None = None,
 ) -> bool:
     """Raise one FR-54 notice for one user and one catalog state change. True if it did.
 
@@ -119,11 +122,16 @@ def raise_state_notice(
     the snapshot and the sends have both been made true, because it describes a state both
     halves have made real.
 
-    Returns `False` for every suppression — already raised, muted, capped, or an older
-    version — so the caller can count what it actually did without inferring it.
+    Returns `False` for every suppression — already raised, muted, capped, an older
+    version, or a change with nothing worth saying — so the caller can count what it
+    actually did without inferring it.
 
     The order of the guards is load-bearing:
 
+    0. **Whether there is a notice at all.** A `detail_changed` that did not move the
+       venue is not notified — see below. **This comes first**, because a notice that
+       should never have been raised must not be able to cancel a newer one on its way
+       to being refused, and must not consume the day's cap slot.
     1. **The AD-17 version gate first.** An out-of-order change must not be able to cancel a
        newer notice on its way to being refused. This also absorbs the retry case: a
        re-delivered change carries the version its notice already stored, so it is refused
@@ -136,10 +144,33 @@ def raise_state_notice(
     concurrent propagations of one change both pass it.
 
     Runs in one `personal` transaction. AD-3 forbids one spanning `catalog`, so
-    `event_start_utc` is passed in by value: the caller has already read the event.
+    `event_start_utc` is passed in by value: the caller has already read the event. The
+    change's `before`/`after` come the same way — **by value, from the caller's read**,
+    so no transaction here spans the two schemas.
+
+    **The `detail_changed` rule, and why it is here rather than in the renderer.**
+    `domain.lifecycle.classify_change` files a venue move under `detail_changed`, because
+    `venue_fingerprint` is one of its detail facts — so the PRD's "moved to [new location]"
+    subject has no kind of its own. **Silencing `detail_changed` wholesale would silence
+    the PRD's own third subject.** So the rule is about the *change*, not the kind: a
+    `detail_changed` whose venue fingerprints differ is notified; one that fixed a title, a
+    description, a URL or a timezone label is not.
+
+    **And a notice that was never raised is better than one that says nothing.** FR-53: not
+    every change deserves a notification — "would be engagement-trap". A title edit has no
+    reminder consequence (`LIFECYCLE_SEND_BEHAVIOUR` maps `detail_changed` to `KEEP`), so
+    FR-54's body requirement — "what changed and what it means for the user's reminders" —
+    has no answer for it. **Silencing at the source is the only place this can be decided
+    once**: a notice the renderer refuses to render would still have been raised, would
+    still have consumed the day's cap slot, and would still be sitting in the user's
+    in-app strip saying nothing.
     """
     kind_rank = _rank(change_kind)
     terminal = _as_kind(change_kind) in TERMINAL_KINDS
+
+    # 0. Is there a notice to raise at all? See the docstring.
+    if not is_notified(change_kind, before=before or {}, after=after or {}):
+        return False
 
     try:
         raised = _raise(
@@ -288,31 +319,32 @@ def _supersede(*, notices: list[StateChangeNotice], actor: Actor, now: datetime)
     )
 
 
-def list_undismissed_notices(*, user_id: UUID) -> list[StateChangeNotice]:
+def list_undismissed_notices(*, user_id: UUID, limit: int) -> list[StateChangeNotice]:
     """This user's open notices, newest first — the digest strip's read.
 
     **Scoped by `dismissed_at`, not by `seen_at`.** The strip is a queue, and closing an
     item should empty it; being *shown* something is not the same as acting on it.
+
+    **`limit` is required, and it is not a default.** A default would leave the unbounded
+    read reachable, and "somebody forgot to pass a limit" is exactly the failure the bound
+    exists to prevent. The strip shows a few notices, not a history — so the bound lives
+    here, where the query is, rather than only at the surface that happens to call it.
+
+    **The bound is applied by the database**, through the slice on the ordered queryset,
+    so a busy day costs one query and one index range — not a fetch of every open notice
+    to throw most of them away.
+
+    **The order has a tiebreaker, and it is the same one the banner uses.**
+    `order_by("-created_at", "-id")` — see `services.notice_state`, which owns the
+    "newest notice" rule. `created_at` is `auto_now_add` with microsecond resolution, and
+    a single ingestion poll can raise several notices at once, so two rows can share a
+    `created_at`. Without the tiebreaker the strip and the banner would each be free to
+    pick a different row for the same tie — two rules for one question.
     """
     return list(
         StateChangeNotice.objects.using(PERSONAL)
         .filter(user_id=user_id, dismissed_at__isnull=True)
-        .order_by("-created_at")
-    )
-
-
-def latest_notice_for_event(*, user_id: UUID, event_id: UUID) -> StateChangeNotice | None:
-    """The newest notice for one event — the Detail banner's read.
-
-    **`dismissed_at` is deliberately ignored.** The banner is about *this* event, which the
-    user has navigated to on purpose. Dismissing a strip on the digest home should not hide
-    "this event was cancelled" from the event's own page.
-    """
-    return (
-        StateChangeNotice.objects.using(PERSONAL)
-        .filter(user_id=user_id, event_id=event_id)
-        .order_by("-created_at")
-        .first()
+        .order_by("-created_at", "-id")[:limit]
     )
 
 
@@ -358,11 +390,30 @@ def dismiss_notice(*, user_id: UUID, notice_id: UUID, actor: Actor, now: datetim
     return bool(changed)
 
 
+def notice_belongs_to_user(*, user_id: UUID, notice_id: UUID) -> bool:
+    """Whether a notice with this id exists and is the caller's — dismissed or not.
+
+    **The answer the dismiss endpoint needs, and the only safe one.** `dismiss_notice`
+    returns whether *this call* closed the notice, and it cannot say why it did not:
+    "not yours", "there is no such notice" and "already dismissed" all come back as
+    `False`. The endpoint has to tell the third from the first two — an already-dismissed
+    notice is a success, not an error — while the first two must be the *same* answer,
+    because a 403 for one and a 404 for the other would turn the endpoint into an
+    existence oracle over notice ids (no existence leak).
+
+    **So it asks about the caller's own notices, including the dismissed ones.** A
+    dismissed notice still belongs to the user who dismissed it — which is exactly why
+    this can answer "it was already closed" without answering "it exists but is not
+    yours".
+    """
+    return StateChangeNotice.objects.using(PERSONAL).filter(user_id=user_id, pk=notice_id).exists()
+
+
 __all__ = [
     "TERMINAL_KINDS",
     "dismiss_notice",
-    "latest_notice_for_event",
     "list_undismissed_notices",
     "mark_seen",
+    "notice_belongs_to_user",
     "raise_state_notice",
 ]

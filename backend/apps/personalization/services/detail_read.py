@@ -36,6 +36,13 @@ data" — **does not query it**. A test asserts that the personal alias was neve
 on an anonymous request, which is the same technique the public catalog read's test uses.
 The strongest statement about a leak is that the query never happened.
 
+**The notice and mute facts are read here too (FR-54, FR-55).** The banner and the mute
+control render from this one response, and they must not be able to disagree with each
+other — two snapshots could. So `delivery` publishes one combined read
+(`apps.delivery.services.notice_state.read_event_notice_state`) and the personal block
+carries both facts. The read is **below** the anonymous branch, because both of its queries
+are against `personal`.
+
 Design: .specs-fire/intents/pulse-digest-and-trust/work-items/
 event-detail-api-design.md (decisions D2, D3, D8, D9, D10).
 """
@@ -44,6 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from apps.delivery.services.notice_state import NoticeSummary, read_event_notice_state
 from apps.ingestion.services.catalog_read import PublicEventDetail, get_public_event_detail
 from apps.personalization.models import DigestComposition, SavedEvent
 from apps.personalization.services.detail_conflict import DetailConflict, read_detail_conflict
@@ -87,7 +95,7 @@ class WhyThis:
 class DetailPersonal:
     """The signed-in user's own state for this event.
 
-    **Three independent facts, and none of them implies another.** "There is no
+    **Five independent facts, and none of them implies another.** "There is no
     explanation" and "you have not saved this" are different, and a client that cannot
     tell them apart renders the wrong thing.
 
@@ -100,12 +108,21 @@ class DetailPersonal:
     **`conflict` is a fourth independent fact**, and it is `None` when there is no
     **active** pair for this event. A resolved pair is history and a cleared one is
     nobody's decision, so neither is an indicator — only a pair waiting for an answer is.
+
+    **`muted` and `notice` are FR-55's and FR-54's facts about this event**, read through
+    `delivery`'s published service — `personalization` owns the table's *reader* boundary,
+    not the table. **They are two more independent facts**: a notice and a mute are
+    different things, and a client must not read "muted" as "there is nothing to say".
     """
 
     why_this: WhyThis | None
     saved: bool
     neighbors: NeighborCount
     conflict: DetailConflict | None = None
+    #: FR-55: whether this user has silenced state-change notices for this event.
+    muted: bool = False
+    #: FR-54: the newest state-change notice for this event, or `None`.
+    notice: NoticeSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +230,16 @@ def read_event_detail(
             public_event_ids={event_id},
         )
 
+    # **FR-54 and FR-55's facts, read together, and below the anonymous branch.** The
+    # notice state is two queries against the `personal` schema, so calling it above the
+    # `user_id is None` early return would break the promise that the anonymous path
+    # never queries `personal` at all — not even a query whose result is discarded.
+    #
+    # **It is unconditional.** The mute is the control's state and the screen has to
+    # render it every time; the notice is a fact about the event whether or not the user
+    # has saved it. Neither is gated on `saved_row`.
+    notice_state = read_event_notice_state(user_id=user_id, event_id=event_id)
+
     return EventDetail(
         event=event,
         personal=DetailPersonal(
@@ -220,6 +247,8 @@ def read_event_detail(
             saved=saved_row is not None,
             neighbors=neighbors,
             conflict=conflict,
+            muted=notice_state.muted,
+            notice=notice_state.notice,
         ),
     )
 

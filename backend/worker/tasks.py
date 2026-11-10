@@ -127,6 +127,7 @@ def schedule_sources() -> None:
     """Flag stale sources, claim the due ones and enqueue one ingest job per claim (FR-13)."""
     now = _now()
     stale = scheduling.flag_stale_sources(now=now)
+    breaches = scheduling.report_cadence_floor_breaches(now=now)
     claimed = scheduling.claim_due_sources(now=now)
     enqueued = 0
     for source_id in claimed:
@@ -142,6 +143,17 @@ def schedule_sources() -> None:
     logger.info("Sources scheduled", extra={"job": "schedule_sources", "count": enqueued})
     if stale:
         logger.warning("Sources stale", extra={"job": "schedule_sources", "count": stale})
+    if breaches:
+        # **FR-53's promise, broken.** A source that has not successfully ingested inside its
+        # tier's ceiling cannot have a cancellation detected inside its window — so the
+        # product is about to promise something it cannot keep.
+        #
+        # **A count, never a source id or a name** (AD-13). The count is enough to say the
+        # guarantee is at risk; who it is belongs in the registry, not in a log line.
+        logger.warning(
+            "Source cadence floors breached",
+            extra={"job": "schedule_sources", "count": breaches},
+        )
 
 
 @shared_task(name="worker.tasks.ingest_source")

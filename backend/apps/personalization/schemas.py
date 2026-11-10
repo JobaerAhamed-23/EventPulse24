@@ -803,12 +803,66 @@ class DetailConflictOut(Schema):
     actions: list[ConflictAction] = []
 
 
-class DetailPersonalOut(Schema):
-    """The signed-in user's own state for an event (FR-24).
+class DetailNoticeOut(Schema):
+    """The newest state-change notice for this event, as the Detail banner shows it.
 
-    **Three independent facts, and none of them implies another.** "There is no
+    **It is the newest notice for this event, regardless of dismissal.** That is the
+    deliberate rule of `delivery.services.notice_state`: the banner is about *this* event,
+    which the user has navigated to on purpose, so dismissing the strip on the digest home
+    must not hide "this event was cancelled" from the event's own page.
+
+    **`dismissed_at` says whether the user has already closed it.** The banner renders
+    that state rather than pretending the correction never happened — the notice is still
+    the truth about this event, and the user may still want to read it.
+
+    **`seen_at` is when it was first put in front of them** — not an act by them, and
+    not the same thing as the dismissal. The two are separate columns on the row and
+    they are separate fields here. (Today a dismissal sets both; the strip's read
+    deliberately does not mark notices seen, because a `GET` that writes is the shape
+    CSRF exists to stop.)
+
+    **No `event_id`.** The Detail read is already scoped to one event and the response's
+    enclosing `event` object names it. A redundant field could disagree with its own
+    parent.
+    """
+
+    #: The notice's own id. The dismiss endpoint names it.
+    id: UUID
+    #: `domain.lifecycle.ChangeKind`'s vocabulary, carried through unchanged.
+    change_kind: str
+    #: The event version the change carried.
+    event_version: int
+    #: The user's local date when the notice was raised.
+    local_date: date
+    #: When the notice was first put in front of the user, or `None`.
+    seen_at: datetime | None = None
+    #: When the user closed it, or `None` while it is still open.
+    dismissed_at: datetime | None = None
+    #: When the notice was raised.
+    created_at: datetime
+
+    @classmethod
+    def from_summary(cls, summary) -> "DetailNoticeOut":
+        """Project `delivery`'s plain data onto the wire shape."""
+        return cls(
+            id=summary.id,
+            change_kind=summary.change_kind,
+            event_version=summary.event_version,
+            local_date=summary.local_date,
+            seen_at=summary.seen_at,
+            dismissed_at=summary.dismissed_at,
+            created_at=summary.created_at,
+        )
+
+
+class DetailPersonalOut(Schema):
+    """The signed-in user's own state for an event (FR-24, FR-54, FR-55).
+
+    **Five independent facts, and none of them implies another.** "There is no
     explanation" and "you have not saved this" are different, and a client that cannot
-    tell them apart renders the wrong thing.
+    tell them apart renders the wrong thing. The same is true of the two newest ones:
+    **a notice and a mute are different facts**, and a client must not read "muted" as
+    "there is nothing to say".
 
     **`why_this` is `None` when no composition exists** for this `(user, event)` pair.
     That is an **explicit absence**: not an empty breakdown, not a zero bucket, and not
@@ -835,6 +889,26 @@ class DetailPersonalOut(Schema):
     #: The caller's **active** conflict pair for this event, or `None`. A `None` means
     #: there is nothing to decide — not that the screen failed to look.
     conflict: DetailConflictOut | None = None
+    #: FR-55: whether this user has silenced state-change notices for this event.
+    #:
+    #: **`False` means "not muted"**, and `True` means "notices for this event are
+    #: silenced". It says nothing about the event: reminders still fire and the event
+    #: still places in the digest (FR-55). A client that read this as "the event is
+    #: off" would hide an event the user still sees.
+    muted: bool = False
+    #: FR-54: the newest state-change notice for this event, or `None`.
+    #:
+    #: **`None` is an explicit absence**: there is no notice for this event — not "the
+    #: notice is empty". The notice read deliberately ignores
+    #: `dismissed_at`, so a notice the user has already closed is **still reported
+    #: here**: the banner is about this event, and dismissing the strip on the digest
+    #: home must not hide "this event was cancelled" from the event's own page.
+    #:
+    #: The strip's list and this field are the **same fact read two ways** — the strip
+    #: lists the open ones, the banner names the newest one for the event you are
+    #: looking at — and they are read from the same table through the same service,
+    #: so they cannot disagree.
+    notice: DetailNoticeOut | None = None
 
 
 class EventDetailFactsOut(Schema):
@@ -1183,6 +1257,7 @@ __all__ = [
     "ConflictSideKind",
     "ConflictSideOut",
     "ConflictSideRef",
+    "DetailNoticeOut",
     "DetailPersonalOut",
     "DigestCardOut",
     "DigestOut",

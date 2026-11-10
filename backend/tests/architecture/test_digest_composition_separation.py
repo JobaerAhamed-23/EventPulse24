@@ -31,18 +31,25 @@ from pathlib import Path
 
 import pytest
 
-from tests.architecture.checkers import BACKEND_DIR
+from tests.architecture.checkers import BACKEND_DIR, api_modules
 
 #: The composition command. **One name**, because there is one composition.
 COMPOSE_DIGEST = "compose_digest"
 
 #: The modules that take requests. **Discovered, not written down** — see
 #: `_request_modules` for why a hand-written list would be a list of holes.
+#:
+#: **The discovery is shared with the AD-5 guard.** `checkers.surface_files()` computes
+#: the same thing by the same rule — a module named `api.py` or ending in `_api.py`. Two
+#: copies of one rule would be free to disagree about what a request handler is, and the
+#: disagreement would be invisible: one guard would check a file the other had never
+#: heard of.
 REQUEST_MODULES = (
     "apps/catalog/api.py",
     "apps/catalog/preview_api.py",
     "apps/delivery/api.py",
     "apps/delivery/email_api.py",
+    "apps/delivery/notices_api.py",
     "apps/delivery/preferences_api.py",
     "apps/editorial/api.py",
     "apps/identity/api.py",
@@ -50,6 +57,7 @@ REQUEST_MODULES = (
     "apps/personalization/api.py",
     "apps/personalization/detail_api.py",
     "config/api.py",
+    "config/health.py",
 )
 
 
@@ -90,14 +98,13 @@ def _request_modules() -> list[Path]:
     **The list is discovered, not written down**, so a new API module is covered the
     moment it exists. A hand-written list would be a list of holes — and a new API
     module would be outside it until somebody noticed.
+
+    **It is `checkers.api_modules()`**, the same shape rule the AD-5 guard's discovery
+    uses, so the two guards cannot disagree about what a request handler is. (The AD-5
+    guard also covers the admins, which are not request handlers and are not this
+    guard's business.)
     """
-    found = [
-        path
-        for path in _python_files("apps")
-        if path.name == "api.py" or path.name.endswith("_api.py")
-    ]
-    found.append(BACKEND_DIR / "config/api.py")
-    return sorted(found)
+    return api_modules()
 
 
 @pytest.mark.parametrize(

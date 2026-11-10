@@ -54,6 +54,39 @@ DEFAULT_INGESTION_CADENCE = {
 }
 # No source is polled more often than this (respect the feeds).
 INGESTION_CADENCE_MIN = timedelta(minutes=15)
+
+# ── FR-53: the detection floors ─────────────────────────────────────────────────────
+#
+# "The system re-ingests high-priority sources at least every 4 hours. Lower-priority
+# sources at least daily." Its consequence is the thing that matters: "A cancelled event is
+# detected by the system within 4 hours for high-priority sources and within 24 hours for
+# lower-priority sources."
+#
+# **These are ceilings, not defaults.** A default is a starting point; a ceiling is a
+# guarantee. A source polled every 24 hours cannot have a cancellation detected within 4
+# hours, so a cadence above its tier's ceiling is refused at the point it is written rather
+# than discovered later, when the product has already promised on it.
+#
+# **A source may poll more often than its tier requires.** The ceilings only forbid what the
+# guarantee cannot support. `DEFAULT_INGESTION_CADENCE` gives rss/jsonld/ics a 4-hour
+# default — inside the lower tier's 24-hour ceiling, and detecting changes in 4 hours
+# rather than 24 — and that stays.
+#
+# **The tier is derived from `acquisition_method`, not stored.** FR-17's order is the
+# codebase's own statement of which sources matter more, and the method is already on the
+# row. A second priority field would be a second opinion about a question the codebase has
+# already answered, and the two could disagree — and a priority that disagrees with the
+# method is a guarantee nobody can check.
+#
+# The split is FR-17's, at the boundary FR-53's parenthetical names: the PRD's §10.4 calls
+# high-priority sources "official sites", and the official sources are the API and
+# partnership ones. Crawl stays in the lower tier — it is the last resort, and giving it a
+# 4-hour floor would push the whole registry toward frequent crawling, which is exactly
+# what FR-17's ToS guard exists to prevent.
+HIGH_PRIORITY_METHODS = ("api", "partnership")
+HIGH_PRIORITY_CADENCE_MAX = timedelta(hours=4)
+LOW_PRIORITY_CADENCE_MAX = timedelta(hours=24)
+
 # AD-7 scheduling: at most this many sources claimed per tick; a claim older than the TTL is a
 # lost job (a worker died) and the source becomes claimable again.
 SCHEDULE_BATCH = 100
@@ -902,6 +935,27 @@ SAVERS_PAGE = 500
 # left waiting on a retry ladder that takes hours to climb. The send key is the provider's
 # idempotency key (AD-7), so a retry cannot produce a second email.
 SEND_MAX_ATTEMPTS = 3
+
+
+# FR-54: how many open state-change notices the digest strip shows.
+#
+# **A few, not a history.** FR-54's promise is "one calm correction", and the strip is where
+# that promise is kept or broken: a strip that grows without bound is a wall of corrections,
+# which is the spam FR-54 exists to prevent. There is no inbox to page through, so this is a
+# **fixed bound, not a page size** — the client cannot ask for more, and there is no "load
+# more" to build.
+#
+# **Five, not three.** Three is the number of Pulse Card slots, and the strip is not cards:
+# a notice is a correction the user may not act on at all, and a notice can exist for an
+# event the user has since un-saved — so it need not correspond to a card they saw. Five
+# leaves room for a busy day without becoming a list.
+#
+# **A bound, not a page.** `SAVERS_PAGE` is a page because propagation must reach *every*
+# saver of a popular event. This is the opposite case: the strip is a summary, and the
+# notices beyond the bound are reachable from the Detail screen. So unlike `SAVERS_PAGE`,
+# dropping the tail here loses nothing — the user who needs the sixth notice opens the
+# sixth event.
+NOTICE_STRIP_LIMIT = 5
 
 
 class LifecycleSendBehaviour(StrEnum):

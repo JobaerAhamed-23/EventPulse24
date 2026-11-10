@@ -13,6 +13,11 @@ from django.db import models
 from django.db.models import F, Q
 from django.utils import timezone
 
+from shared.constants import (
+    HIGH_PRIORITY_CADENCE_MAX,
+    HIGH_PRIORITY_METHODS,
+    LOW_PRIORITY_CADENCE_MAX,
+)
 from shared.models import (
     ActorColumns,
     AppendOnlyModel,
@@ -108,6 +113,26 @@ class Source(UUIDv7Model):
         constraints = [
             models.CheckConstraint(
                 condition=Q(ingestion_cadence__gt=timedelta(0)), name="source_cadence_positive_ck"
+            ),
+            # FR-53: a source's cadence may not exceed its tier's ceiling, so a cancellation
+            # can be detected inside the window the product promises.
+            #
+            # **The "else" branch is "not a high-priority method", not "a lower-priority
+            # method".** That is deliberate: the Python derivation treats any method outside
+            # the high set as lower-priority, and the two layers must agree exactly. A
+            # method added later — or one outside the choices — gets the 24-hour ceiling
+            # until someone classifies it, which is safe by default: a new acquisition
+            # method cannot opt itself out of the guarantee by being unclassified.
+            models.CheckConstraint(
+                condition=(
+                    Q(acquisition_method__in=HIGH_PRIORITY_METHODS)
+                    & Q(ingestion_cadence__lte=HIGH_PRIORITY_CADENCE_MAX)
+                )
+                | (
+                    ~Q(acquisition_method__in=HIGH_PRIORITY_METHODS)
+                    & Q(ingestion_cadence__lte=LOW_PRIORITY_CADENCE_MAX)
+                ),
+                name="source_cadence_within_priority_ceiling_ck",
             ),
         ]
         indexes = [

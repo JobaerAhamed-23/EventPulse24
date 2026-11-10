@@ -39,17 +39,18 @@ reading through published interfaces, never another app's models.
 
 ---
 
-## The two renderers
+## The three renderers
 
-`render_transactional` and `render_digest` are separate functions rather than one function
-with a branch, because **the two streams have different obligations** and merging them
-would make the bulk one's obligations optional:
+`render_transactional`, `render_digest` and `render_state_notice` are separate functions
+rather than one function with a branch, because **their obligations differ** and merging
+them would make some of those obligations optional:
 
-| | transactional | bulk (digest) |
-|---|---|---|
-| stream | `Stream.TRANSACTIONAL` | `Stream.BULK` |
-| unsubscribe URL | not required | **required** (RFC 8058) |
-| subject | one event | one day |
+| | transactional (reminder) | bulk (digest) | state notice |
+|---|---|---|---|
+| stream | `Stream.TRANSACTIONAL` | `Stream.BULK` | `Stream.TRANSACTIONAL` |
+| unsubscribe URL | not required | **required** (RFC 8058) | not required, and **absent** |
+| subject | one event | one day | FR-54's, per change kind |
+| facts | the event's current ones | the persisted digest's | **the change's own** |
 
 `EmailPort.send` refuses a bulk message with no `unsubscribe_url` — a `ValueError` at the
 port, which is the correct refusal: RFC 8058 is not optional on the bulk stream. So
@@ -61,6 +62,12 @@ stream-level one.** FR-11: a reminder's link stops *that event's* reminders and 
 touch the Pulse Ping. The link is scoped to the event, signed, and lives in the body where
 the user expects to find it — while `EmailMessage.unsubscribe_url` stays `None`, because the
 transactional stream has no stream-level opt-out.
+
+**The state notice carries no link at all.** It is on the transactional stream, so RFC 8058
+does not apply; and FR-54 asks for none. **Its opt-out is the per-event mute, and the mute
+lives on the Detail Screen** — which is where the notice's body points. A "stop reminders
+for this event" link here would be a lie twice over: the mail is not a reminder, and the
+change it reports may have cancelled the reminders already.
 
 ---
 
@@ -104,11 +111,13 @@ from uuid import UUID
 from django.conf import settings
 
 from apps.delivery.models import ScheduledSend
+from apps.delivery.send_keys import state_change_id_from_key
 from apps.delivery.services.delivery_sweep import VanishedTargetError
 from apps.delivery.services.email_templates import (
     DigestCardFacts,
     DigestFacts,
     ReminderFacts,
+    StateNoticeFacts,
 )
 from apps.delivery.services.email_templates import (
     render_digest as _render_digest_body,
@@ -116,12 +125,17 @@ from apps.delivery.services.email_templates import (
 from apps.delivery.services.email_templates import (
     render_reminder as _render_reminder_body,
 )
+from apps.delivery.services.email_templates import (
+    render_state_notice as _render_state_notice_body,
+)
 from apps.delivery.services.unsubscribe_tokens import (
     UNSUBSCRIBE_SCOPE_EVENT_REMINDERS,
     UNSUBSCRIBE_SCOPE_PING,
     mint_click_token,
     mint_unsubscribe_token,
 )
+from domain.lifecycle import ChangeKind
+from domain.notices import fold_title, reminder_consequence
 from ports.email import EmailMessage, Stream
 from shared.constants import CLICK_REDIRECT_PATH, UNSUBSCRIBE_PATH
 
@@ -298,7 +312,7 @@ def _facts_for(row: ScheduledSend) -> ReminderFacts:
 
 
 def render_transactional(row: ScheduledSend, address: str) -> EmailMessage:
-    """Render a reminder or a notice as a transactional message.
+    """Render a reminder as a transactional message.
 
     **The transactional stream carries no unsubscribe URL.** It is not optional here, it
     is *absent*: RFC 8058 is a requirement of the bulk stream (AD-20), and adding one to a
@@ -329,6 +343,178 @@ def render_transactional(row: ScheduledSend, address: str) -> EmailMessage:
         ),
         to=address,
     )
+
+
+# ── The state-change notice (FR-54) ─────────────────────────────────────────────────
+
+
+def _state_notice_facts(row: ScheduledSend) -> StateNoticeFacts:
+    """Gather the facts a state-change notice quotes.
+
+    **Three reads, in this order, and each one can end the notice.**
+
+    1. **The notice row.** `ScheduledSend` has no `state_change_id` column — AD-7 put it in
+       the key — so the change's id is read back out of `send_key` by
+       `send_keys.state_change_id_from_key`. **A key that cannot be read raises**, because
+       a notice whose change is unknown cannot be given a subject: the subject is a
+       function of the change's kind, and a generic subject is the one thing FR-54
+       forbids.
+
+    2. **The change.** Read through `ingestion`'s published `outbox.get_state_change`,
+       which hands over plain data rather than the model (AD-2). **The change is the
+       authority on what happened**, and the live event is not: a poll appends one change
+       per kind, so the live event already holds the *last* kind's facts. Pairing this
+       change's version with those times would state a move that never happened.
+
+    3. **The event.** Read through `catalog_read.get_public_event`, for the name and the
+       venue's name. **A missing event is not an error** — the catalog may have dropped
+       or unpublished it — and the body then says "your saved event", which is what the
+       reminder body already says in the same situation.
+
+    **The title is folded once, here.** `domain.notices.fold_title` collapses whitespace
+    and drops the newlines an ingested title could carry; a `\n` in a subject is SMTP
+    header injection. The folded value is what both the subject and the body quote, so
+    they cannot disagree about the event's name.
+    """
+    from apps.ingestion.services.outbox import get_state_change
+
+    state_change_id = state_change_id_from_key(row.send_key)
+    if state_change_id is None:
+        raise MissingTargetError(f"send {row.id} carries no readable state change id")
+
+    change = get_state_change(state_change_id)
+    if change is None:
+        raise MissingTargetError(f"state change {state_change_id} is gone")
+
+    event = _public_event(row)
+    title = fold_title(event.title if event is not None else None)
+    zone = _change_zone(change, event=event)
+
+    return StateNoticeFacts(
+        title=title,
+        change_kind=change.kind,
+        new_time_text=_local_time_text(
+            start_utc=_as_datetime(change.after.get("start_utc")),
+            zone=zone,
+        ),
+        previous_time_text=_local_time_text(
+            start_utc=_as_datetime(change.before.get("start_utc")),
+            zone=zone,
+        ),
+        venue_name=event.venue_name if event is not None else None,
+        detail_url=_detail_url(row, change),
+        reminder_consequence=reminder_consequence(change.kind),
+    )
+
+
+def _public_event(row: ScheduledSend):
+    """The event a notice is about, or `None` when the catalog no longer holds it.
+
+    **Read without a time bound.** A notice is about a record the user already saved, and
+    a record of something they saved has to stay readable after the event has started —
+    the same reasoning `get_public_event`'s own docstring gives.
+
+    **`None` is not an error.** The catalog dropping an event is the catalog's business,
+    and the notice still goes out: the user asked to hear about this event, and the
+    honest body says "your saved event" rather than inventing a name.
+    """
+    from apps.ingestion.services.catalog_read import EventNotFoundError, get_public_event
+
+    if row.target_id is None:
+        return None
+    try:
+        return get_public_event(event_id=row.target_id)
+    except EventNotFoundError:
+        return None
+
+
+def _change_zone(change, *, event) -> str | None:
+    """The zone the change's times are rendered in.
+
+    **The change's own zone, when it recorded one.** A `time_moved` carries
+    `start_time_tz` in its `after` — that is the zone the new start is *in*, and it is
+    the one the notice should read the time in.
+
+    **The live event's zone otherwise.** A change that moved no time — a cancellation, a
+    sell-out — records no zone, and the times it quotes are the event's existing ones,
+    which are in the event's zone.
+
+    **The event is passed in, not read again.** The caller has already read it, for the
+    name and the venue; reading it a second time for the zone would be a second round
+    trip on the one path that renders a notice for every saver of an event. It would also
+    be a second *answer*: `get_public_event` reads the live row, and a row that changed
+    between the two reads could give the notice a name from one moment and a zone from
+    another.
+
+    **`None` rather than a guess.** The notice's times are optional — a cancellation has
+    no new time — so a missing zone costs one line of the body, not the mail. And a
+    *wrong* zone would be worse than none: it would put the event at an hour it is not
+    at, in a body whose whole purpose is to be right about the user's evening.
+    """
+    zone = change.after.get("start_time_tz") or change.before.get("start_time_tz")
+    if zone:
+        return zone
+    if event is None:
+        return None
+    return event.start_time_tz
+
+
+def _as_datetime(value) -> datetime | None:
+    """An instant from a change's JSON `before`/`after`, or `None`.
+
+    The change's facts are JSON, so an instant comes back as an ISO string. A value that
+    is already a `datetime` is passed through — the tests build changes with real
+    datetimes, and the two must not disagree.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _detail_url(row: ScheduledSend, change) -> str | None:
+    """The link to the event's Detail Screen, where the banner and the mute live.
+
+    **A superseded event links to its replacement.** The superseded event's own Detail
+    Screen is a 404 — `catalog_read.get_public_event_by_slug` refuses it and carries the
+    successor's slug in the refusal — so a link to the dead event would land the user on
+    an error page at the exact moment they are told their event was replaced. The
+    replacement's id is on the change row (`after["superseded_by"]`).
+
+    **The link is the app's own path, not a signed token.** It is a page, not a
+    measurement: the user clicks it to read the event, and it is the same URL the
+    frontend serves for a saved event.
+    """
+    from django.conf import settings
+
+    event_id = row.target_id
+    if change.kind == ChangeKind.SUPERSEDED.value:
+        replacement = change.after.get("superseded_by")
+        if replacement:
+            event_id = UUID(str(replacement))
+    if event_id is None:
+        return None
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/events/{event_id}"
+
+
+def render_state_notice(row: ScheduledSend, address: str) -> EmailMessage:
+    """Render a state-change notice (FR-54).
+
+    **A transactional message.** A notice is a one-time correction about a record the
+    user created themselves, sent because the facts under it moved — not a broadcast. So
+    it carries no RFC 8058 unsubscribe URL, and `EmailPort.send`'s refusal of a bulk
+    message without one does not apply.
+
+    **The mute is the opt-out, and it lives on the Detail Screen** — which is where the
+    body points. The reminder body carries a "stop reminders for this event" link because
+    FR-11 asks for one; FR-54 asks for none, and a link that looked like an unsubscribe
+    for a message that is not a list would be a lie.
+    """
+    return _render_state_notice_body(_state_notice_facts(row), to=address)
 
 
 def render_digest(row: ScheduledSend, address: str) -> EmailMessage:
@@ -397,18 +583,25 @@ def render_digest(row: ScheduledSend, address: str) -> EmailMessage:
 
 
 def renderer_for(row: ScheduledSend, address: str) -> EmailMessage:
-    """Render a row, choosing the renderer from the row's stream.
+    """Render a row, choosing the renderer from the row's kind and stream.
 
     **This is the callable the sweep is given.** Its shape is exactly the renderer's
     contract — `(row, address) -> EmailMessage` — so the worker passes `renderer_for`
     straight to `sweep_due_sends` and there is no wrapper to get wrong.
 
-    **The choice is made from the row's stream, not from its kind.** The stream is what the
-    provider will send it on and AD-20 makes it the thing that must not drift; the kind is
-    a description of the content. So a digest row on the bulk stream gets the bulk
-    renderer, and a row on any other stream gets the transactional one — and a row whose
-    stream says bulk but whose kind says something else still gets the bulk renderer,
-    because the stream is what the obligation follows.
+    **The stream is checked first, and it decides the bulk branch.** The stream is what
+    the provider will send it on and AD-20 makes it the thing that must not drift; the
+    kind is a description of the content. So a digest row on the bulk stream gets the
+    bulk renderer, and a row whose stream says bulk but whose kind says something else
+    still gets the bulk renderer, because the stream is what the obligation follows.
+
+    **The state notice is dispatched on its kind, and it is the one exception.** A notice
+    is a transactional message about *one event*, but it is not a reminder: it quotes the
+    change's own facts rather than the event's current ones, and its subject is FR-54's
+    rather than the reminder's. Sending it through `render_transactional` would give it
+    "Reminder: Rooftop cinema" and a per-event unsubscribe link — both wrong, and the
+    second one worse than wrong, because it would offer to stop reminders for an event
+    whose reminders were cancelled by the very change the mail is about.
 
     **An unknown stream raises.** The sweep's `_stream_for` refuses it first and names the
     row, so this branch is unreachable in the normal path; it raises rather than guessing,
@@ -420,6 +613,8 @@ def renderer_for(row: ScheduledSend, address: str) -> EmailMessage:
         raise ValueError(f"send {row.id} carries an unknown stream") from exc
     if stream is Stream.BULK:
         return render_digest(row, address)
+    if row.kind == ScheduledSend.Kind.STATE_NOTICE.value:
+        return render_state_notice(row, address)
     return render_transactional(row, address)
 
 
@@ -428,6 +623,7 @@ __all__ = [
     "MissingTargetError",
     "click_url_for",
     "render_digest",
+    "render_state_notice",
     "render_transactional",
     "renderer_for",
     "unsubscribe_url_for",

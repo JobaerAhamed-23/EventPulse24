@@ -22,12 +22,13 @@ meaningless, which is why the delivery time arrives **paired with its zone** in 
 nested object rather than as two loose fields.
 """
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Literal
 from uuid import UUID
 
 from ninja import Field, Schema
 
+from apps.delivery.services.notice_state import NoticeSummary
 from apps.delivery.services.preferences_read import NotificationSettingsView
 from apps.delivery.services.reminder_plan_read import ReminderPlanView, SlotDelivery
 
@@ -245,3 +246,137 @@ class NotificationSettingsIn(Schema):
             "IANA zone it is a clock in; both are required together."
         ),
     )
+
+
+# ── The state-change notices (FR-54) and the per-event mute (FR-55) ──────────────
+
+
+class NoticeOut(Schema):
+    """One state-change notice, as the digest strip shows it.
+
+    **The notice's own facts, and no more.** The server states what changed and what it
+    means; the client renders it. The change's *content* — the before/after values — is
+    deliberately absent: it is source payload, and it is the one place a title or a venue
+    name could leak into a response (AD-13). `change_kind` is the vocabulary
+    `domain.lifecycle.ChangeKind` defines, carried through unchanged.
+
+    **`event_id` is the catalog event's id, by value.** The client routes to the event's
+    page, and the notice row holds no relation to the catalog (AD-3).
+
+    **`seen_at` and `dismissed_at` are the two different acts.** `seen_at` is when the
+    notice was put in front of the user — not an act by them. `dismissed_at` is when they
+    closed it. A notice can be seen and not dismissed, and a client that cannot tell them
+    apart would render a dismissed notice as still open.
+
+    **(Today, a dismissal sets both — but the strip's read deliberately does not mark
+    notices seen.** A `GET` that writes is the shape CSRF exists to stop, and
+    `apps/personalization/detail_api.py` refuses it for the Detail Screen. So `seen_at` is
+    `None` until the user closes the notice. The two stay separate fields because the
+    moment something *does* mark a notice seen on render, they will say different things.
+
+    **`dismissed_at` is `None` on every notice the strip returns**, because the strip is
+    the queue of *open* notices. It is on the wire anyway so the same shape serves the
+    Detail banner, which deliberately reports a dismissed notice too.
+    """
+
+    #: The notice's own id. The dismiss endpoint names it.
+    id: UUID
+    #: The catalog event's id, by value (AD-3). The client routes to it.
+    event_id: UUID
+    #: `domain.lifecycle.ChangeKind`'s vocabulary, carried through unchanged.
+    change_kind: str
+    #: The event version the change carried.
+    event_version: int
+    #: The user's local date when the notice was raised — what the one-per-day cap is
+    #: keyed on.
+    local_date: date
+    #: When the notice was first put in front of the user, or `None` if it never was.
+    seen_at: datetime | None = None
+    #: When the user closed it, or `None` while it is still open.
+    dismissed_at: datetime | None = None
+    #: When the notice was raised. The strip orders by this, newest first.
+    created_at: datetime
+
+    @classmethod
+    def from_summary(cls, summary: NoticeSummary) -> "NoticeOut":
+        """Project the service's plain data onto the wire shape."""
+        return cls(
+            id=summary.id,
+            event_id=summary.event_id,
+            change_kind=summary.change_kind,
+            event_version=summary.event_version,
+            local_date=summary.local_date,
+            seen_at=summary.seen_at,
+            dismissed_at=summary.dismissed_at,
+            created_at=summary.created_at,
+        )
+
+
+class NoticeListOut(Schema):
+    """The signed-in user's open notices, newest first.
+
+    **A list, and nothing else.** There is no total, no `next` cursor, no page — the strip
+    shows a few and there is no inbox to page through (FR-54). A `total` would invite the
+    client to build an inbox, and an inbox is how "one calm correction" becomes a
+    notification centre.
+
+    **`items` is empty, not absent, when the user has no open notices.** An empty list is
+    the shape; `None` would be a second spelling of the same fact.
+    """
+
+    #: The open notices, newest first, at most `NOTICE_STRIP_LIMIT` of them.
+    items: list[NoticeOut] = []
+
+
+class NoticeDismissOut(Schema):
+    """The outcome of dismissing one notice.
+
+    **`dismissed` and `changed` are two different facts, and the client needs both.**
+    `dismissed` is the notice's *state* — it is dismissed now. `changed` says whether
+    **this call** is what made it so.
+
+    **The distinction is what makes an idempotent write honest.** Dismissing an
+    already-dismissed notice is a success, not an error — but a response that claimed
+    `changed: true` for it would tell the screen to redraw something that did not move.
+    `changed: false` says "it was already dismissed; nothing changed", which is the truth
+    and is also what lets the client skip the redraw.
+
+    **The same shape as the mute's** (`EventMuteOut`), because both are "a state and
+    whether this call moved it".
+    """
+
+    #: The notice's id — the one that was named.
+    id: UUID
+    #: The notice's state: it is dismissed.
+    dismissed: bool = True
+    #: Whether **this call** is what dismissed it. False when it was already dismissed.
+    changed: bool = False
+
+
+class EventMuteOut(Schema):
+    """The outcome of muting or unmuting one event's state-change notices.
+
+    **It mirrors `MuteResult` exactly**, because that dataclass already carries the two
+    facts the client needs and no third: `muted` is the event's *state* after the call,
+    and `changed` says whether **this call** moved it.
+
+    **Muting an already-muted event is a success, not an error** — and `changed: false` is
+    what says so honestly. A client that redrew on `changed` would redraw a control that
+    did not move.
+
+    **`event_id` is in the response** so the client can confirm which event the answer is
+    about, without having to trust that the request and the response were about the same
+    thing.
+
+    **This says nothing about the event itself.** A mute silences the correction, not the
+    event: reminders still fire on the user's Reminder Plan and the event still places in
+    the Pulse Digest (FR-55). The shape carries no field that could be read as "the event
+    is off".
+    """
+
+    #: The catalog event's id, by value (AD-3).
+    event_id: UUID
+    #: Whether the event's notices are muted now. False after an unmute.
+    muted: bool
+    #: Whether **this call** moved the state. False when it was already there.
+    changed: bool

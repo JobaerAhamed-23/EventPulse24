@@ -104,6 +104,61 @@ def test_register_source_without_cadence_uses_method_default(method):
     assert _reload(source).ingestion_cadence == DEFAULT_INGESTION_CADENCE[method]
 
 
+@pytest.mark.parametrize("method", AcquisitionMethod.values)
+def test_every_method_default_is_inside_its_own_ceiling(method):
+    """A default is a value this code chooses, so it must be a value this code can defend.
+
+    If a method's default were ever above its tier's ceiling, the row would be created and
+    then refused by the database constraint — an `IntegrityError` instead of a refusal. This
+    test is the invariant that says that cannot happen quietly.
+    """
+    from domain.sources import cadence_ceiling
+
+    assert DEFAULT_INGESTION_CADENCE[method] <= cadence_ceiling(method)
+
+
+def test_a_default_above_the_ceiling_is_refused_rather_than_written(monkeypatch):
+    """The refusal path, when the default itself breaks the rule.
+
+    The default is monkeypatched to a week — over every tier's ceiling — so the check has
+    something to catch. Without the check the row would be created and the *database*
+    constraint would refuse it, which is a crash, not a refusal.
+    """
+    monkeypatch.setitem(DEFAULT_INGESTION_CADENCE, "api", timedelta(days=7))
+
+    with pytest.raises(ValidationError) as excinfo:
+        _register(acquisition_method="api")
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    assert _nothing_written()
+
+
+def test_the_default_is_measured_against_its_own_tier(monkeypatch):
+    """The default is checked against **its own method's** ceiling, not another tier's.
+
+    A 12-hour default is legal in the lower tier (24h) and illegal in the high tier (4h).
+    So a high-priority source whose default was 12 hours must be refused, while a
+    lower-priority one with the same default must not be. If the check were made against
+    the wrong tier, one of those two would go the wrong way.
+    """
+    monkeypatch.setitem(DEFAULT_INGESTION_CADENCE, "api", timedelta(hours=12))
+
+    with pytest.raises(ValidationError) as excinfo:
+        _register(acquisition_method="api")
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    assert _nothing_written()
+
+
+def test_the_same_default_is_legal_in_the_lower_tier(monkeypatch):
+    """The other half of the previous test — 12 hours is fine for an `rss` source."""
+    monkeypatch.setitem(DEFAULT_INGESTION_CADENCE, "rss", timedelta(hours=12))
+
+    source = _register(acquisition_method="rss")
+
+    assert _reload(source).ingestion_cadence == timedelta(hours=12)
+
+
 def test_register_source_explicit_cadence_kept():
     source = _register(ingestion_cadence=timedelta(hours=1))
 
@@ -115,6 +170,84 @@ def test_register_source_cadence_below_floor_refused():
         _register(ingestion_cadence=timedelta(minutes=14))
 
     assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    assert _nothing_written()
+
+
+# --- FR-53: the cadence ceilings -------------------------------------------------------------
+
+
+def test_register_high_priority_source_at_its_ceiling_accepted():
+    """A high-priority source may poll exactly every 4 hours — the ceiling, not under it."""
+    source = _register(acquisition_method="api", ingestion_cadence=timedelta(hours=4))
+
+    assert _reload(source).ingestion_cadence == timedelta(hours=4)
+
+
+def test_register_high_priority_source_over_its_ceiling_refused():
+    with pytest.raises(ValidationError) as excinfo:
+        _register(acquisition_method="api", ingestion_cadence=timedelta(hours=4, seconds=1))
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    assert _nothing_written()
+
+
+def test_register_lower_priority_source_at_its_ceiling_accepted():
+    source = _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    assert _reload(source).ingestion_cadence == timedelta(hours=24)
+
+
+def test_register_lower_priority_source_over_its_ceiling_refused():
+    with pytest.raises(ValidationError) as excinfo:
+        _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=24, seconds=1))
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    assert _nothing_written()
+
+
+def test_register_lower_priority_source_at_the_high_ceiling_accepted():
+    """A source may poll *more* often than its tier requires — 4h is inside the 24h ceiling."""
+    source = _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=4))
+
+    assert _reload(source).ingestion_cadence == timedelta(hours=4)
+
+
+@pytest.mark.parametrize("method", ["api", "partnership"])
+def test_every_high_priority_method_shares_the_four_hour_ceiling(method):
+    with pytest.raises(ValidationError):
+        _register(acquisition_method=method, ingestion_cadence=timedelta(hours=4, seconds=1))
+
+    assert not Source.objects.using(CATALOG).exists()
+
+
+@pytest.mark.parametrize("method", ["jsonld", "rss", "ics", "email_ics", "crawl"])
+def test_every_other_method_gets_the_daily_ceiling(method):
+    """The lower tier is "not a high-priority method" — so a method added later is in it too."""
+    review = APPROVE if method == "crawl" else None
+
+    with pytest.raises(ValidationError):
+        _register(
+            acquisition_method=method,
+            ingestion_cadence=timedelta(hours=24, seconds=1),
+            tos_review=review,
+        )
+
+    assert not Source.objects.using(CATALOG).exists()
+
+
+def test_the_refusal_names_the_ceiling_it_broke():
+    with pytest.raises(ValidationError) as excinfo:
+        _register(acquisition_method="api", ingestion_cadence=timedelta(days=7))
+
+    [error] = excinfo.value.details["errors"]
+    assert "4 hours" in error["msg"]
+
+
+def test_a_high_priority_source_may_not_be_registered_with_a_weekly_cadence():
+    """The case FR-53 exists for: a source that would never be polled inside the window."""
+    with pytest.raises(ValidationError):
+        _register(acquisition_method="partnership", ingestion_cadence=timedelta(days=7))
+
     assert _nothing_written()
 
 
@@ -285,7 +418,11 @@ def test_update_source_to_crawl_with_approved_review_allowed():
 def test_update_source_crawl_to_api_needs_no_review():
     source = _register(acquisition_method="crawl", tos_review=APPROVE)
 
-    update_source(actor=STAFF, source_id=source.id, changes={"acquisition_method": "api"})
+    update_source(
+        actor=STAFF,
+        source_id=source.id,
+        changes={"acquisition_method": "api", "ingestion_cadence": timedelta(hours=4)},
+    )
 
     stored = _reload(source)
     assert (stored.acquisition_method, stored.tos_status) == ("api", "not_reviewed")
@@ -335,6 +472,84 @@ def test_update_source_to_another_sources_feed_refused():
             source_id=other.id,
             changes={"url": "HTTPS://Fillmore.EXAMPLE.test/events.rss"},
         )
+
+
+# --- FR-53: a method change re-checks the cadence ---------------------------------------------
+
+
+def test_update_source_to_a_lower_tier_keeps_a_legal_cadence():
+    """Moving down a tier only loosens the ceiling, so the stored cadence is still legal."""
+    source = _register(acquisition_method="api", ingestion_cadence=timedelta(hours=4))
+
+    update_source(actor=STAFF, source_id=source.id, changes={"acquisition_method": "rss"})
+
+    assert _reload(source).ingestion_cadence == timedelta(hours=4)
+
+
+def test_update_source_to_a_higher_tier_without_a_cadence_refused():
+    """The stored cadence would be over the new tier's ceiling, so the change is refused."""
+    source = _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    with pytest.raises(ValidationError) as excinfo:
+        update_source(actor=STAFF, source_id=source.id, changes={"acquisition_method": "api"})
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    stored = _reload(source)
+    assert (stored.acquisition_method, stored.ingestion_cadence) == ("rss", timedelta(hours=24))
+
+
+def test_update_source_to_a_higher_tier_with_a_legal_cadence_accepted():
+    """Bring the cadence with the method and the row is legal after the write."""
+    source = _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    update_source(
+        actor=STAFF,
+        source_id=source.id,
+        changes={
+            "acquisition_method": "api",
+            "ingestion_cadence": timedelta(hours=4),
+        },
+    )
+
+    stored = _reload(source)
+    assert (stored.acquisition_method, stored.ingestion_cadence) == ("api", timedelta(hours=4))
+
+
+def test_update_source_to_a_higher_tier_with_an_illegal_cadence_refused():
+    source = _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    with pytest.raises(ValidationError) as excinfo:
+        update_source(
+            actor=STAFF,
+            source_id=source.id,
+            changes={
+                "acquisition_method": "api",
+                "ingestion_cadence": timedelta(hours=8),
+            },
+        )
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+
+
+def test_update_source_cadence_over_its_own_ceiling_refused():
+    source = _register(acquisition_method="api", ingestion_cadence=timedelta(hours=4))
+
+    with pytest.raises(ValidationError) as excinfo:
+        update_source(
+            actor=STAFF, source_id=source.id, changes={"ingestion_cadence": timedelta(hours=5)}
+        )
+
+    assert _locs(excinfo.value) == [["ingestion_cadence"]]
+    assert _reload(source).ingestion_cadence == timedelta(hours=4)
+
+
+def test_a_method_change_that_keeps_the_tier_does_not_re_check_the_cadence():
+    """`rss` → `ics` is the same tier, so a 24-hour cadence stays legal."""
+    source = _register(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    update_source(actor=STAFF, source_id=source.id, changes={"acquisition_method": "ics"})
+
+    assert _reload(source).ingestion_cadence == timedelta(hours=24)
 
 
 def test_update_source_unknown_id_not_found():

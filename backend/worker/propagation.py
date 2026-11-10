@@ -251,6 +251,13 @@ def _apply_to_user(
         event_start_utc=event_start,
         actor=PROPAGATOR,
         now=now,
+        # **The change's own facts, by value.** `raise_state_notice` decides whether a
+        # `detail_changed` is worth notifying — a venue move is the PRD's "moved to [new
+        # location]", a typo fix is not — and that decision is about the change rather
+        # than the kind. Passing the facts by value keeps AD-3's wall intact: no
+        # transaction here spans `catalog` and `personal`.
+        before=change.before,
+        after=change.after,
     )
 
 

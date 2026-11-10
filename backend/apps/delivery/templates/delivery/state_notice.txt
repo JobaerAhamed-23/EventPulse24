@@ -1,11 +1,9 @@
-Update: {{ display_title }}
+{{ display_title }}
 
-{{ change_kind }}{% if local_time_text %} — {{ local_time_text }}{% endif %}
-{% if previous_time_text %}
-It was previously {{ previous_time_text }}.
+{% if new_time_text %}It is now {{ new_time_text }}.{% endif %}
+{% if previous_time_text %}It was previously {{ previous_time_text }}.{% endif %}
+{% if venue_name %}Where: {{ venue_name }}{% endif %}
+{% if reminder_consequence %}
+{{ reminder_consequence }}
 {% endif %}
-{% if location %}
-Where: {{ location }}
-{% endif %}
-
-Open EventPulse24 to see the current details.
+{% if detail_url %}See the event: {{ detail_url }}{% endif %}

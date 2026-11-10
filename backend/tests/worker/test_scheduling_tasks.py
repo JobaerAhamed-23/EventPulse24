@@ -243,7 +243,52 @@ def test_schedule_sources_claims_due_sources_and_enqueues_one_job_each(
     stale.refresh_from_db(using=CATALOG)
     assert stale.stale_since == now
     messages = [(r.getMessage(), r.count) for r in caplog.records if r.name == "worker.tasks"]
-    assert messages == [("Sources scheduled", 1), ("Sources stale", 1), ("Sources scheduled", 0)]
+    # The stale source has also been a day without a successful ingest, so FR-53's floor is
+    # broken for it — the promise is not just stale data.
+    assert messages == [
+        ("Sources scheduled", 1),
+        ("Sources stale", 1),
+        ("Source cadence floors breached", 1),
+        ("Sources scheduled", 0),
+        ("Source cadence floors breached", 1),
+    ]
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_schedule_sources_warns_only_when_a_cadence_floor_is_broken(monkeypatch, caplog):
+    """FR-53's promise, broken — surfaced as a count, and only when it is broken.
+
+    **A breach count of zero is not a warning.** A warning that fires on every tick for
+    every healthy registry is noise, and a signal that always fires is a signal nobody reads.
+    """
+    now = timezone.now()
+    _at(monkeypatch, now)
+    SourceFactory(acquisition_method="api", ingestion_cadence=timedelta(hours=4))
+
+    with caplog.at_level(logging.INFO, logger="worker.tasks"):
+        tasks.schedule_sources()
+
+    messages = [r.getMessage() for r in caplog.records if r.name == "worker.tasks"]
+    assert "Source cadence floors breached" not in messages
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_schedule_sources_logs_a_breach_count_and_no_source_ids(monkeypatch, caplog):
+    """A count, never a source id (AD-13): who it is belongs in the registry."""
+    now = timezone.now()
+    _at(monkeypatch, now)
+    broken = SourceFactory(
+        acquisition_method="api",
+        ingestion_cadence=timedelta(hours=4),
+        last_ingested_at=now - timedelta(hours=5),
+    )
+
+    with caplog.at_level(logging.INFO, logger="worker.tasks"):
+        tasks.schedule_sources()
+
+    breach = next(r for r in caplog.records if r.getMessage() == "Source cadence floors breached")
+    assert breach.count == 1
+    assert str(broken.pk) not in breach.getMessage()
 
 
 @pytest.mark.django_db(databases=[PERSONAL, CATALOG])

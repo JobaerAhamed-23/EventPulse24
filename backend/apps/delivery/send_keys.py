@@ -71,6 +71,35 @@ def state_notice_key(*, user_id: UUID, state_change_id: UUID) -> str:
     return _join(user_id, "state_notice", state_change_id)
 
 
+def state_change_id_from_key(send_key: str) -> UUID | None:
+    """The state change a state-notice key names — the inverse of `state_notice_key`.
+
+    **The renderer needs the change, and the row does not carry it.** `ScheduledSend`
+    has no `state_change_id` column: it has a `target_id` (the event) and a `send_key`,
+    and the key is where AD-7 put the change's id. So the renderer reads the key back
+    out to find the change whose facts it needs — the new time, the venue fingerprints,
+    the replacement event.
+
+    **The parser lives beside the builder**, for the same reason `digest_local_date_from_key`
+    does: a key shape parsed in two places is a key shape that will be parsed wrongly in
+    one of them.
+
+    **`None` means "this is not a state-notice key"**, and the caller treats it as a
+    vanished target rather than guessing — a key that cannot be read is a row that
+    cannot be rendered, and a mail about the wrong event is worse than no mail.
+
+    The parse is strict: exactly three `:`-separated parts — the user id, the literal
+    `"state_notice"`, and a real UUID.
+    """
+    parts = send_key.split(SEND_KEY_SEPARATOR)
+    if len(parts) != 3 or parts[1] != "state_notice":
+        return None
+    try:
+        return UUID(parts[2])
+    except ValueError:
+        return None
+
+
 def digest_key(*, user_id: UUID, local_date: date) -> str:
     """The daily Pulse Digest email — which in MVP **is** the Pulse Ping (FR-10).
 
@@ -119,5 +148,6 @@ __all__ = [
     "digest_local_date_from_key",
     "event_reminder_key",
     "personal_reminder_key",
+    "state_change_id_from_key",
     "state_notice_key",
 ]
