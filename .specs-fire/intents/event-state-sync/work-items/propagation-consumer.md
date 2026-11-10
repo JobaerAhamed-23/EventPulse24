@@ -4,12 +4,14 @@ title: The job that was always a stub — AD-17's propagation consumer
 intent: event-state-sync
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on:
   - saved-event-lifecycle-state
   - held-for-propagation-status
   - state-change-notice-model
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T06:26:57.512Z
 ---
 
 # Work Item: The job that was always a stub — AD-17's propagation consumer

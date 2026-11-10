@@ -403,3 +403,110 @@ duplicate. The key stays AD-7's; the cap is a mint-time rule resolved by `PRECED
   not a fresh template pass.
 - **FR-54 names no subject for `postponed`, `reinstated` or `superseded`**, which `ChangeKind`
   has. Item 7 needs three more written, or three kinds mapped onto the existing four.
+
+---
+
+## Work Item: propagation-consumer
+
+### Test Results
+
+| Suite | Result |
+|---|---|
+| `tests/worker/test_propagation.py` | **29 passed** (new file) |
+| `tests/worker/test_propagation_tasks.py` | **11 passed** (new file) |
+| `tests/ingestion/test_outbox.py` | **8 passed** (5 pre-existing + 3 new) |
+| `tests/worker/test_scheduling_tasks.py` | **18 passed** (17 pre-existing + 1 new) |
+| `lint-imports` | **19 contracts kept, 0 broken** |
+| `ruff check` / `ruff format` | clean |
+| `manage.py check` | no issues |
+| `makemigrations --check` | no changes detected — the design's central claim, held |
+| `tests/architecture/` | **840 passed** |
+| **Full backend suite** | **5429 passed, 16 failed** — all 16 pre-existing (see below) |
+
+**43 tests added.** Four were added during code review, pinning what it surfaced.
+
+### Tests proven able to fail
+
+Each mutation was applied to the source, the suite run, and the source restored.
+
+| Mutation | Caught by |
+|---|---|
+| The consumer adds a gate of its own | 18 tests, incl. `test_two_changes_racing_on_one_event_leave_the_newer_effect` |
+| The version handed to the lifecycle is the target's, not the change's | `test_a_sold_out_change_still_restamps_and_releases_the_sends` |
+| `CANCEL` releases the held rows instead of cancelling them | 4 tests, incl. `test_a_cancellation_releases_the_held_rows_it_cancels` |
+| The catalog is read once per user instead of once per change | `test_the_catalog_is_read_once_for_the_whole_change` (4 reads vs 1) |
+
+The first mutation is the one that matters most: **18 tests caught a gate the design says
+must not exist.** That is the evidence for D1 — the design's central claim is that the version
+gate inside the services is sufficient, and a suite that breaks when a second gate is added is
+what "sufficient" looks like when it is proven rather than asserted.
+
+### Acceptance Criteria Validation
+
+| Criterion | Status | Note |
+|---|---|---|
+| Reads the change, resolves the users through the reverse read, applies per user in one `personal` transaction each | met | `propagate` → `_apply_to_savers` → `_apply_to_user`; each service owns its own transaction |
+| Applies only if `event_version` exceeds the version on the `SavedEvent` — the gate inside the services, not duplicated | met | The consumer adds no gate; a mutation adding one breaks 18 tests |
+| Writes nothing itself; every mutation through a published service | met | AD-16; the module imports no app's models |
+| No transaction spans `catalog` and `personal` (AD-3) | met | The order is documented and the crash window is survivable by construction |
+| `mark_propagated` only once every affected user is done | met | `test_a_failing_user_leaves_the_change_unpropagated` |
+| All seven kinds handled per `LIFECYCLE_SEND_BEHAVIOUR` | met | `test_the_two_behaviour_maps_cover_the_same_kinds`; the personal side's map is total and has no default |
+| **Held rows are released** | met | `test_a_sold_out_change_still_restamps_and_releases_the_sends` (KEEP), `test_a_time_move_releases_the_held_rows_it_replaces` (REMINT), `test_a_cancellation_releases_the_held_rows_it_cancels` (CANCEL) |
+| Queues one FR-54 notice per affected user, respecting mute and the one-per-day cap | met | The mute and the cap live inside `raise_state_notice`; this item calls it |
+| Idempotent under every failure shape | met | Full re-run; partial run retried; older after newer; two changes racing |
+| A change affecting no users marks propagated and does nothing else | met | `test_a_change_nobody_saved_marks_propagated_and_touches_nothing` |
+| The backlog drains through the reconciler | met | `test_the_backlog_drains_through_the_reconciler` |
+
+### Corrections made during execution
+
+**1. The design's checklist said the residual-window test was "not deferred again".** It was
+still owed from `held-for-propagation-status`, and it is here now:
+`test_a_send_claimed_before_the_change_commits_can_still_go_out`. The seam the earlier item
+lacked exists because the notice does.
+
+**2. Two acceptance criteria were not pinned, and code review found them.** The work item asks
+for held rows released by the three behaviours, and for two changes racing. The suite had the
+`KEEP` case and the *sequential* out-of-order case — the parallel one and the `REMINT`/`CANCEL`
+cases were missing. All three added, and each was verified to fail under a mutation. The
+`CANCEL` mutation (release instead of cancel) caught **four** tests, two of them pre-existing:
+a held row that stayed `pending` would be picked up by the next sweep and sent — a reminder
+for an event that is not happening.
+
+**3. An N+1 against a batch API, on the one path that scales with the saver count.**
+`_current_start` called `get_public_events` — a read that exists precisely to batch — once per
+user, so a change to an event with 1000 savers cost 1000 identical catalog reads. Hoisted to
+one read per change and threaded through as a value, which also keeps it out of the per-user
+transaction. Pinned by `test_the_catalog_is_read_once_for_the_whole_change`.
+
+**4. Three stale docstrings, all saying the consumer did not exist.** `state_notices`'s
+`raise_state_notice` said it was "not wired to `propagate_state_change` yet";
+`scheduled_sends`'s module docstring said the same; `email_templates` said the notice was
+"rendered but never minted". All three were true when written and are false now. Corrected to
+say what is true instead — which is the only reason a docstring is worth maintaining.
+
+### Pre-existing failures (not caused by this work item)
+
+**16 failures, reproduced identically on stashed code** (the baseline run, same commit, same
+fixtures). They are date-expired fixtures, the same defect class the earlier items recorded:
+
+| Suite | Failures | Cause |
+|---|---|---|
+| `tests/e2e/test_timeline_and_conflict_proof.py` | 8 | Fixtures pinned to `2026-11-05`/`2026-11-06` instants that have since passed |
+| `tests/e2e/test_save_race.py` | 4 | Same class |
+| `tests/e2e/test_personal_events_and_saved_catalog.py` | 1 | Same class |
+| `tests/delivery/test_reminder_plan_api.py` | 1 | Same class — the `5d`/`2d` slots are now in the past |
+| `tests/ingestion/test_url_feed_read.py` | 1 | Same class — a `last_modified` pinned to `2026-11-06` |
+
+**The count grew from 8 to 16 between the previous item's report and now**, and it grew
+entirely by the date rolling over, not by this work: the baseline run on stashed code fails
+the same 16. They belong to `timeline-and-conflicts` and block CI on any branch until fixed.
+Recorded here rather than silently absorbed, because "the suite is green except for the ones
+that were already red" is only true if the red ones are enumerated.
+
+### Carried forward
+
+- **FR-54's four subjects are verbatim and `EventPulse24: `-prefixed**; `render_state_notice`
+  still produces `Update: {title}`. Item 7 (`notice-composition-and-email`) is an edit, not a
+  fresh template pass. Unchanged by this item, which raises notices but does not compose them.
+- **FR-54 names no subject for `postponed`, `reinstated` or `superseded`**, which `ChangeKind`
+  has. Item 7 needs three more written, or three kinds mapped onto the existing four.

@@ -1,10 +1,11 @@
 ---
 id: digest-card-state-fields
-title: The card cannot say an event is cancelled because the API never tells it — the digest state fields
+title: The card cannot say an event is cancelled because the API never tells it
+  — the digest state fields
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-04
 ---

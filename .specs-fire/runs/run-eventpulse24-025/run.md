@@ -26,17 +26,17 @@ work_items:
   - id: propagation-consumer
     intent: event-state-sync
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: digest-card-state-fields
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: polling-cadence-floors
     intent: event-state-sync
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: propagation-consumer
+current_item: digest-card-state-fields
 status: in_progress
 started: 2026-11-04T13:11:36.097Z
 completed: null
@@ -101,8 +101,8 @@ wide (12 work items)
 1. **held-for-propagation-status** (validate) — completed
 2. **saved-event-lifecycle-state** (validate) — completed
 3. **state-change-notice-model** (validate) — completed
-4. **propagation-consumer** (validate) — in_progress
-5. **digest-card-state-fields** (confirm) — pending
+4. **propagation-consumer** (validate) — completed
+5. **digest-card-state-fields** (confirm) — in_progress
 6. **polling-cadence-floors** (confirm) — pending
 7. **notice-composition-and-email** (confirm) — pending
 8. **notice-and-mute-api** (confirm) — pending
@@ -113,7 +113,7 @@ wide (12 work items)
 
 
 ## Current Item
-propagation-consumer (validate)
+digest-card-state-fields (confirm)
 
 ## Files Created
 (none yet)

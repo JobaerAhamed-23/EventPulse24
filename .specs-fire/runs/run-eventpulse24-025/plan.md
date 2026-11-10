@@ -116,3 +116,147 @@ Reference: `.specs-fire/intents/event-state-sync/work-items/held-for-propagation
 
 ---
 *Plan approved at checkpoint. Execution follows.*
+
+---
+
+---
+run: run-eventpulse24-025
+work_item: propagation-consumer
+intent: event-state-sync
+mode: validate
+checkpoint: plan (Checkpoint 2 of 2)
+approved_at: 2026-11-10
+---
+
+# Implementation Plan: AD-17's propagation consumer
+
+## Approach
+
+Build the caller between two finished halves. `ingestion` appends a versioned
+`EventStateChange`; `personalization` and `delivery` each publish a version-gated service
+that applies it. Nothing joined them until now.
+
+**The consumer adds no state of its own.** Every service it calls is both version-gated and
+version-storing, so the version on the row it applied to *is* the "this user is done" marker
+AD-17 asks for — written in the same transaction as the work it describes, so it cannot
+disagree with it. A retried partial run re-walks every saver; the ones already applied cost
+one indexed read each and change nothing.
+
+**The order is forced.** AD-3 forbids a transaction spanning `catalog` and `personal`, so the
+gap between the halves is permanent and the only question is which inconsistency survives it.
+Snapshot first: sends then carry an old version, and the sweep's AD-17 guard *holds* those rows
+rather than sending them. The reverse order would leave a user whose reminders were re-minted
+for the new time while their Timeline still showed the old one. The notice goes last, because
+it describes a state both halves have made true.
+
+**The personal side is not the same shape as the delivery side.** `SAVED_EVENT` stores a time
+and a version; `SCHEDULED_SEND` stores a due time computed from them. So `sold_out` and
+`detail_changed` change nothing the snapshot holds, and calling the snapshot updater for them
+would re-run conflict detection for an overlap that cannot have moved. They still reach the
+delivery side, because a held send needs its version re-stamped to be released.
+
+**One task per state change, paging savers internally.** A task per user multiplies the
+broker traffic by the saver count and buys nothing: the idempotency is in the services, not
+the task boundary.
+
+**A poisoned user is surfaced, not timed out.** `EventStateChange` is append-only with one
+mutable column, so there is nowhere to keep an attempts counter. The loop continues past a
+failing user, `propagated_at` stays NULL, and an alarm bounds the *silence*.
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `backend/worker/propagation.py` | The per-user loop, the per-kind dispatch, the alarm's count |
+| `backend/tests/worker/test_propagation.py` | The orchestration: ordering, idempotency, paging, failure |
+| `backend/tests/worker/test_propagation_tasks.py` | The task seam and the alarm |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `backend/apps/ingestion/services/outbox.py` | `StateChangeFacts` + `get_state_change` + `count_unpropagated_since`, published as plain data |
+| `backend/worker/tasks.py` | Replace the stub; add `report_stuck_propagation` to the tick |
+| `backend/shared/constants.py` | `PROPAGATION_ALARM_AFTER`, `LIFECYCLE_PERSONAL_BEHAVIOUR` |
+| `backend/tests/ingestion/test_outbox.py` | The consumer's cases, replacing the placeholder's |
+| `backend/tests/worker/test_scheduling_tasks.py` | The tick enqueues the new alarm |
+
+## Tests
+
+| Test File | Coverage |
+|-----------|----------|
+| `backend/tests/worker/test_propagation.py` | No savers; missing change; already propagated; per-kind dispatch; the times come from the change; ordering; idempotency; paging; a failing user; the backlog drains; the residual window; a stalled cursor |
+| `backend/tests/worker/test_propagation_tasks.py` | The task's reporting; the alarm; both behaviour maps cover every kind |
+| `backend/tests/ingestion/test_outbox.py` | The consumer marks a change nobody saved; a missing change is not an error |
+
+## Technical Details
+
+### No new table, no migration
+
+D1 is the design's central claim and it removes the migration entirely. The `EventStateChange`
+row gains nothing: no claim column, no attempts counter, no per-user cursor. `propagated_at`
+was already there.
+
+### The loop
+
+`worker/propagation.py` holds plain functions; `tasks.py` keeps a thin `@shared_task` — the
+shape `revalidate_public_pages` already uses, and testable without Celery.
+
+One page of savers at a time (`SAVERS_PAGE`), keyset-paged on the UUIDv7 `id`. **Not offset**:
+propagation runs while people are saving and unsaving the same event, and an offset page skips
+a row whenever an earlier one is deleted between pages — a user silently missed by a change
+that reached everyone else.
+
+Each user is applied in one `personal` transaction, inside the service that owns it. They are
+deliberately *not* wrapped in one transaction here: each service already makes its own write
+atomic, and wrapping them would put a `personal` transaction around the catalog read
+`delivery` needs — the shape AD-3 exists to forbid.
+
+**A failing user's failure is logged and the loop continues.** The change stays unpropagated,
+which is what surfaces it; the reconciler re-offers it, the healthy users no-op, and the broken
+one is retried. `propagated_at` stays NULL because setting it would be a lie, and the lie is
+worse: the reconciler would stop offering, and the user would be silently left on the old
+state forever.
+
+### The version comes from the change, not from the live event
+
+`after` carries `start_utc` / `end_utc` for the kinds that moved them. Reading the live
+`Event` instead would pair *this* change's version with *the latest* times, which is wrong
+whenever several changes are in flight — the exact case `event_writes` creates by appending
+one change per kind per poll.
+
+### The hold's only exit
+
+Every kind reaches the delivery side, including the two the personal side skips. A `sold_out`
+or `detail_changed` moves nothing the snapshot stores, but it still bumps the catalog's
+version — so the sweep's guard has already *held* this user's pending sends, and
+`apply_lifecycle_change`'s `KEEP` branch clearing `held_at` is what releases them.
+
+**The version handed to `apply_lifecycle_change` is the change's, not the target's.**
+`resolve_target` reads it off the `SavedEvent` snapshot, and for those two kinds the snapshot
+deliberately never moves — so the target would carry the *old* version, the lifecycle would
+find nothing stale, and `held_at` would never be cleared. The hold's only exit would silently
+stop working for exactly the two kinds that most often cause one.
+
+### The alarm
+
+`PROPAGATION_ALARM_AFTER` sits in `shared/constants.py` beside the other cadences, comfortably
+longer than `OUTBOX_RECONCILE_AFTER` (5 minutes): a change outliving 30 minutes is failing
+rather than merely waiting. `report_stuck_propagation` counts and reports — **counts only,
+never a user id or an event title** (AD-13).
+
+### The residual window, deferred here
+
+`held-for-propagation-status` deferred AD-17's accepted residual window to this item, "where
+the FR-54 notice that corrects the window is built and the seam exists". The seam exists now:
+a send claimed before the change commits can still go out, and the notice is what tells the
+user their reminder was for the old time.
+
+## Based on Design Doc
+
+Reference: `.specs-fire/intents/event-state-sync/work-items/propagation-consumer-design.md`
+(Checkpoint 1 approved), with D1's "no per-user marker" proven rather than assumed — every
+service called here is version-gated *and* version-storing.
+
+---
+*Plan approved at checkpoint. Execution follows.*
