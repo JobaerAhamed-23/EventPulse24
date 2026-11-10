@@ -820,10 +820,12 @@ intents:
         depends_on:
           - state-change-notice-model
       - id: digest-card-state-fields
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T07:16:41.454Z
       - id: detail-overlap-notice
         status: pending
         complexity: medium
@@ -831,7 +833,7 @@ intents:
         depends_on:
           - saved-event-lifecycle-state
       - id: polling-cadence-floors
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on: []
@@ -898,17 +900,18 @@ runs:
         - id: digest-card-state-fields
           intent: event-state-sync
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T07:16:41.454Z
+        - id: polling-cadence-floors
+          intent: event-state-sync
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: polling-cadence-floors
-          intent: event-state-sync
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: notice-composition-and-email
           intent: event-state-sync
           mode: confirm
@@ -951,7 +954,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: digest-card-state-fields
+      current_item: polling-cadence-floors
       started: 2026-11-04T13:11:36.097Z
   completed:
     - id: run-eventpulse24-001

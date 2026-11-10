@@ -1,72 +1,90 @@
 ---
 run: run-eventpulse24-025
-work_item: propagation-consumer
+work_item: digest-card-state-fields
 intent: event-state-sync
 generated: 2026-11-10
-mode: validate
+mode: confirm
 ---
 
-# Implementation Walkthrough: The job that was always a stub
+# Implementation Walkthrough: The card that could not say an event was cancelled
 
 ## Summary
 
-AD-17's propagation consumer now exists. `ingestion` appends a versioned `EventStateChange`
-when a source moves an event; this job applies that change to every user who saved the
-event — rewriting their snapshot, their reminders, and raising one calm correction notice.
+FR-53's testable consequence is that *"a sold-out event is marked with a 'Sold Out' tag on
+the Pulse Card and Detail Screen."* The Detail Screen half was already done. The Pulse Card
+half was not — and could not be, because `DigestCardOut` carried neither the lifecycle status
+nor the sold-out flag. The card had no vocabulary for saying an event was no longer what it
+was.
 
-The design's central claim is what it does **not** add: no table, no migration, no per-user
-"done" marker. Every service it calls is version-gated *and* version-storing, so the version
-already written on the row is the marker — written in the same transaction as the work it
-describes, so it cannot disagree with it.
+This item gives the card that vocabulary: two fields, read live, joined in.
+
+**The design's central claim is what it does *not* add.** No column on the composition, no
+migration, no cache. The status is not *stored* — it is *read*, at request time, from the same
+catalog row the read was already fetching. The obvious implementation — a `status` column on
+`DigestComposition` — would have passed every acceptance criterion's letter and failed its
+third one, because a card composed at 09:00 would keep saying `scheduled` for an event
+cancelled at 10:00.
 
 ## Structure Overview
 
-The job sits in `worker/`, deliberately not in an app. `ingestion` owns the catalog,
-`personalization` owns saves, `delivery` owns sends, and the propagation is the *job* that
-joins them. Putting the loop inside `apps/ingestion` would satisfy every import contract
-while reading as exactly the thing AD-17 exists to prevent.
+The change touches four files, all of them in existing seams:
 
-It reads a change, pages the event's savers, and applies each one in three steps — snapshot,
-then sends, then the notice. The order is forced, not chosen: AD-3 forbids a transaction
-spanning `catalog` and `personal`, so the crash gap is permanent, and only one order leaves a
-survivable inconsistency.
+```text
+┌──────────────────────────────────────────────┐
+│  ingestion · catalog_read                    │
+│  PublicEvent += is_sold_out                  │
+│  (the same fact PublicEventDetail had)       │
+└───────────────────┬──────────────────────────┘
+                    │ get_public_events — ONE batched read
+                    │ (already there; the card already joined it)
+┌───────────────────▼──────────────────────────┐
+│  personalization · digest_read               │
+│  DigestCard += status, is_sold_out           │
+│  _card_for_public  → the catalog's facts     │
+│  _card_for_personal → None, None             │
+└───────────────────┬──────────────────────────┘
+                    │
+┌───────────────────▼──────────────────────────┐
+│  personalization · schemas + api             │
+│  DigestCardOut += status, is_sold_out        │
+│  → OpenAPI → the TypeScript client           │
+└──────────────────────────────────────────────┘
+```
+
+The read already did the hard part. `_public_display_facts` batches `get_public_events` into
+one map, and `_card_for_public` already received the joined `PublicEvent`. **`status` was
+already on the object.** The card simply did not hand it over.
 
 ## Architecture
 
 ### Pattern Used
 
-Service Layer with published commands. The consumer holds no business logic of its own — it
-is an orchestrator that calls each module's published service and owns only the *ordering* and
-the *failure policy*.
+A **live-fact join**, distinct from the **persisted explanation** that AD-10 governs. The
+composition holds the *why* — bucket, tags, badge — and those are frozen at composition time
+on purpose, because the bucket the user saw this morning must not change while they look at
+it. The lifecycle status is a *what*, and a what has to be current.
 
-### Layer Structure
+The card already carried two live facts of exactly this kind: `tz_review_pending` (read from
+the catalog at request time) and `conflict` (read from the persisted pairs at request time).
+The new fields are a third and fourth of the same species, not a new kind of thing.
 
-```text
-┌──────────────────────────────────────────────┐
-│  ingestion (catalog)                          │
-│  appends EventStateChange, enqueues on commit │
-└───────────────────┬──────────────────────────┘
-                    │ outbox (plain data, no model)
-┌───────────────────▼──────────────────────────┐
-│  worker.propagation   ← the orchestrator      │
-│  pages savers, dispatches per kind           │
-└──────┬───────────────────────┬───────────────┘
-       │                       │
-┌──────▼─────────────┐ ┌───────▼────────────────┐
-│ personalization    │ │ delivery                │
-│ snapshot / cancel  │ │ lifecycle / notices     │
-│ reinstate          │ │                         │
-└────────────────────┘ └────────────────────────┘
-```
+### The three facts that settled the design
+
+1. **`DigestComposition` cannot hold it.** Append-only, `append_only_mutable = frozenset()` —
+   *"Nothing about a composition becomes known after it is written."* A status stored there
+   would be written at composition time, and frozen.
+2. **AD-10 says the composition explains *why*, not *what*.** The bucket, the tags and the
+   badge are a fact about the user's day. The event's lifecycle is a fact about the event.
+3. **The read already joins the catalog's current facts.** The status was *already on the
+   object* the card was built from. This is plumbing, not a new read.
 
 ### Data flow
 
-1. A poll moves an event. `ingestion` appends one `EventStateChange` **per kind** and
-   enqueues `worker.tasks.propagate_state_change` on commit.
-2. The reconciler re-offers anything still unpropagated after five minutes.
-3. The consumer reads the change as plain data, pages the savers by keyset, and applies each
-   one: snapshot → sends → notice.
-4. `propagated_at` is set only when every saver applied without raising.
+1. The user requests the digest.
+2. `_public_display_facts` makes **one** batched `get_public_events` call — unchanged.
+3. `_card_for_public` hands `public.status` and `public.is_sold_out` to the card.
+4. The endpoint passes both to `DigestCardOut`; the OpenAPI schema carries them; the
+   TypeScript client is regenerated from it.
 
 ## Files Changed
 
@@ -74,147 +92,143 @@ the *failure policy*.
 
 | File | Purpose |
 |------|---------|
-| `backend/worker/propagation.py` | The per-user loop, the per-kind dispatch, the alarm's count |
-| `backend/tests/worker/test_propagation.py` | The orchestration: ordering, idempotency, paging, failure |
-| `backend/tests/worker/test_propagation_tasks.py` | The task seam and the alarm |
+| (none) | — |
 
 ### Modified
 
 | File | Changes |
 |------|---------|
-| `backend/apps/ingestion/services/outbox.py` | `StateChangeFacts`, `get_state_change`, `count_unpropagated_since` — published as plain data |
-| `backend/worker/tasks.py` | The stub replaced; `report_stuck_propagation` added to the tick |
-| `backend/shared/constants.py` | `PROPAGATION_ALARM_AFTER`, `LIFECYCLE_PERSONAL_BEHAVIOUR` |
-| `backend/apps/delivery/services/state_notices.py` | Docstring: the notice is now raised |
-| `backend/apps/delivery/services/scheduled_sends.py` | Docstring: the module is now the delivery half of AD-17 |
-| `backend/apps/delivery/services/email_templates.py` | Docstring: the notice is now minted, not merely rendered |
-| `backend/tests/ingestion/test_outbox.py` | The consumer's cases, replacing the placeholder's |
-| `backend/tests/worker/test_scheduling_tasks.py` | The tick enqueues the new alarm |
+| `backend/apps/ingestion/services/catalog_read.py` | `PublicEvent` gains `is_sold_out`; `_to_public_event` fills it |
+| `backend/apps/personalization/services/digest_read.py` | `DigestCard` gains `status` and `is_sold_out`; the four construction sites fill them |
+| `backend/apps/personalization/schemas.py` | `DigestCardOut` gains the same two |
+| `backend/apps/personalization/api.py` | The endpoint passes them through; the OpenAPI description was updated |
+| `backend/tests/personalization/test_digest_api.py` | 9 tests |
+| `backend/tests/api/test_catalog_read_service.py` | 3 tests |
+| `frontend/lib/api/openapi.json` | Regenerated |
+| `frontend/lib/api/schema.ts` | Regenerated |
 
 ## Domain Model
 
-No new entities. **That is the design's claim**, and `makemigrations --check` confirms it.
+**No new entities. No new fields on any model. No migration.** `makemigrations --check` reports
+no changes detected — which is the design's claim, held.
 
 | Entity | Change | Business Rules |
 |--------|--------|----------------|
-| `EventStateChange` | none | Append-only. `propagated_at` is its one mutable column, so there is nowhere to keep an attempts counter |
-| `SavedEvent` | none | Its `event_version` *is* the "this user is done" marker |
-| `ScheduledSend` | none | Its `event_version` is the marker for the delivery half; `held_at` came from item 1 |
+| `DigestComposition` | **none** | Its `append_only_mutable = frozenset()` is the reason this item is a read and not a write |
+| `Event` | **none** | `status` and `is_sold_out` already exist on the catalog row; this item only makes them reachable from the read the digest already makes |
+| `PublicEvent` | `is_sold_out` added | Plain data across the wall (AD-3). Required, not defaulted |
+| `DigestCard` | `status`, `is_sold_out` added | Both `| None`. `None` means "not applicable", not "fine" |
+| `DigestCardOut` | `status`, `is_sold_out` added | The wire shape |
 
 ## Key Implementation Details
 
-### 1. No per-user marker, and the suite proves it
+### 1. `is_sold_out` had to travel; `status` did not
 
-Every service called here is version-gated *and* version-storing:
+`PublicEvent` carried `status` but not `is_sold_out`. `PublicEventDetail` carried both. So the
+one field that had to move was the one the digest's read happened to be missing — and adding it
+is the same one-line change `PublicEventDetail` already made, in the same module, for the same
+reason.
 
-| Service | Gate | Where the version lands |
-|---|---|---|
-| `update_saved_event_snapshot` | `new_version <= saved.event_version → False` | `SavedEvent.event_version` |
-| `cancel_saved_event` / `reinstate_saved_event` | same | `SavedEvent.event_version` |
-| `apply_lifecycle_change` | `event_version__gte=target.version → no-op` | `ScheduledSend.event_version` |
-| `raise_state_notice` | `event_version__gte → False` | `StateChangeNotice.event_version` |
+**This is not widening the public contract.** The docstring on `PublicEventCandidate` warns
+that *"widening `PublicEvent` would put digest-only fields on the public catalog's contract."*
+`is_sold_out` is **not** digest-only — it is already on the public contract, via
+`PublicEventDetail` and `apps/catalog/schemas.py`. This makes an existing fact reachable from
+the one read that lacked it.
 
-So a retried partial run re-walks every saver, and the ones already applied cost one indexed
-read each and change nothing.
+### 2. `None` is a fact; `"scheduled"` is a claim
 
-**The proof is a mutation, not an argument:** adding a gate of its own to the consumer breaks
-**18** tests. That is what "sufficient" looks like when it is proven rather than asserted.
+Both fields are `str | None` / `bool | None`, and every personal or missing branch says
+`None`. The alternative — defaulting a personal card to `"scheduled"` — would claim the
+catalog had an opinion about a row it has never seen, and the client could not tell "no
+lifecycle here" from "a live event that happens to be fine".
 
-### 2. The order is forced, and the hold is the safety net
+**Mutations 3 and 4 pin this.** Each of the two `None` branches was mutated to `"scheduled"`
+and each was caught.
 
-A crash between the two halves is permanent — AD-3 forbids the transaction that would make it
-atomic. Only one order is survivable:
+### 3. The two facts stay apart
 
-- **Sends first** → a user whose reminders were re-minted for the new time while their
-  Timeline still shows the old one. A reminder contradicting the calendar it came from.
-- **Snapshot first** → sends carrying the old version. And that state is already defended:
-  item 1's sweep guard *holds* any send below the catalog's version, so nothing wrong goes out
-  during the window. The next tick rewrites them.
+An event can be `scheduled` **and** sold out at the same time. A collapsed "state" enum
+could not say both, and the acceptance criterion forbids it. The backend's existing vocabulary
+is unchanged: `Event.Status` for the lifecycle, a separate flag for the tickets —
+`EventDetailFactsOut` already sets this precedent with the same two fields in the same shape.
 
-The notice goes last, because it describes a state both halves have made true.
+### 4. The FR-55 question was settled elsewhere, and the two answers agree
 
-### 3. The personal side is not the same shape as the delivery side
+FR-55 says *"event is removed from the digest"*, and `saved-event-lifecycle-state` settled it
+at the **candidate** stage: `digest_candidates.py:336` drops a save the catalog says is
+cancelled, before it can become a candidate.
 
-`SAVED_EVENT` stores a time and a version; `SCHEDULED_SEND` stores a due time computed from
-them. So `sold_out` and `detail_changed` change **nothing** the snapshot holds — calling the
-snapshot updater for them would re-run conflict detection for an overlap that cannot have
-moved. They still reach the delivery side, because a held send needs its version re-stamped
-to be released.
+**So a newly cancelled event never enters a composition at all.** A *newly* cancelled event is
+never a card. But a card composed *before* the cancellation is still on the digest — and that
+card must say `status="cancelled"`.
 
-Letting the snapshot's version lag is safe: every gate in this tree is `>` and not `==`.
+Removing it at read time would be a **second, different removal** with a different trigger
+than FR-55's, and it would break AD-10's rule that digest rows are served as stored. It would
+also make the digest flicker: a card the user was looking at would vanish.
 
-### 4. The version handed to the lifecycle is the change's
+**Both answers agree.** FR-55 removes at the door. This item marks what is already on the
+digest. The card tells the truth; tomorrow's composition will not contain the event at all.
 
-`resolve_target` reads the version off the `SavedEvent` snapshot — and for a `sold_out` the
-snapshot deliberately never moves. So the target would carry the *old* version,
-`apply_lifecycle_change` would find nothing stale, and `held_at` would never be cleared. The
-hold's only exit would silently stop working for exactly the two kinds that most often cause
-one.
+### 5. A cancelled card keeps its explanation
 
-The version is replaced with the change's before the call.
-
-### 5. A poisoned user is surfaced, not timed out
-
-`EventStateChange` is append-only, so there is no counter to retire a poisoned change with,
-and marking it propagated to stop the churn would claim a propagation that never happened and
-strand that user on the old state forever. The loop continues past a failing user,
-`propagated_at` stays NULL, and `report_stuck_propagation` bounds the **silence**.
+The state changed; the *why* did not. `test_a_cancelled_card_says_cancelled_and_stays_on_the_digest`
+asserts the bucket and the tags are untouched alongside the status — AD-10's rule, made
+executable.
 
 ## Security Considerations
 
 | Concern | Approach |
 |---|---|
-| PII in logs | Ids only — `state_change_id`, `event_id`, `user_id`, `kind`. No title, no address, no name (AD-13) |
-| The alarm's output | A count only, never a user id or an event title |
-| Model exposure across the wall | `get_state_change` returns a frozen dataclass, not the model — a caller holding the model could write it (AD-2/AD-4) |
-| New attack surface | None. No new endpoint, no new credential, no new external input, no new query parameter |
-| Transaction boundaries | No transaction spans `catalog` and `personal` (AD-3) |
+| PII | None. Two booleans and a status word — no title, no address, no name (AD-13) |
+| New attack surface | None. No new endpoint, no new parameter, no new credential, no new external input |
+| New query | None. The read reuses the batch it already made — the query-count tests pass unchanged |
+| The `status` value on the wire | The catalog's own `Event.Status`: one of four fixed strings chosen by the server. A client meeting an unknown value is no worse off than one meeting `null` |
+| Writes | None. No transaction, no migration, no wall crossing |
 
 ## Performance Considerations
 
 | Requirement | Implementation |
 |-------------|----------------|
-| One catalog read per change, not per saver | `_current_start` is hoisted into `propagate` and threaded through as a value. `get_public_events` is a batch read; asking it per saver would turn one read into one-per-saver on the only path that scales with the saver count |
-| Bounded fan-out | Savers are paged `SAVERS_PAGE` at a time, keyset-paged on UUIDv7 `id` |
-| A stalled cursor cannot spin forever | `PropagationCursorStalled` is raised when the cursor does not advance. A worker looping on page one makes no progress and raises nothing — that looks exactly like a slow job |
-| No per-row catalog query in the sweep | Item 1's guard already batches; unchanged |
+| **No new query** | `_public_display_facts` already batched `get_public_events`; the status rides on the `PublicEvent` that was already joined. `test_the_query_count_does_not_grow_with_the_number_of_cards` passes unchanged |
+| **No per-card catalog read** | The join happens once per card from an in-memory map, not a query |
+| **No recomputation at render** | Nothing is scored, ranked, or derived. AD-10's own architecture test still passes |
 
 ## Decisions Made
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Per-user marker | **None** | Every service called is version-gated *and* version-storing. A marker could disagree with the work it describes; the version on the row cannot |
-| Order of the halves | Snapshot → sends → notice | The only survivable one. Sends-first leaves a reminder contradicting the calendar; snapshot-first leaves sends the sweep already holds |
-| Fan-out shape | One task per state change, paging savers internally | A task per user multiplies broker traffic by the saver count and buys no idempotency |
-| The personal map | A separate `LIFECYCLE_PERSONAL_BEHAVIOUR`, total, no default | The two sides store different things, so the same shape would be wrong for two kinds. No default means a new kind fails a test rather than silently doing nothing |
-| Where the job lives | `worker/`, not an app | AD-17's "Prevents" clause names `ingestion` reaching across the wall. It is also nobody's flow — the propagation is the job that joins the others |
-| The bound on a poisoned change | An alarm, not a timeout | Append-only forbids a counter; setting `propagated_at` to stop the churn would be a lie that strands the user |
-| The catalog read's placement | Once per change, outside every transaction | AD-3, and it is the same fact for every saver |
+| Where the state lives | **Read at read time, not stored on the composition** | The composition is append-only and AD-10 says it explains *why*. A stored status would be frozen — and the wrong design would have passed every criterion's letter |
+| The personal card | **`None` for both fields** | "Not applicable" and "fine" are different facts. `"scheduled"` would claim the catalog had an opinion about a row it has never seen |
+| The vocabulary | **The backend's own, unchanged** | `Event.Status` plus a separate flag. A collapsed "state" enum could not say "scheduled and sold out" |
+| `is_sold_out` on `PublicEvent` | **Required, not defaulted** | No field on that dataclass has a default, so a new construction site cannot forget the flag and get a silently wrong `False` |
+| A cancelled card | **Stays on the digest, marked `cancelled`** | FR-55's removal is at the candidate stage and already shipped. Removing at read time would be a second removal, would break AD-10, and would make the digest flicker |
+| `status` as `str`, not `Literal` | **`str`** | `Event.Status` includes `superseded`, which the read cannot produce, so a `Literal` would be a narrower claim than the data model supports — and widening it later breaks the contract. `DigestCardOut`'s other vocabulary fields are `str` for the same reason |
+| The frontend | **Not touched** | `frontend-pulse-card-state` is the item that renders it, and it depends on this one. This item gives the API the facts |
 
 ## Deviations from Plan
 
-**None in substance.** One thing the design's checklist listed as owed — AD-17's accepted
-residual-window test, deferred from `held-for-propagation-status` — was delivered here, as the
-design promised, because the seam exists now: the notice is what corrects the window.
+**One, and it was found in review.** The endpoint's OpenAPI `description` enumerated what a
+card carries and was silent about the two new fields. The description is the document the
+frontend client is generated from, so an omission there is an omission in the *contract* — a
+client author reading the contract, not the source, would not learn that a card can say an
+event is cancelled, nor that both fields are `null` for a personal event. The description now
+states both fields, that they are read at request time, and the two reasons they are `null`.
 
-Two things were found during execution and code review and are recorded in the test report
-rather than hidden: the catalog read was an N+1 against a batch API (fixed, and pinned), and
-two acceptance criteria were not actually pinned by any test (three tests added, each verified
-to fail under a mutation).
+Nothing else changed from the plan.
 
 ## Dependencies Added
 
-None. No new package, no new library, no new service.
+None. No new package, no new library, no new service, no new model field.
 
 ## How to Verify
 
-1. **The consumer's own suite**
+1. **The item's own tests**
 
    ```bash
-   cd backend && uv run pytest tests/worker/test_propagation.py tests/worker/test_propagation_tasks.py -q
+   cd backend && uv run pytest tests/personalization/test_digest_api.py tests/api/test_catalog_read_service.py -q
    ```
 
-   Expected: `40 passed`.
+   Expected: `67 passed`.
 
 2. **The whole backend suite**
 
@@ -222,9 +236,9 @@ None. No new package, no new library, no new service.
    cd backend && uv run pytest tests/ -q
    ```
 
-   Expected: `5429 passed, 16 failed` — the 16 are pre-existing date-expired fixtures,
-   reproduced identically on stashed code (`git stash` + re-run). They belong to
-   `timeline-and-conflicts` and block CI on any branch.
+   Expected: `5440 passed, 16 failed` — the 16 are pre-existing date-expired fixtures,
+   reproduced identically on stashed code. They belong to `timeline-and-conflicts` and block CI
+   on any branch.
 
 3. **The architecture contracts**
 
@@ -244,27 +258,27 @@ None. No new package, no new library, no new service.
 
 5. **The design's proof, by hand**
 
-   Add a gate to the consumer and watch the suite break:
-
    ```python
-   # backend/worker/propagation.py, in _apply_to_user
-   if change.event_version <= change.event_version:
-       return
+   # backend/apps/personalization/services/digest_read.py, in _card_for_public
+   status="scheduled",   # was: public.status
    ```
 
-   Expected: `18 failed`. This is the evidence for D1 — the version gate inside the services is
-   sufficient, and a second gate would refuse work the services would have accepted.
+   Expected: `4 failed`. The card now says "scheduled" for an event the catalog has cancelled
+   — which is exactly the failure this item exists to prevent.
 
-6. **The alarm, by hand**
+6. **The contract, by hand**
 
-   A state change that nobody can propagate stays NULL and is counted by
-   `report_stuck_propagation` once it is older than `PROPAGATION_ALARM_AFTER` (30 minutes).
-   The log line carries a **count** and no user id, no address.
+   ```bash
+   cd /path/to/EventPulse24 && make client && git diff --stat frontend/lib/api
+   ```
+
+   Expected: `openapi.json` and `schema.ts` both change, and `schema.ts` gains
+   `status?: string | null` and `is_sold_out?: boolean | null` on `DigestCardOut`.
 
 ## Test Coverage
 
-- Tests added: **43** (29 in `test_propagation.py`, 11 in `test_propagation_tasks.py`, 3 in `test_outbox.py`)
-- Mutations proven able to fail: **4**, each applied, run, and reverted
+- Tests added: **12** (9 in `test_digest_api.py`, 3 in `test_catalog_read_service.py`)
+- Mutations proven able to fail: **5**, each applied, run, and reverted
 - Status: **passing**
 
 ## Ready for Review
@@ -272,32 +286,29 @@ None. No new package, no new library, no new service.
 - [x] All acceptance criteria met
 - [x] Tests passing
 - [x] No critical issues
-- [x] Documentation updated (three stale docstrings corrected)
+- [x] Documentation updated (the OpenAPI endpoint description)
 - [x] Developer notes captured
 
 ## Developer Notes
 
-- **The version gate is the marker.** Do not add a "have I done this user?" check here. It
-  would refuse work the services would have accepted, and nothing would come back to repair it.
-  The proof is the mutation above: 18 tests break.
-- **`EventStateChange` is append-only** — `append_only_mutable = frozenset({"propagated_at"})`,
-  Python-guarded and trigger-enforced for every role. No claim column, no attempts counter, no
-  per-user cursor. If a future change needs one, it needs a table in `catalog`.
-- **The times come from the change's `after`, never from the live `Event`.** A poll appends one
-  change per kind, so the live event already holds the *last* kind's facts. Pairing this
-  change's version with those times stamps a snapshot that never existed.
-- **`sold_out` and `detail_changed` skip the personal side but not the delivery side.** The
-  snapshot deliberately never moves for them, so the version handed to
-  `apply_lifecycle_change` must be the change's, not the target's — otherwise `held_at` is
-  never cleared and the hold's only exit silently stops working.
-- **A `CANCEL` must cancel the held rows, not release them.** A held row left `pending` is
-  picked up by the next sweep and sent — a reminder for an event that is not happening. The
-  mutation that got this wrong broke four tests.
-- **`_current_start` is called once per change.** If it moves back into the per-user path, a
-  popular event costs one catalog round-trip per saver.
-- **The pre-existing 16 failures are date-expired fixtures**, not regressions. They grew from
-  8 to 16 as the calendar rolled over. Fix them by anchoring to `timezone.now()`, not by
-  bumping a pinned constant.
+- **Do not move the status onto the composition.** It is read live because the composition is
+  append-only and because a frozen status is the whole bug. The test
+  `test_a_state_change_after_the_composition_is_reflected` writes the composition *before* the
+  cancellation and reads it *after* — it is the test that would catch the wrong design.
+- **The two `None` branches are load-bearing.** A personal card and a card whose catalog event
+  is gone both say `None`, not `"scheduled"`. A client cannot otherwise tell "no lifecycle
+  here" from "a live event". Mutations 3 and 4 pin each branch separately.
+- **`is_sold_out` was required, not defaulted**, on `PublicEvent`. Every other field on that
+  dataclass is required for the same reason: a new construction site should fail loudly rather
+  than produce a silently wrong `False`.
+- **`status` is `str`, not a `Literal`.** `Event.Status` contains `superseded`, which
+  `get_public_events` filters out — so a `Literal` over the three producible values would be a
+  narrower claim than the model supports, and widening it later would break the contract.
+- **A cancelled card stays on the digest.** That is not an oversight and not an FR-55
+  conflict. FR-55's removal is at the candidate stage and already shipped
+  (`digest_candidates.py:336`). This item marks what is already composed.
+- **The frontend does not render either field yet.** `frontend-pulse-card-state` is next, and
+  it depends on this item. The API now carries the facts; nothing displays them.
 
 ---
 *Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-025*

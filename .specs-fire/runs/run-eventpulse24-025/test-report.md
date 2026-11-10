@@ -510,3 +510,110 @@ that were already red" is only true if the red ones are enumerated.
   fresh template pass. Unchanged by this item, which raises notices but does not compose them.
 - **FR-54 names no subject for `postponed`, `reinstated` or `superseded`**, which `ChangeKind`
   has. Item 7 needs three more written, or three kinds mapped onto the existing four.
+
+---
+
+## Work Item: digest-card-state-fields
+
+**Mode:** confirm · **Tests added:** 11 · **Mutations proven able to fail:** 5
+
+### The change
+
+Two fields, read live and joined in:
+
+- `PublicEvent` gains `is_sold_out` (`catalog_read.py`) — the same fact `PublicEventDetail`
+  already carried, on the one read the digest already joins.
+- `DigestCard` gains `status: str | None` and `is_sold_out: bool | None` (`digest_read.py`).
+- `DigestCardOut` gains the same two (`schemas.py`), and the endpoint passes them through
+  (`api.py`).
+- The OpenAPI schema and the TypeScript client are regenerated.
+
+**Nothing was stored.** `DigestComposition` is untouched, and `makemigrations --check` reports
+no changes detected — which is the point. A status written at composition time would be frozen
+there, and an event cancelled at noon would keep showing as live until tomorrow's digest.
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `tests/personalization/test_digest_api.py` | **42 passed** (33 pre-existing + 9 new) |
+| `tests/api/test_catalog_read_service.py` | **25 passed** (22 pre-existing + 3 new) |
+| `tests/api/test_contract.py` + `test_openapi.py` | **3 passed** |
+| `tests/architecture/` | **840 passed** |
+| `tests/personalization/` + `tests/ingestion/` + `tests/api/` | **2188 passed**, 1 pre-existing failure |
+| Full backend suite | **5440 passed, 16 failed** — all 16 pre-existing |
+| `lint-imports` | **19 kept, 0 broken** |
+| `ruff check` / `ruff format --check` | **All checks passed!** / **524 files already formatted** |
+| `makemigrations --check --dry-run` | **No changes detected** |
+| `tsc --noEmit` (frontend) | **exit 0** |
+
+### Mutations
+
+Each was applied, run, and reverted.
+
+| # | Mutation | Caught by |
+|---|---|---|
+| 1 | `_card_for_public` hardcodes `status="scheduled"` — the frozen-status failure | **4 tests** |
+| 2 | `_card_for_public` hardcodes `is_sold_out=False` | **1 test** |
+| 3 | The personal branch defaults to `status="scheduled", is_sold_out=False` | **1 test** |
+| 4 | The "catalog event gone" branch defaults to `status="scheduled", is_sold_out=False` | **1 test** |
+| 5 | `_to_public_event` hardcodes `is_sold_out=False` — the flag never travels | **3 tests** |
+
+Mutation 1 is the important one: it is exactly the defect the item exists to prevent, and four
+tests fail on it — including `test_a_state_change_after_the_composition_is_reflected`, which
+writes the composition *before* the cancellation and reads it *after*. That test is the item's
+third acceptance criterion, made executable.
+
+Mutations 3 and 4 are the two `None` branches. They are worth pinning because "not applicable"
+and "fine" are different facts, and a client that cannot tell them apart will draw a sold-out
+badge on the user's own dentist appointment.
+
+### Acceptance criteria
+
+| Criterion | Evidence |
+|---|---|
+| `DigestCardOut` carries the lifecycle status and the sold-out flag, in the backend's existing vocabulary | `schemas.py`; `Event.Status` unchanged; `is_sold_out` separate from the status. Pinned by `test_the_status_and_the_sold_out_flag_are_separate_facts` |
+| Filled from the composition path, not from a per-card read at render time | The read already batched `get_public_events` into one map and joined the `PublicEvent` into the card. **No new query** — the query-count tests still pass unchanged (`test_the_query_count_does_not_grow_with_the_number_of_cards`) |
+| A card for an event whose state changed after composition reflects the change | `test_a_state_change_after_the_composition_is_reflected`. Mutation 1 fails it |
+| Whether a cancelled event remains in the digest is settled against FR-55 | Settled elsewhere and consistent: `digest_candidates.py:336` drops a cancelled save at the **candidate** stage, so a newly cancelled event is never composed. A card composed *before* the cancellation stays and says `cancelled` — pinned by `test_a_cancelled_card_says_cancelled_and_stays_on_the_digest`, which also asserts the explanation (bucket, tags) is untouched |
+| The schema change regenerates the OpenAPI contract and the frontend client (AD-19) | `make client` run; `frontend/lib/api/openapi.json` and `frontend/lib/api/schema.ts` regenerated; `test_contract.py` passes |
+| Contract tests for a live card, a sold-out card, a postponed card, and a cancelled card | Four tests, one per state, plus a personal card and a gone-event card |
+
+### Corrections made during the work
+
+**1. The "state change after composition" test needed a version bump.** The catalog's
+`guard_event_write` trigger refuses a lifecycle change without one, so the test's
+`event.status = "cancelled"; event.save()` was refused. The test now bumps `event_version`
+first — the way production does. Worth recording because the *naive* version of this test would
+have looked like it worked while silently changing nothing.
+
+**2. The frontend's vitest cannot start in this environment.** `Failed to start forks worker` —
+an `undici` module error, before any test runs. Reproduced identically on stashed code, so it
+is not caused by this change. The meaningful check for a type-only change is `tsc --noEmit`,
+which exits 0.
+
+### Pre-existing failures (not caused by this work item)
+
+**16 failures, reproduced identically on stashed code.** The same date-expired fixtures the
+previous item recorded:
+
+| Suite | Failures |
+|---|---|
+| `tests/e2e/test_timeline_and_conflict_proof.py` | 9 |
+| `tests/e2e/test_save_race.py` | 4 |
+| `tests/e2e/test_personal_events_and_saved_catalog.py` | 1 |
+| `tests/delivery/test_reminder_plan_api.py` | 1 |
+| `tests/ingestion/test_url_feed_read.py` | 1 |
+
+Verified by stashing the change and re-running exactly those five files: **the same 16 fail.**
+The count is up one from the previous item's report (15 → 16) because the calendar rolled over
+and one more fixture expired. Not caused by this work; it belongs to `timeline-and-conflicts`
+and blocks CI on any branch.
+
+### Carried forward
+
+- **The Pulse Card does not yet render either field.** `frontend-pulse-card-state` is the item
+  that does it, and it depends on this one. The API now carries the facts; nothing displays
+  them yet.
+- **FR-54's four verbatim subjects** and the `postponed`/`reinstated`/`superseded` gap are
+  unchanged — they belong to `notice-composition-and-email`.

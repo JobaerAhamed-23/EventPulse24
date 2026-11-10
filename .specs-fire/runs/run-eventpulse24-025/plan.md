@@ -260,3 +260,162 @@ service called here is version-gated *and* version-storing.
 
 ---
 *Plan approved at checkpoint. Execution follows.*
+
+---
+
+---
+run: run-eventpulse24-025
+work_item: digest-card-state-fields
+intent: event-state-sync
+mode: confirm
+checkpoint: plan (Checkpoint 1 of 1)
+approved_at: pending
+---
+
+# Implementation Plan: The digest state fields
+
+## Approach
+
+Give `DigestCardOut` the two facts the Pulse Card needs to say an event is not what it was:
+the event's **lifecycle status** and its **sold-out** flag.
+
+**The state is read at read time, not stored on the composition.** Three things in the code
+already settle this, and all three point the same way:
+
+1. **`DigestComposition` cannot hold it.** It is append-only with
+   `append_only_mutable = frozenset()` — *"Nothing about a composition becomes known after it
+   is written."* A status stored there would have to be written at composition time, and an
+   event cancelled at noon would keep showing as live until tomorrow's digest.
+2. **AD-10 says the composition explains *why*, not *what*.** The card's bucket, tags and
+   badge are the persisted explanation — a fact about the user's day. The event's lifecycle
+   status is not an explanation; it is a **live** fact about the event, and the card already
+   carries two of those: `tz_review_pending` and `conflict`.
+3. **The read already joins the catalog's current facts.** `_public_display_facts` calls
+   `get_public_events` — one batched lookup — and `_card_for_public` already joins the card to
+   that `PublicEvent`. The status is *already on the object*; the card simply does not hand it
+   over.
+
+So this is a plumbing change, not a new read and not a new store.
+
+**`is_sold_out` is the one field that has to travel.** `PublicEvent` carries `status` but not
+`is_sold_out`; `PublicEventDetail` carries both. Adding it to `PublicEvent` is the same
+one-line change `PublicEventDetail` already made, in the same module, for the same reason.
+
+### The one question this item does not get to decide alone
+
+FR-55 says *"event is removed from the digest"*, and `saved-event-lifecycle-state` settled it
+at the **candidate** stage: `digest_candidates.py:336` drops a save the catalog says is
+cancelled, before it can become a candidate.
+
+**So a cancelled event never enters a composition at all.** A *newly* cancelled event is
+never a card. But a card composed *before* the cancellation is still on the digest — and that
+is the case this item's third acceptance criterion is about. The card must then say
+`status="cancelled"`, because the alternative — the card silently disappearing from a
+composed digest — is a *different* removal than FR-55's, and it would break AD-10's rule that
+the digest is served as stored.
+
+**Both agree.** FR-55's removal happens at the door (a cancelled event is not a candidate);
+this item's card marks what is already on the digest. A card that says "Cancelled" is the
+truth about a composed row; the next day's composition will not contain the event at all.
+
+### The vocabulary
+
+The backend's own words, unchanged: `EventStatus` is `scheduled` / `postponed` / `cancelled`
+/ `superseded`, and `is_sold_out` is **separate** from the status. No new "state" enum that
+collapses the two — the acceptance criterion forbids it, and the Detail Screen's
+`EventDetailFactsOut` already sets the precedent with the same two fields.
+
+**A personal card has neither.** A personal event is the user's own agenda row: it is not
+cancelled by a source and it is not sold out. Both fields are absent rather than
+defaulted-to-something-false, so a client cannot mistake "no source, so no lifecycle" for
+"a live event that happens to be fine".
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| (none) | — |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `backend/apps/ingestion/services/catalog_read.py` | `PublicEvent` gains `is_sold_out`; `_to_public_event` fills it |
+| `backend/apps/personalization/services/digest_read.py` | `DigestCard` gains `status` and `is_sold_out`; `_card_for_public` fills them; `_card_for_personal` leaves them `None` |
+| `backend/apps/personalization/schemas.py` | `DigestCardOut` gains `status` and `is_sold_out` |
+| `backend/apps/personalization/api.py` | The endpoint passes the two through |
+| `frontend/lib/api/openapi.json` | Regenerated |
+| `frontend/lib/api/schema.ts` | Regenerated |
+
+## Tests
+
+| Test File | Coverage |
+|-----------|----------|
+| `backend/tests/personalization/test_digest_read.py` | A live card, a sold-out card, a postponed card, a cancelled card; a personal card carries neither |
+| `backend/tests/personalization/test_digest_api.py` | The wire shape: the two fields are on the card |
+| `backend/tests/ingestion/test_catalog_read.py` | `PublicEvent` carries `is_sold_out` |
+| `backend/tests/api/test_contract.py` | The OpenAPI schema matches the committed client |
+
+## Technical Details
+
+### 1. `PublicEvent.is_sold_out`
+
+```python
+@dataclass(frozen=True)
+class PublicEvent:
+    ...
+    status: str
+    is_sold_out: bool
+```
+
+`PublicEventDetail` already carries it (`catalog_read.py:472`), set from `event.is_sold_out`.
+The same field on `PublicEvent` is the same fact about the same event, and `PublicEventDetail`
+is a *different* wire shape for a different surface — the docstring on
+`PublicEventCandidate` says exactly this about widening a shape: *"Widening `PublicEvent`
+would put digest-only fields on the public catalog's contract."* `is_sold_out` is **not**
+digest-only — it is already on the public contract, via `PublicEventDetail` and
+`apps/catalog/schemas.py`. So this is not widening; it is making the existing fact reachable
+from the one read that lacked it.
+
+**It is a required field, not a default.** `PublicEvent` has no defaults on any field today;
+adding `= False` would let a new construction site forget it silently.
+
+### 2. `DigestCard.status` and `DigestCard.is_sold_out`
+
+Both `str | None` — `None` for a personal card, because "not applicable" and "scheduled" are
+different facts and the client must be able to tell them apart. The alternative, defaulting
+to `"scheduled"` for a personal card, would claim the catalog had an opinion about a row it
+has never seen.
+
+### 3. `_card_for_public` fills them; `_card_for_personal` does not
+
+`_card_for_public` already receives the joined `PublicEvent`. It hands over `public.status`
+and `public.is_sold_out`. When `public is None` — the event is gone from the catalog — both
+are `None`, because there is no catalog to have an opinion. The card already says
+`catalog_event_missing=True` in that case, and this does not contradict it.
+
+### 4. The `superseded` case
+
+`get_public_events` excludes superseded events (`_public_events`:
+`.exclude(status=Event.Status.SUPERSEDED)`), so a superseded event is simply **absent** — the
+card carries `catalog_event_missing=True` and `status=None`. That is the existing behaviour
+and this item does not change it. A superseded event is not "cancelled"; it is gone, and the
+card says so the way it already does.
+
+### 5. What this item does **not** do
+
+- **It does not remove a cancelled card from a composed digest.** FR-55's removal is at the
+  candidate stage and already shipped. This item makes a card that is *already composed* tell
+  the truth. Removing it at read time would contradict AD-10 ("digest rows are served as
+  stored and never recomputed at render") and would make the digest flicker.
+- **It does not touch the frontend.** The Pulse Card's *rendering* is
+  `frontend-pulse-card-state`'s work. This item gives the API the facts.
+- **It does not re-evaluate conflicts.** FR-55's conflict re-evaluation is propagation's, and
+  propagation shipped in the previous item.
+
+## Based on Design Doc
+
+None. This is a `confirm`-mode item: no design doc, one checkpoint — this plan.
+
+---
+*Plan awaiting approval.*

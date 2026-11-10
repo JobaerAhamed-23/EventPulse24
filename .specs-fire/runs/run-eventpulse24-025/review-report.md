@@ -212,3 +212,85 @@ verbatim subjects belong to item 7.
 
 3 findings, all fixed, each pinned by a test verified to fail without the fix. No findings
 left pending.
+
+---
+
+# Code Review: digest-card-state-fields
+
+**Scope:** 4 source files, 2 test files, 2 generated contract files. Reviewed against
+AD-2/AD-3/AD-6/AD-10/AD-13/AD-16/AD-19, FR-53, FR-55.
+
+### Files reviewed
+
+| File | Change |
+|---|---|
+| `backend/apps/ingestion/services/catalog_read.py` | `PublicEvent` gains `is_sold_out`; `_to_public_event` fills it |
+| `backend/apps/personalization/services/digest_read.py` | `DigestCard` gains `status` and `is_sold_out`; four construction sites fill them |
+| `backend/apps/personalization/schemas.py` | `DigestCardOut` gains the same two |
+| `backend/apps/personalization/api.py` | The endpoint passes them through; the OpenAPI description was updated |
+| `backend/tests/personalization/test_digest_api.py` | 9 tests |
+| `backend/tests/api/test_catalog_read_service.py` | 3 tests |
+| `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` | Regenerated |
+
+### Findings — fixed
+
+**1. The endpoint's OpenAPI description had become incomplete.**
+The description enumerated what a card carries ("the event's name, time and place, up to three
+Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant") and was
+silent about the two new fields. A client author reading the contract — not the source — would
+not learn that a card can say an event is cancelled or sold out, nor that both fields are
+`null` for a personal event. That is the one document the frontend is actually generated
+from, so an omission there is an omission in the contract. The description now states both
+fields, that they are read at request time rather than stored on the composition, and the two
+reasons they are `null`.
+
+**2. `is_sold_out` on `PublicEvent` was made a required field rather than defaulted.**
+`PublicEvent` has no defaults on any field, and adding `= False` would let a future
+construction site forget the flag and get a silently wrong `False` — a live event that
+happens to look not-sold-out. There is exactly one construction site, so the cost is zero
+today and the trap is removed tomorrow.
+
+### Considered, and deliberately not changed
+
+| Consideration | Decision |
+|---|---|
+| **Should the status be stored on `DigestComposition`?** | No. The composition is append-only with `append_only_mutable = frozenset()` and AD-10 says it explains *why* the event was chosen, not *what* the event currently is. Storing it would freeze the status at composition time — the exact failure the item exists to prevent. `makemigrations --check` reports no changes, which is the design's claim, held |
+| **Should a cancelled card be removed from the digest?** | No, and this was the item's one real decision. FR-55's removal already happens at the **candidate** stage (`digest_candidates.py:336`), so a newly cancelled event is never composed. A card composed *before* the cancellation is a different case, and removing it here would be a second removal with a different trigger — and would break AD-10's rule that digest rows are served as stored, and make the digest flicker. The card says `cancelled`; tomorrow's composition will not contain the event at all |
+| **Should a personal card carry `status="scheduled"`?** | No. `None` says "there is no lifecycle here"; `"scheduled"` would claim the catalog had an opinion about a row it has never seen, and the client could not tell the two apart. Pinned by mutation 3 |
+| **Should a superseded event show `status="superseded"`?** | No, and this is unchanged behaviour rather than a choice. `get_public_events` excludes superseded events, so a superseded event is simply absent — the card already carries `catalog_event_missing=True` and `status=None`. A superseded event is not "cancelled"; it is gone, and the card says so the way it already does |
+| **Should `status` be a `Literal` rather than `str`?** | No. `Event.Status` includes `superseded`, which the read cannot produce, so a `Literal` over the three producible values would be a narrower claim than the data model supports, and widening it later is a breaking change to the contract. The existing `DigestCardOut` fields (`slot`, `event_kind`, `source_badge`) are all `str` for the same reason — the client owns the vocabulary. `EventDetailFactsOut.status` is also `str` |
+| **Should the two fields be collapsed into one "state" enum?** | No — the acceptance criterion forbids it, and it would be wrong anyway: an event can be `scheduled` *and* sold out, and a collapsed enum could not say both. The backend's existing vocabulary is unchanged |
+
+### Architecture
+
+| Decision | How it holds |
+|---|---|
+| **AD-3 (no transaction spans `catalog` and `personal`)** | The read crosses the wall through `get_public_events`, the published interface that returns plain data. No model crosses it. `lint-imports`: 19 kept, 0 broken |
+| **AD-2 (only `apps.<X>` imports `apps.<X>.models`)** | `personalization` imports no catalog model. The two facts arrive as plain data on `PublicEvent` |
+| **AD-10 (no recomputation at render)** | Nothing is recomputed. The read joins the catalog's *current* facts through the batch it already made — **no new query**. The existing query-count tests pass unchanged, including `test_the_query_count_does_not_grow_with_the_number_of_cards`. AD-10's own architecture test still passes |
+| **AD-16 (write ownership)** | Nothing is written. `makemigrations --check`: no changes detected |
+| **AD-19 (OpenAPI is the contract)** | `make client` run; the schema and the TS client regenerated; `test_contract.py` passes |
+
+### Security
+
+| Concern | Assessment |
+|---|---|
+| **PII in logs or payloads** | None. Two booleans and a status word. No title, no address, no name |
+| **New attack surface** | None. No new endpoint, no new parameter, no new query, no new credential |
+| **New input** | None. Both fields are read from the catalog and copied. No user input reaches them |
+| **The `status` value on the wire** | It is the catalog's own `Event.Status` — one of four fixed strings chosen by the server. A client that receives an unknown value is no worse off than one that receives `null` |
+
+### One thing worth saying plainly
+
+**The status is not persisted, and that is the whole design.** The obvious implementation —
+store `status` on `DigestComposition` — would have passed every acceptance criterion's letter
+and failed its third one. A card composed at 09:00 and read at 12:00, for an event cancelled
+at 10:00, would have said `scheduled` for the rest of the day. `test_a_state_change_after_the_composition_is_reflected`
+writes the composition *before* the cancellation and reads it *after*, and mutation 1 — which
+hardcodes `status="scheduled"` — fails it, along with three others. The test that would have
+caught the wrong design exists and is proven able to fail.
+
+### Verdict
+
+Approved. No critical issues. No architecture contract broken. No migration. The one
+documentation gap found was the OpenAPI description, and it is fixed.

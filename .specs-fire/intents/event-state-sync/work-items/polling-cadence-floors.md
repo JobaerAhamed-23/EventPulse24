@@ -4,7 +4,7 @@ title: Four hours for the sources that matter — FR-53's detection floors
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-04
 ---

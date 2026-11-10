@@ -5,9 +5,11 @@ title: The card cannot say an event is cancelled because the API never tells it
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T07:16:41.454Z
 ---
 
 # Work Item: The card cannot say an event is cancelled because the API never tells it — the digest state fields
