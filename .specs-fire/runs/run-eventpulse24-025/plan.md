@@ -3376,3 +3376,131 @@ the four previously-unchecked ones, and none of them writes through the ORM; the
 the notice leaves the strip → `PUT /api/notices/events/{id}/mute` → `GET /api/events/{id}`
 reports `personal.muted is true` and `personal.notice` still names the event's newest
 notice.
+
+---
+
+---
+run: run-eventpulse24-025
+work_item: frontend-pulse-card-state
+intent: event-state-sync
+mode: confirm
+checkpoint: plan (Checkpoint 1 of 1)
+approved_at: 2026-11-10
+---
+
+# Implementation Plan: The Pulse Card has to be able to say what happened to the event
+
+## Approach
+
+FR-53's detection has been in the backend since `digest-card-state-fields`; FR-54's notice
+has been composed and sent since `notice-composition-and-email`. **Neither one reaches the
+reader.** The Pulse Card reads neither `status` nor `is_sold_out`, so a card whose event
+was cancelled — or sold out, or postponed — renders exactly as a live one does, and a
+reader is told nothing.
+
+**This item is the card's state treatment.** Three pieces, in dependency order:
+
+1. **One shared table of the words** (`frontend/lib/event-state.ts`) — the sentances and the
+   labels the card, the public page, the city card and the Detail screen all read.
+2. **The badge** (`frontend/components/state/event-state-badge.tsx`) — one pill, three
+   states, distinguished by **glyph and label**, never by a new colour.
+3. **The card renders it** (`frontend/components/digest/pulse-card.tsx`) — the badge in the
+   right-side zone, and the state named in the card's accessible name.
+
+### The decisions this item actually turns on
+
+**1. The design system has a sold-out badge and no cancelled or postponed one.** That is a
+real gap in `DESIGN.md` §`component.badge.soldout` and in the mockup, which covers only
+sold out. So the item **extends the sold-out anatomy** rather than inventing a second
+pill: the same `{color.surface.subtle}` fill, the same 1px `{color.border.strong}` stroke,
+the same `{radius.subtle}`, the same ink label. **The three states differ by their glyph
+and their label, and by nothing else** — no new colour token, no new spacing token, no new
+CSS variable. A second pill for cancellation would have been a second visual language for
+one kind of fact.
+
+**2. The sold-out glyph cannot be the design's `●`.** This is a collision *inside the
+design document*, and it is the reason the item needs an amendment at all.
+`component.indicator.conflict` is "a 6px **filled circle** in `{color.warn.amber}`", and
+`{color.signal.warn}` and `{color.warn.amber}` are **the same hex** in both themes — so a
+`●` in the badge and the conflict indicator would be the same shape in the same colour at
+the same scale, **in the same card**. `DESIGN.md` already requires the conflict indicator
+to be "distinct in shape and position from the Source Badge and Confidence Pulse", and the
+badge is a third signal on that card. So the sold-out glyph is **hollow** (`⊘`) where the
+conflict dot is solid. Cancelled is `✕` (a strike); postponed is `↦` (a deferral) —
+deliberately **not** a clock, because a postponed event has no new time yet
+(`POSTPONED = "postponed"  # date to be announced`).
+
+**3. The lifecycle state wins over the sold-out flag.** `DigestCardOut`'s own docstring
+says "An event can be `scheduled` and sold out at the same time, so the two are not
+collapsed into one 'state' enum" — so the frontend keeps **both** fields, and only the
+*badge* picks one. It picks the lifecycle state: a badge reading "Sold out" on a
+cancelled event would invite a reader to wait for tickets for an event that is not
+happening.
+
+**4. An unknown status shows nothing.** The vocabulary is the backend's, and `status` is
+`string | null` in the generated schema. `scheduled`, `null` and a status the frontend has
+never heard of all mean "no state" (ASSUMPTION-9). A card rendering "unknown" would be
+inventing a claim about the world.
+
+### The badge does not go in the trust row
+
+The trust row already holds the conflict indicator, the five-dot confidence pulse and the
+source badge, and it is a `flex items-center gap-2` that **does not wrap**. A fourth
+element with a visible label would overflow a 360px viewport. So the badge gets **its own
+row, immediately above the title row**, right-aligned — which is the right-side zone
+`DESIGN.md` names, and a *different place* from the conflict mark as well as a different
+shape.
+
+## Files to Create
+
+| File | Contents |
+|---|---|
+| `frontend/lib/event-state.ts` | The shared table: `STATUS_LINES`, `statusLineFor`, `SOLD_OUT_LINE`, `SOLD_OUT_LABEL`, `CardState`, `cardStateFor`, `STATE_LABELS`. |
+| `frontend/components/state/event-state-badge.tsx` | `EventStateBadge` — one pill, three glyphs, one colour. |
+| `frontend/components/digest/pulse-card-state.test.tsx` | The rendering tests, per state. |
+| `frontend/tests/event-state.test.ts` | The vocabulary-drift guard, read against the backend's `Event.Status`. |
+| `frontend/tests/event-state-badge-boundary.test.ts` | The badge's structural rules, asserted against the source. |
+
+## Files to Modify
+
+| File | Change |
+|---|---|
+| `frontend/components/digest/pulse-card.tsx` | The badge block; the state in `accessibleName`. |
+| `frontend/components/public-event/public-event-page.tsx` | The local `STATUS_LINES` table removed; the shared one imported. |
+| `frontend/components/city-page/city-event-card.tsx` | The sold-out sentence now comes from the shared table. |
+| `frontend/app/events/[id]/page.tsx` | The sold-out sentence now comes from the shared table. |
+| `frontend/tests/digest-home-a11y.test.tsx` | Two axe-core cases: the three states together, and sold-out-and-conflicted. |
+| `…/ux-designs/…/DESIGN.md` | Amendment **A-22**: the three-state badge, the `⊘` glyph, the corrected lifecycle trigger. |
+| `…/ux-designs/…/EXPERIENCE.md` | The badge's anatomy, placement, CTA pairing and accessibility, extended to the three states. |
+
+## Tests
+
+- **`components/digest/pulse-card-state.test.tsx`** — per state: the label, the accessible
+  name, the affordances, the coexistence with the conflict indicator, the unknown-status
+  case, the glyph shapes, and that the badge is not a control.
+- **`tests/event-state.test.ts`** — the backend's `Event.Status` is parsed out of
+  `backend/apps/ingestion/models.py` and compared against the frontend's vocabulary; the
+  five consuming surfaces are checked for literal copies of the sentences *and* of the
+  labels.
+- **`tests/event-state-badge-boundary.test.ts`** — the rules a rendering test cannot see:
+  no literal hex, no raw `rgb()`/`hsl()`, every colour from a token, no motion class, the
+  label in ink rather than the signal colour, three different glyphs, and none of them the
+  conflict indicator's filled circle.
+- **`tests/digest-home-a11y.test.tsx`** — two new axe-core audits.
+
+## Verification
+
+**Static checks** — `npx tsc --noEmit` clean, `npx eslint .` clean.
+
+**The new and changed tests** — the four files above.
+
+**The whole frontend suite** — `npx vitest run`. The baseline at `HEAD` is **99 files /
+1577 tests**; this item must land with **zero new failures**.
+
+**Node 24 is required.** `package.json`'s `engines` says `>=24.15`; under Node 20 every
+component test file is silently skipped and the suite reports a false pass.
+
+## Based on Design Doc
+
+`DESIGN.md` §`component.badge.soldout` (amended by A-22), §`component.indicator.conflict`;
+`EXPERIENCE.md` §`Component.Badge.SoldOut`. PRD FR-53, FR-54.

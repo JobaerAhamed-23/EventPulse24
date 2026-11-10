@@ -677,3 +677,197 @@ coverage findings by new tests that exercise paths nothing had exercised before.
 critical issues. No architecture contract broken. **19 import contracts kept, 0 broken.**
 No migration, and none needed. The full suite is at **5637 passed, 16 failed** — the same
 sixteen that fail on a clean worktree at `HEAD`.
+
+## Work Item: frontend-pulse-card-state
+
+### Scope
+
+| File | Action |
+|---|---|
+| `frontend/lib/event-state.ts` | created — the shared table |
+| `frontend/components/state/event-state-badge.tsx` | created — the badge |
+| `frontend/components/digest/pulse-card.tsx` | modified — the badge block, the accessible name, the share comment |
+| `frontend/components/public-event/public-event-page.tsx` | modified — the local table removed |
+| `frontend/components/city-page/city-event-card.tsx` | modified — the shared sentence |
+| `frontend/app/events/[id]/page.tsx` | modified — the shared sentence, and the lifecycle line |
+| `frontend/components/digest/pulse-card-state.test.tsx` | created — 31 tests |
+| `frontend/tests/event-state.test.ts` | created — 31 tests |
+| `frontend/tests/event-state-badge-boundary.test.ts` | created — 18 tests |
+| `frontend/tests/digest-home-a11y.test.tsx` | modified — two axe-core cases |
+| `frontend/app/events/[id]/page.test.tsx` | modified — four new cases |
+| `…/ux-designs/…/DESIGN.md` | modified — Amendment A-22 |
+| `…/ux-designs/…/EXPERIENCE.md` | modified — the badge's four bullets |
+
+### Linters
+
+`npx tsc --noEmit` clean · `npx eslint .` clean · `npx vitest run` **102 files / 1663 tests,
+0 failed**.
+
+### Findings requiring a change — fixed
+
+#### 1. The card documented a backend behaviour that is false (blocker)
+
+`pulse-card.tsx` claimed: *"A **cancelled** event has no public page: the catalog's public
+read excludes it, so `public_slug` is `null` and the share control is already gone."*
+
+**The backend does the opposite.** `backend/apps/ingestion/services/catalog_read.py:432-437`
+filters `publication_status=PUBLISHED` and excludes **only** `Event.Status.SUPERSEDED`, and
+`backend/apps/personalization/services/digest_read.py:416` sends `public_slug=public.slug`.
+A cancelled event therefore **keeps** its share control — and the comment described a
+change that had never been made.
+
+**Fixed** by replacing the claim with the truth: the cancelled card keeps its share,
+because a reader who wants to tell a friend that an event was cancelled needs a link to
+the page that says so. The control is rendered from `public_slug` and **never** from the
+state, so the card never guesses the server's publishing policy (AD-10). The test that
+"covered" this had been passing `public_slug: null` by hand — asserting the rendering rule
+and never the server contract — so it was split into two cases that do.
+
+#### 2. The badge's docstring described markup it did not have (blocker)
+
+`event-state-badge.tsx` claimed *"**`label` and `aria-label` are the same word.** … the
+visible label and the accessible name are the same string"*, and `EXPERIENCE.md` required
+`aria-label="Sold out"`. **There was no `aria-label` in the rendered markup.**
+
+**Fixed** by resolving this together with finding 3, below.
+
+#### 3. The badge was announced twice in one card (should-fix)
+
+The badge's visible text was in the accessibility tree, and the card's link `aria-label`
+also carried the state — so a browse-mode reader reached the badge, heard "Cancelled",
+then reached the link and heard "Cancelled" again.
+
+**Fixed** by making the badge **`aria-hidden`** and letting the link carry the fact. The
+link is the tap target and the only focusable thing in the card; the **visible** label
+stays, because it is what makes the state legible at a glance and what satisfies WCAG
+1.4.1. Hiding a badge from the accessibility tree hides it from nobody — it only stops
+the announcement happening twice. **This is a change of the design, not of the
+implementation**, and it is recorded as Amendment A-22 in `DESIGN.md` and in
+`EXPERIENCE.md`.
+
+#### 4. The typography did not match the design it cited (should-fix)
+
+The badge's docstring quoted `DESIGN.md`'s anatomy but omitted the weight and the
+tracking it did not implement: `--type-scale-meta-sm` is `500 12px/1.45`, so the label
+rendered at weight 500, and the tracking was `0.08em` where the design says `0.06em`.
+`DESIGN.md` and the mockup disagreed with each other on the tracking, and the build had
+silently picked the mockup's.
+
+**Fixed** by implementing the design's values — `font-semibold`, `tracking-[0.06em]` —
+and by recording in A-22 that **the mockup's mono family and `0.08em` are the mockup's own
+styling and are not adopted**, because `DESIGN.md` and the mockup already disagreed and
+the design wins. The badge's boundary test now pins the weight and the tracking.
+
+#### 5. `DESIGN.md`'s Do's-and-Dont's row named a status the backend cannot send (should-fix)
+
+The row read *"Lifecycle: appears when `event.status = sold_out` per FR-53"*. **`sold_out`
+is not a member of `Event.Status`** — the choices are `scheduled | postponed | cancelled |
+superseded`, and sold-out is the separate boolean field `event.is_sold_out`. A reader of
+the row would wire `status === "sold_out"` and get a badge that never appears.
+
+**Fixed** by amending the row to `event.is_sold_out is true` **or**
+`event.status ∈ {cancelled, postponed}`, and by recording the correction in A-22.
+
+#### 6. The "no duplicated sentences" guard covered four files and not the badge (should-fix)
+
+`tests/event-state.test.ts` listed four consumers. **The badge was not among them** — and
+the badge is the most likely place for a copy to reappear, because it renders a state's
+*label*. The Detail screen was listed but imported only `SOLD_OUT_LINE`, so it rendered
+no cancelled or postponed state at all while the public page did — an undocumented
+asymmetry.
+
+**Fixed** by adding the badge to the list, by adding a check for literal *labels* as well
+as literal sentences, and by making the Detail screen render the lifecycle line — so both
+surfaces now ask the shared table the same question.
+
+#### 7. The cancelled test was vacuous with respect to cancellation (should-fix)
+
+The test asserted that a cancelled card has no share control, but it **passed
+`public_slug: null` itself** — so it asserted the rendering of a null slug and nothing
+about cancellation.
+
+**Fixed** by splitting it: one case renders a cancelled card with the slug the server
+actually sends and asserts the share is **there**, and one renders it with a null slug and
+asserts the share is **gone**.
+
+#### 8. The "tells the two apart by position" test asserted a class name (nit)
+
+It asserted `conflict.closest(".relative.z-10")` — the current DOM structure, not the
+behaviour.
+
+**Fixed** by asserting what a reader perceives: the two are not the same element, they
+are in the same card, and they are not in the same parent.
+
+#### 9. The "is never red" guard was a bare substring match (nit)
+
+`expect(badgeCode).not.toContain("red")` passes only because no word in the badge happens
+to contain those three letters, and it says nothing about *which* token would be red.
+
+**Fixed** by scoping it to the colour utilities — `not.toMatch(/\b(?:bg|text|border|…)-
+(?:signal-)?(?:error|red|destructive)\b/)` — and by adding positive assertions that the
+badge renders the shared label and is `aria-hidden`.
+
+#### 10. The badge's position did not match the design's wording (nit)
+
+`DESIGN.md` said "top-right of the title row"; the build put the badge in **its own row**
+above the title row, because the trust row is at capacity.
+
+**Fixed** by amending the design's text and A-22 to say "in its own row immediately above
+the title row", so the spine matches the build.
+
+#### 11. Two names for one type (nit)
+
+`event-state-badge.tsx` re-exported `CardState` as `EventState` — a second vocabulary for
+one concept, which is the thing the shared table exists to prevent.
+
+**Fixed** by keeping `EventState` as a documented alias of `CardState` — the badge *is* the
+card's badge — and by saying so in the type's own docstring rather than leaving it as an
+unexplained re-export.
+
+### Found by the mutation pass — fixed
+
+#### 12. The lifecycle precedence was documentation and nothing else (blocker)
+
+**The item's own reasoning says the lifecycle state must win over the sold-out flag** — "a
+badge reading 'Sold out' on a cancelled event would invite a reader to wait for tickets
+for an event that is not happening" — and **no test covered it.** The card was never
+rendered with both facts at once, so the rule was a comment and nothing else.
+
+**Fixed** by adding a `describe` block for a card that is *both* sold out and cancelled,
+and four direct `cardStateFor` cases. The rule is now pinned by six tests instead of
+asserted in prose, and the mutation (inverting the precedence) is caught by four of them.
+
+### Things that are genuinely fine — no action
+
+- **The `⊘` glyph is a justified deviation from `DESIGN.md`, and the reason is sound.**
+  `styles/tokens.css` confirms `--color-warn-amber` and `--color-signal-warn` are the
+  same hex in both themes, and `conflict-indicator.tsx` renders a `size-[6px]
+  rounded-full bg-warn-amber` — a filled circle. A `●` in the badge would be the same
+  shape, colour and scale in the same card. The `⊘`/`✕`/`↦` set resolves it, and the
+  `↦`-not-clock rationale (a postponed event has no new time yet) is correct against
+  `POSTPONED = "postponed"  # date to be announced`.
+- **The shared table is a genuine single source.** The only occurrences of "tickets no
+  longer available" and "this event is not happening" outside `lib/event-state.ts` are in
+  test files. The local `STATUS_LINES` really did move out of `public-event-page.tsx`.
+- **`cardStateFor`'s precedence matches the backend.** `Event.Status` never contains
+  `sold_out`, so a cancelled or postponed event that is also sold out shows the lifecycle
+  state, and no branch is unreachable.
+- **The badge-as-a-`<span>` decision is right.** It is a fact, not a control, and
+  `EXPERIENCE.md` supports it.
+- **The `aria-hidden` glyph is correct** and matches the Source Badge and conflict
+  indicator convention.
+- **Test placement and style match the repo** — the colocated
+  `pulse-card-state.test.tsx`, `tests/event-state.test.ts` mirroring
+  `tests/digest-labels.test.ts`'s backend-parsing pattern, and
+  `tests/event-state-badge-boundary.test.ts` mirroring `tests/pulse-card-boundary.test.ts`.
+- **`withoutComments` is sound here.** The `//`-truncation does not hide a duplicate
+  sentence; a copy injected as code and as a comment is caught either way.
+- **The vocabulary-drift test is genuinely valuable.** `backendStatuses()` correctly scopes
+  to `class Event` and not `Source.Status` — there are **two** `class Status` choices
+  classes in `backend/apps/ingestion/models.py`, and a regex that took the first match
+  would have compared the registry's vocabulary against the event's.
+- **The a11y additions correctly audit a different document** — a cancelled card has one
+  fewer control — and `audit()` filters to serious and critical, as the gate requires.
+- **The `superseded` case is safe.** Superseded events are excluded from
+  `get_public_events`, so the card gets `status=null, catalog_event_missing=true` and
+  shows no badge.

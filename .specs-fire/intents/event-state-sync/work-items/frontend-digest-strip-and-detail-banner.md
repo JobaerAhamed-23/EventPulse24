@@ -4,7 +4,7 @@ title: Told once, calmly, where they already are — the strip and the banner
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - notice-and-mute-api
   - frontend-pulse-card-state

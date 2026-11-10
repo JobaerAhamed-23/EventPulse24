@@ -831,11 +831,13 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-10T07:16:41.454Z
       - id: detail-overlap-notice
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - saved-event-lifecycle-state
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T10:28:02.496Z
       - id: polling-cadence-floors
         status: completed
         complexity: medium
@@ -844,13 +846,15 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-10T08:02:11.281Z
       - id: frontend-pulse-card-state
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - digest-card-state-fields
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T11:13:26.617Z
       - id: frontend-digest-strip-and-detail-banner
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -938,24 +942,26 @@ runs:
         - id: detail-overlap-notice
           intent: event-state-sync
           mode: confirm
+          status: completed
+          current_phase: plan
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T10:28:02.496Z
+        - id: frontend-pulse-card-state
+          intent: event-state-sync
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T11:13:26.617Z
+        - id: frontend-digest-strip-and-detail-banner
+          intent: event-state-sync
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: frontend-pulse-card-state
-          intent: event-state-sync
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: frontend-digest-strip-and-detail-banner
-          intent: event-state-sync
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: e2e-proof-and-contract-tests
           intent: event-state-sync
           mode: confirm
@@ -963,7 +969,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: detail-overlap-notice
+      current_item: frontend-digest-strip-and-detail-banner
       started: 2026-11-04T13:11:36.097Z
   completed:
     - id: run-eventpulse24-001

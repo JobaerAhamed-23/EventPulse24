@@ -4,10 +4,12 @@ title: Sold out, cancelled, moved — the Pulse Card's state treatment
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - digest-card-state-fields
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T11:13:26.617Z
 ---
 
 # Work Item: Sold out, cancelled, moved — the Pulse Card's state treatment

@@ -4,10 +4,12 @@ title: Someone else moved the event and now it clashes — the calm overlap noti
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - saved-event-lifecycle-state
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T10:28:02.496Z
 ---
 
 # Work Item: Someone else moved the event and now it clashes — the calm overlap notice

@@ -1197,3 +1197,190 @@ exercised.
   exist.
 - **The mute is still not reachable from the mail.** The notice body links to the Detail
   Screen; the mute lives there, and this item gives the Detail Screen the button's write.
+
+## Work Item: frontend-pulse-card-state
+
+**Mode:** confirm · **Tests added:** 86 · **Mutations proven able to fail:** 9
+
+### The change
+
+FR-53's detection and FR-54's notice both existed in the backend, and **neither reached the
+reader**. The Pulse Card read neither `status` nor `is_sold_out`, so a card whose event had
+been cancelled — or sold out, or postponed — rendered exactly as a live one does.
+
+- **`frontend/lib/event-state.ts`** (new) — the shared table. `STATUS_LINES`,
+  `statusLineFor`, `SOLD_OUT_LINE`, `SOLD_OUT_LABEL`, `CardState`, `cardStateFor`,
+  `STATE_LABELS`.
+- **`frontend/components/state/event-state-badge.tsx`** (new) — `EventStateBadge`. One
+  pill, three states, one colour.
+- **`frontend/components/digest/pulse-card.tsx`** — the badge block, and the state named in
+  `accessibleName`.
+- **`frontend/components/public-event/public-event-page.tsx`** — the local `STATUS_LINES`
+  table removed; the shared one imported.
+- **`frontend/components/city-page/city-event-card.tsx`**, **`frontend/app/events/[id]/page.tsx`**
+  — the sold-out sentence now comes from the shared table.
+- **`frontend/app/events/[id]/page.tsx`** — **and** the Detail screen now shows the
+  cancelled and postponed lines, which it did not before.
+- **`frontend/tests/digest-home-a11y.test.tsx`** — two new axe-core audits.
+- **`DESIGN.md`** — Amendment **A-22**. **`EXPERIENCE.md`** — the badge's anatomy,
+  placement, CTA pairing and accessibility, extended to the three states.
+
+**No backend change.** The card's two facts already arrive on `DigestCardOut`.
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `components/digest/pulse-card-state.test.tsx` (new) | **31 passed** |
+| `tests/event-state.test.ts` (new) | **31 passed** |
+| `tests/event-state-badge-boundary.test.ts` (new) | **18 passed** |
+| `app/events/[id]/page.test.tsx` | **58 passed** (54 pre-existing + 4 new) |
+| `tests/digest-home-a11y.test.tsx` | **7 passed** (5 pre-existing + 2 new) |
+| `npx tsc --noEmit` | **clean** |
+| `npx eslint .` | **clean** |
+| Full frontend suite | **102 files / 1663 tests, 0 failed** |
+
+**86 tests added.** The baseline at `HEAD` is **99 files / 1577 tests** — **zero new
+failures**, 86 net new passing tests.
+
+**The backend is untouched by this item**, and the full backend suite stands at
+**5637 passed, 16 failed** — the same sixteen date-expired fixture failures as the
+established baseline.
+
+**Node 24 is required to run this suite at all.** `package.json`'s `engines` says
+`>=24.15`; under Node 20 every component test file is *silently skipped* and the suite
+reports a false pass of "398 passed". The first full run of this item reported exactly
+that, and the discrepancy was traced to undici 8 requiring a newer Node.
+
+### Mutations
+
+Each was applied to the source, the suite run, and the source restored. **9 of 9 caught.**
+
+| # | Mutation | Caught by |
+|---|---|---|
+| 1 | The lifecycle precedence is inverted — sold-out wins over cancelled | 4 tests: `it("shows the cancellation, not the sold-out")` and the three `cardStateFor` cases |
+| 2 | An unknown status falls back to "cancelled" | `it("says nothing about a status it has no word for")` |
+| 3 | All three glyphs become the same character | 5 tests: the boundary test's `it("gives each state a different glyph")` and the card's own |
+| 4 | The sold-out glyph becomes `●` — the conflict indicator's shape | 4 tests: `it("gives the sold-out state a hollow circle, not a solid one")` |
+| 5 | The label is put in the signal colour instead of ink | 2 tests: `it("puts the label in ink, not in the signal colour")` |
+| 6 | The badge loses its `aria-hidden` | `it("is hidden from assistive technology, because the card's link already names it")` |
+| 7 | The state is dropped from the card's accessible name | 4 tests: the three `it("names the state in the card's accessible name")` cases |
+| 8 | The badge is not rendered at all | 17 tests |
+| 9 | The Detail screen drops the lifecycle line | 3 tests: the three new Detail cases |
+
+**Mutation 1 survived the first draft of the suite, and that is the most useful thing in
+this report.** The item's own reasoning says the lifecycle state must win over the
+sold-out flag — "a badge reading 'Sold out' on a cancelled event would invite a reader to
+wait for tickets for an event that is not happening" — and **no test covered it.** The
+card was never rendered with both facts at once, so the precedence was documentation and
+nothing else. The fix added a `describe` block for a card that is *both* sold out and
+cancelled, and four direct `cardStateFor` cases. **The rule is now pinned by six tests
+instead of asserted in a comment.**
+
+**Mutation 4 is the collision this item had to resolve.** `DESIGN.md` specifies "a leading
+`●` glyph" for the sold-out badge — and `●` is *exactly* the conflict indicator's shape, in
+the same hex, at the same scale, in the same card. The boundary test now pins the hollow
+`⊘`, so the collision cannot come back through a well-meaning edit to the glyph map.
+
+### The three decisions this item turns on
+
+**1. The design system has a sold-out badge and no cancelled or postponed one.** That is a
+real gap in `DESIGN.md` §`component.badge.soldout` and in the mockup, which covers only
+sold out. **The item extends the sold-out anatomy** rather than inventing a second pill:
+the same `{color.surface.subtle}` fill, the same 1px `{color.border.strong}` stroke, the
+same `{radius.subtle}`, the same ink label. **The three states differ by their glyph and
+their label, and by nothing else** — no new colour token, no new spacing token, no new CSS
+variable. A second pill for cancellation would have been a second visual language for one
+kind of fact.
+
+**2. The sold-out glyph cannot be the design's `●`.** `component.indicator.conflict` is "a
+6px **filled circle** in `{color.warn.amber}`", and `{color.signal.warn}` and
+`{color.warn.amber}` are **the same hex** in both themes (`#8a5a1c` light / `#d8a86a`
+dark) — so a `●` in the badge and the conflict indicator would be the same shape in the
+same colour at the same scale, **in the same card**. `DESIGN.md` already requires the
+conflict indicator to be "distinct in shape and position from the Source Badge and
+Confidence Pulse", and the badge is a third signal on that card. The sold-out glyph is
+therefore **hollow** (`⊘`) where the conflict dot is solid. Cancelled is `✕` (a strike);
+postponed is `↦` (a deferral) — deliberately **not** a clock, because a postponed event
+has no new time yet (`POSTPONED = "postponed"  # date to be announced`). **This is
+recorded as Amendment A-22** in `DESIGN.md`, with the deviation and its reason.
+
+**3. The lifecycle state wins over the sold-out flag.** `DigestCardOut`'s own docstring
+says "An event can be `scheduled` and sold out at the same time, so the two are not
+collapsed into one 'state' enum" — so the frontend keeps **both** fields, and only the
+*badge* picks one. See mutation 1.
+
+### The two facts the review found and the item fixed
+
+**1. The docstring documented backend behaviour that is false.** The card's comment said
+"A **cancelled** event has no public page: the catalog's public read excludes it, so
+`public_slug` is `null` and the share control is already gone." **The backend does the
+opposite.** `backend/apps/ingestion/services/catalog_read.py:432-437` filters
+`publication_status=PUBLISHED` and excludes **only** `Event.Status.SUPERSEDED` — a
+cancelled event is still published, still has a public page, and
+`backend/apps/personalization/services/digest_read.py:416` sends its `public_slug`. So the
+cancelled card **kept** its share control, and the comment described a change that had
+never been made.
+
+**The fix is the honest one: the comment now says what the server actually does.** A
+cancelled event keeps its share, because a reader who wants to tell a friend that an
+event was cancelled needs a link to the page that says so. The share control is rendered
+from `public_slug` and **never** from the state — so if the catalog ever stops publishing
+cancelled events, the server sends `null` and the control disappears on its own, with no
+frontend change. The card never guesses the server's publishing policy (AD-10). The test
+that "covered" this was passing `public_slug: null` by hand, so it asserted the rendering
+rule and never the server contract; it has been split into two cases that do.
+
+**2. The badge was announced twice.** The badge's visible text was in the accessibility
+tree, and the card's link `aria-label` also carried the state — so a browse-mode reader
+reached the badge, heard "Cancelled", then reached the link and heard "Cancelled" again.
+**The badge is now `aria-hidden`** and the link carries the fact: the link is the tap
+target and the only focusable thing in the card. The **visible** label stays — it is what
+makes the state legible at a glance and what satisfies WCAG 1.4.1. Hiding a badge from the
+accessibility tree hides it from nobody; it only stops the announcement happening twice.
+**This is a change of the design, not of the implementation**, and it is recorded as
+Amendment A-22 in `DESIGN.md` and in `EXPERIENCE.md`.
+
+### Two ambiguities the item settled
+
+**1. Where does the badge go?** The trust row already holds the conflict indicator, the
+five-dot confidence pulse and the source badge, and it is a `flex items-center gap-2` that
+**does not wrap** — a fourth element with a visible label would overflow a 360px viewport.
+So the badge gets **its own row, immediately above the title row**, right-aligned. That is
+the right-side zone `DESIGN.md` names, and it is a *different place* from the conflict
+mark as well as a different shape. **`DESIGN.md` said "top-right of the title row" and the
+build puts it in its own row above it** — the design text was amended to match the build,
+with the reason.
+
+**2. What does the Detail screen say?** It said nothing. The public page said "Cancelled —
+this event is not happening." and the Detail screen — which has **more** room, not less —
+was silent, so the same event read as two different facts on two screens. The Detail screen
+now reads the same shared table, and the lifecycle line takes precedence over the
+sold-out line for the same reason the badge's does.
+
+### Acceptance criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| The card shows the event's sold-out state | met | `it("says so, in words")`; the badge renders `⊘ Sold out` |
+| The card shows the event's cancelled and postponed states | met | `it("says so, in words")` for each |
+| The state is never carried by colour alone (WCAG 1.4.1) | met | The label is visible text; the badge's boundary test pins the label in ink and the colour on the glyph |
+| The state is in the card's accessible name | met | Three `it("names the state in the card's accessible name")` cases; mutation 7 |
+| The state and the conflict indicator are told apart | met | By **shape** (a pill against a 6px dot) and by **place**; the three glyphs are distinct from each other and none is the conflict mark |
+| An unknown status shows nothing (ASSUMPTION-9) | met | `it("shows no badge for a status the frontend has no word for")`; mutation 2 |
+| The vocabulary does not drift from the backend | met | `tests/event-state.test.ts` parses `Event.Status` out of `backend/apps/ingestion/models.py` and compares it with the frontend's table |
+| The affordances match the state | met | A sold-out or postponed card keeps its share (the event still has a page); a cancelled card keeps its link to the Detail screen, where the explanation is |
+| No new colour, spacing or CSS token is introduced | met | The badge's boundary test asserts every colour comes from a token utility and that no literal hex or `rgb()`/`hsl()` appears |
+| The design document records what the build does | met | Amendment **A-22** in `DESIGN.md`; the badge's four bullets in `EXPERIENCE.md` |
+
+### What this item did not do
+
+- **The Detail Screen's "Save & Reminder" actions are not removed for a cancelled event.**
+  `EXPERIENCE.md` says the sold-out state replaces them with a calm line, and the Detail
+  screen already does that for a sold-out event. For a **cancelled** event it does not —
+  the action row is still rendered. That is the Detail screen's own state treatment, and
+  it belongs to the `frontend-digest-strip-and-detail-banner` item, which is the next one.
+- **The digest strip and the Detail banner are not built.** They are
+  `frontend-digest-strip-and-detail-banner`, and they need the API this run already has.
+- **The backend is unchanged.** Nothing here needed a schema change; the two facts were
+  already on `DigestCardOut` and on `EventDetailFactsOut`.

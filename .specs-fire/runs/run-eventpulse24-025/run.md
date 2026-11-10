@@ -61,24 +61,24 @@ work_items:
   - id: detail-overlap-notice
     intent: event-state-sync
     mode: confirm
-    status: in_progress
+    status: completed
     current_phase: plan
-    checkpoint_state: none
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: frontend-pulse-card-state
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: frontend-digest-strip-and-detail-banner
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: event-state-sync
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: detail-overlap-notice
+current_item: frontend-digest-strip-and-detail-banner
 status: in_progress
 started: 2026-11-04T13:11:36.097Z
 completed: null
@@ -106,14 +106,14 @@ wide (12 work items)
 6. **polling-cadence-floors** (confirm) — completed
 7. **notice-composition-and-email** (confirm) — completed
 8. **notice-and-mute-api** (confirm) — completed
-9. **detail-overlap-notice** (confirm) — in_progress
-10. **frontend-pulse-card-state** (confirm) — pending
-11. **frontend-digest-strip-and-detail-banner** (confirm) — pending
+9. **detail-overlap-notice** (confirm) — completed
+10. **frontend-pulse-card-state** (confirm) — completed
+11. **frontend-digest-strip-and-detail-banner** (confirm) — in_progress
 12. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-detail-overlap-notice (confirm)
+frontend-digest-strip-and-detail-banner (confirm)
 
 ## Files Created
 (none yet)
