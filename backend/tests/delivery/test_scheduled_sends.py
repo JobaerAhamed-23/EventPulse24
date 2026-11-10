@@ -763,3 +763,117 @@ def test_a_failing_send_resync_rolls_the_plan_back_too():
 
     after = ReminderPlan.objects.using(PERSONAL).get(user_id=user, target_id=target.target_id).slots
     assert after == before, "the plan was committed without its sends"
+
+
+# ---------------------------------------------------------------------------------------
+# AD-17's propagation hold: the release path
+#
+# The sweep holds a send whose event the catalog has moved past (`held_for_propagation-status`).
+# `apply_lifecycle_change` is what releases it. These tests pin that no behaviour strands a
+# held row — the failure mode that would stop a user's reminders with no error anywhere.
+# ---------------------------------------------------------------------------------------
+
+
+def held_of(user_id):
+    """Rows this user has sitting under a propagation hold."""
+    return ScheduledSend.objects.using(PERSONAL).filter(
+        user_id=user_id, held_at__isnull=False, status=ScheduledSend.Status.PENDING
+    )
+
+
+def _hold_all(user_id, *, at=NOW):
+    """Put every pending row under a hold, as the sweep's guard would."""
+    return pending_of(user_id).update(held_at=at)
+
+
+def test_a_keep_change_releases_a_held_row():
+    """Sold out: the event still happens, so the reminder must go out — and a held row
+    that is only re-stamped would otherwise stay held forever, because `KEEP` is the one
+    behaviour that neither cancels nor re-mints."""
+    user = uuid7()
+    v1 = a_target(version=1)
+    mint_for_plan(user_id=user, target=v1, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW)
+    assert _hold_all(user) == 4
+
+    v2 = SendTarget(**{**v1.__dict__, "version": 2})
+    result = apply_lifecycle_change(
+        user_id=user, target=v2, kind="sold_out", slots=ALL_SLOTS, actor=Actor.user(user), now=NOW
+    )
+
+    assert result["restamped"] == 4
+    assert held_of(user).count() == 0
+    assert pending_of(user).count() == 4
+
+
+def test_a_keep_release_does_not_re_time_the_send():
+    """`due_at` is deliberately untouched on release.
+
+    Only `sold_out` and `detail_changed` map to `KEEP`, and a time change is always its own
+    `time_moved` state change (one per kind), which is `REMINT`. So a `KEEP` change never
+    moved the event, and re-timing would move a reminder that nothing moved.
+    """
+    user = uuid7()
+    v1 = a_target(version=1)
+    mint_for_plan(user_id=user, target=v1, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW)
+    before = {r.id: r.due_at for r in pending_of(user)}
+    _hold_all(user)
+
+    v2 = SendTarget(**{**v1.__dict__, "version": 2})
+    apply_lifecycle_change(
+        user_id=user, target=v2, kind="sold_out", slots=ALL_SLOTS, actor=Actor.user(user), now=NOW
+    )
+
+    assert {r.id: r.due_at for r in pending_of(user)} == before
+
+
+def test_a_cancel_change_leaves_no_held_row_behind():
+    user = uuid7()
+    v1 = a_target(version=1)
+    mint_for_plan(user_id=user, target=v1, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW)
+    _hold_all(user)
+
+    v2 = SendTarget(**{**v1.__dict__, "version": 2})
+    apply_lifecycle_change(
+        user_id=user, target=v2, kind="cancelled", slots=ALL_SLOTS, actor=Actor.user(user), now=NOW
+    )
+
+    assert held_of(user).count() == 0
+    assert pending_of(user).count() == 0
+
+
+def test_a_remint_change_leaves_no_held_row_behind():
+    """The held rows are cancelled and the fresh ones are born unheld."""
+    user = uuid7()
+    v1 = a_target(version=1)
+    mint_for_plan(user_id=user, target=v1, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW)
+    _hold_all(user)
+
+    v2 = SendTarget(**{**v1.__dict__, "version": 2, "start_utc": START + timedelta(days=1)})
+    result = apply_lifecycle_change(
+        user_id=user, target=v2, kind="time_moved", slots=ALL_SLOTS, actor=Actor.user(user), now=NOW
+    )
+
+    assert result["minted"] > 0
+    assert held_of(user).count() == 0
+    assert all(r.held_at is None for r in pending_of(user))
+
+
+@pytest.mark.parametrize("kind", sorted(LIFECYCLE_SEND_BEHAVIOUR))
+def test_no_lifecycle_kind_strands_a_held_row(kind):
+    """Every one of the seven kinds, including `reinstated`.
+
+    A stranded hold stops a user's reminders with no error raised anywhere — quieter, and
+    worse, than the stale send the guard replaced. This is the test that would catch a new
+    `Kind` being added without a release path.
+    """
+    user = uuid7()
+    v1 = a_target(version=1)
+    mint_for_plan(user_id=user, target=v1, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW)
+    _hold_all(user)
+
+    v2 = SendTarget(**{**v1.__dict__, "version": 2})
+    apply_lifecycle_change(
+        user_id=user, target=v2, kind=kind, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW
+    )
+
+    assert held_of(user).count() == 0, f"{kind} left a row held with nothing to release it"

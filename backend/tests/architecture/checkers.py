@@ -150,7 +150,55 @@ def direct_write_calls(source: str) -> list[str]:
     ]
 
 
-def surface_files() -> list[Path]:
-    """The modules that take requests: every app's admin and API."""
+def api_modules() -> list[Path]:
+    """Every module that takes a request: a router, by shape.
+
+    **Every `*_api.py` too, not just `api.py`.** The tree has several routers that are
+    not named `api.py` — `catalog/preview_api.py`, `delivery/email_api.py`,
+    `delivery/notices_api.py`, `delivery/preferences_api.py`,
+    `personalization/detail_api.py` — and a glob of `apps/*/api.py` misses every one of
+    them. **A module that is missing from this list is exempt from AD-11**: nothing would
+    catch it composing a digest.
+
+    So the discovery is by *shape*, not by name: any module in an app whose name is
+    `api.py` or ends in `_api.py` takes a request. `config/api.py` is the root router and
+    is included by name.
+
+    **`config/health.py` is a router too** — it defines its own `Router` and is mounted
+    at `/health` — and it is *not* named `api.py`, so the shape rule misses it. It is
+    included by name, and the guard's whole purpose is closing holes: a request handler
+    outside the list is one nothing checks.
+    """
     apps = BACKEND_DIR / "apps"
-    return sorted([*apps.glob("*/admin.py"), *apps.glob("*/api.py"), BACKEND_DIR / "config/api.py"])
+    found = [
+        path
+        for path in apps.rglob("*.py")
+        if path.name == "api.py" or path.name.endswith("_api.py")
+    ]
+    return sorted([*found, BACKEND_DIR / "config/api.py", BACKEND_DIR / "config/health.py"])
+
+
+def surface_files() -> list[Path]:
+    """The modules that take requests: every app's admin and API.
+
+    **Every `*_api.py` too, not just `api.py`.** The tree has several routers that are
+    not named `api.py` — `catalog/preview_api.py`, `delivery/email_api.py`,
+    `delivery/notices_api.py`, `delivery/preferences_api.py`,
+    `personalization/detail_api.py` — and a glob of `apps/*/api.py` misses every one of
+    them. **A surface file that is missing from this list is exempt from AD-5**: nothing
+    would catch it writing through the ORM.
+
+    So the discovery is by *shape*, not by name: any module in an app whose name is
+    `admin.py`, `api.py` or ends in `_api.py` is a surface file. It is the union of the
+    two rules, and `api_modules()` is the request-handler half of it.
+
+    **`config/health.py` is a router**, mounted at `/health`, and it is a surface file
+    like any other — it is included by name for the same reason `config/api.py` is.
+    """
+    apps = BACKEND_DIR / "apps"
+    found = [
+        path
+        for path in apps.rglob("*.py")
+        if path.name == "admin.py" or path.name == "api.py" or path.name.endswith("_api.py")
+    ]
+    return sorted([*found, BACKEND_DIR / "config/api.py", BACKEND_DIR / "config/health.py"])

@@ -19,12 +19,13 @@ turns facts into words.
 |---|---|---|---|
 | reminder | transactional | **that event's reminders** | yes |
 | digest | **bulk** | **the Pulse Ping** | yes |
-| state notice | transactional | — | **no** — FR-53/54 is the next intent |
+| state notice | transactional | — | yes — `scheduled_sends.mint_state_notice` |
 
-**The state-change notice is rendered but never minted, and that is deliberate.** The work
-item says to write it now because it costs little and turns the next intent into an API and a
-trigger rather than a fresh template pass. It is **not dead code**, and this docstring is the
-place that says so — the next implementer should not "clean it up".
+**The state-change notice is rendered *and* minted.** `scheduled_sends.mint_state_notice`
+mints it and `state_notices.raise_state_notice` raises it, which is what
+`worker.propagation` calls — the AD-17 consumer. **Its subject is FR-54's, verbatim**,
+and the vocabulary that decides which subject a kind gets lives in `domain.notices` — one
+place, read by this renderer and by the tests that assert the PRD's literal strings.
 
 ---
 
@@ -47,6 +48,12 @@ and a daily sender that hypes is a daily sender that gets filtered.
 **A missing fact is stated, not hidden.** If the catalog has dropped the event, the body says
 "the event you saved" rather than inventing a title, and a blank line where a title should be
 looks like a bug in the product rather than in the catalog.
+
+**An untrusted name is folded before it is quoted.** The event's title comes from an
+ingested source record, so it is whatever the source said — and a `\n` in it would end
+the `Subject:` header and turn the rest of the title into headers of its own. The fold
+is `domain.notices.fold_title`, and it is applied **before** the facts reach this
+module, so the subject and the body quote the same name and cannot disagree about it.
 
 ---
 
@@ -77,6 +84,7 @@ from datetime import date
 
 from django.template.loader import render_to_string
 
+from domain.notices import MISSING_TITLE, notice_subject
 from ports.email import EmailMessage
 
 #: The templates' directory, relative to the app's `templates/` root.
@@ -142,19 +150,44 @@ class DigestFacts:
 class StateNoticeFacts:
     """What a state-change notice quotes.
 
-    **Rendered but not minted** — FR-53/54 is the next intent's work. See the module
-    docstring.
+    Minted by `scheduled_sends.mint_state_notice` and raised by
+    `state_notices.raise_state_notice` (FR-54).
+
+    **The facts are the change's, not the live event's.** A poll appends one
+    `EVENT_STATE_CHANGE` per kind, so the live event already holds the *last* kind's
+    facts; pairing a change's version with those times would state a move that never
+    happened. So `new_time_text` and `previous_time_text` come from the change's own
+    `after`/`before`, and `venue_name` comes from the catalog *now* — a venue move has no
+    name in the change row, because a fingerprint cannot be reversed to a name.
+
+    **The title is already folded.** `domain.notices.fold_title` did it, and it did it
+    before the value reached this dataclass, so the subject and the body quote the same
+    name — a body that escaped the fold and a subject that did not would make the mail
+    say two different things.
     """
 
+    #: The event's name, folded. `None` when the catalog has no name to give — the
+    #: renderer then says `domain.notices.MISSING_TITLE`.
     title: str | None
-    #: What happened, in the vocabulary the user sees ("moved to a new time", "cancelled").
+    #: The change's kind, in `domain.lifecycle.ChangeKind`'s vocabulary. The subject is
+    #: built from it, so a kind this module has not been taught raises rather than
+    #: producing a generic subject.
     change_kind: str
-    #: The new start, already in local wall-clock text. `None` when there is no new time.
-    local_time_text: str | None
+    #: The new start, already in local wall-clock text. `None` when the change carried no
+    #: new time — a cancellation, a sell-out.
+    new_time_text: str | None = None
     #: The old start, so the notice can say what it was before. `None` when there was
     #: none.
     previous_time_text: str | None = None
-    location: str | None = None
+    #: The venue's name, resolved from the catalog at render time. `None` when the
+    #: catalog holds no venue, or the change did not move one.
+    venue_name: str | None = None
+    #: The link to the event's Detail Screen, where the banner and the mute live.
+    detail_url: str | None = None
+    #: What the change means for the user's reminders. Derived from
+    #: `LIFECYCLE_SEND_BEHAVIOUR` by `domain.notices.reminder_consequence`, so the body
+    #: cannot promise something the send machinery did not do.
+    reminder_consequence: str | None = None
 
 
 def _render(template: str, context: dict) -> str:
@@ -244,24 +277,46 @@ def render_digest(facts: DigestFacts, *, to: str) -> EmailMessage:
 def render_state_notice(facts: StateNoticeFacts, *, to: str) -> EmailMessage:
     """Render a state-change notice.
 
-    **Rendered but not minted.** FR-53/54 is the next intent's work — this body exists so
-    that intent is an API and a trigger rather than a fresh template pass. See the module
-    docstring, so this is not mistaken for dead code.
+    **The subject is FR-54's, verbatim.** Four of them are fixed by the PRD:
+
+    - `EventPulse24: [event name] was cancelled.`
+    - `EventPulse24: [event name] was moved to [new date].`
+    - `EventPulse24: [event name] moved to [new location].`
+    - `EventPulse24: [event name] is sold out.`
+
+    **The subject is built by `domain.notices.notice_subject`, not here.** The vocabulary
+    — which kind says what, and which of those lines are the PRD's and which are ours —
+    is a contract, and a contract belongs in one place that every caller reads. Two
+    copies of "EventPulse24: " would drift, and the second copy would be the one a test
+    asserted against.
+
+    **A kind with no subject raises.** `domain.notices.subject_template` raises
+    `KeyError` for a kind it has not been taught, and that error is *not* caught here.
+    A notice reading "your saved event was cancelled" about an event that was not
+    cancelled is worse than a notice that did not go out, because the user reads it.
 
     **No unsubscribe URL.** A transactional message carries none (AD-20), and a state
-    notice is not a thing a user subscribes to.
+    notice is not a thing a user subscribes to. **The mute is the opt-out, and it lives
+    on the Detail Screen** — which is why the body links there.
     """
-    title = facts.title or "your saved event"
-    subject = f"Update: {title}"
+    title = facts.title or MISSING_TITLE
+    subject = notice_subject(
+        facts.change_kind,
+        title=title,
+        when=facts.new_time_text,
+        where=facts.venue_name,
+    )
     text_body, html_body = _render_both(
         "state_notice",
         {
             "title": facts.title,
             "display_title": title,
             "change_kind": facts.change_kind,
-            "local_time_text": facts.local_time_text,
+            "new_time_text": facts.new_time_text,
             "previous_time_text": facts.previous_time_text,
-            "location": facts.location,
+            "venue_name": facts.venue_name,
+            "detail_url": facts.detail_url,
+            "reminder_consequence": facts.reminder_consequence,
         },
     )
     return EmailMessage(

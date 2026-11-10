@@ -54,6 +54,39 @@ DEFAULT_INGESTION_CADENCE = {
 }
 # No source is polled more often than this (respect the feeds).
 INGESTION_CADENCE_MIN = timedelta(minutes=15)
+
+# ── FR-53: the detection floors ─────────────────────────────────────────────────────
+#
+# "The system re-ingests high-priority sources at least every 4 hours. Lower-priority
+# sources at least daily." Its consequence is the thing that matters: "A cancelled event is
+# detected by the system within 4 hours for high-priority sources and within 24 hours for
+# lower-priority sources."
+#
+# **These are ceilings, not defaults.** A default is a starting point; a ceiling is a
+# guarantee. A source polled every 24 hours cannot have a cancellation detected within 4
+# hours, so a cadence above its tier's ceiling is refused at the point it is written rather
+# than discovered later, when the product has already promised on it.
+#
+# **A source may poll more often than its tier requires.** The ceilings only forbid what the
+# guarantee cannot support. `DEFAULT_INGESTION_CADENCE` gives rss/jsonld/ics a 4-hour
+# default — inside the lower tier's 24-hour ceiling, and detecting changes in 4 hours
+# rather than 24 — and that stays.
+#
+# **The tier is derived from `acquisition_method`, not stored.** FR-17's order is the
+# codebase's own statement of which sources matter more, and the method is already on the
+# row. A second priority field would be a second opinion about a question the codebase has
+# already answered, and the two could disagree — and a priority that disagrees with the
+# method is a guarantee nobody can check.
+#
+# The split is FR-17's, at the boundary FR-53's parenthetical names: the PRD's §10.4 calls
+# high-priority sources "official sites", and the official sources are the API and
+# partnership ones. Crawl stays in the lower tier — it is the last resort, and giving it a
+# 4-hour floor would push the whole registry toward frequent crawling, which is exactly
+# what FR-17's ToS guard exists to prevent.
+HIGH_PRIORITY_METHODS = ("api", "partnership")
+HIGH_PRIORITY_CADENCE_MAX = timedelta(hours=4)
+LOW_PRIORITY_CADENCE_MAX = timedelta(hours=24)
+
 # AD-7 scheduling: at most this many sources claimed per tick; a claim older than the TTL is a
 # lost job (a worker died) and the source becomes claimable again.
 SCHEDULE_BATCH = 100
@@ -864,6 +897,32 @@ SEND_CLAIM_TTL = timedelta(minutes=5)
 # changes the other.
 SEND_SWEEP_BATCH = 100
 
+# AD-17: how long a send may sit held for propagation before it is reported as stuck.
+#
+# **The hold itself is correct and has no timeout** — a held row is one the catalog has moved
+# past, and sending it would be the bug this guard exists to prevent. What needs a bound is
+# nobody *releasing* it: propagation is what clears `held_at`, and if propagation is broken
+# the user's reminders stop with no error anywhere. That failure is quieter than the one being
+# fixed, so it gets an alarm rather than a timeout. Nothing is ever sent because this elapsed.
+#
+# **Comfortably longer than the outbox's own recovery.** `OUTBOX_RECONCILE_AFTER` re-offers an
+# unpropagated change after 5 minutes, so a hold outliving 30 minutes means the consumer is
+# failing rather than merely slow — the thing worth waking someone for.
+HELD_SEND_ALARM_AFTER = timedelta(minutes=30)
+
+# AD-17: one page of the users affected by one event's state change.
+#
+# **A page, not a limit.** Propagation must reach *every* saver of a popular event, so the
+# read is paged to exhaustion — this number bounds one round trip, not the work. A cap that
+# silently dropped the tail would make a state change reach some users and not others, which
+# is the exact failure AD-17's per-user idempotency exists to rule out.
+#
+# **Keyset, not offset**, which is why the page can be this large without a long transaction:
+# each page is an index range scan on `saved_event_event_idx`, and no page holds a lock across
+# the next one. Propagation runs while people save and unsave, and an offset page would skip a
+# row whenever an earlier one was deleted between pages.
+SAVERS_PAGE = 500
+
 # AD-7: how many times a provider failure is retried before the row is recorded as failed.
 #
 # **A bound, not a hope.** A permanently-refused address — a full mailbox, a bounced domain —
@@ -876,6 +935,27 @@ SEND_SWEEP_BATCH = 100
 # left waiting on a retry ladder that takes hours to climb. The send key is the provider's
 # idempotency key (AD-7), so a retry cannot produce a second email.
 SEND_MAX_ATTEMPTS = 3
+
+
+# FR-54: how many open state-change notices the digest strip shows.
+#
+# **A few, not a history.** FR-54's promise is "one calm correction", and the strip is where
+# that promise is kept or broken: a strip that grows without bound is a wall of corrections,
+# which is the spam FR-54 exists to prevent. There is no inbox to page through, so this is a
+# **fixed bound, not a page size** — the client cannot ask for more, and there is no "load
+# more" to build.
+#
+# **Five, not three.** Three is the number of Pulse Card slots, and the strip is not cards:
+# a notice is a correction the user may not act on at all, and a notice can exist for an
+# event the user has since un-saved — so it need not correspond to a card they saw. Five
+# leaves room for a busy day without becoming a list.
+#
+# **A bound, not a page.** `SAVERS_PAGE` is a page because propagation must reach *every*
+# saver of a popular event. This is the opposite case: the strip is a summary, and the
+# notices beyond the bound are reachable from the Detail screen. So unlike `SAVERS_PAGE`,
+# dropping the tail here loses nothing — the user who needs the sixth notice opens the
+# sixth event.
+NOTICE_STRIP_LIMIT = 5
 
 
 class LifecycleSendBehaviour(StrEnum):
@@ -909,6 +989,60 @@ LIFECYCLE_SEND_BEHAVIOUR = {
     "sold_out": LifecycleSendBehaviour.KEEP,
     "detail_changed": LifecycleSendBehaviour.KEEP,
 }
+
+
+class LifecyclePersonalBehaviour(StrEnum):
+    """What an event state change does to a user's **saved event** (AD-17, AD-21)."""
+
+    #: Re-stamp the snapshot's time and version, and re-judge its conflict pairs.
+    RESTAMP = "restamp"
+    #: The event is not happening: bump the version and close the pairs.
+    CANCEL = "cancel"
+    #: Live again: bump the version. The pairs a cancellation closed stay closed (AD-21 D24).
+    REINSTATE = "reinstate"
+    #: Nothing the snapshot stores changed.
+    NONE = "none"
+
+
+# AD-17's "what each change does", mapped for `personalization`. Keyed by
+# `EventStateChange.Kind` values, by value, for the same reason its `delivery` sibling is:
+# `shared` is below `apps` and cannot import the enum.
+#
+# **It is deliberately not the same shape as `LIFECYCLE_SEND_BEHAVIOUR`.** `SAVED_EVENT`
+# stores a start, an end and a version; `SCHEDULED_SEND` stores a due time computed from
+# them. So `sold_out` and `detail_changed` — which `delivery` must still act on, because a
+# held send needs its version re-stamped to be released — change *nothing* the snapshot
+# holds. `event_writes._kind_facts` does not even record a time for those kinds.
+#
+# Calling the snapshot updater for them would bump the version and then re-run
+# `reconcile_pairs_for_side` and `detect_conflicts` for an overlap that cannot have moved.
+# Letting the snapshot's version lag behind the catalog's is safe because every gate in
+# this tree is `>` and not `==`: a snapshot at v1 that skipped a `sold_out` at v2 still
+# accepts a `time_moved` at v3.
+#
+# **Every kind is mapped explicitly and there is no default**, so a new kind added in
+# `ingestion` fails a test rather than silently doing nothing to anyone's calendar.
+LIFECYCLE_PERSONAL_BEHAVIOUR = {
+    "time_moved": LifecyclePersonalBehaviour.RESTAMP,
+    "postponed": LifecyclePersonalBehaviour.RESTAMP,
+    "reinstated": LifecyclePersonalBehaviour.REINSTATE,
+    "cancelled": LifecyclePersonalBehaviour.CANCEL,
+    "superseded": LifecyclePersonalBehaviour.CANCEL,
+    "sold_out": LifecyclePersonalBehaviour.NONE,
+    "detail_changed": LifecyclePersonalBehaviour.NONE,
+}
+
+# AD-17: how long a state change may sit unpropagated before it is reported as stuck.
+#
+# **An alarm, not a timeout.** `EventStateChange` is append-only — `propagated_at` is its one
+# mutable column — so there is no attempts counter to retire a poisoned change with, and
+# marking it propagated to stop the churn would claim a propagation that never happened and
+# leave that user on the old state forever. What is bounded here is how long the failure can
+# stay quiet.
+#
+# Comfortably longer than `OUTBOX_RECONCILE_AFTER`, which re-offers an unpropagated change
+# after 5 minutes: a change outliving 30 minutes is failing rather than merely waiting.
+PROPAGATION_ALARM_AFTER = timedelta(minutes=30)
 
 
 # Schema.org's vocabulary for the public event page's structured data (FR-26, AD-12).

@@ -898,8 +898,69 @@
         "title": "DetailConflictSideOut",
         "type": "object"
       },
+      "DetailNoticeOut": {
+        "description": "The newest state-change notice for this event, as the Detail banner shows it.\n\n**It is the newest notice for this event, regardless of dismissal.** That is the\ndeliberate rule of `delivery.services.notice_state`: the banner is about *this* event,\nwhich the user has navigated to on purpose, so dismissing the strip on the digest home\nmust not hide \"this event was cancelled\" from the event's own page.\n\n**`dismissed_at` says whether the user has already closed it.** The banner renders\nthat state rather than pretending the correction never happened — the notice is still\nthe truth about this event, and the user may still want to read it.\n\n**`seen_at` is when it was first put in front of them** — not an act by them, and\nnot the same thing as the dismissal. The two are separate columns on the row and\nthey are separate fields here. (Today a dismissal sets both; the strip's read\ndeliberately does not mark notices seen, because a `GET` that writes is the shape\nCSRF exists to stop.)\n\n**No `event_id`.** The Detail read is already scoped to one event and the response's\nenclosing `event` object names it. A redundant field could disagree with its own\nparent.",
+        "properties": {
+          "change_kind": {
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "event_version": {
+            "title": "Event Version",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_date": {
+            "format": "date",
+            "title": "Local Date",
+            "type": "string"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          }
+        },
+        "required": [
+          "id",
+          "change_kind",
+          "event_version",
+          "local_date",
+          "created_at"
+        ],
+        "title": "DetailNoticeOut",
+        "type": "object"
+      },
       "DetailPersonalOut": {
-        "description": "The signed-in user's own state for an event (FR-24).\n\n**Three independent facts, and none of them implies another.** \"There is no\nexplanation\" and \"you have not saved this\" are different, and a client that cannot\ntell them apart renders the wrong thing.\n\n**`why_this` is `None` when no composition exists** for this `(user, event)` pair.\nThat is an **explicit absence**: not an empty breakdown, not a zero bucket, and not\na recomputed one. AD-10 says the screen \"renders no explanation rather than\nrecomputing one if none exists\".",
+        "description": "The signed-in user's own state for an event (FR-24, FR-54, FR-55).\n\n**Five independent facts, and none of them implies another.** \"There is no\nexplanation\" and \"you have not saved this\" are different, and a client that cannot\ntell them apart renders the wrong thing. The same is true of the two newest ones:\n**a notice and a mute are different facts**, and a client must not read \"muted\" as\n\"there is nothing to say\".\n\n**`why_this` is `None` when no composition exists** for this `(user, event)` pair.\nThat is an **explicit absence**: not an empty breakdown, not a zero bucket, and not\na recomputed one. AD-10 says the screen \"renders no explanation rather than\nrecomputing one if none exists\".",
         "properties": {
           "conflict": {
             "anyOf": [
@@ -911,6 +972,11 @@
               }
             ]
           },
+          "muted": {
+            "default": false,
+            "title": "Muted",
+            "type": "boolean"
+          },
           "neighbor_bucket": {
             "anyOf": [
               {
@@ -921,6 +987,16 @@
               }
             ],
             "title": "Neighbor Bucket"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetailNoticeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "saved": {
             "default": false,
@@ -990,6 +1066,17 @@
             "title": "Event Kind",
             "type": "string"
           },
+          "is_sold_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Sold Out"
+          },
           "location": {
             "anyOf": [
               {
@@ -1049,6 +1136,17 @@
               }
             ],
             "title": "Start Time Utc"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "tags": {
             "default": [],
@@ -1514,6 +1612,31 @@
         "title": "EventListOut",
         "type": "object"
       },
+      "EventMuteOut": {
+        "description": "The outcome of muting or unmuting one event's state-change notices.\n\n**It mirrors `MuteResult` exactly**, because that dataclass already carries the two\nfacts the client needs and no third: `muted` is the event's *state* after the call,\nand `changed` says whether **this call** moved it.\n\n**Muting an already-muted event is a success, not an error** — and `changed: false` is\nwhat says so honestly. A client that redrew on `changed` would redraw a control that\ndid not move.\n\n**`event_id` is in the response** so the client can confirm which event the answer is\nabout, without having to trust that the request and the response were about the same\nthing.\n\n**This says nothing about the event itself.** A mute silences the correction, not the\nevent: reminders still fire on the user's Reminder Plan and the event still places in\nthe Pulse Digest (FR-55). The shape carries no field that could be read as \"the event\nis off\".",
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "muted": {
+            "title": "Muted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "event_id",
+          "muted",
+          "changed"
+        ],
+        "title": "EventMuteOut",
+        "type": "object"
+      },
       "EventOut": {
         "description": "One public event.\n\n`id` is the stable identifier the API is keyed by; `slug` is the public page route's\nkey (the spine's Ids convention: a page URL uses the slug, never the PK).",
         "properties": {
@@ -1783,6 +1906,113 @@
           "chip_keys"
         ],
         "title": "InterestsOut",
+        "type": "object"
+      },
+      "NoticeDismissOut": {
+        "description": "The outcome of dismissing one notice.\n\n**`dismissed` and `changed` are two different facts, and the client needs both.**\n`dismissed` is the notice's *state* — it is dismissed now. `changed` says whether\n**this call** is what made it so.\n\n**The distinction is what makes an idempotent write honest.** Dismissing an\nalready-dismissed notice is a success, not an error — but a response that claimed\n`changed: true` for it would tell the screen to redraw something that did not move.\n`changed: false` says \"it was already dismissed; nothing changed\", which is the truth\nand is also what lets the client skip the redraw.\n\n**The same shape as the mute's** (`EventMuteOut`), because both are \"a state and\nwhether this call moved it\".",
+        "properties": {
+          "changed": {
+            "default": false,
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "dismissed": {
+            "default": true,
+            "title": "Dismissed",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "NoticeDismissOut",
+        "type": "object"
+      },
+      "NoticeListOut": {
+        "description": "The signed-in user's open notices, newest first.\n\n**A list, and nothing else.** There is no total, no `next` cursor, no page — the strip\nshows a few and there is no inbox to page through (FR-54). A `total` would invite the\nclient to build an inbox, and an inbox is how \"one calm correction\" becomes a\nnotification centre.\n\n**`items` is empty, not absent, when the user has no open notices.** An empty list is\nthe shape; `None` would be a second spelling of the same fact.",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/NoticeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "NoticeListOut",
+        "type": "object"
+      },
+      "NoticeOut": {
+        "description": "One state-change notice, as the digest strip shows it.\n\n**The notice's own facts, and no more.** The server states what changed and what it\nmeans; the client renders it. The change's *content* — the before/after values — is\ndeliberately absent: it is source payload, and it is the one place a title or a venue\nname could leak into a response (AD-13). `change_kind` is the vocabulary\n`domain.lifecycle.ChangeKind` defines, carried through unchanged.\n\n**`event_id` is the catalog event's id, by value.** The client routes to the event's\npage, and the notice row holds no relation to the catalog (AD-3).\n\n**`seen_at` and `dismissed_at` are the two different acts.** `seen_at` is when the\nnotice was put in front of the user — not an act by them. `dismissed_at` is when they\nclosed it. A notice can be seen and not dismissed, and a client that cannot tell them\napart would render a dismissed notice as still open.\n\n**(Today, a dismissal sets both — but the strip's read deliberately does not mark\nnotices seen.** A `GET` that writes is the shape CSRF exists to stop, and\n`apps/personalization/detail_api.py` refuses it for the Detail Screen. So `seen_at` is\n`None` until the user closes the notice. The two stay separate fields because the\nmoment something *does* mark a notice seen on render, they will say different things.\n\n**`dismissed_at` is `None` on every notice the strip returns**, because the strip is\nthe queue of *open* notices. It is on the wire anyway so the same shape serves the\nDetail banner, which deliberately reports a dismissed notice too.",
+        "properties": {
+          "change_kind": {
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_version": {
+            "title": "Event Version",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_date": {
+            "format": "date",
+            "title": "Local Date",
+            "type": "string"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "change_kind",
+          "event_version",
+          "local_date",
+          "created_at"
+        ],
+        "title": "NoticeOut",
         "type": "object"
       },
       "NotificationSettingsIn": {
@@ -2973,7 +3203,7 @@
         "type": "object"
       },
       "TimelineBlockOut": {
-        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.",
+        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.\n\n**`state` is the catalog's lifecycle word**, carried through unchanged — the same\n`str` the event detail and the public page already carry, because the vocabulary is\nthe backend's and a second one here would be a translation layer with nothing to\ntranslate. It is null for a personal block, which has no lifecycle, and for a public\nblock whose catalog event has disappeared, where the state is unknown rather than\nnormal — the same distinction `name` already draws.\n\nA `cancelled` block is still returned. FR-55 removes a cancelled event from the\n*digest*; the Timeline is the user's calendar, and a cancelled event is still on it\nuntil they take it off.",
         "properties": {
           "conflict": {
             "default": false,
@@ -3024,6 +3254,17 @@
             "format": "date-time",
             "title": "Start Time Utc",
             "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
           }
         },
         "required": [
@@ -4050,6 +4291,219 @@
         ]
       }
     },
+    "/api/notices": {
+      "get": {
+        "description": "The notices the user has not dismissed, newest first — the data behind the digest home's strip.\n\n**A few, not a history.** The list is bounded by the server: FR-54 promises one calm correction, not a notification centre, and there is no inbox to page through. An empty list is the common case — most users, most days, have nothing to correct.\n\n**A notice is here until it is dismissed.** Being shown a notice is not the same as acting on it, so the strip is a queue: it empties when the user closes an item, not when it renders.\n\n**This says nothing about the event.** A notice names the change and the event it is about; it does not say the event is cancelled, moved, or off. The client renders the correction; the event's own page carries its facts.",
+        "operationId": "apps_delivery_notices_api_get_notices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoticeListOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "The signed-in user's open state-change notices",
+        "tags": [
+          "notices"
+        ]
+      }
+    },
+    "/api/notices/events/{event_id}/mute": {
+      "delete": {
+        "description": "Clears the mute on one event, so its \"this changed\" messages come back.\n\n**Unmuting does not replay what was silenced.** The notices suppressed while the mute was on are gone, and raising them now would deliver a correction about a change the user has had days to notice. The event's current state is on its Detail screen, which is where a user who just unmuted is standing.\n\n**Unmuting an event that is not muted is a success**, and the response says `changed: false`.",
+        "operationId": "apps_delivery_notices_api_delete_event_mute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventMuteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Let one event's state-change notices through again",
+        "tags": [
+          "notices"
+        ]
+      },
+      "put": {
+        "description": "Mutes FR-54's notices for one event: the \"this changed\" message stops.\n\n**A mute silences the correction, not the event.** Reminders still fire on the user's Reminder Plan and the event still places in the Pulse Digest. There is no global off switch — a per-event mute is a judgement about the one event the user is looking at.\n\n**A cancellation is still raised.** A cancelled or superseded event is announced even when muted, because the mute has already removed it from the digest and silence about it would have no second channel to catch it.\n\n**Muting an already-muted event is a success**, and the response says `changed: false` — nothing moved.\n\n**No existence check on the event.** A mute for an event that has since gone is harmless, and refusing it would make the mute fail in exactly the case a user most wants it.",
+        "operationId": "apps_delivery_notices_api_put_event_mute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventMuteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Silence the state-change notices for one event",
+        "tags": [
+          "notices"
+        ]
+      }
+    },
+    "/api/notices/{notice_id}/dismiss": {
+      "post": {
+        "description": "Closes one notice: it leaves the strip, and it never comes back. This is a real write, not client state — dismissal is what makes FR-54's \"one-time, never repeats\" true.\n\n**The notice row survives.** It is closed, not deleted, so the daily cap and the never-repeat rule still hold against it.\n\n**Dismissing an already-dismissed notice is a success**, and the response says `changed: false` — nothing moved, and the client need not redraw.\n\n**A notice that is not yours, or that does not exist, is a 404** — the same 404 for both, so the endpoint cannot be used to find out whether a given id exists.",
+        "operationId": "apps_delivery_notices_api_post_dismiss_notice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notice_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoticeDismissOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Dismiss one state-change notice",
+        "tags": [
+          "notices"
+        ]
+      }
+    },
     "/api/personal/calendars": {
       "get": {
         "description": "The user's own calendar connections: the provider, the status, when it last synced and whether a sync is running. The calendar address is **never** returned — it is the credential, and it is write-only. No one else's connections are listed.",
@@ -4292,7 +4746,7 @@
     },
     "/api/personal/digest": {
       "get": {
-        "description": "The user's Pulse Digest for their local day, as it was composed.\n\nThe response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.\n\nEach card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.\n\nThe times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.",
+        "description": "The user's Pulse Digest for their local day, as it was composed.\n\nThe response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.\n\nEach card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.\n\nThe times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.\n\nA card also carries the event's current `status` (`scheduled`, `postponed` or `cancelled`) and whether it `is_sold_out`. These are read at request time, not stored on the composition, so an event that changed after the composition still says so. Both are `null` for a personal event — the user's own agenda row has no lifecycle and no tickets — and `null` for a card whose event the catalog no longer holds.",
         "operationId": "apps_personalization_api_read_digest_endpoint",
         "parameters": [],
         "responses": {

@@ -48,6 +48,7 @@ from apps.identity.api_auth import current_user, unauthenticated_user
 from apps.personalization.schemas import (
     DetailConflictOut,
     DetailConflictSideOut,
+    DetailNoticeOut,
     DetailPersonalOut,
     EventDetailFactsOut,
     EventDetailOut,
@@ -139,6 +140,15 @@ def get_event_detail(request, event_id: UUID):
                     actions=list(detail.personal.conflict.actions),
                 )
                 if detail.personal.conflict is not None
+                else None
+            ),
+            # FR-55's mute, and FR-54's notice. **One round trip, both facts** — the
+            # banner and the mute control render from this response, so they cannot
+            # disagree with each other between two snapshots.
+            muted=detail.personal.muted,
+            notice=(
+                DetailNoticeOut.from_summary(detail.personal.notice)
+                if detail.personal.notice is not None
                 else None
             ),
         )

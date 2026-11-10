@@ -625,6 +625,182 @@ def test_a_resolved_conflict_is_not_a_flag():
     assert card["conflict"] is False
 
 
+# --- the event's live state (FR-53) --------------------------------------------------
+
+
+def test_a_live_card_carries_the_events_scheduled_status():
+    """The card says what the event **is**, not only where it is.
+
+    FR-53's testable consequence is that a sold-out event is *marked* on the Pulse
+    Card — and a card cannot be marked without the state being on it. The status is
+    the backend's own vocabulary, unchanged: `scheduled`.
+    """
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event()
+    make_composition(digest, event_id=event.id)
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["status"] == "scheduled"
+    assert card["is_sold_out"] is False
+
+
+def test_a_sold_out_card_says_so():
+    """**The FR-53 case.** A sold-out event is still scheduled — it is happening, the
+    tickets are gone. So the sold-out flag is *separate* from the status and travels
+    beside it, not folded into it."""
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event(is_sold_out=True)
+    make_composition(digest, event_id=event.id)
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["is_sold_out"] is True
+    # Still scheduled — the two facts do not collapse into one.
+    assert card["status"] == "scheduled"
+
+
+def test_a_postponed_card_says_postponed():
+    """A postponed event is not cancelled and not sold out. It says exactly one thing."""
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event(status="postponed")
+    make_composition(digest, event_id=event.id)
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["status"] == "postponed"
+    assert card["is_sold_out"] is False
+
+
+def test_a_cancelled_card_says_cancelled_and_stays_on_the_digest():
+    """**The case the item is named for.** A card composed *before* the cancellation is
+    still on the digest — and it must say `cancelled`.
+
+    The card is not removed here. FR-55's removal happens at the **candidate** stage
+    (`digest_candidates` drops a save the catalog says is cancelled, before it can
+    become a candidate), so a *newly* cancelled event is never composed at all. What
+    survives here is a card composed earlier — and removing it would be a second,
+    different removal than FR-55's, and would break AD-10's rule that digest rows are
+    served as stored. The card tells the truth; tomorrow's composition will not contain
+    the event at all.
+    """
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event(status="cancelled")
+    make_composition(digest, event_id=event.id, tags=["nearby", "tonight"], bucket=4)
+
+    body = get_digest(signed_in(user)).json()
+
+    assert len(body["cards"]) == 1
+    card = body["cards"][0]
+    assert card["status"] == "cancelled"
+    # The explanation is untouched — a source moving does not change why the event was
+    # chosen (AD-10).
+    assert card["bucket"] == 4
+    assert card["tags"] == ["nearby", "tonight"]
+
+
+def test_a_state_change_after_the_composition_is_reflected():
+    """**The state is read at request time, not stored on the composition.**
+
+    The composition is written while the event is `scheduled`; the source then
+    cancels it. A card that had frozen the status would keep showing as live until
+    tomorrow's digest — which is exactly the failure this item exists to prevent.
+    """
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event()
+    make_composition(digest, event_id=event.id)
+
+    # The composition happened first...
+    assert get_digest(signed_in(user)).json()["cards"][0]["status"] == "scheduled"
+
+    # ...and the source moved the event afterwards. **The move bumps the version**,
+    # because the catalog's guard trigger refuses a lifecycle change without one.
+    event.event_version = event.event_version + 1
+    event.status = "cancelled"
+    event.save(using=CATALOG)
+
+    assert get_digest(signed_in(user)).json()["cards"][0]["status"] == "cancelled"
+
+
+def test_a_personal_card_carries_no_lifecycle_and_no_sold_out_flag():
+    """**"Not applicable" and "fine" are different facts.**
+
+    A personal event is the user's own agenda row — no source can postpone it or sell
+    it out. So both fields are `None` rather than defaulted to `"scheduled"` and
+    `False`: a default would claim the catalog had an opinion about a row it has never
+    seen, and the client could not tell "no lifecycle here" from "a live event".
+    """
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    personal = PersonalEventFactory(
+        user_id=user.pk,
+        name="Dentist",
+        start_utc=NOW + timedelta(hours=3),
+        end_utc=NOW + timedelta(hours=4),
+    )
+    make_composition(
+        digest,
+        event_id=personal.id,
+        event_kind=DigestComposition.EventKind.PERSONAL,
+        source_badge=None,
+        event_version=None,
+        tags=["tonight"],
+    )
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["event_kind"] == "personal"
+    assert card["status"] is None
+    assert card["is_sold_out"] is None
+
+
+def test_a_card_whose_catalog_event_is_gone_carries_no_lifecycle():
+    """**No catalog, no opinion.** The event is unpublished or superseded, so there is
+    no status and no sold-out flag to report. The card already says
+    `catalog_event_missing=True`, and this does not contradict it."""
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event()
+    make_composition(digest, event_id=event.id)
+    event.publication_status = event.PublicationStatus.IN_REVIEW
+    event.save()
+
+    card = get_digest(signed_in(user)).json()["cards"][0]
+
+    assert card["catalog_event_missing"] is True
+    assert card["status"] is None
+    assert card["is_sold_out"] is None
+
+
+def test_the_status_is_read_from_the_catalog_not_from_the_composition_row():
+    """**The composition has no status to read.** `DigestComposition` is append-only
+    and holds the *explanation*; the lifecycle lives in the catalog. So the card's
+    status is whatever the catalog says at request time — and a stale composition
+    cannot contradict it."""
+    user = make_user()
+    make_preference(user.pk)
+    digest = make_digest(user.pk)
+    event = make_event(status="postponed")
+    composition = make_composition(digest, event_id=event.id)
+
+    # The composition row has no lifecycle field of its own to disagree with.
+    assert not hasattr(composition, "status")
+
+    assert get_digest(signed_in(user)).json()["cards"][0]["status"] == "postponed"
+
+
 # --- nothing is computed -------------------------------------------------------------
 
 

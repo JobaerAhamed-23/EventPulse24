@@ -13,9 +13,11 @@ import { BrandTopbar } from "@/components/brand-topbar";
 import { PreAuthFooter } from "@/components/pre-auth/pre-auth-footer";
 import { PublicEventPage } from "@/components/public-event/public-event-page";
 import { AppShell } from "@/components/shell/app-shell";
+import { DetailNoticeBanner } from "@/components/state/detail-notice-banner";
 import { factorLine } from "@/lib/detail-labels";
 import { browserTimeZone, detailTimes } from "@/lib/detail-time";
 import { readEventDetail } from "@/lib/event-detail-read";
+import { SOLD_OUT_LINE, statusLineFor } from "@/lib/event-state";
 import { isDetailEvent } from "@/lib/event-identifier";
 import { readPublicEvent } from "@/lib/public-event-read";
 import { getSession } from "@/lib/session";
@@ -347,6 +349,24 @@ async function DetailBranch(id: string) {
 
   const times = detailTimes(event.start_time_utc, event.start_time_tz, browserTimeZone());
 
+  /**
+   * **The event's lifecycle line, if it has one.**
+   *
+   * **The same table the public page reads.** `statusLineFor` is the shared copy, and
+   * the public page and the Detail screen asking it the same question is what keeps
+   * the two surfaces saying the same thing about the same event.
+   *
+   * **It is `null` for `scheduled`, for `null`, and for a status this system has never
+   * heard of** (ASSUMPTION-9) — a screen that rendered an unknown status as "unknown"
+   * would be inventing a claim about the world.
+   *
+   * **It takes precedence over the sold-out line**, and the precedence is not
+   * arbitrary: a line reading "Sold out — tickets no longer available" on an event
+   * that has been cancelled invites the reader to wait for tickets for an event that
+   * is not happening. The event that is not happening is the bigger fact.
+   */
+  const stateLine = statusLineFor(event.status);
+
   const content = (
     <article className="mx-auto w-full max-w-(--layout-container-reading)">
       {/* The way back (the mockup's "← Today"): the digest for a signed-in reader, the
@@ -398,14 +418,54 @@ async function DetailBranch(id: string) {
         must too; offering it in one place and not the other would be the inconsistency
         the AC names. So the row *narrows*: sold out → the notice plus Share; otherwise
         → Save, Share, Reminder.
+
+        **A cancelled or postponed event gets its own line, from the same shared
+        table.** The Detail screen is a surface with room for a sentence, so it says
+        the thing in words — and it says the *same* words the public page says, because
+        both read `lib/event-state.ts`. A Detail screen that said "Cancelled" where
+        the public page said "Cancelled — this event is not happening" would be two
+        vocabularies for one fact, which is the drift the shared table exists to stop.
+
+        **The lifecycle state wins over the sold-out flag here, for the same reason it
+        wins on the card**: a badge — or a line — reading "Sold out" on an event that
+        has been cancelled would invite the reader to wait for tickets for an event
+        that is not happening.
       */}
-      {event.is_sold_out ? (
+      {stateLine ? (
+        <p className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]" data-detail-state>
+          {stateLine}
+        </p>
+      ) : event.is_sold_out ? (
         <p
           className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
           data-detail-sold-out
         >
-          Sold out — tickets no longer available.
+          {SOLD_OUT_LINE}
         </p>
+      ) : null}
+
+      {/*
+        **The state-change banner (FR-54).**
+        **It comes after the state line and before the actions**, and the order is the
+        reading order: *what the event is now* (the state line), then *what changed and
+        what it means for your reminders* (the banner), then *what you can do about it*
+        (the actions).
+
+        **The banner needs the personal payload**, because both of its facts live there:
+        `personal.notice` is the newest notice for this event and `personal.muted` is
+        FR-55's per-event mute. **No new read** — the Detail read already carries both
+        (AD-10: the server states the facts; the page renders them).
+
+        **It renders nothing for an anonymous reader**, and so does the whole `personal`
+        branch below it: an anonymous visitor has no notices and no mute, because a mute
+        is a thing about *their* relationship with the event and they have none.
+      */}
+      {personal ? (
+        <DetailNoticeBanner
+          notice={personal.notice ?? null}
+          muted={personal.muted}
+          eventId={event.id}
+        />
       ) : null}
 
       {/*

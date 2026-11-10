@@ -30,6 +30,7 @@ from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone as django_timezone
 
+from apps.delivery.models import EventNoticeMute, StateChangeNotice
 from apps.personalization.models import EventDetailOpen, PersonalizationAuditEntry
 from apps.personalization.services.detail_read import read_event_detail
 from apps.personalization.services.neighbor_count import (
@@ -66,6 +67,22 @@ NOW = django_timezone.now()
 START = NOW + timedelta(days=1)
 
 CITY = "Los Angeles"
+
+#: The signed-in Detail read's own personal queries, for a user who has **not** saved the
+#: event: the composition, the save row, the count's two signal aggregates, the mute
+#: (`EXISTS`) and the notice (`LIMIT 1`). A constant.
+#:
+#: **It was `4` before this change**, and FR-54's banner and FR-55's control added two
+#: more — one each. The number is named rather than inlined, because the *saved* path is
+#: a different number and the two must not be confused.
+UNSAVED_READ_QUERIES = 6
+
+#: The conflict read is gated on the caller having saved the event, so a saved user
+#: pays exactly this many **more** queries than an unsaved one.
+CONFLICT_READ_QUERIES = 2
+
+#: The saved path's own total: the unsaved path's six, plus the conflict read's two.
+SAVED_READ_QUERIES = UNSAVED_READ_QUERIES + CONFLICT_READ_QUERIES
 
 
 def make_user(email=None):
@@ -516,7 +533,17 @@ def test_the_payload_never_carries_an_exact_count():
     assert "count" not in body["personal"]
     # The whole shape, so a later change that adds a field fails here rather than
     # shipping. `conflict` is the Detail Screen's active pair for this event (FR-33).
-    assert set(body["personal"]) == {"why_this", "saved", "neighbor_bucket", "conflict"}
+    # `muted` and `notice` are FR-54's and FR-55's two facts about the one event, and
+    # they travel with the breakdown because the banner and the mute control render
+    # from one response.
+    assert set(body["personal"]) == {
+        "why_this",
+        "saved",
+        "neighbor_bucket",
+        "conflict",
+        "muted",
+        "notice",
+    }
 
 
 def test_a_save_outside_the_window_does_not_qualify():
@@ -626,8 +653,13 @@ def _read_queries(queries):
 
     Django's session middleware reads the session row and the user row on every
     request. Those belong to the request, not to the Detail Screen's read, so they are
-    excluded: what is left is the read's own work — the composition, the save, and the
-    count's two signal reads.
+    excluded: what is left is the read's own work — the composition, the save, the
+    count's two signal reads, and (FR-54, FR-55) the mute and the notice.
+
+    **The exclusion is by substring and it does not hide the new reads.** The two
+    queries this change added hit `delivery_eventnoticemute` and
+    `delivery_statechangenotice`, and neither table name contains `django_session` or
+    `identity_user`.
     """
     return [
         str(query["sql"])
@@ -673,6 +705,11 @@ def test_the_count_does_not_grow_with_the_number_of_neighbors():
     opens, so the login's own writes are not counted. What is counted is the read's
     work — the composition, the save, and the count's two signal reads — and that is a
     constant, whatever the neighbour count is.
+
+    **The bound is path-dependent, and the two paths are named.** The conflict read is
+    gated on the caller having saved the event, so a **saved** user costs two more
+    queries than an unsaved one. The two constants are therefore spelled out rather
+    than merged into one number that is right for only half the readers.
     """
     event = make_event()
     make_neighbors(event, 40)
@@ -681,8 +718,9 @@ def test_the_count_does_not_grow_with_the_number_of_neighbors():
     with CaptureQueriesContext(connections[PERSONAL]) as personal_queries:
         client.get(detail_url(event))
 
-    # The composition, the save, the count's two signal reads — a constant.
-    assert len(_read_queries(personal_queries)) <= 4, (
+    # The composition, the save, the count's two signal reads — plus the two reads the
+    # notice and the mute need (FR-54's banner, FR-55's control). A constant.
+    assert len(_read_queries(personal_queries)) <= UNSAVED_READ_QUERIES, (
         "the detail read's personal query count grew: "
         + "; ".join(str(q["sql"]) for q in personal_queries)
     )
@@ -701,8 +739,46 @@ def test_the_count_does_not_grow_with_the_number_of_neighbors_either():
     with CaptureQueriesContext(connections[PERSONAL]) as personal_queries:
         client.get(detail_url(event))
 
-    assert len(_read_queries(personal_queries)) <= 4, (
+    assert len(_read_queries(personal_queries)) <= UNSAVED_READ_QUERIES, (
         "the detail read's personal query count grew with the neighbour count: "
+        + "; ".join(str(q["sql"]) for q in personal_queries)
+    )
+
+
+def test_a_saved_event_costs_exactly_two_more_queries_and_no_more():
+    """**The saved path, which the absolute bounds above never exercise.**
+
+    The conflict read is gated on the caller having saved the event, so a saved user
+    pays two more queries than an unsaved one. The bound is asserted **relatively** —
+    exactly two more — rather than as a second absolute number, because that form
+    survives the next read anyone adds to this surface while still catching the
+    regression the test is for (a per-save or per-conflict loop).
+
+    **The path the absolute bounds miss is the path most users are on.** A user who
+    saved the event is the one reading the Detail Screen at all.
+    """
+    event = make_event()
+    user = make_user()
+
+    unsaved_client = signed_in(user)
+    with CaptureQueriesContext(connections[PERSONAL]) as personal_queries:
+        unsaved_client.get(detail_url(event))
+    unsaved = len(_read_queries(personal_queries))
+
+    SavedEventFactory(user_id=user.pk, event_id=event.id)
+
+    saved_client = signed_in(user)
+    with CaptureQueriesContext(connections[PERSONAL]) as personal_queries:
+        saved_client.get(detail_url(event))
+    saved = len(_read_queries(personal_queries))
+
+    assert saved == unsaved + CONFLICT_READ_QUERIES, (
+        f"the saved path cost {saved} queries and the unsaved path {unsaved}; "
+        f"the difference must be the conflict read's {CONFLICT_READ_QUERIES}. "
+        + "; ".join(str(q["sql"]) for q in personal_queries)
+    )
+    assert saved <= SAVED_READ_QUERIES, (
+        "the saved detail read's personal query count grew: "
         + "; ".join(str(q["sql"]) for q in personal_queries)
     )
 
@@ -796,6 +872,190 @@ def test_the_open_signal_stores_nothing_but_the_pair_and_the_time():
     opened = EventDetailOpen.objects.using(PERSONAL).get()
     fields = {f.name for f in opened._meta.get_fields()}
     assert fields == {"id", "user_id", "event_id", "opened_at"}
+
+
+# ── The notice and the mute (FR-54, FR-55) ─────────────────────────────────────
+
+
+def make_notice(*, user_id, event_id, created_at=None, dismissed_at=None, kind="sold_out"):
+    """One state-change notice, written directly into `personal`.
+
+    **`created_at` is set after the insert** because the column is `auto_now_add` — the
+    database stamps it, and the ordering the banner picks is the ordering by that column.
+    """
+    created_at = created_at or NOW
+    notice = StateChangeNotice.objects.using(PERSONAL).create(
+        user_id=user_id,
+        event_id=event_id,
+        state_change_id=uuid4(),
+        change_kind=kind,
+        event_version=2,
+        local_date=created_at.date(),
+        dismissed_at=dismissed_at,
+    )
+    StateChangeNotice.objects.using(PERSONAL).filter(pk=notice.pk).update(created_at=created_at)
+    notice.refresh_from_db()
+    return notice
+
+
+def make_mute(*, user_id, event_id):
+    """One per-event mute, written directly."""
+    EventNoticeMute.objects.using(PERSONAL).create(user_id=user_id, event_id=event_id)
+
+
+def test_the_detail_reports_the_mute_state():
+    """FR-55: the mute control's state is the user's own, read with the rest."""
+    event = make_event()
+    user = make_user()
+    make_mute(user_id=user.pk, event_id=event.id)
+
+    body = signed_in(user).get(detail_url(event)).json()
+
+    assert body["personal"]["muted"] is True
+
+
+def test_an_unmuted_event_is_not_muted():
+    event = make_event()
+
+    body = signed_in().get(detail_url(event)).json()
+
+    assert body["personal"]["muted"] is False
+
+
+def test_another_users_mute_is_not_yours():
+    """The mute is scoped to the session user."""
+    event = make_event()
+    owner = make_user()
+    other = make_user()
+    make_mute(user_id=owner.pk, event_id=event.id)
+
+    body = signed_in(other).get(detail_url(event)).json()
+
+    assert body["personal"]["muted"] is False
+
+
+def test_the_detail_reports_the_newest_notice_for_the_event():
+    """FR-54: the banner names the latest correction, not the first one."""
+    event = make_event()
+    user = make_user()
+    make_notice(user_id=user.pk, event_id=event.id, created_at=NOW - timedelta(hours=2))
+    newest = make_notice(user_id=user.pk, event_id=event.id, created_at=NOW - timedelta(hours=1))
+
+    body = signed_in(user).get(detail_url(event)).json()
+
+    notice = body["personal"]["notice"]
+    assert notice is not None
+    assert notice["id"] == str(newest.id)
+    assert notice["change_kind"] == "sold_out"
+    assert notice["event_version"] == 2
+
+
+def test_the_detail_reports_a_dismissed_notice_too():
+    """**The banner's rule.** Dismissing the strip on the digest home must not hide
+    "this event was cancelled" from the event's own page — so the notice is reported
+    **whatever its dismissal state**, and `dismissed_at` tells the client which it is."""
+    event = make_event()
+    user = make_user()
+    notice = make_notice(user_id=user.pk, event_id=event.id, dismissed_at=NOW)
+
+    body = signed_in(user).get(detail_url(event)).json()
+
+    reported = body["personal"]["notice"]
+    assert reported is not None
+    assert reported["id"] == str(notice.id)
+    assert reported["dismissed_at"] is not None
+
+
+def test_the_detail_reports_no_notice_as_null():
+    """**An explicit absence**, not an empty notice."""
+    event = make_event()
+
+    body = signed_in().get(detail_url(event)).json()
+
+    assert body["personal"]["notice"] is None
+
+
+def test_another_users_notice_is_not_yours():
+    """The notice is scoped to the session user."""
+    event = make_event()
+    owner = make_user()
+    other = make_user()
+    make_notice(user_id=owner.pk, event_id=event.id)
+
+    body = signed_in(other).get(detail_url(event)).json()
+
+    assert body["personal"]["notice"] is None
+
+
+def test_the_detail_reports_a_notice_for_an_unsaved_event():
+    """**The read is not gated on the save.** A notice about an event the user has not
+    saved is still worth the banner — the correction is about the event, not the save."""
+    event = make_event()
+    user = make_user()
+    notice = make_notice(user_id=user.pk, event_id=event.id)
+
+    body = signed_in(user).get(detail_url(event)).json()
+
+    assert body["personal"]["saved"] is False
+    assert body["personal"]["notice"]["id"] == str(notice.id)
+
+
+def test_the_detail_notice_carries_no_event_id():
+    """The read is already scoped to one event, and the enclosing `event` object names
+    it — a redundant field could disagree with its own parent."""
+    event = make_event()
+    user = make_user()
+    make_notice(user_id=user.pk, event_id=event.id)
+
+    body = signed_in(user).get(detail_url(event)).json()
+
+    assert "event_id" not in body["personal"]["notice"]
+
+
+def test_the_anonymous_path_still_never_queries_the_personal_schema():
+    """**The notice and the mute must not have broken the leak floor.**
+
+    Both facts live in `personal`, so a call placed above the anonymous early return
+    would query the personal schema for an anonymous caller — the leak the existing
+    test guards against. The read must stay *after* the branch.
+    """
+    event = make_event()
+
+    with CaptureQueriesContext(connections[PERSONAL]) as personal_queries:
+        Client().get(detail_url(event))
+
+    assert len(personal_queries) == 0, (
+        "the anonymous detail path queried the personal schema: "
+        + "; ".join(str(q["sql"]) for q in personal_queries)
+    )
+
+
+def test_the_anonymous_caller_gets_no_notice_and_no_mute():
+    """`personal` is `None` for an anonymous caller, so the two facts are absent with
+    it — not present-and-empty."""
+    event = make_event()
+
+    body = Client().get(detail_url(event)).json()
+
+    assert body["personal"] is None
+
+
+def test_the_notice_read_does_not_grow_with_the_number_of_notices():
+    """**A constant, not a loop.** The banner reads the newest notice; fifty notices
+    cost the same as one."""
+    event = make_event()
+    user = make_user()
+    for i in range(50):
+        make_notice(user_id=user.pk, event_id=event.id, created_at=NOW - timedelta(minutes=i))
+
+    client = signed_in(user)
+    with CaptureQueriesContext(connections[PERSONAL]) as personal_queries:
+        client.get(detail_url(event))
+
+    assert len(_read_queries(personal_queries)) <= UNSAVED_READ_QUERIES, (
+        "the detail read's personal query count grew with the notice count: "
+        + "; ".join(str(q["sql"]) for q in personal_queries)
+    )
 
 
 # ── The contract ────────────────────────────────────────────────────────────────

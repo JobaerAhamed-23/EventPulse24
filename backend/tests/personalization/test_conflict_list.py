@@ -375,6 +375,46 @@ def test_a_resolved_pair_carries_its_resolution_and_no_actions():
     assert view.actions == ()
 
 
+def test_cancelling_a_saved_event_takes_its_conflict_off_the_list():
+    """The `/conflicts` surface needs no cancellation rule of its own, and this proves it.
+
+    AD-17 has a cancellation close the pair, and this list already shows only `active`
+    pairs — so the prompt stops being asked without the list ever reading a lifecycle
+    state. The behaviour is pinned here rather than assumed, because "nothing to change"
+    is a claim, not an absence of one.
+
+    The whole path runs: a real save, a real overlap, and the real propagation service —
+    not a hand-written `cleared_by_state_change` row, which would only re-test the filter
+    `test_a_cleared_pair_is_not_listed` already covers.
+    """
+    from apps.personalization.services.saved_events import cancel_saved_event, save_event
+    from shared.actor import Actor
+
+    now = START - timedelta(days=7)
+    user = make_user()
+    personal_event(user, name="Coffee with Sam")
+    catalog_event = EventFactory(
+        start_time_utc=START, end_time_utc=START + timedelta(hours=2), title="Jazz Night"
+    )
+    result = save_event(
+        user_id=user.pk, event_id=catalog_event.id, actor=Actor.user(user.pk), now=now
+    )
+    assert len(result.conflicts) == 1
+    assert len(list_conflict_pairs(user_id=user.pk).active) == 1
+
+    cancel_saved_event(
+        event_id=catalog_event.id,
+        user_id=user.pk,
+        new_version=catalog_event.event_version + 1,
+        actor=Actor.system("propagation"),
+        now=now,
+    )
+
+    listed = list_conflict_pairs(user_id=user.pk)
+    assert listed.active == ()
+    assert listed.resolved == ()
+
+
 def test_a_cleared_pair_is_not_listed():
     # `cleared_by_state_change` is not a user choice, so it is not the user's history to
     # read. It appears in neither group.

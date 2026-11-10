@@ -14,8 +14,16 @@ from django.db.models import DateTimeField, DurationField, ExpressionWrapper, F,
 
 from apps.ingestion.models import AcquisitionMethod, Source
 from apps.ingestion.services.audit import write_audit
+from domain.sources import HIGH_PRIORITY, LOWER_PRIORITY
 from shared.actor import Actor
-from shared.constants import INGEST_CLAIM_TTL, SCHEDULE_BATCH, STALE_AFTER_CADENCES
+from shared.constants import (
+    HIGH_PRIORITY_CADENCE_MAX,
+    HIGH_PRIORITY_METHODS,
+    INGEST_CLAIM_TTL,
+    LOW_PRIORITY_CADENCE_MAX,
+    SCHEDULE_BATCH,
+    STALE_AFTER_CADENCES,
+)
 from shared.db import CATALOG
 
 SCHEDULER = Actor.system("scheduler")
@@ -99,3 +107,68 @@ def flag_stale_sources(*, now: datetime) -> int:
                 actor=FRESHNESS, action="flag_stale", target_type="source", target_id=source_id
             )
     return len(ids)
+
+
+def report_cadence_floor_breaches(*, now: datetime) -> int:
+    """Count the sources that have not successfully ingested inside their tier's ceiling.
+
+    **This is FR-53's guarantee, stated as a check.** "A cancelled event is detected by the
+    system within 4 hours for high-priority sources" is only true if the source was
+    *successfully* ingested within the last 4 hours. A source that is polled on time but keeps
+    failing has met its polling floor and broken its detection floor — and a source that is
+    not polled at all has broken both.
+
+    **It is about `last_ingested_at`, not `last_attempted_at`.** A failed poll detects
+    nothing, so an attempt is not evidence the guarantee was kept.
+
+    **A never-ingested source counts from its registration** — the same convention
+    `flag_stale_sources` uses.
+
+    **Inclusive at the boundary**, like `flag_stale_sources`: a source last ingested exactly
+    its ceiling ago has been outside its window for exactly that long, so it is a breach.
+    The guarantee is "detected *within* 4 hours", and at the instant the window closes the
+    promise has expired — the same convention the stale flag uses ("exactly 2x is stale").
+
+    ---
+
+    **Why this is not `flag_stale_sources`.** That one fires at 2x the *row's own* cadence,
+    which an operator controls, and it is a question about the data's freshness. This one
+    fires at 1x the *tier's* ceiling, which nobody controls, and it is a question about the
+    promise. The two differ in both directions:
+
+    - A high-priority source polled every 15 minutes that fails is flagged stale after 30
+      minutes — **before** its 4-hour window. That is noise: the product surfaces a failure
+      it has not yet broken a promise about.
+    - A high-priority source at a 4-hour cadence that fails is flagged stale after 8 hours —
+      **4 hours after the promise broke.** That is silence.
+
+    So the floor check asks the promise question directly, for every source in the tier,
+    regardless of what cadence the row happens to carry.
+
+    **Two queries, one per tier.** The window is per-tier and the tier is *derived* from the
+    method rather than stored, so it cannot be a column comparison — there is no ceiling
+    column to compare against. Two indexed queries over a registry of hundreds of rows are
+    cheaper than a second source of truth that could disagree with the method.
+
+    **A count, not a list.** The caller logs it; a source id or name is not needed to
+    surface it, and the codebase's convention is ids and counts in logs (AD-13).
+    """
+    breaches = 0
+    for tier, ceiling in (
+        (HIGH_PRIORITY, HIGH_PRIORITY_CADENCE_MAX),
+        (LOWER_PRIORITY, LOW_PRIORITY_CADENCE_MAX),
+    ):
+        window = now - ceiling
+        candidates = _schedulable().filter(
+            Q(last_ingested_at__lte=window)
+            | Q(last_ingested_at__isnull=True, created_at__lte=window)
+        )
+        if tier == HIGH_PRIORITY:
+            candidates = candidates.filter(acquisition_method__in=HIGH_PRIORITY_METHODS)
+        else:
+            # The lower tier is "not a high-priority method", exactly as the derivation
+            # and the database constraint say — so the two cannot disagree about a
+            # method that did not exist when they were written.
+            candidates = candidates.exclude(acquisition_method__in=HIGH_PRIORITY_METHODS)
+        breaches += candidates.count()
+    return breaches

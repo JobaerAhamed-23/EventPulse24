@@ -21,15 +21,24 @@
  * anti-pattern: "Adaptive density must not hide the trust signals … hover/focus/long-press
  * *add* detail but never *remove* the trust signals." Hover and focus add — the
  * tooltips appear, the `▸` appears — and nothing is removed.
+ *
+ * **The event's state is shown, because a card that cannot tell a reader that an event
+ * was cancelled is a card that is quietly lying.** The state is a *server-stated* fact —
+ * `DigestCardOut.status` and `DigestCardOut.is_sold_out`, read at request time so an
+ * event that changed after the composition still says so — and the card renders it. It
+ * does not decide what the state means: the vocabulary is the backend's, and a status
+ * the frontend has no word for shows nothing at all (ASSUMPTION-9).
  */
 
 import Link from "next/link";
 
 import { ConflictIndicator } from "@/components/conflicts/conflict-indicator";
 import { ShareControl } from "@/components/share/share-control";
+import { EventStateBadge } from "@/components/state/event-state-badge";
 import type { components } from "@/lib/api/schema";
 import { sourceBadge, tagLabel } from "@/lib/digest-labels";
 import { cardTime } from "@/lib/detail-time";
+import { cardStateFor, STATE_LABELS, type CardState } from "@/lib/event-state";
 
 type DigestCard = components["schemas"]["DigestCardOut"];
 
@@ -122,6 +131,52 @@ export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardPr
    * and broken.
    */
   const publicSlug = card.public_slug ?? null;
+
+  /**
+   * **The event's state, and what the card does about it (FR-53, FR-54).**
+   *
+   * **The badge is the compact form of the fact.** The card has room for one pill and
+   * not for a sentence, so the badge carries the state and the shared table's full
+   * sentences stay with the surfaces that have room for them — the public page, the
+   * Detail screen.
+   *
+   * **`scheduled`, `null` and an unrecognised status all mean "no state".** The server
+   * sends `null` for a personal event and for a card whose catalog event is gone, and
+   * `status` is `string | null` in the generated schema — so the card narrows it, and a
+   * status the frontend has no word for shows nothing rather than a guess
+   * (ASSUMPTION-9).
+   */
+  const state = cardStateFor(card.status, card.is_sold_out);
+
+  /**
+   * **The cancelled card keeps its Share control — because the server still gives it
+   * one.**
+   *
+   * **The affordance is removed, not greyed.** `EXPERIENCE.md` §`Component.Badge.SoldOut`
+   * says a sold-out card's "Save Reminder" CTA is "removed (not greyed, not 'Notify me
+   * when available')" — and the reason it gives is the rule, not the taste: a control
+   * that cannot do anything is worse than no control, because it asks the reader to
+   * believe in an outcome that will not happen.
+   *
+   * **But that rule is about a control that cannot do anything, and the Share control
+   * still can.** The catalog's public read excludes only `superseded` events, so a
+   * **cancelled** event is still published and still has a public page — and the
+   * server sends its `public_slug`, so the Share control renders. That is correct, not
+   * an oversight: a reader who wants to tell a friend that an event was cancelled
+   * needs a link to the page that says so.
+   *
+   * **So the removal rule bites where it should — on the "Save Reminder" CTA**, which
+   * the digest card does not carry, and on nothing here. What a cancelled card drops
+   * is the *ticket* affordance: the badge says "Cancelled", so nothing on the card
+   * invites the reader to wait for tickets. The card's own link to the Detail screen
+   * stays too, because a reader who sees "Cancelled" may want to read why, and the
+   * Detail screen is where the explanation is.
+   *
+   * **The share control is rendered from `public_slug`, never from the state** — so if
+   * the catalog ever stops publishing cancelled events, the server sends
+   * `public_slug: null` and the control disappears on its own, with no frontend
+   * change. The card never guesses the server's publishing policy (AD-10).
+   */
   const shareable = publicSlug !== null;
 
   return (
@@ -167,6 +222,39 @@ export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardPr
           {source ? <SourceBadgeBadge badge={source} tooltipId={badgeTooltipId} /> : null}
         </div>
       </div>
+
+      {/*
+        **The state badge, in its own row immediately above the title row.**
+        *
+        **`DESIGN.md` puts it in the right-side zone**: "overlays the right-side zone of
+        the Pulse Card (top-right of the title row), NOT the 3px left-edge category stripe
+        — that stripe stays visible for category identity (public / must-know /
+        personal)." So it goes above the title, not beside the stripe.
+        *
+        **It is not in the trust row, and that is the reason it can be read at all.**
+        The trust row already holds the conflict indicator, the five-dot confidence
+        *pulse* and the source badge, and it is a `flex items-center gap-2` that does
+        *not* wrap. A fourth element with a visible label would overflow a 360px
+        viewport. So the badge has its own row, and it is **a different shape in a
+        different place** from the conflict indicator — a pill against a 6px dot — which
+        is what keeps the two legible side by side.
+        *
+        **It sits above the title rather than below it** because the title is the
+        card's headline and a badge above a headline reads as a *label on the card*
+        ("this is a sold-out card"), while one below it reads as a label on the
+        *title*. The state is a fact about the event, and the card's own kicker already
+        says what kind of card it is.
+        *
+        **The badge is right-aligned, so it occupies the right-side zone `DESIGN.md`
+        names** — the zone the title row's own affordances would take on a card with a
+        title long enough to fill the row. The title is left-aligned and wraps, so a
+        right-aligned badge above it cannot collide with it.
+        */}
+      {state ? (
+        <div className="flex justify-end">
+          <EventStateBadge state={state} />
+        </div>
+      ) : null}
 
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-ink-primary [font:var(--type-scale-headline-md)]">{title}</h3>
@@ -254,7 +342,16 @@ export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardPr
           stay clickable. */}
       <Link
         href={`/events/${card.event_id}`}
-        aria-label={accessibleName({ card, category, tags, time, place, source, explanation })}
+        aria-label={accessibleName({
+          card,
+          category,
+          tags,
+          time,
+          place,
+          source,
+          explanation,
+          state,
+        })}
         className="absolute inset-0 z-0 rounded-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-terracotta"
       />
     </article>
@@ -457,6 +554,7 @@ function accessibleName({
   place,
   source,
   explanation,
+  state,
 }: {
   card: DigestCard;
   category: Category;
@@ -465,6 +563,7 @@ function accessibleName({
   place: string | null;
   source: ReturnType<typeof sourceBadge> | null;
   explanation: Explanation;
+  state: CardState | null;
 }): string {
   const name = explanation.kind === "relevance" ? "Relevance" : "Event Fit";
   const parts = [
@@ -477,6 +576,23 @@ function accessibleName({
     name,
     tags.length > 0 ? `Why this: ${tags.map(tagLabel).join(", ")}` : null,
     card.conflict ? "Schedule conflict" : null,
+    /**
+     * **The state, in words.**
+     *
+     * **The badge is visible text, so a screen reader reaches it on its own** — but the
+     * card's accessible name is the link's `aria-label`, and it is the link that is the
+     * tap target. A reader who navigates by link hears the label; a reader who
+     * navigates by element hears the badge. Both need the state, and this is where the
+     * link's copy of it lives.
+     *
+     * **It is the badge's label, not the shared table's sentence.** The sentence
+     * ("Cancelled — this event is not happening.") is for a surface with room for a
+     * sentence; a card's accessible name already runs to a dozen clauses, and the
+     * badge's word is the one the reader can also *see* on the card. The two agreeing
+     * is the point — a name that says something the card does not show would be the
+     * drift this function exists to prevent.
+     */
+    state ? STATE_LABELS[state] : null,
   ];
   return parts.filter((part): part is string => Boolean(part)).join(". ");
 }

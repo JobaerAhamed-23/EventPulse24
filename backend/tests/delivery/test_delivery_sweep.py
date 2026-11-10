@@ -23,23 +23,26 @@ from pathlib import Path
 import pytest
 
 from adapters.email.memory import InMemoryEmailAdapter
-from apps.delivery.models import ScheduledSend
+from apps.delivery.models import ReminderPlan, ScheduledSend
 from apps.delivery.send_keys import digest_key
 from apps.delivery.services.delivery_sweep import (
     SweepCounts,
     VanishedTargetError,
     claim_due_sends,
+    hold_stale_sends,
     release_claim,
     send_one,
     sweep_due_sends,
 )
 from ports.email import EmailMessage, EmailPort, SendResult, Stream
 from shared.constants import SEND_CLAIM_TTL, SEND_MAX_ATTEMPTS, SEND_SWEEP_BATCH
-from shared.db import PERSONAL
+from shared.db import CATALOG, PERSONAL
 from shared.ids import uuid7
 from tests.delivery.factories import ScheduledSendFactory
 
-pytestmark = pytest.mark.django_db(databases=[PERSONAL])
+# `CATALOG` joins the aliases because the sweep now reads the catalog's current
+# `event_version` for every event-bound row it claims (AD-17's propagation guard).
+pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 DUE = datetime(2026, 11, 14, 8, 0, tzinfo=UTC)
 NOW = DUE + timedelta(minutes=1)
@@ -765,3 +768,330 @@ def test_send_one_on_a_row_that_does_not_exist_is_a_cancellation():
 
     assert outcome == "cancelled"
     assert port.sent == []
+
+
+# ---------------------------------------------------------------------------------------
+# AD-17's propagation guard
+#
+# The sweep must not send a reminder for an event the catalog has already moved past. The
+# guard runs between the claim and the send, holds the stale rows, and leaves the rest
+# alone. These tests pin the condition it holds on — and, just as importantly, the ones it
+# does not.
+# ---------------------------------------------------------------------------------------
+
+
+def _bump_event_version(event) -> int:
+    """Move a catalog event one version forward, the way production does.
+
+    The `guard_event_write` trigger refuses an Event born above version 1 and refuses a jump
+    of more than 1, so a "moved" event is made by updating a lifecycle field — exactly what
+    `tests/ingestion/test_triggers.py` does — rather than by constructing one at a version
+    the database would never produce.
+    """
+    from django.db import connections
+
+    new_version = event.event_version + 1
+    with connections[CATALOG].cursor() as cursor:
+        cursor.execute(
+            "UPDATE catalog.ingestion_event SET event_version = %s, is_sold_out = true "
+            "WHERE id = %s",
+            [new_version, event.id],
+        )
+    return new_version
+
+
+def _saved_send(event, *, version: int, **kwargs) -> ScheduledSend:
+    """A due `event_reminder` pointing at a real catalog event.
+
+    A saved event's `target_id` **is** the catalog event's id (`reminder_plan_read.py:155`),
+    so the factory's random id is replaced with the real one or the guard would find nothing
+    to compare against.
+    """
+    return ScheduledSendFactory(
+        target_id=event.id,
+        event_version=version,
+        due_at=NOW - timedelta(minutes=1),
+        **kwargs,
+    )
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_send_whose_event_moved_is_held_not_sent():
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    _bump_event_version(event)  # catalog now at 2; the row is still at 1
+    row = _saved_send(event, version=1)
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert counts.claimed == 1
+    assert counts.held == 1
+    assert counts.sent == 0
+    assert port.sent == []
+    row.refresh_from_db()
+    assert row.held_at == NOW
+    assert row.status == ScheduledSend.Status.PENDING  # held, not terminal
+    assert row.claimed_at is None  # the claim ended
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_send_whose_event_is_current_is_sent():
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    row = _saved_send(event, version=event.event_version)
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert counts.sent == 1
+    assert counts.held == 0
+    row.refresh_from_db()
+    assert row.held_at is None
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_send_ahead_of_the_catalog_is_sent_not_held():
+    """Only a **newer** catalog version holds. An equal or older one does not.
+
+    The row is re-stamped by propagation before the catalog row is re-read in some orders,
+    so `row.event_version > catalog` is a real transient and must not strand the send.
+    """
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    _saved_send(event, version=event.event_version + 4)
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert counts.sent == 1
+    assert counts.held == 0
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_an_absent_event_is_sent_not_held():
+    """A missing catalog event does **not** hold the row.
+
+    Nothing would ever release such a hold: propagation runs from an `EVENT_STATE_CHANGE`
+    row, and an event absent for a reason that is not a lifecycle change produces none. The
+    tree's existing rule stands — `_public_event_facts` sends with a body saying the event is
+    no longer listed. If a real cancellation caused the absence, propagation cancels the row.
+    """
+    ScheduledSendFactory(due_at=NOW - timedelta(minutes=1))  # random target_id: no such event
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert counts.sent == 1
+    assert counts.held == 0
+
+
+@pytest.mark.django_db(databases=[PERSONAL])
+def test_only_saved_event_rows_are_looked_up_in_the_catalog():
+    """The discriminator is `target_kind`, not `event_version IS NOT NULL`.
+
+    A personal reminder carries `event_version` too — it holds that event's own revision, not
+    a catalog version — so the column cannot tell the two apart. This pins the partition
+    directly, because the behavioural test below cannot: a personal `target_id` is absent from
+    the catalog, and an absent event is sendable anyway, so both partitions send it. The cost
+    of getting this wrong is therefore not a wrong send but a pointless catalog lookup for
+    every personal reminder in the batch — worth preventing, not worth pretending is graver.
+    """
+    from apps.delivery.services.delivery_sweep import _event_ids_to_check
+
+    personal = ScheduledSendFactory.build(
+        kind=ScheduledSend.Kind.PERSONAL_REMINDER,
+        target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT,
+        event_version=1,
+    )
+    saved = ScheduledSendFactory.build(event_version=1)
+
+    assert _event_ids_to_check([personal]) == set()
+    assert _event_ids_to_check([saved]) == {saved.target_id}
+    assert _event_ids_to_check([personal, saved]) == {saved.target_id}
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_personal_reminder_is_sent_not_held():
+    """A personal reminder passes the guard untouched."""
+    ScheduledSendFactory(
+        kind=ScheduledSend.Kind.PERSONAL_REMINDER,
+        target_kind=ReminderPlan.TargetKind.PERSONAL_EVENT,
+        event_version=1,
+        due_at=NOW - timedelta(minutes=1),
+    )
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert counts.held == 0
+    assert counts.sent == 1
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_hold_is_not_a_delivery_attempt():
+    """A hold must not walk the row toward the attempt bound.
+
+    Counting it would eventually mark a live reminder `failed` for something the user's mail
+    server never saw.
+    """
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    _bump_event_version(event)
+    row = _saved_send(event, version=1)
+    before = row.attempts
+
+    sweep_due_sends(
+        port=InMemoryEmailAdapter(), renderer=_renderer, resolve_recipient=_resolve(), now=NOW
+    )
+
+    row.refresh_from_db()
+    assert row.attempts == before
+    assert row.last_attempt_at is None
+    assert row.last_error_kind == ""
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_held_row_is_not_claimed_again():
+    """The claim excludes held rows, so a hold is not re-examined every tick."""
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    _bump_event_version(event)
+    _saved_send(event, version=1)
+
+    sweep_due_sends(
+        port=InMemoryEmailAdapter(), renderer=_renderer, resolve_recipient=_resolve(), now=NOW
+    )
+
+    assert claim_due_sends(now=NOW + timedelta(hours=2)) == []
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_one_held_row_does_not_stop_the_others():
+    from tests.ingestion.factories import EventFactory
+
+    moved = EventFactory()
+    _bump_event_version(moved)
+    current = EventFactory()
+    _saved_send(moved, version=1)
+    _saved_send(current, version=current.event_version)
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert counts.held == 1
+    assert counts.sent == 1
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_failed_catalog_read_sends_nothing_and_releases_the_claims(monkeypatch):
+    """The degraded path degrades toward silence, never toward mail.
+
+    Sending unverified is the one outcome this guard exists to prevent, so a guard that
+    cannot run must stop the tick rather than wave the batch through.
+    """
+    from apps.delivery.services import delivery_sweep as sweep_module
+
+    def _boom(**kwargs):
+        raise RuntimeError("catalog unavailable")
+
+    monkeypatch.setattr(sweep_module, "hold_stale_sends", _boom)
+
+    row = ScheduledSendFactory(due_at=NOW - timedelta(minutes=1))
+    port = InMemoryEmailAdapter()
+
+    counts = sweep_due_sends(port=port, renderer=_renderer, resolve_recipient=_resolve(), now=NOW)
+
+    assert port.sent == []
+    assert counts.sent == 0
+    row.refresh_from_db()
+    assert row.status == ScheduledSend.Status.PENDING
+    assert row.claimed_at is None  # released, so the next tick retries
+    assert row.held_at is None  # not held either — the guard never ran
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_the_guard_reads_the_catalog_after_the_claim_commits():
+    """AD-17: *"The claim is recorded, not merely locked"*, before the catalog is read.
+
+    The guard takes **ids**, not rows under lock, and re-reads them itself — so the claim has
+    to be durable in the row by the time it runs, not just held in a transaction's locks. That
+    is what lets the catalog read happen outside the claim's transaction (AD-3: no `personal`
+    row lock across a `catalog` query).
+
+    This fails if `claim_due_sends` ever stops persisting `claimed_at` and relies on the lock
+    alone, which is precisely the regression that would put the lock back across the read.
+
+    (The lock's actual release is structural — the `atomic` block in `claim_due_sends` closes
+    before it returns — and is not observable here, because pytest wraps each test in its own
+    outer transaction. Asserting on `in_atomic_block` would test the harness, not the code.)
+    """
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    _bump_event_version(event)
+    _saved_send(event, version=1)
+
+    claimed = claim_due_sends(now=NOW)
+    assert len(claimed) == 1
+
+    # Re-read from the database: the claim is a persisted fact, not an in-memory one.
+    assert ScheduledSend.objects.using(PERSONAL).get(pk=claimed[0]).claimed_at == NOW
+
+    sendable, held = hold_stale_sends(send_ids=claimed, now=NOW)
+    assert sendable == []
+    assert held == 1
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_row_deleted_between_the_claim_and_the_guard_stays_in_the_batch():
+    """The guard must not silently shrink the sweep's counts.
+
+    Before the guard existed, every claimed id reached `send_one`, which reads the row, finds
+    it gone and counts it `cancelled`. If the guard dropped a vanished row instead, a send that
+    disappeared would stop being reported at all — the counts would simply be smaller, with
+    nothing to say why.
+    """
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    gone = _saved_send(event, version=event.event_version)
+    alive = ScheduledSendFactory(due_at=NOW - timedelta(minutes=1))
+
+    claimed = claim_due_sends(now=NOW)
+    assert len(claimed) == 2
+
+    ScheduledSend.objects.using(PERSONAL).filter(pk=gone.id).delete()
+
+    sendable, held = hold_stale_sends(send_ids=claimed, now=NOW)
+
+    assert held == 0
+    assert set(sendable) == {gone.id, alive.id}  # the vanished id is still handed on
+
+
+@pytest.mark.django_db(databases=[PERSONAL, CATALOG])
+def test_a_hold_and_its_audit_row_commit_together():
+    """A row held with no audit row is a send that stopped with no record of why.
+
+    `claim_due_sends` pairs its claim with its audit in one transaction; the hold does the
+    same, so the two can never diverge.
+    """
+    from apps.delivery.models import DeliveryAuditEntry
+    from tests.ingestion.factories import EventFactory
+
+    event = EventFactory()
+    _bump_event_version(event)
+    row = _saved_send(event, version=1)
+
+    sendable, held = hold_stale_sends(send_ids=claim_due_sends(now=NOW), now=NOW)
+
+    assert (sendable, held) == ([], 1)
+    audits = DeliveryAuditEntry.objects.using(PERSONAL).filter(
+        action="hold_scheduled_send", target_id=row.id
+    )
+    assert audits.count() == 1

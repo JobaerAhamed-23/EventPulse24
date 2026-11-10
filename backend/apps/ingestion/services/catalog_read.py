@@ -104,6 +104,17 @@ class PublicEvent:
     event_version: int
     source_name: str
     tz_review_pending: bool
+    #: A-15 / FR-53: the event is sold out.
+    #:
+    #: This is the same fact `PublicEventDetail` already carries, for the same event. It
+    #: is here because the digest's card needs it and this read is the one the digest
+    #: already joins — not because the public catalog needs a new field. It is not
+    #: digest-only: it is on the public contract already, via `PublicEventDetail` and
+    #: `apps/catalog/schemas.py`.
+    #:
+    #: **A required field, not a default.** Every other field on this dataclass has no
+    #: default either, so that a new construction site cannot forget one silently.
+    is_sold_out: bool
 
 
 def _public_events() -> QuerySet:
@@ -132,6 +143,7 @@ def _to_public_event(event: Event) -> PublicEvent:
         event_version=event.event_version,
         source_name=event.source.name,
         tz_review_pending=event.tz_review_pending,
+        is_sold_out=event.is_sold_out,
     )
 
 

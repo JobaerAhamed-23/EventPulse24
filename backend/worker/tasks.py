@@ -31,6 +31,7 @@ from shared.constants import (
     OUTBOX_RECONCILE_EVERY_MINUTES,
     REVALIDATION_RECONCILE_EVERY_MINUTES,
 )
+from worker import propagation
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,10 @@ def tick() -> None:
 
     Every tick: `schedule_sources`, `schedule_calendars`, `schedule_digests` and
     `sweep_due_sends`. When the UTC minute is a multiple of 5: `reconcile_outbox` (the
-    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent)
-    and `reconcile_revalidation`, the revalidation outbox's own reconciler (FR-27). When
+    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent),
+    `reconcile_revalidation`, the revalidation outbox's own reconciler (FR-27), and
+    `report_held_sends` and `report_stuck_propagation`, the two halves of AD-17's
+    propagation alarm. When
     the minute is a multiple of 15: `refresh_event_fits`, which recomputes the Event
     Fit rows so that "tonight" does not go stale (AD-10).
 
@@ -81,6 +84,13 @@ def tick() -> None:
     _enqueue(sweep_due_sends)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
+        # Same cadence as the outbox reconciler, and for the same reason: propagation is what
+        # releases a held send (AD-17), so a hold that outlives the reconciler's own recovery
+        # window is evidence the consumer is failing rather than merely slow.
+        _enqueue(report_held_sends)
+        # Same cadence again: a held send and a stuck change are two views of one failure,
+        # and reading them together is what tells a responder which half is broken.
+        _enqueue(report_stuck_propagation)
     if _now().minute % REVALIDATION_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_revalidation)
     if _now().minute % EVENT_FIT_REFRESH_EVERY_MINUTES == 0:
@@ -117,6 +127,7 @@ def schedule_sources() -> None:
     """Flag stale sources, claim the due ones and enqueue one ingest job per claim (FR-13)."""
     now = _now()
     stale = scheduling.flag_stale_sources(now=now)
+    breaches = scheduling.report_cadence_floor_breaches(now=now)
     claimed = scheduling.claim_due_sources(now=now)
     enqueued = 0
     for source_id in claimed:
@@ -132,6 +143,17 @@ def schedule_sources() -> None:
     logger.info("Sources scheduled", extra={"job": "schedule_sources", "count": enqueued})
     if stale:
         logger.warning("Sources stale", extra={"job": "schedule_sources", "count": stale})
+    if breaches:
+        # **FR-53's promise, broken.** A source that has not successfully ingested inside its
+        # tier's ceiling cannot have a cancellation detected inside its window — so the
+        # product is about to promise something it cannot keep.
+        #
+        # **A count, never a source id or a name** (AD-13). The count is enough to say the
+        # guarantee is at risk; who it is belongs in the registry, not in a log line.
+        logger.warning(
+            "Source cadence floors breached",
+            extra={"job": "schedule_sources", "count": breaches},
+        )
 
 
 @shared_task(name="worker.tasks.ingest_source")
@@ -149,22 +171,44 @@ def ingest_source(source_id: str) -> None:
         scheduling.release_claim(UUID(source_id))
 
 
-# The `delivery` half of AD-17 already exists and is tested:
-# `apps.delivery.services.scheduled_sends.apply_lifecycle_change`. It is deliberately NOT
-# called from here yet — `propagated_at` may only be set once *every* owner has applied a
-# change, and the `personalization` half (SAVED_EVENT snapshot + conflict re-evaluation) is
-# FR-53/54 work. Wiring one half would either churn the outbox forever or make the future
-# consumer skip these changes. Decided with the user 2026-10-31; see the delivery-and-reminders
-# brief and `send-minting-and-rescheduling-design.md` D8.
 @shared_task(name="worker.tasks.propagate_state_change")
 def propagate_state_change(state_change_id: str) -> None:
-    """AD-17 placeholder consumer: no propagation into `personal` exists yet (FR-53-55).
+    """AD-17's consumer: apply one catalog state change to every user it touches (FR-53-55).
 
-    It deliberately leaves `propagated_at` NULL: marking the row would claim a propagation that
-    never happened, and the real consumer would then skip it. The reconciler keeps re-offering
-    it until that consumer arrives.
+    **Thin on purpose.** The loop, the per-kind dispatch and the ordering live in
+    `worker.propagation`, which is plain Python and testable without Celery — the shape
+    `revalidate_public_pages` already uses.
+
+    **`propagated_at` is set only when every affected user is done.** A user whose apply
+    raises is logged and skipped, the change stays unpropagated, and `reconcile_outbox`
+    re-offers it; the users already applied no-op on the retry because every service this
+    calls is version-gated. Marking it to stop the churn would claim a propagation that never
+    happened and strand that user on the old state forever — which is why the bound on a
+    poisoned change is `report_stuck_propagation`, not a timeout.
     """
-    logger.debug("State change not propagated yet", extra={"state_change_id": state_change_id})
+    result = propagation.propagate(state_change_id=UUID(state_change_id), now=_now())
+    if result.missing:
+        return
+    if result.failed:
+        logger.warning(
+            "State change propagated to some users",
+            extra={
+                "job": "propagate_state_change",
+                "state_change_id": state_change_id,
+                "users": result.users,
+                "applied": result.applied,
+                "failed": result.failed,
+            },
+        )
+        return
+    logger.info(
+        "State change propagated",
+        extra={
+            "job": "propagate_state_change",
+            "state_change_id": state_change_id,
+            "users": result.users,
+        },
+    )
 
 
 @shared_task(name="worker.tasks.schedule_calendars")
@@ -412,6 +456,60 @@ def compose_digest_task(user_id: str) -> None:
         raise
     finally:
         digest_scheduling.release_claim(identifier)
+
+
+@shared_task(name="worker.tasks.report_held_sends")
+def report_held_sends() -> None:
+    """Report sends held for propagation longer than `HELD_SEND_ALARM_AFTER` (AD-17).
+
+    **It reports; it never releases and never sends.** Releasing a held row is
+    `apply_lifecycle_change`'s decision, taken against a version. A job that released on a
+    timer would send exactly the mail the hold exists to prevent, and it would do it only
+    when the system was already known to be broken.
+
+    **Why an alarm at all.** A held row is correct — the catalog moved past it and it must
+    not go out. What is not correct is nobody releasing it: the user's reminders then stop
+    with no error raised anywhere, which is quieter and worse than the stale send this guard
+    replaced. Until the propagation consumer exists this count only grows, and that is the
+    expected reading rather than a surprise.
+
+    **Counts only, never a user id or an address** (AD-13).
+    """
+    from apps.delivery.services.delivery_sweep import count_stuck_holds
+
+    stuck = count_stuck_holds(now=_now())
+    if stuck:
+        logger.warning(
+            "Sends held for propagation past the alarm window",
+            extra={"job": "report_held_sends", "stuck": stuck},
+        )
+    else:
+        logger.info("No sends stuck behind propagation", extra={"job": "report_held_sends"})
+
+
+@shared_task(name="worker.tasks.report_stuck_propagation")
+def report_stuck_propagation() -> None:
+    """Report state changes unpropagated past `PROPAGATION_ALARM_AFTER` (AD-17).
+
+    **The other half of `report_held_sends`.** That one counts sends waiting for propagation;
+    this counts the propagations themselves. A held send with no stuck change is a `delivery`
+    problem; a stuck change explains every hold behind it at once.
+
+    **It reports and never repairs.** `EventStateChange` is append-only — `propagated_at` is
+    its one mutable column — so there is no attempts counter to retire a poisoned change with,
+    and setting `propagated_at` to stop the churn would claim a propagation that never
+    happened. What is bounded here is how long the failure stays quiet.
+
+    **Counts only, never a user id or an event title** (AD-13).
+    """
+    stuck = propagation.count_stuck_propagations(now=_now())
+    if stuck:
+        logger.warning(
+            "State changes unpropagated past the alarm window",
+            extra={"job": "report_stuck_propagation", "stuck": stuck},
+        )
+    else:
+        logger.info("No state changes stuck", extra={"job": "report_stuck_propagation"})
 
 
 @shared_task(name="worker.tasks.sweep_due_sends")

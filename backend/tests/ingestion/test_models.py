@@ -14,7 +14,7 @@ from django.apps import apps
 from django.db import DataError, IntegrityError, connections, models, transaction
 from django.db.models import F
 
-from apps.ingestion.models import Event, EventStateChange, ExtractedRecord
+from apps.ingestion.models import Event, EventStateChange, ExtractedRecord, Source
 from shared.db import CATALOG, PERSONAL
 from shared.ids import uuid7
 from shared.retention import RetentionCategory
@@ -387,3 +387,50 @@ def test_ingestion_retention_categories():
 def test_source_zero_cadence_rejected():
     with violates("source_cadence_positive_ck"):
         SourceFactory(ingestion_cadence=timedelta(0))
+
+
+# --- FR-53: the cadence ceilings, enforced by the database ---------------------------------------
+
+
+def test_high_priority_source_over_its_ceiling_rejected():
+    with violates("source_cadence_within_priority_ceiling_ck"):
+        SourceFactory(acquisition_method="api", ingestion_cadence=timedelta(hours=4, seconds=1))
+
+
+def test_high_priority_source_at_its_ceiling_accepted():
+    source = SourceFactory(acquisition_method="api", ingestion_cadence=timedelta(hours=4))
+
+    assert source.ingestion_cadence == timedelta(hours=4)
+
+
+def test_lower_priority_source_over_its_ceiling_rejected():
+    with violates("source_cadence_within_priority_ceiling_ck"):
+        SourceFactory(acquisition_method="rss", ingestion_cadence=timedelta(hours=24, seconds=1))
+
+
+def test_lower_priority_source_at_its_ceiling_accepted():
+    source = SourceFactory(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    assert source.ingestion_cadence == timedelta(hours=24)
+
+
+def test_the_constraint_holds_when_the_python_path_is_bypassed():
+    """The constraint is the backstop: the registry's cleaner can be skipped, and the row
+    still cannot hold a cadence the guarantee cannot support.
+    """
+    source = SourceFactory(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    with violates("source_cadence_within_priority_ceiling_ck"):
+        Source.objects.using(CATALOG).filter(pk=source.pk).update(
+            ingestion_cadence=timedelta(hours=24, seconds=1)
+        )
+
+
+def test_the_constraint_holds_when_the_method_changes():
+    """Moving a 24-hour row to `api` is over the high tier's ceiling — the row cannot become
+    that, whatever wrote it.
+    """
+    source = SourceFactory(acquisition_method="rss", ingestion_cadence=timedelta(hours=24))
+
+    with violates("source_cadence_within_priority_ceiling_ck"):
+        Source.objects.using(CATALOG).filter(pk=source.pk).update(acquisition_method="api")

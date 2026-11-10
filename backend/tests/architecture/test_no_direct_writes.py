@@ -14,7 +14,18 @@ def test_surface_files_include_every_app_admin_and_api():
     names = {str(p.relative_to(BACKEND_DIR)) for p in surface_files()}
 
     assert {"apps/ingestion/admin.py", "apps/ingestion/api.py", "config/api.py"} <= names
-    assert len(names) == 13  # six apps x (admin, api) + config/api.py
+    # Every app's admin and every `*_api.py` is here — a surface file that is missing
+    # from this list is **exempt from AD-5**, and nothing else would catch it.
+    assert "apps/delivery/notices_api.py" in names
+    # `config/health.py` is a router too — it defines its own `Router` and is mounted at
+    # `/health` — and it is a surface file like any other. It is included by name
+    # because the shape rule (`admin.py` / `api.py` / `*_api.py`) does not match it.
+    assert "config/health.py" in names
+    assert all(
+        name.endswith(("admin.py", "api.py")) or name == "config/health.py" for name in names
+    )
+    # 6 admins + 6 api.py + 5 *_api.py + config/api.py + config/health.py = 19
+    assert len(names) == 19
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

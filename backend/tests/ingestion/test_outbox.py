@@ -78,17 +78,32 @@ def test_mark_propagated_is_idempotent():
     assert change.propagated_at == NOW
 
 
-def test_placeholder_consumer_leaves_the_row_unpropagated(caplog):
+def test_the_consumer_marks_a_change_nobody_saved_as_propagated(caplog):
+    """The replacement for the placeholder's test, and the inverse of what it asserted.
+
+    Until `propagation-consumer`, this task deliberately left `propagated_at` NULL so the
+    reconciler would keep re-offering the row until a real consumer arrived. It has arrived,
+    and the most common case is this one: an unsaved event's state change touches nobody.
+
+    It must mark propagated immediately rather than churn. There is no attempts counter on
+    an append-only row to retire it with, so a change that never marks is a change the
+    reconciler offers forever.
+    """
     change = _change(timedelta(hours=1))
 
-    with caplog.at_level(logging.DEBUG, logger="worker.tasks"):
+    with caplog.at_level(logging.INFO, logger="worker.tasks"):
         result = tasks.propagate_state_change(str(change.pk))
 
     assert result is None
     change.refresh_from_db(using=CATALOG)
-    assert change.propagated_at is None
+    assert change.propagated_at is not None
     [record] = [r for r in caplog.records if r.name == "worker.tasks"]
-    assert record.state_change_id == str(change.pk)
+    assert (record.getMessage(), record.users) == ("State change propagated", 0)
+
+
+def test_the_consumer_does_nothing_for_a_change_that_no_longer_exists():
+    """A task holding an id for a vanished row has nothing to do, and that is not an error."""
+    assert tasks.propagate_state_change(str(uuid7())) is None
 
 
 def test_reconcile_task_calls_the_command_and_logs_the_count(monkeypatch, caplog):

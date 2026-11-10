@@ -349,6 +349,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's open state-change notices
+         * @description The notices the user has not dismissed, newest first — the data behind the digest home's strip.
+         *
+         *     **A few, not a history.** The list is bounded by the server: FR-54 promises one calm correction, not a notification centre, and there is no inbox to page through. An empty list is the common case — most users, most days, have nothing to correct.
+         *
+         *     **A notice is here until it is dismissed.** Being shown a notice is not the same as acting on it, so the strip is a queue: it empties when the user closes an item, not when it renders.
+         *
+         *     **This says nothing about the event.** A notice names the change and the event it is about; it does not say the event is cancelled, moved, or off. The client renders the correction; the event's own page carries its facts.
+         */
+        get: operations["apps_delivery_notices_api_get_notices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notices/events/{event_id}/mute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Silence the state-change notices for one event
+         * @description Mutes FR-54's notices for one event: the "this changed" message stops.
+         *
+         *     **A mute silences the correction, not the event.** Reminders still fire on the user's Reminder Plan and the event still places in the Pulse Digest. There is no global off switch — a per-event mute is a judgement about the one event the user is looking at.
+         *
+         *     **A cancellation is still raised.** A cancelled or superseded event is announced even when muted, because the mute has already removed it from the digest and silence about it would have no second channel to catch it.
+         *
+         *     **Muting an already-muted event is a success**, and the response says `changed: false` — nothing moved.
+         *
+         *     **No existence check on the event.** A mute for an event that has since gone is harmless, and refusing it would make the mute fail in exactly the case a user most wants it.
+         */
+        put: operations["apps_delivery_notices_api_put_event_mute"];
+        post?: never;
+        /**
+         * Let one event's state-change notices through again
+         * @description Clears the mute on one event, so its "this changed" messages come back.
+         *
+         *     **Unmuting does not replay what was silenced.** The notices suppressed while the mute was on are gone, and raising them now would deliver a correction about a change the user has had days to notice. The event's current state is on its Detail screen, which is where a user who just unmuted is standing.
+         *
+         *     **Unmuting an event that is not muted is a success**, and the response says `changed: false`.
+         */
+        delete: operations["apps_delivery_notices_api_delete_event_mute"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notices/{notice_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss one state-change notice
+         * @description Closes one notice: it leaves the strip, and it never comes back. This is a real write, not client state — dismissal is what makes FR-54's "one-time, never repeats" true.
+         *
+         *     **The notice row survives.** It is closed, not deleted, so the daily cap and the never-repeat rule still hold against it.
+         *
+         *     **Dismissing an already-dismissed notice is a success**, and the response says `changed: false` — nothing moved, and the client need not redraw.
+         *
+         *     **A notice that is not yours, or that does not exist, is a 404** — the same 404 for both, so the endpoint cannot be used to find out whether a given id exists.
+         */
+        post: operations["apps_delivery_notices_api_post_dismiss_notice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/calendars": {
         parameters: {
             query?: never;
@@ -459,6 +547,8 @@ export interface paths {
          *     Each card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.
          *
          *     The times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.
+         *
+         *     A card also carries the event's current `status` (`scheduled`, `postponed` or `cancelled`) and whether it `is_sold_out`. These are read at request time, not stored on the composition, so an event that changed after the composition still says so. Both are `null` for a personal event — the user's own agenda row has no lifecycle and no tickets — and `null` for a card whose event the catalog no longer holds.
          */
         get: operations["apps_personalization_api_read_digest_endpoint"];
         put?: never;
@@ -1474,12 +1564,62 @@ export interface components {
             start_time_utc: string;
         };
         /**
-         * DetailPersonalOut
-         * @description The signed-in user's own state for an event (FR-24).
+         * DetailNoticeOut
+         * @description The newest state-change notice for this event, as the Detail banner shows it.
          *
-         *     **Three independent facts, and none of them implies another.** "There is no
+         *     **It is the newest notice for this event, regardless of dismissal.** That is the
+         *     deliberate rule of `delivery.services.notice_state`: the banner is about *this* event,
+         *     which the user has navigated to on purpose, so dismissing the strip on the digest home
+         *     must not hide "this event was cancelled" from the event's own page.
+         *
+         *     **`dismissed_at` says whether the user has already closed it.** The banner renders
+         *     that state rather than pretending the correction never happened — the notice is still
+         *     the truth about this event, and the user may still want to read it.
+         *
+         *     **`seen_at` is when it was first put in front of them** — not an act by them, and
+         *     not the same thing as the dismissal. The two are separate columns on the row and
+         *     they are separate fields here. (Today a dismissal sets both; the strip's read
+         *     deliberately does not mark notices seen, because a `GET` that writes is the shape
+         *     CSRF exists to stop.)
+         *
+         *     **No `event_id`.** The Detail read is already scoped to one event and the response's
+         *     enclosing `event` object names it. A redundant field could disagree with its own
+         *     parent.
+         */
+        DetailNoticeOut: {
+            /** Change Kind */
+            change_kind: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dismissed At */
+            dismissed_at?: string | null;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Seen At */
+            seen_at?: string | null;
+        };
+        /**
+         * DetailPersonalOut
+         * @description The signed-in user's own state for an event (FR-24, FR-54, FR-55).
+         *
+         *     **Five independent facts, and none of them implies another.** "There is no
          *     explanation" and "you have not saved this" are different, and a client that cannot
-         *     tell them apart renders the wrong thing.
+         *     tell them apart renders the wrong thing. The same is true of the two newest ones:
+         *     **a notice and a mute are different facts**, and a client must not read "muted" as
+         *     "there is nothing to say".
          *
          *     **`why_this` is `None` when no composition exists** for this `(user, event)` pair.
          *     That is an **explicit absence**: not an empty breakdown, not a zero bucket, and not
@@ -1488,8 +1628,14 @@ export interface components {
          */
         DetailPersonalOut: {
             conflict?: components["schemas"]["DetailConflictOut"] | null;
+            /**
+             * Muted
+             * @default false
+             */
+            muted: boolean;
             /** Neighbor Bucket */
             neighbor_bucket?: string | null;
+            notice?: components["schemas"]["DetailNoticeOut"] | null;
             /**
              * Saved
              * @default false
@@ -1550,6 +1696,8 @@ export interface components {
             event_id: string;
             /** Event Kind */
             event_kind: string;
+            /** Is Sold Out */
+            is_sold_out?: boolean | null;
             /** Location */
             location?: string | null;
             /** Public Slug */
@@ -1562,6 +1710,8 @@ export interface components {
             start_time_tz?: string | null;
             /** Start Time Utc */
             start_time_utc?: string | null;
+            /** Status */
+            status?: string | null;
             /**
              * Tags
              * @default []
@@ -1841,6 +1991,38 @@ export interface components {
             total: number;
         };
         /**
+         * EventMuteOut
+         * @description The outcome of muting or unmuting one event's state-change notices.
+         *
+         *     **It mirrors `MuteResult` exactly**, because that dataclass already carries the two
+         *     facts the client needs and no third: `muted` is the event's *state* after the call,
+         *     and `changed` says whether **this call** moved it.
+         *
+         *     **Muting an already-muted event is a success, not an error** — and `changed: false` is
+         *     what says so honestly. A client that redrew on `changed` would redraw a control that
+         *     did not move.
+         *
+         *     **`event_id` is in the response** so the client can confirm which event the answer is
+         *     about, without having to trust that the request and the response were about the same
+         *     thing.
+         *
+         *     **This says nothing about the event itself.** A mute silences the correction, not the
+         *     event: reminders still fire on the user's Reminder Plan and the event still places in
+         *     the Pulse Digest (FR-55). The shape carries no field that could be read as "the event
+         *     is off".
+         */
+        EventMuteOut: {
+            /** Changed */
+            changed: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Muted */
+            muted: boolean;
+        };
+        /**
          * EventOut
          * @description One public event.
          *
@@ -1977,6 +2159,117 @@ export interface components {
         InterestsOut: {
             /** Chip Keys */
             chip_keys: string[];
+        };
+        /**
+         * NoticeDismissOut
+         * @description The outcome of dismissing one notice.
+         *
+         *     **`dismissed` and `changed` are two different facts, and the client needs both.**
+         *     `dismissed` is the notice's *state* — it is dismissed now. `changed` says whether
+         *     **this call** is what made it so.
+         *
+         *     **The distinction is what makes an idempotent write honest.** Dismissing an
+         *     already-dismissed notice is a success, not an error — but a response that claimed
+         *     `changed: true` for it would tell the screen to redraw something that did not move.
+         *     `changed: false` says "it was already dismissed; nothing changed", which is the truth
+         *     and is also what lets the client skip the redraw.
+         *
+         *     **The same shape as the mute's** (`EventMuteOut`), because both are "a state and
+         *     whether this call moved it".
+         */
+        NoticeDismissOut: {
+            /**
+             * Changed
+             * @default false
+             */
+            changed: boolean;
+            /**
+             * Dismissed
+             * @default true
+             */
+            dismissed: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * NoticeListOut
+         * @description The signed-in user's open notices, newest first.
+         *
+         *     **A list, and nothing else.** There is no total, no `next` cursor, no page — the strip
+         *     shows a few and there is no inbox to page through (FR-54). A `total` would invite the
+         *     client to build an inbox, and an inbox is how "one calm correction" becomes a
+         *     notification centre.
+         *
+         *     **`items` is empty, not absent, when the user has no open notices.** An empty list is
+         *     the shape; `None` would be a second spelling of the same fact.
+         */
+        NoticeListOut: {
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["NoticeOut"][];
+        };
+        /**
+         * NoticeOut
+         * @description One state-change notice, as the digest strip shows it.
+         *
+         *     **The notice's own facts, and no more.** The server states what changed and what it
+         *     means; the client renders it. The change's *content* — the before/after values — is
+         *     deliberately absent: it is source payload, and it is the one place a title or a venue
+         *     name could leak into a response (AD-13). `change_kind` is the vocabulary
+         *     `domain.lifecycle.ChangeKind` defines, carried through unchanged.
+         *
+         *     **`event_id` is the catalog event's id, by value.** The client routes to the event's
+         *     page, and the notice row holds no relation to the catalog (AD-3).
+         *
+         *     **`seen_at` and `dismissed_at` are the two different acts.** `seen_at` is when the
+         *     notice was put in front of the user — not an act by them. `dismissed_at` is when they
+         *     closed it. A notice can be seen and not dismissed, and a client that cannot tell them
+         *     apart would render a dismissed notice as still open.
+         *
+         *     **(Today, a dismissal sets both — but the strip's read deliberately does not mark
+         *     notices seen.** A `GET` that writes is the shape CSRF exists to stop, and
+         *     `apps/personalization/detail_api.py` refuses it for the Detail Screen. So `seen_at` is
+         *     `None` until the user closes the notice. The two stay separate fields because the
+         *     moment something *does* mark a notice seen on render, they will say different things.
+         *
+         *     **`dismissed_at` is `None` on every notice the strip returns**, because the strip is
+         *     the queue of *open* notices. It is on the wire anyway so the same shape serves the
+         *     Detail banner, which deliberately reports a dismissed notice too.
+         */
+        NoticeOut: {
+            /** Change Kind */
+            change_kind: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dismissed At */
+            dismissed_at?: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Seen At */
+            seen_at?: string | null;
         };
         /**
          * NotificationSettingsIn
@@ -2690,6 +2983,17 @@ export interface components {
          *     **`conflict` is already decided.** The server projects the pairs onto the blocks, so
          *     the screen does not have to know what a conflict pair is, and the two surfaces — the
          *     Pulse Card and the Timeline — cannot disagree about which block is flagged.
+         *
+         *     **`state` is the catalog's lifecycle word**, carried through unchanged — the same
+         *     `str` the event detail and the public page already carry, because the vocabulary is
+         *     the backend's and a second one here would be a translation layer with nothing to
+         *     translate. It is null for a personal block, which has no lifecycle, and for a public
+         *     block whose catalog event has disappeared, where the state is unknown rather than
+         *     normal — the same distinction `name` already draws.
+         *
+         *     A `cancelled` block is still returned. FR-55 removes a cancelled event from the
+         *     *digest*; the Timeline is the user's calendar, and a cancelled event is still on it
+         *     until they take it off.
          */
         TimelineBlockOut: {
             /**
@@ -2718,6 +3022,8 @@ export interface components {
              * Format: date-time
              */
             start_time_utc: string;
+            /** State */
+            state?: string | null;
         };
         /**
          * TimelineDayOut
@@ -3453,6 +3759,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthUnavailableOut"];
+                };
+            };
+        };
+    };
+    apps_delivery_notices_api_get_notices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeListOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_delivery_notices_api_put_event_mute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMuteOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_delivery_notices_api_delete_event_mute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMuteOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_delivery_notices_api_post_dismiss_notice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeDismissOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

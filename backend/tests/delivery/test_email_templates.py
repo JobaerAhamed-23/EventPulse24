@@ -72,8 +72,8 @@ def test_the_state_notice_has_both_bodies():
     message = render_state_notice(
         StateNoticeFacts(
             title="Rooftop cinema",
-            change_kind="moved to a new time",
-            local_time_text="Friday 14 November, 19:30",
+            change_kind="time_moved",
+            new_time_text="Friday 14 November, 19:30",
         ),
         to=ADDRESS,
     )
@@ -120,8 +120,8 @@ def test_the_state_notice_has_both_bodies():
         lambda: render_state_notice(
             StateNoticeFacts(
                 title="Rooftop cinema",
-                change_kind="moved to a new time",
-                local_time_text="Friday 14 November, 19:30",
+                change_kind="time_moved",
+                new_time_text="Friday 14 November, 19:30",
             ),
             to=ADDRESS,
         ),
@@ -401,8 +401,8 @@ def test_the_state_notice_carries_no_unsubscribe_url():
     message = render_state_notice(
         StateNoticeFacts(
             title="Rooftop cinema",
-            change_kind="moved to a new time",
-            local_time_text="Friday 14 November, 19:30",
+            change_kind="time_moved",
+            new_time_text="Friday 14 November, 19:30",
         ),
         to=ADDRESS,
     )
@@ -437,39 +437,114 @@ def test_the_address_reaches_only_the_recipient_field():
 
 
 def test_the_state_notice_says_what_changed_and_what_it_was():
+    """FR-54's body requirement: **what changed, and what it means for the reminders.**
+
+    The reminder consequence is *derived* from `LIFECYCLE_SEND_BEHAVIOUR`, so the body
+    cannot promise something the send machinery did not do. A body saying "your reminders
+    have been cancelled" while the reminders still fired would be exactly the bug class
+    this whole intent exists to prevent.
+    """
     message = render_state_notice(
         StateNoticeFacts(
             title="Rooftop cinema",
-            change_kind="moved to a new time",
-            local_time_text="Friday 14 November, 19:30",
+            change_kind="time_moved",
+            new_time_text="Friday 14 November, 19:30",
             previous_time_text="Friday 14 November, 18:00",
-            location="The Barbican",
+            venue_name="The Barbican",
+            reminder_consequence="Your reminders have been rescheduled to the new time.",
         ),
         to=ADDRESS,
     )
 
-    assert message.subject == "Update: Rooftop cinema"
-    assert "moved to a new time" in message.text_body
     assert "Friday 14 November, 19:30" in message.text_body
     assert "Friday 14 November, 18:00" in message.text_body
+    assert "Your reminders have been rescheduled to the new time." in message.text_body
 
 
-def test_the_state_notice_is_not_minted_by_the_delivery_app():
-    """**Rendered but not minted** — FR-53/54 is the next intent's work.
+def test_the_state_notice_is_minted_in_exactly_one_place():
+    """The inverse of the guard this replaces, and the same invariant underneath.
 
-    The body exists so that intent is an API and a trigger rather than a fresh template
-    pass, and this test says so: nothing outside the model that declares the kind may
-    mint a `state_notice` send yet.
+    Until `state-change-notice-model`, nothing was allowed to mint a `state_notice` at
+    all: the template was written ahead of its trigger, and a test said so to keep the
+    gap from being mistaken for dead code. That gap is now filled, so the guard is
+    rewritten rather than deleted — what it was really protecting is that there is **one**
+    minting path, and that survives the feature existing.
+
+    AD-7 names `scheduled_sends` the schedule's single writer. A second module naming the
+    kind is a second place a notice could be scheduled from, and the two would drift —
+    which is precisely what `tests/architecture/test_schedule_writes.py` guards for every
+    kind. This test keeps the list of files for *this* kind down to the two that have a
+    reason to name it.
+
+    **The check is on the minting call, not on the string.** The earlier version of this
+    test looked for the text `STATE_NOTICE` anywhere in `apps/`, which also caught
+    `delivery_messages` — a module that *reads* the kind to choose the right renderer for
+    a row, and mints nothing. **A reader is not a second writer**, and the invariant this
+    test protects is about writers. The write itself is guarded structurally and
+    exhaustively by `tests/architecture/test_schedule_writes.py`, which is AST-based and
+    therefore cannot be fooled by a string.
+
+    So this test asks the narrower question the string check was standing in for: **which
+    module *writes* a `state_notice` row's `kind`?** That is an assignment — the `kind=`
+    keyword of a `create`/`get_or_create`, or the `"kind":` key of a `defaults` dict —
+    and it is found by parsing rather than by matching text, so a module that merely
+    *mentions* the kind (a renderer dispatching on it) is not caught.
     """
+    import ast
     from pathlib import Path
 
     backend = Path(__file__).resolve().parents[2]
-    # The declaration itself is allowed in exactly one file — the model that declares it.
-    declaration = backend / "apps" / "delivery" / "models.py"
-    offenders = [
-        str(path.relative_to(backend))
-        for path in (backend / "apps").rglob("*.py")
-        if path != declaration and "STATE_NOTICE" in path.read_text()
-    ]
+    #: The model declares the kind; the minting service is AD-7's single writer of it.
+    allowed = {
+        Path("apps/delivery/models.py"),
+        Path("apps/delivery/services/scheduled_sends.py"),
+    }
 
-    assert offenders == [], f"A state notice must not be minted yet: {offenders}"
+    def writes_the_kind(path: Path) -> bool:
+        """Whether this module *assigns* `ScheduledSend.Kind.STATE_NOTICE` to a row."""
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            # The model *declares* the kind — `STATE_NOTICE = "state_notice"` — which is
+            # the definition of the vocabulary rather than a write of a row.
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "STATE_NOTICE"
+                for target in node.targets
+            ):
+                return True
+            if not isinstance(node, ast.keyword) or node.arg != "kind":
+                continue
+            if _is_state_notice(node.value):
+                return True
+            # A `defaults={...}` dict is the other shape a row's kind is written in.
+            if isinstance(node.value, ast.Dict):
+                for key, value in zip(node.value.keys, node.value.values, strict=True):
+                    if (
+                        isinstance(key, ast.Constant)
+                        and key.value == "kind"
+                        and _is_state_notice(value)
+                    ):
+                        return True
+        return False
+
+    def _is_state_notice(node: ast.expr) -> bool:
+        """Whether this expression names `ScheduledSend.Kind.STATE_NOTICE`."""
+        if isinstance(node, ast.Attribute) and node.attr == "STATE_NOTICE":
+            return True
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "value"
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "STATE_NOTICE"
+        )
+
+    minters = {
+        path.relative_to(backend)
+        for path in (backend / "apps").rglob("*.py")
+        if writes_the_kind(path)
+    }
+
+    assert minters == allowed, (
+        "A `state_notice` send is minted in exactly one place (AD-7). "
+        f"Unexpected: {sorted(str(p) for p in minters - allowed)}; "
+        f"missing: {sorted(str(p) for p in allowed - minters)}"
+    )

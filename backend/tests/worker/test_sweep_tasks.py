@@ -169,3 +169,98 @@ def test_the_task_runs_through_celery():
 
     assert result.successful()
     assert result.result is None
+
+
+# --- The held-send alarm (AD-17) -------------------------------------------------------------
+
+
+def test_the_tick_enqueues_the_held_send_report_on_the_reconciler_cadence(enqueued, monkeypatch):
+    """Same cadence as the outbox reconciler, because propagation is what releases a hold."""
+    from datetime import datetime as _dt
+
+    monkeypatch.setattr(tasks, "_now", lambda: _dt(2026, 11, 14, 8, 5, tzinfo=UTC))
+    tasks.tick()
+    assert ("worker.tasks.report_held_sends", ()) in enqueued
+
+
+def test_the_tick_does_not_enqueue_the_report_off_cadence(enqueued, monkeypatch):
+    from datetime import datetime as _dt
+
+    monkeypatch.setattr(tasks, "_now", lambda: _dt(2026, 11, 14, 8, 7, tzinfo=UTC))
+    tasks.tick()
+    assert ("worker.tasks.report_held_sends", ()) not in enqueued
+
+
+def test_the_report_warns_when_a_send_is_stuck_behind_propagation(caplog, monkeypatch):
+    """A hold nobody releases stops a user's reminders with no error anywhere.
+
+    That is quieter, and worse, than the stale send the guard replaced — so it gets an alarm.
+    """
+    from datetime import datetime as _dt
+
+    from shared.constants import HELD_SEND_ALARM_AFTER
+
+    now = _dt(2026, 11, 14, 9, 0, tzinfo=UTC)
+    ScheduledSendFactory(
+        due_at=DUE,
+        held_at=now - HELD_SEND_ALARM_AFTER - timedelta(minutes=1),
+    )
+    monkeypatch.setattr(tasks, "_now", lambda: now)
+
+    with caplog.at_level(logging.WARNING):
+        tasks.report_held_sends()
+
+    assert any(r.levelno == logging.WARNING and getattr(r, "stuck", 0) == 1 for r in caplog.records)
+
+
+def test_the_report_is_quiet_for_a_hold_inside_the_window(caplog, monkeypatch):
+    """A fresh hold is normal, not an alarm — propagation has not had its chance yet."""
+    from datetime import datetime as _dt
+
+    now = _dt(2026, 11, 14, 9, 0, tzinfo=UTC)
+    ScheduledSendFactory(due_at=DUE, held_at=now - timedelta(minutes=1))
+    monkeypatch.setattr(tasks, "_now", lambda: now)
+
+    with caplog.at_level(logging.WARNING):
+        tasks.report_held_sends()
+
+    assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+
+def test_the_report_never_releases_or_sends(monkeypatch):
+    """It reports. Releasing on a timer would send exactly the mail the hold prevents."""
+    from datetime import datetime as _dt
+
+    from shared.constants import HELD_SEND_ALARM_AFTER
+
+    now = _dt(2026, 11, 14, 9, 0, tzinfo=UTC)
+    held_at = now - HELD_SEND_ALARM_AFTER - timedelta(hours=5)
+    row = ScheduledSendFactory(due_at=DUE, held_at=held_at)
+    monkeypatch.setattr(tasks, "_now", lambda: now)
+
+    tasks.report_held_sends()
+
+    row.refresh_from_db()
+    assert row.held_at == held_at
+    assert row.status == ScheduledSend.Status.PENDING
+
+
+def test_the_report_logs_a_count_and_never_a_user_or_address(caplog, monkeypatch):
+    """AD-13: counts only."""
+    from datetime import datetime as _dt
+
+    from shared.constants import HELD_SEND_ALARM_AFTER
+
+    now = _dt(2026, 11, 14, 9, 0, tzinfo=UTC)
+    row = ScheduledSendFactory(
+        due_at=DUE, held_at=now - HELD_SEND_ALARM_AFTER - timedelta(minutes=1)
+    )
+    monkeypatch.setattr(tasks, "_now", lambda: now)
+
+    with caplog.at_level(logging.WARNING):
+        tasks.report_held_sends()
+
+    for record in caplog.records:
+        rendered = str(record.__dict__)
+        assert str(row.user_id) not in rendered
+        assert "@" not in record.getMessage()

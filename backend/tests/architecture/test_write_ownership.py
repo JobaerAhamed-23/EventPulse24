@@ -105,6 +105,14 @@ TABLE_OWNERS = {
     # AD-16: `delivery` owns the schedule itself. AD-7 makes SCHEDULED_SEND rows "the sole
     # source of truth for what is due", and the minting service is their single writer.
     "delivery_scheduledsend": "delivery",
+    # AD-16: `delivery` owns FR-54's state-change notice. It is a delivery — the record
+    # behind one email and two in-app surfaces — and `personalization` reads it through a
+    # published service rather than writing it, the same division `REMINDER_PLAN` has.
+    "delivery_statechangenotice": "delivery",
+    # AD-16: `delivery` owns the per-event notice mute (FR-55). The Detail screen's toggle
+    # is `personalization`'s surface, but the preference it sets is about a *delivery*, so
+    # the row and its commands live here — beside the notice it silences.
+    "delivery_eventnoticemute": "delivery",
 }
 
 #: The apps that may write. `worker` and `config` are excluded deliberately: the worker

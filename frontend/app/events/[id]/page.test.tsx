@@ -24,6 +24,21 @@ import EventDetailPage from "@/app/events/[id]/page";
 const readEventDetail = vi.fn();
 const getSession = vi.fn();
 
+/**
+ * The mute control is a client island that writes through the API client, so the
+ * client is stubbed here too — the page's own contribution is what the banner and the
+ * control render from the payload, and that is what these assertions are about.
+ */
+const PUT = vi.fn();
+const DELETE = vi.fn();
+
+vi.mock("@/lib/backend-client", () => ({
+  api: {
+    PUT: (...args: unknown[]) => PUT(...args),
+    DELETE: (...args: unknown[]) => DELETE(...args),
+  },
+}));
+
 vi.mock("@/lib/event-detail-read", () => ({
   readEventDetail: (id: string) => readEventDetail(id),
 }));
@@ -123,6 +138,10 @@ function personal(overrides: Record<string, unknown> = {}) {
     saved: false,
     why_this: whyThis(),
     conflict: null,
+    /** FR-55's per-event mute — the server's fact, not the client's. */
+    muted: false,
+    /** FR-54's newest notice for this event — `null` when none has been raised. */
+    notice: null,
     ...overrides,
   };
 }
@@ -157,6 +176,10 @@ function found(personalBlock: Record<string, unknown> | null) {
 beforeEach(() => {
   readEventDetail.mockReset();
   getSession.mockReset();
+  PUT.mockReset();
+  DELETE.mockReset();
+  PUT.mockResolvedValue({ data: {}, response: { status: 200 } });
+  DELETE.mockResolvedValue({ data: {}, response: { status: 200 } });
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
 });
 
@@ -781,6 +804,72 @@ describe("the share's wiring", () => {
   });
 });
 
+/* ── the lifecycle states ─────────────────────────────────────────────────────── */
+
+describe("the lifecycle states", () => {
+  it("says so, calmly, in one line, for a cancelled event", async () => {
+    // **The Detail screen has room for a sentence, so it says the thing in words** —
+    // and it says the *same* words the public page says, because both read
+    // `lib/event-state.ts`. A Detail screen that said "Cancelled" where the public
+    // page said "Cancelled — this event is not happening" would be two vocabularies
+    // for one fact.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ status: "cancelled" }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("Cancelled — this event is not happening.")).toBeInTheDocument();
+  });
+
+  it("says so for a postponed event too", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ status: "postponed" }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByText("Postponed — this event is not happening at the time shown."),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing at all for a status it has no word for", async () => {
+    // ASSUMPTION-9: a status this system has never heard of is a fact the frontend
+    // cannot put into words, and rendering one as "unknown" would be inventing a
+    // claim about the world.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ status: "rescheduled_for_tuesday" }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-state]")).toBeNull();
+    expect(document.body.textContent ?? "").not.toContain("unknown");
+  });
+
+  it("prefers the lifecycle line over the sold-out line", async () => {
+    // **A line reading "Sold out — tickets no longer available" on an event that has
+    // been cancelled invites the reader to wait for tickets for an event that is not
+    // happening.** The event that is not happening is the bigger fact.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: {
+        event: facts({ status: "cancelled", is_sold_out: true }),
+        personal: personal(),
+      },
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("Cancelled — this event is not happening.")).toBeInTheDocument();
+    expect(screen.queryByText("Sold out — tickets no longer available.")).toBeNull();
+  });
+});
+
 /* ── the time ─────────────────────────────────────────────────────────────────── */
 
 describe("the time", () => {
@@ -848,6 +937,200 @@ describe("the time", () => {
     await renderPage();
 
     expect(screen.getByText("Time to be confirmed")).toBeInTheDocument();
+  });
+});
+
+/* ── the state-change banner and the mute ─────────────────────────────────────── */
+
+describe("the state-change banner", () => {
+  /**
+   * One notice, as the Detail read hands it over.
+   *
+   * **The payload carries no title** (AD-13) — so the banner says "This event", and the
+   * page's own `<h1>` two elements above it says which one.
+   */
+  function notice(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "66666666-6666-6666-6666-666666666666",
+      change_kind: "cancelled",
+      event_version: 2,
+      local_date: "2026-11-07",
+      seen_at: null,
+      dismissed_at: null,
+      created_at: "2026-11-07T12:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("renders no banner at all when the event has no notice", async () => {
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    // **The element is not in the DOM.** An empty `<section>` with a heading is the
+    // placeholder the criterion forbids.
+    expect(document.querySelector("[data-detail-notice]")).toBeNull();
+    expect(screen.queryByRole("region", { name: "This event has changed" })).toBeNull();
+  });
+
+  it("says what changed and what it means for the user's reminders", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ notice: notice() })),
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("This event was cancelled.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Your reminders for this event have been cancelled."),
+    ).toBeInTheDocument();
+  });
+
+  it("says what a postponement did to the reminders", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ notice: notice({ change_kind: "postponed" }) })),
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("This event was moved to a new time.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Your reminders have been rescheduled to the new time."),
+    ).toBeInTheDocument();
+  });
+
+  it("still shows a notice the user has already dismissed, and says so", async () => {
+    // **The backend reports the newest notice whether or not it was dismissed** —
+    // dismissing the strip on the digest home must not hide "this event was cancelled"
+    // from the event's own page.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ notice: notice({ dismissed_at: "2026-11-07T12:30:00Z" }) })),
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("This event was cancelled.")).toBeInTheDocument();
+    expect(screen.getByText("You've already dismissed this.")).toBeInTheDocument();
+  });
+
+  it("renders no banner for a muted event, and keeps the mute control", async () => {
+    // **FR-55's mute silences the correction, and the banner *is* the correction.** The
+    // control stays, because a mute the user cannot undo is a trap.
+    //
+    // **A postponement is the kind a mute silences** — a cancellation is not, because the
+    // backend raises it despite the mute.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ notice: notice({ change_kind: "postponed" }), muted: true })),
+    });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-notice]")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Mute updates about this event" }),
+    ).toBeInTheDocument();
+  });
+
+  it("still shows a terminal change on a muted event", async () => {
+    // **The backend raises a `cancelled` or `superseded` notice even when the event is
+    // muted** — `services/state_notices.py` skips the mute check for exactly those two
+    // kinds, because "silence about it is the one failure with no second channel to
+    // catch it". A frontend that hid it would undo the server's decision (AD-10).
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ notice: notice({ change_kind: "cancelled" }), muted: true })),
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("This event was cancelled.")).toBeInTheDocument();
+  });
+
+  it("renders no banner for an anonymous reader", async () => {
+    // The anonymous reader has nothing personal, and a notice is personal.
+    readEventDetail.mockResolvedValue({ kind: "anonymous", detail: found(null) });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-notice]")).toBeNull();
+  });
+});
+
+describe("the mute control", () => {
+  it("offers the mute on an event with no notice", async () => {
+    // The mute is per-event and reversible, so it is available whether or not a notice
+    // has been raised.
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole("button", { name: "Mute updates about this event" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says in words that the event is muted when it is", async () => {
+    // **WCAG 1.4.1: colour is never the sole carrier of meaning.** The visible text
+    // carries the state, so a user can tell they have muted it without reading a
+    // widget.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: found(personal({ muted: true })),
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("Updates about this event are muted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mute updates about this event" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("says what a mute does not do", async () => {
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(screen.getByText("Reminders are not affected.")).toBeInTheDocument();
+  });
+
+  it("keeps the detail screen's single status region", async () => {
+    // **The Detail Screen's one status region is the conflict-resolution failure
+    // line** (`components/detail/detail-actions.tsx`) — and it is *conditional*, so the
+    // page carries **at most** one, not exactly one.
+    //
+    // **The mute control must never add a second.** Its failure line is a bare
+    // `aria-live="polite"`, and this test is what holds it there: a new island on a
+    // page is exactly where a second status region creeps in, and two status regions
+    // make "which one is the page talking?" a question the DOM cannot answer.
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    expect(screen.queryAllByRole("status")).toHaveLength(0);
+  });
+
+  it("does not turn the mute control's failure line into a second status region", async () => {
+    // **The mute control's failure line is always in the DOM** — a live region added to
+    // the page together with its text is not announced reliably — and it is a bare
+    // `aria-live="polite"`, never a `role="status"`.
+    //
+    // **This is asserted through the DOM, not through the button.** The region must be
+    // there *before* the failure, which is why it cannot be conditional.
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    const live = document.querySelectorAll("[aria-live='polite']");
+    expect(live.length).toBeGreaterThan(0);
+    for (const region of live) {
+      expect(region.getAttribute("role")).not.toBe("status");
+    }
   });
 });
 

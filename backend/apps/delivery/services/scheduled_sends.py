@@ -48,10 +48,14 @@ duplicate sends with no error. Four names, four behaviours. `reschedule_pending_
 **no code path that creates a row** — a structural test asserts that, so "a settings change
 duplicated my reminders" is unreachable rather than merely discouraged.
 
-**`propagate_state_change` is deliberately not wired to this module yet.** AD-17 sets
-`propagated_at` only once *every* owner has applied a change, and the `personalization` half —
-the `SAVED_EVENT` snapshot and the conflict re-evaluation — belongs to the FR-53/54 intent.
-`apply_lifecycle_change` is built, published and tested here, ready for that intent to call.
+**`apply_lifecycle_change` is the `delivery` half of AD-17's propagation.** `worker.propagation`
+calls it, after the `personalization` half has run, because that order is the only survivable
+one: a crash between the halves leaves sends carrying an old version, and the sweep's guard
+*holds* those rows rather than sending them — whereas the reverse order would leave a user's
+reminders re-minted for a new time while their Timeline still showed the old one.
+
+It writes only `delivery` rows, and it is version-gated like every other published service
+here: a change whose version is not newer than what the row already holds changes nothing.
 (Decided with the user 2026-10-31; design doc D8.)
 """
 
@@ -63,12 +67,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db import transaction
 
-from apps.delivery.models import ScheduledSend
+from apps.delivery.models import ReminderPlan, ScheduledSend
 from apps.delivery.send_keys import (
     digest_key,
     digest_local_date_from_key,
     event_reminder_key,
     personal_reminder_key,
+    state_notice_key,
 )
 from apps.delivery.services.audit import write_audit
 from apps.delivery.services.notification_preferences import get_preference
@@ -111,8 +116,12 @@ class SendTarget:
     catalog_event_id: UUID | None = None
 
 
-def _zone_for(user_id: UUID) -> str:
+def zone_for(user_id: UUID) -> str:
     """The user's IANA zone, read through `personalization`'s published interface (AD-3).
+
+    **Published**, because `state_notices` needs the same zone to date a notice and a third
+    private copy of this fallback would be a third place for it to drift (there is already
+    one in `reminder_plan_read`).
 
     Imported inside the function: `apps.personalization.services.personal_events` imports
     `apps.delivery.services.reminder_plans`, which reaches this module, so a module-level
@@ -132,7 +141,7 @@ def _zone_and_delivery_time(user_id: UUID) -> tuple[str, time]:
     `.delivery_time` — and they are read together because a digest's due time needs both: the
     wall clock says *when*, and the zone says *where*, and neither is meaningful alone.
 
-    The import is function-local for the same reason `_zone_for`'s is: a module-level import
+    The import is function-local for the same reason `zone_for`'s is: a module-level import
     here would close the cycle at import time.
 
     **Both fall back to the shared constants**, never to a guess. A user with no preference
@@ -363,7 +372,7 @@ def mint_for_plan(
     Idempotent: a slot whose key already exists is skipped, so a retried mint adds nothing.
     """
     preference = get_preference(user_id=user_id)
-    zone = _zone_for(user_id)
+    zone = zone_for(user_id)
     minted = 0
 
     for slot in slots:
@@ -406,6 +415,153 @@ def mint_for_plan(
             details={"count": minted, "slots": list(slots), "at": now.isoformat()},
         )
     return minted
+
+
+def mint_state_notice(
+    *,
+    user_id: UUID,
+    event_id: UUID,
+    state_change_id: UUID,
+    event_start_utc: datetime | None,
+    actor: Actor,
+    now: datetime,
+) -> bool:
+    """Create the email send for one FR-54 state-change notice. Returns whether it did.
+
+    **The key is AD-7's, unchanged**: `user_id · state_notice · state_change_id`. One send
+    per user per state change, so a propagation retried after a partial run adds nothing.
+    The one-per-day cap is **not** expressed here and must not be — re-keying it on
+    `(event, local_date)` would make a cancellation collide with a sold-out minted earlier
+    the same day and be dropped as a duplicate. The cap belongs to
+    `services.state_notices`, which resolves it by `domain.lifecycle.PRECEDENCE`.
+
+    **The stream is TRANSACTIONAL** (AD-20), and `ScheduledSend.stream` has no default
+    precisely so this is a decision rather than an inheritance. A state notice is a one-time
+    correction about a record the user created themselves, sent because the facts under it
+    moved — not a broadcast. It therefore carries **no RFC 8058 unsubscribe URL**: that is a
+    requirement of the *bulk* stream, `EmailPort.send` refuses a bulk message without one,
+    and the opt-out here is the per-event mute rather than a list unsubscribe.
+
+    **`slot_at` is null, and Quiet Hours still apply.** A state notice has no slot — its
+    moment is *now*, not an offset from the event's start — but `shift_to_sendable` takes
+    any aware instant, so the quiet window defers it like anything else. The null means
+    "no slot", and it is also what makes a later preference change skip this row: the
+    unshifted instant is the change itself, which is in the past and never moves.
+
+    **Except when the deferral would outlast the message.** Decided at capture
+    (2026-11-04): Quiet Hours apply unless the shift would push the notice past the point of
+    being useful. "Past the event's start" is the obvious predicate and the wrong one — a
+    notice landing ninety seconds before the doors open is technically in time and no use at
+    all. The margin is `REMINDER_SLOT_OFFSET[ReminderSlot.ONE_HOUR]`, reused rather than
+    invented (AD-8: a threshold lives in one place): the `1hr` slot is already this
+    project's statement of the last moment a message about an event is still worth sending,
+    being the tightest reminder a user can choose. A notice that cannot beat the `1hr`
+    reminder is not actionable either, so it goes out now instead.
+
+    An event that starts *inside* the user's quiet window therefore always notifies
+    immediately: every deferral available is already too late.
+
+    `event_start_utc` is None when the catalog no longer holds the event — a supersede, or a
+    source that dropped it. There is then no start to be late for, and the quiet window
+    applies unconditionally.
+    """
+    preference = get_preference(user_id=user_id)
+    zone = zone_for(user_id)
+    due_at = shift_to_sendable(now, window=preference.quiet_hours, zone=zone)
+    if event_start_utc is not None:
+        latest_useful = event_start_utc - REMINDER_SLOT_OFFSET[ReminderSlot.ONE_HOUR]
+        if due_at > latest_useful:
+            # The window would hold it past the point of being worth sending. The
+            # correction matters more than the quiet night.
+            due_at = now
+
+    send_key = state_notice_key(user_id=user_id, state_change_id=state_change_id)
+    with transaction.atomic(using=PERSONAL):
+        _, created = ScheduledSend.objects.using(PERSONAL).get_or_create(
+            send_key=send_key,
+            defaults={
+                "user_id": user_id,
+                "kind": ScheduledSend.Kind.STATE_NOTICE,
+                "target_kind": ReminderPlan.TargetKind.SAVED_EVENT.value,
+                "target_id": event_id,
+                "slot": "",
+                "event_version": None,
+                "stream": Stream.TRANSACTIONAL.value,
+                # No slot, so no pre-shift instant to re-shift later. See the docstring.
+                "slot_at": None,
+                "due_at": due_at,
+                "status": ScheduledSend.Status.PENDING,
+            },
+        )
+        if created:
+            write_audit(
+                actor=actor,
+                action="scheduled_send.minted",
+                target_type=ReminderPlan.TargetKind.SAVED_EVENT.value,
+                target_id=event_id,
+                details={
+                    "count": 1,
+                    "kind": ScheduledSend.Kind.STATE_NOTICE.value,
+                    "state_change_id": str(state_change_id),
+                    "deferred": due_at != now,
+                    "at": now.isoformat(),
+                },
+            )
+    return created
+
+
+def cancel_state_notice_sends(
+    *,
+    state_change_ids: Sequence[UUID],
+    user_id: UUID,
+    actor: Actor,
+    now: datetime,
+) -> int:
+    """Cancel the pending emails of state notices that a newer notice superseded.
+
+    **Here rather than in `state_notices`, because AD-7 has one writer.** The notice module
+    owns `STATE_CHANGE_NOTICE` and decides *which* notices lose to a more important change;
+    it does not get to write the schedule, or the schedule has two rule sets — one that
+    mints and one that cancels — and `tests/architecture/test_schedule_writes.py` exists to
+    stop exactly that.
+
+    **The keys come from `send_keys`.** A second spelling of AD-7's key in a caller would
+    cancel nothing the day the key changed, silently, because a filter matching no rows
+    raises nothing.
+
+    **Only `pending` rows.** A sent email cannot be taken back, and marking it cancelled
+    would make the ledger lie about what the user received.
+    """
+    if not state_change_ids:
+        return 0
+    keys = [
+        state_notice_key(user_id=user_id, state_change_id=state_change_id)
+        for state_change_id in state_change_ids
+    ]
+    cancelled = (
+        ScheduledSend.objects.using(PERSONAL)
+        .filter(
+            user_id=user_id,
+            kind=ScheduledSend.Kind.STATE_NOTICE,
+            status=ScheduledSend.Status.PENDING,
+            send_key__in=keys,
+        )
+        .update(status=ScheduledSend.Status.CANCELLED, updated_at=now)
+    )
+    if cancelled:
+        write_audit(
+            actor=actor,
+            action="scheduled_send.cancelled",
+            target_type="user",
+            target_id=user_id,
+            details={
+                "count": cancelled,
+                "kind": ScheduledSend.Kind.STATE_NOTICE.value,
+                "reason": "superseded_notice",
+                "at": now.isoformat(),
+            },
+        )
+    return cancelled
 
 
 # ── 2. Rewriting (never mints, never cancels) ───────────────────────────────────
@@ -470,9 +626,12 @@ def reschedule_pending_for_user(*, user_id: UUID, actor: Actor, now: datetime) -
                     window=preference.quiet_hours,
                 )
             elif row.slot_at is None:
-                # **A row with no `slot_at` has no pre-shift instant** — a `state_notice`,
-                # say, whose due time is not a Quiet-Hours arithmetic at all. It is skipped
-                # rather than guessed at.
+                # **A row with no `slot_at` has no pre-shift instant to re-shift** — a
+                # `state_notice`, whose unshifted instant is the moment the change happened
+                # rather than an offset from the event. Quiet Hours *did* apply when it was
+                # minted; what it lacks is a slot. That moment is in the past and never
+                # moves, so a preference change has nothing to recompute here, and skipping
+                # is the right answer rather than a guess.
                 continue
             else:
                 due_at = shift_to_sendable(row.slot_at, window=preference.quiet_hours, zone=zone)
@@ -696,9 +855,22 @@ def apply_lifecycle_change(
         if behaviour is LifecycleSendBehaviour.KEEP:
             # Sold out or a detail change: the event still happens, so a user who saved it
             # still wants their reminder. Only the working version is re-stamped.
+            #
+            # **And the propagation hold is released here** (AD-17). A row the sweep held
+            # because the catalog had moved ahead is released by clearing `held_at`; the next
+            # sweep claims and sends it. `REMINT` and `CANCEL` need no equivalent — a re-minted
+            # row is born unheld and a cancelled one is terminal.
+            #
+            # **`due_at` is deliberately not recomputed.** Only `sold_out` and `detail_changed`
+            # map to `KEEP`, and a time change is always its own `time_moved` row (one state
+            # change per kind — `event_writes.py`), which is `REMINT`. So a `KEEP` change never
+            # moved the event, `due_at` is still the right instant, and re-timing it would move
+            # a reminder that nothing moved. The row is past due, so it goes out slightly late:
+            # the correct outcome for a send paused to verify it was still true.
             for row in stale:
                 row.event_version = target.version
-                row.save(using=PERSONAL, update_fields=["event_version", "updated_at"])
+                row.held_at = None
+                row.save(using=PERSONAL, update_fields=["event_version", "held_at", "updated_at"])
                 result["restamped"] += 1
         else:
             for row in stale:
@@ -730,11 +902,14 @@ __all__ = [
     "apply_lifecycle_change",
     "cancel_pending_digests_for_user",
     "cancel_sends_for_targets",
+    "cancel_state_notice_sends",
     "mint_digest",
     "mint_for_plan",
+    "mint_state_notice",
     "reschedule_pending_for_user",
     "slot_due_at",
     "slot_offset",
+    "zone_for",
 ]
 
 

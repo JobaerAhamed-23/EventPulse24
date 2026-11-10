@@ -124,7 +124,12 @@ class ReadOnlyAdmin(CommandAdmin):
 class SourceForm(forms.ModelForm):
     ingestion_cadence = forms.DurationField(
         required=False,
-        help_text="For example 4:00:00. Leave empty for the method's default (RSS: 4 hours).",
+        help_text=(
+            "For example 4:00:00. Leave empty for the method's default (RSS: 4 hours). "
+            "An official source (API or partnership) may not be checked less often than "
+            "every 4 hours, and any other source less often than every 24 hours — a "
+            "cancellation has to be found inside the window the product promises (FR-53)."
+        ),
     )
     tos_approved = forms.BooleanField(
         required=False,

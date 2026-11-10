@@ -15,8 +15,9 @@ from apps.ingestion.services.scheduling import (
     claim_due_sources,
     flag_stale_sources,
     release_claim,
+    report_cadence_floor_breaches,
 )
-from shared.constants import INGEST_CLAIM_TTL
+from shared.constants import HIGH_PRIORITY_CADENCE_MAX, INGEST_CLAIM_TTL, LOW_PRIORITY_CADENCE_MAX
 from shared.db import CATALOG, PERSONAL
 from tests.ingestion.factories import SourceFactory
 from tests.ingestion.pipeline_support import ScriptedFetchPort, calendar
@@ -29,7 +30,9 @@ SECOND = timedelta(seconds=1)
 
 
 def _source(**overrides) -> Source:
-    return SourceFactory(ingestion_cadence=CADENCE, **overrides)
+    # The cadence defaults to 4h here, but a test may set its own — a high-priority source at
+    # its ceiling and a lower-tier one at its own are different rows.
+    return SourceFactory(**{"ingestion_cadence": CADENCE} | overrides)
 
 
 def _registered_at(source: Source, when: datetime) -> Source:
@@ -242,3 +245,121 @@ def test_next_successful_run_clears_the_flag():
     ingest_source(source.id, fetch_port=ScriptedFetchPort().serve(calendar()))
 
     assert _reload(source).stale_since is None
+
+
+# --- FR-53's cadence floors -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "ceiling"),
+    [
+        ("api", HIGH_PRIORITY_CADENCE_MAX),
+        ("partnership", HIGH_PRIORITY_CADENCE_MAX),
+        ("rss", LOW_PRIORITY_CADENCE_MAX),
+        ("ics", LOW_PRIORITY_CADENCE_MAX),
+        ("email_ics", LOW_PRIORITY_CADENCE_MAX),
+    ],
+)
+def test_a_source_past_its_tier_ceiling_breaches_the_floor(method, ceiling):
+    """The tier's window, not the row's own cadence: the question is about the promise."""
+    _source(acquisition_method=method, last_ingested_at=NOW - ceiling - SECOND)
+
+    assert report_cadence_floor_breaches(now=NOW) == 1
+
+
+@pytest.mark.parametrize(
+    ("method", "ceiling"),
+    [
+        ("api", HIGH_PRIORITY_CADENCE_MAX),
+        ("partnership", HIGH_PRIORITY_CADENCE_MAX),
+        ("rss", LOW_PRIORITY_CADENCE_MAX),
+    ],
+)
+def test_a_source_exactly_at_its_tier_ceiling_breaches(method, ceiling):
+    """Inclusive at the boundary, like the stale flag: at the ceiling the window has closed."""
+    _source(acquisition_method=method, last_ingested_at=NOW - ceiling)
+
+    assert report_cadence_floor_breaches(now=NOW) == 1
+
+
+@pytest.mark.parametrize(
+    ("method", "ceiling"),
+    [
+        ("api", HIGH_PRIORITY_CADENCE_MAX),
+        ("partnership", HIGH_PRIORITY_CADENCE_MAX),
+        ("rss", LOW_PRIORITY_CADENCE_MAX),
+    ],
+)
+def test_a_source_one_second_inside_its_tier_ceiling_does_not_breach(method, ceiling):
+    _source(acquisition_method=method, last_ingested_at=NOW - ceiling + SECOND)
+
+    assert report_cadence_floor_breaches(now=NOW) == 0
+
+
+def test_a_high_priority_source_is_not_measured_against_the_daily_ceiling():
+    """The high tier's window is 4 hours, not 24 — this is what makes the check worth having."""
+    _source(
+        acquisition_method="api",
+        ingestion_cadence=timedelta(hours=4),
+        last_ingested_at=NOW - HIGH_PRIORITY_CADENCE_MAX - SECOND,
+    )
+
+    assert report_cadence_floor_breaches(now=NOW) == 1
+
+
+def test_a_lower_priority_source_is_not_measured_against_the_four_hour_window():
+    """An rss source at 5 hours old is inside its 24-hour window — it has not broken a promise."""
+    _source(acquisition_method="rss", last_ingested_at=NOW - timedelta(hours=5))
+
+    assert report_cadence_floor_breaches(now=NOW) == 0
+
+
+def test_the_floor_counts_the_failure_case_the_stale_flag_is_too_late_for():
+    """A high-priority source at its 4-hour cadence that fails: the stale flag fires at 8 hours,
+    the floor check at 4 — the guarantee breaks first, and the floor check is the one that says so.
+    """
+    _source(
+        acquisition_method="api",
+        ingestion_cadence=timedelta(hours=4),
+        last_ingested_at=NOW - timedelta(hours=5),
+        last_attempted_at=NOW - timedelta(minutes=5),  # polled on time, and failing
+        consecutive_failures=3,
+    )
+
+    assert report_cadence_floor_breaches(now=NOW) == 1
+    assert flag_stale_sources(now=NOW) == 0  # the stale flag has not fired yet
+
+
+def test_a_never_ingested_source_is_measured_from_its_registration():
+    fresh = _registered_at(
+        _source(acquisition_method="api"), NOW - HIGH_PRIORITY_CADENCE_MAX + SECOND
+    )
+    old = _registered_at(_source(acquisition_method="api"), NOW - HIGH_PRIORITY_CADENCE_MAX)
+
+    assert report_cadence_floor_breaches(now=NOW) == 1
+    assert (fresh.pk, old.pk) != (None, None)
+
+
+def test_a_paused_source_is_not_counted_as_a_breach():
+    """A paused source is not polled on purpose, so it cannot have broken the promise."""
+    _source(
+        acquisition_method="api",
+        status="paused",
+        last_ingested_at=NOW - timedelta(days=30),
+    )
+
+    assert report_cadence_floor_breaches(now=NOW) == 0
+
+
+def test_both_tiers_are_counted():
+    _source(acquisition_method="api", last_ingested_at=NOW - timedelta(hours=5))
+    _source(acquisition_method="rss", last_ingested_at=NOW - timedelta(days=2))
+
+    assert report_cadence_floor_breaches(now=NOW) == 2
+
+
+def test_no_breaches_is_zero():
+    _source(acquisition_method="api", last_ingested_at=NOW - timedelta(hours=1))
+    _source(acquisition_method="rss", last_ingested_at=NOW - timedelta(hours=1))
+
+    assert report_cadence_floor_breaches(now=NOW) == 0

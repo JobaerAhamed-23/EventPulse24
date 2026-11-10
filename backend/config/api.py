@@ -9,6 +9,7 @@ from apps.catalog.api import router as catalog_router
 from apps.catalog.preview_api import router as preview_router
 from apps.delivery.api import router as reminders_router
 from apps.delivery.email_api import router as email_router
+from apps.delivery.notices_api import router as notices_router
 from apps.delivery.preferences_api import router as settings_router
 from apps.identity.api import router as auth_router
 from apps.personalization.api import router as personal_router
@@ -38,6 +39,10 @@ api.add_router("/personal", personal_router)
 # lives on the **router**, as `personalization`'s does, so the user id comes from the
 # session and never from a payload.
 api.add_router("/reminders", reminders_router)
+# FR-54, FR-55: the state-change notices — the digest strip's read, the dismiss, and the
+# per-event mute the Detail screen's control writes. Like the reminders router, the auth
+# lives on the **router**, so the user id comes from the session and never from a payload.
+api.add_router("/notices", notices_router)
 # FR-12, FR-20: the notification settings — the Quiet Hours window, the default Reminder
 # Plan, and the digest delivery time. The settings live in two apps (the window and the
 # default plan are `delivery`'s; the delivery time and the zone are `personalization`'s),

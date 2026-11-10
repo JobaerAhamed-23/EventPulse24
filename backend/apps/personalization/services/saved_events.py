@@ -48,6 +48,7 @@ from apps.personalization.services.conflicts import (
 )
 from domain.errors import NotFoundError
 from shared.actor import Actor
+from shared.constants import SAVERS_PAGE
 from shared.db import PERSONAL
 
 
@@ -215,7 +216,28 @@ def unsave_event(
     `cleared_by_state_change` — NULLing the answer the user just gave, and turning their
     choice into "nobody answered". The exclusion says "this pair is being answered, not
     abandoned".
+
+    **The Reminder Plan goes with the save, and so do its pending sends.** A plan for a
+    saved event is addressed by the catalog event's id and resolved through
+    `reminder_plan_read.resolve_target`, which 404s once the save is gone — so a plan that
+    outlives its save reads as "no plan" while still holding live `SCHEDULED_SEND` rows
+    that nothing re-resolves before sending. The user would keep getting reminders for an
+    event they removed, which is the opposite of what unsaving asks for.
+    `delivery.remove_plans_for_targets` deletes the plan **and** cancels those sends in one
+    transaction; `personalization` may not write `REMINDER_PLAN` itself (AD-16), and the
+    calendar disconnect already calls the same service for the same reason
+    (`calendar_connections.py`: "the target itself is gone").
+
+    It also keeps AD-17's population well defined. Propagation iterates
+    `list_savers_for_event`, and an orphaned plan's owner is not a saver — so its held
+    sends would never be released by `apply_lifecycle_change` and would sit held forever,
+    tripping `report_held_sends` with nothing able to clear them.
     """
+    # Imported inside the function. `delivery` reaches `personalization` through
+    # function-local imports throughout (`reminder_plan_read`, `scheduled_sends`) precisely
+    # to keep this cycle open; a module-level import here would close it from this side.
+    from apps.delivery.services.reminder_plans import remove_plans_for_targets
+
     with transaction.atomic(using=PERSONAL):
         saved = (
             SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
@@ -231,12 +253,22 @@ def unsave_event(
             keep_pair=keep_pair,
         )
         saved.delete()
+        # After the save is gone, so the plan cannot be removed by a transaction that then
+        # rolls the save back. `target_id` is the **catalog** event's id — the tree's
+        # convention for a saved event's target.
+        removed = remove_plans_for_targets(
+            user_id=user_id,
+            target_kind="saved_event",
+            target_ids=(event_id,),
+            actor=actor,
+            now=now,
+        )
         write_audit(
             actor=actor,
             action="saved_event.unsaved",
             target_type="saved_event",
             target_id=saved_id,
-            details={"event_id": str(event_id)},
+            details={"event_id": str(event_id), "reminder_plans_removed": removed},
         )
 
 
@@ -305,6 +337,190 @@ def update_saved_event_snapshot(
             },
         )
         return True
+
+
+def cancel_saved_event(
+    *,
+    event_id: UUID,
+    user_id: UUID,
+    new_version: int,
+    actor: Actor,
+    now: datetime,
+) -> bool:
+    """Apply a cancellation or supersede to one user's save. True if it applied.
+
+    The other half of `update_saved_event_snapshot`, and deliberately its twin: the same
+    version gate, the same single `personal` transaction, the same audit shape. AD-17's
+    consumer calls one or the other depending on the change's kind, and a reader should see
+    them as a pair.
+
+    **No row is deleted and no flag is written.** The user made that save; it stays, and
+    *whether the event is happening* is the catalog's fact, not a copy of it kept here.
+    Every surface that shows a save already does a batched published read of the catalog on
+    the same request (`timeline`, `conflict_list`, `digest_candidates`), and the
+    `PublicEvent` it already receives carries `status`. A mirrored column would be a second
+    source of truth that only this function updates — so between the cancellation and its
+    propagation it would disagree with the catalog the reader has *already fetched*, making
+    the column-reader staler than the one that ignores it.
+
+    What is durable here is the **conflicts**. A pair exists because two of the user's
+    events overlap in time; once one side is not happening, the overlap is not a conflict
+    and the prompt should stop being asked. The pairs close as `cleared_by_state_change` —
+    AD-21's own name for "a side went away, and the user did not choose this" — which keeps
+    them out of `RESOLVED`, where a user's own answer lives.
+
+    **A cancelled public event never touches a personal event** (FR-55). Only this save's
+    own pairs close; the personal event on the other side of them is not read and not
+    written.
+
+    `superseded` arrives here too (AD-4). On the personal side an event replaced beyond
+    ±30 days is a cancellation: AD-17 is explicit that "users are notified and re-save;
+    plans are never silently migrated", so nothing follows `superseded_by`.
+    """
+    with transaction.atomic(using=PERSONAL):
+        saved = (
+            SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
+        )
+        if saved is None:
+            return False
+        if new_version <= saved.event_version:
+            return False  # older or the same: an out-of-order or duplicate propagation
+        # The version is stamped even though no snapshot field moved, so that a *later*
+        # out-of-order change is still gated against this one. Without the bump, a
+        # cancellation followed by the reinstatement that preceded it would both apply.
+        saved.event_version = new_version
+        saved.save(using=PERSONAL, update_fields=["event_version", "updated_at"])
+        close_pairs_for_side(
+            user_id=user_id,
+            kind=ConflictPair.SideKind.SAVED_EVENT,
+            side_id=saved.id,
+            now=now,
+        )
+        write_audit(
+            actor=actor,
+            action="saved_event.cancelled",
+            target_type="saved_event",
+            target_id=saved.id,
+            details={"event_id": str(event_id), "event_version": new_version},
+        )
+        return True
+
+
+def reinstate_saved_event(
+    *,
+    event_id: UUID,
+    user_id: UUID,
+    new_version: int,
+    actor: Actor,
+    now: datetime,
+) -> bool:
+    """Reverse a cancellation for one user's save, as far as the invariants allow. True if applied.
+
+    **The save itself comes back completely.** `cancel_saved_event` writes no flag, so there
+    is none to clear: the row was never marked, and every surface reads the catalog, which
+    now says `scheduled` again. The Timeline, the digest and the detail page are correct the
+    moment the catalog is.
+
+    **The conflict pairs do not, and this is a known hole — not an oversight.** Two
+    invariants meet here and leave no room:
+
+    - AD-17 requires a cancellation to *close conflicts*, which `cancel_saved_event` does as
+      `cleared_by_state_change`.
+    - AD-21's D24 makes a closed pair **immutable**, enforced by the `guard_conflict_pair`
+      trigger (`IntegrityError: a closed ConflictPair ... is immutable`), and
+      `conflict_pair_pair_uq` forbids a second row for the same two sides.
+
+    So a pair closed by a cancellation can be neither reopened nor replaced, by this service
+    or by anything else. A user whose saved event clashed with a personal event, was
+    cancelled, and is then reinstated **does not get the conflict prompt back**, even though
+    the clash is real again. `record_detected_conflicts` skips that pair deliberately
+    ("closed: never re-prompted (AD-21)") rather than raising.
+
+    **So this service does not re-run detection, and that is deliberate.** The obvious
+    implementation calls `detect_conflicts` here, mirroring `update_saved_event_snapshot`.
+    It was written that way first and a mutation proved it dead: deleting the detection
+    broke no test, because there is no overlap it could find that is not already recorded.
+
+    Every path that can bring an overlap into existence detects it as it writes —
+    `save_event`, `update_saved_event_snapshot`, and `create_personal_event` /
+    `update_personal_event`. A `SavedEvent` row carries no cancelled flag (that is this
+    item's D1: liveness is read from the catalog, never mirrored), so a personal event
+    created *while* the save was dead is detected against it at that moment, by the command
+    that created it. By the time a reinstatement arrives, every live overlap already has its
+    pair, and the one the cancellation closed can never come back.
+
+    `update_saved_event_snapshot` genuinely needs its detection: the save **moved**, so the
+    overlap geometry changed under rows nobody else is going to re-judge. A reinstatement
+    moves nothing. Keeping a detection call here would be code that claims to restore
+    conflicts while provably restoring none — worse than stating the limit.
+
+    So what is left is the version bump and the audit row, and the version bump is the part
+    that matters: without it a later out-of-order change would be gated against the
+    cancellation's version instead of this one.
+
+    Closing the hole needs a spine amendment, not a code change: either AD-17 stops closing
+    conflicts on a cancellation (and the readers filter on the catalog's status instead,
+    which is D1 again), or AD-21's D24 gains an exception for a pair cleared by a state
+    change that later reverses. Recorded as an open amendment on the intent brief.
+
+    **The snapshot's time is not touched.** A reinstatement says the event is happening
+    again, not that it moved; a move is always its own `time_moved` change (one state change
+    per kind), which `update_saved_event_snapshot` applies.
+    """
+    with transaction.atomic(using=PERSONAL):
+        saved = (
+            SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
+        )
+        if saved is None:
+            return False
+        if new_version <= saved.event_version:
+            return False  # older or the same: an out-of-order or duplicate propagation
+        saved.event_version = new_version
+        saved.save(using=PERSONAL, update_fields=["event_version", "updated_at"])
+        write_audit(
+            actor=actor,
+            action="saved_event.reinstated",
+            target_type="saved_event",
+            target_id=saved.id,
+            details={"event_id": str(event_id), "event_version": new_version},
+        )
+        return True
+
+
+def list_savers_for_event(
+    *,
+    event_id: UUID,
+    after: UUID | None = None,
+    limit: int = SAVERS_PAGE,
+) -> list[SavedEventSnapshot]:
+    """One page of the saves of one event, across all users — AD-17's reverse read.
+
+    Every other read in this module is addressed by `(user_id, event_id)`, because every
+    other caller is acting for one user. A state change names only an event, so propagation
+    had nothing to iterate; this is that read. The index it uses already exists and was
+    built for it: `saved_event_event_idx`, "AD-17 propagation finds every save of one event,
+    across all users".
+
+    **Keyset, not offset.** `after` is the last `id` of the previous page, and `id` is a
+    UUIDv7, so ordering by it is ordering by creation. Propagation runs while people are
+    saving and unsaving the same event, and an offset page skips a row whenever an earlier
+    one is deleted between pages — a user silently missed by a change that reached everyone
+    else. A keyset page cannot skip: it names where it stopped.
+
+    **`limit` is a page, not a cap.** The caller pages to exhaustion; this only bounds one
+    round trip, so a popular event costs many small index scans instead of one long
+    transaction. A read that stopped at `limit` would make a state change reach some savers
+    and not others, which is the failure AD-17's per-user idempotency exists to rule out.
+
+    **This crosses no wall.** It reads `personal` only and returns plain data; the catalog
+    event whose change prompted it is the caller's, already in hand.
+    """
+    if limit <= 0:
+        return []
+    queryset = SavedEvent.objects.using(PERSONAL).filter(event_id=event_id)
+    if after is not None:
+        queryset = queryset.filter(id__gt=after)
+    return [_snapshot(saved) for saved in queryset.order_by("id")[:limit]]
 
 
 def get_saved_event(*, user_id: UUID, event_id: UUID) -> SavedEventSnapshot:
@@ -385,8 +601,11 @@ __all__ = [
     "SaveResult",
     "SavedEventNotFoundError",
     "SavedEventSnapshot",
+    "cancel_saved_event",
     "get_saved_event",
     "list_saved_events",
+    "list_savers_for_event",
+    "reinstate_saved_event",
     "save_event",
     "unsave_event",
     "update_saved_event_snapshot",

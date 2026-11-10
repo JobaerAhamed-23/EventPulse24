@@ -19,6 +19,7 @@ from apps.ingestion.models import AcquisitionMethod, Source, TosReview
 from apps.ingestion.services.audit import write_audit
 from domain.dedup import canonical_url
 from domain.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from domain.sources import cadence_ceiling, humanise_duration
 from shared.actor import Actor, ActorKind
 from shared.constants import DEFAULT_INGESTION_CADENCE, INGESTION_CADENCE_MIN
 from shared.db import CATALOG
@@ -43,6 +44,20 @@ FRESHNESS_TTL_HOURS_MAX = 32767  # PositiveSmallIntegerField
 
 class SourceNotFoundError(NotFoundError):
     default_message = "We couldn't find that source."
+
+
+# ── FR-53: the tier and its ceiling ─────────────────────────────────────────────────
+#
+# **Derived, not stored.** FR-17's order is the codebase's own statement of which sources
+# matter more — `AcquisitionMethod`'s docstring says "FR-17 priority order, highest first" —
+# and the method is already on the row. A second priority field would be a second opinion
+# about a question the codebase has already answered, and the two could disagree. A priority
+# that disagrees with the method is a guarantee nobody can check.
+#
+# **The rule lives in `domain/sources.py`**, not here. Three modules need it — this
+# registry's cleaner, the scheduler's floor check and the migration — and a pure function
+# that three modules need does not belong to any one of them. `domain` is stdlib-only, so
+# putting it there costs the layering nothing.
 
 
 class CrawlNeedsTosReviewError(PermissionDeniedError):
@@ -116,12 +131,45 @@ def _http_url(value: object) -> str:
     return value
 
 
-def _cadence(value: object) -> timedelta:
+def _cadence(value: object, *, method: str) -> timedelta:
+    """Clean a cadence against **both** bounds: the floor, and the tier's ceiling.
+
+    The floor is `INGESTION_CADENCE_MIN` — respect the feeds. The ceiling is FR-53's: a
+    source's method decides how long it may go unpolled and still honour the detection
+    window the product promises.
+
+    **`method` is the *effective* method** — the one being set, or the stored one — because
+    the cadence must be legal after the write, whichever field changed. A source at a 24-hour
+    cadence moved to `api` is over the high tier's 4-hour ceiling, and is refused unless the
+    cadence comes with the change.
+    """
     if not isinstance(value, timedelta):
         raise _FieldError("Enter a duration.")
     if value < INGESTION_CADENCE_MIN:
         raise _FieldError("Sources are checked at most every 15 minutes.")
+    ceiling = cadence_ceiling(method)
+    if value > ceiling:
+        raise _FieldError(
+            f"This source is checked at least every {humanise_duration(ceiling)}, so its "
+            f"cadence cannot be longer."
+        )
     return value
+
+
+def _checked_cadence(value: object, *, method: str) -> timedelta:
+    """`_cadence`, but refusing the way the other fields refuse.
+
+    `_cadence` raises the private `_FieldError`, which `clean_source_input` collects into a
+    `ValidationError` naming the field. This is the path for a cadence that was **not** given
+    by the caller — the method's default — and there is no collection loop around it, so the
+    refusal is raised here in the same shape the caller already handles.
+    """
+    try:
+        return _cadence(value, method=method)
+    except _FieldError as exc:
+        raise ValidationError(
+            details={"errors": [{"loc": ["ingestion_cadence"], "msg": str(exc)}]}
+        ) from None
 
 
 def _freshness_ttl_hours(value: object) -> int:
@@ -138,22 +186,37 @@ _CLEANERS = {
     "url": _http_url,
     "city": lambda v: _text(v, 100, required=False),
     "acquisition_method": _choice(AcquisitionMethod.values),
-    "ingestion_cadence": _cadence,
     "freshness_ttl_hours": _freshness_ttl_hours,
     "tz_coverage": _choice(Source.TzCoverage.values),
 }
 
 
-def clean_source_input(values: Mapping[str, object]) -> dict[str, object]:
+def clean_source_input(
+    values: Mapping[str, object], *, method: str | None = None
+) -> dict[str, object]:
     """Validate and normalize the Source fields given; raises ValidationError naming each bad
     field. Only the fields present are checked, so an update passes just its changes.
+
+    **`method` is the effective acquisition method** — the one being set, or the stored one.
+    It is what the cadence is measured against, and it is needed because the ceiling is
+    per-tier (FR-53). When it is not given, the cadence is checked against the lower
+    tier's ceiling, which is the safe direction: it can only refuse more, never less.
+
+    **Errors are collected, not raised one at a time.** So a change with both a bad method
+    and an over-ceiling cadence reports both — the caller sees everything that is wrong with
+    the change, not just the first thing.
     """
     cleaned, errors = {}, []
     for field, value in values.items():
         try:
-            if field not in _CLEANERS:
+            if field == "ingestion_cadence":
+                # Not in `_CLEANERS`: the cadence's cleaner needs the effective method, which
+                # `_CLEANERS` — a flat field → cleaner map — has nowhere to carry.
+                cleaned[field] = _cadence(value, method=method or "")
+            elif field not in _CLEANERS:
                 raise _FieldError("This field can't be changed here.")
-            cleaned[field] = _CLEANERS[field](value)
+            else:
+                cleaned[field] = _CLEANERS[field](value)
         except _FieldError as exc:
             errors.append({"loc": [field], "msg": str(exc)})
     if errors:
@@ -218,10 +281,26 @@ def check_source_change(
     tos_review: TosReviewInput | None,
 ) -> CheckedSourceChange:
     """Every rule `register_source` (current=None) and `update_source` apply before writing:
-    field validation, the duplicate-feed check and the FR-17 crawl guard. Admin forms call it
-    from `clean()` so a refusal shows on the form.
+    field validation, the duplicate-feed check, the FR-17 crawl guard and FR-53's cadence
+    ceiling. Admin forms call it from `clean()` so a refusal shows on the form.
+
+    **The effective method is computed *before* the fields are cleaned.** The cadence's
+    ceiling depends on the method, and the method is one of the fields being changed — so
+    the cadence must be measured against the method the source will *have* after the write,
+    not the one it has now. A 24-hour source moved to `api` is over the high tier's ceiling
+    the moment the method changes, and the change is refused unless the cadence comes with
+    it.
+
+    **The method is read from the raw input, not the cleaned input.** A caller passing an
+    invalid method gets *both* errors — the bad method and the cadence checked against the
+    stored method's ceiling — because `clean_source_input` collects errors rather than
+    raising on the first. The method's own error is the one that matters, and it is
+    reported alongside the others rather than hiding them.
     """
-    cleaned = clean_source_input(values)
+    effective_method = values.get(
+        "acquisition_method", current.acquisition_method if current is not None else ""
+    )
+    cleaned = clean_source_input(values, method=str(effective_method))
     if current is not None:
         cleaned = {f: v for f, v in cleaned.items() if getattr(current, f) != v}
     if tos_review is not None:
@@ -239,7 +318,51 @@ def check_source_change(
     approved = tos_review is not None and tos_review.decision == TosReview.Decision.APPROVED
     if method == AcquisitionMethod.CRAWL and resets_tos and not approved:
         raise CrawlNeedsTosReviewError()
+    _check_stored_cadence_against_new_tier(cleaned=cleaned, current=current)
     return CheckedSourceChange(cleaned, resets_tos, tos_review)
+
+
+def _check_stored_cadence_against_new_tier(
+    *, cleaned: Mapping[str, object], current: Source | None
+) -> None:
+    """Refuse a method change that would leave the source's cadence above its new ceiling.
+
+    **This is the case the cadence cleaner cannot see.** The cleaner only runs on a cadence
+    that was *given*. A method-only change carries no cadence, so nothing was measured — but
+    the source's stored cadence is about to be measured against a tier it was never
+    classified for.
+
+    **The row must be legal after the write, whichever field changed.** A lower-tier source
+    at a 24-hour cadence moved to `api` is over the high tier's 4-hour ceiling the moment
+    the method changes. The change is refused, and the refusal names the cadence field, so
+    the caller knows to bring the cadence with it — which is then accepted, because the
+    cleaner measures it against the new method.
+
+    **A cadence that came with the change is not checked here.** It was already measured
+    against the effective (new) method by the cleaner, and measuring it again would apply
+    the ceiling twice.
+    """
+    if current is None or "ingestion_cadence" in cleaned:
+        return
+    if "acquisition_method" not in cleaned:
+        return  # the tier did not change, so the stored cadence is still legal
+    ceiling = cadence_ceiling(cleaned["acquisition_method"])
+    if current.ingestion_cadence > ceiling:
+        raise ValidationError(
+            details={
+                "errors": [
+                    {
+                        "loc": ["ingestion_cadence"],
+                        "msg": (
+                            f"This source is checked at least every "
+                            f"{humanise_duration(ceiling)} now, "
+                            f"so its cadence cannot be longer. Change the cadence with the "
+                            f"method."
+                        ),
+                    }
+                ]
+            }
+        )
 
 
 def _require_person(actor: Actor) -> None:
@@ -312,9 +435,16 @@ def register_source(
     with transaction.atomic(using=CATALOG):
         change = check_source_change(values=values, current=None, tos_review=tos_review)
         fields = change.values
-        fields.setdefault(
-            "ingestion_cadence", DEFAULT_INGESTION_CADENCE[fields["acquisition_method"]]
-        )
+        if "ingestion_cadence" not in fields:
+            # **The default is checked by the same cleaner as a given cadence.** A default is
+            # a value this code chooses, so it is a value this code must be able to defend:
+            # if a method's default were ever above its tier's ceiling (FR-53), the row
+            # would be refused here with the same message — not created and then refused by
+            # the database constraint as an `IntegrityError`.
+            fields["ingestion_cadence"] = _checked_cadence(
+                DEFAULT_INGESTION_CADENCE[fields["acquisition_method"]],
+                method=fields["acquisition_method"],
+            )
         source = Source.objects.using(CATALOG).create(**fields)
         write_audit(
             actor=actor,

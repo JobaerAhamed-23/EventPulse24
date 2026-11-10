@@ -662,6 +662,30 @@ class DigestCardOut(Schema):
     #: `/events/{event_id}` — the *personal* URL — and a friend who opened it would meet
     #: a sign-in wall instead of the event.
     public_slug: str | None = None
+    #: The event's **lifecycle status** — `scheduled`, `postponed` or `cancelled` — or
+    #: `None` (FR-53).
+    #:
+    #: **A live fact, read at request time**, exactly like `tz_review_pending` and
+    #: `conflict` above — not a snapshot of the composition. An event cancelled after
+    #: the composition says `cancelled` here, rather than showing as live until
+    #: tomorrow's digest.
+    #:
+    #: **`None` covers two honest facts,** and neither is a gap: the card is a
+    #: **personal** event (the user's own agenda row — no source can cancel it), or the
+    #: catalog no longer holds the event publicly (unpublished or superseded), in which
+    #: case `catalog_event_missing` is already `True`. A personal card is not defaulted
+    #: to `"scheduled"`: that would claim the catalog had an opinion about a row it has
+    #: never seen.
+    status: str | None = None
+    #: Whether the event is **sold out** (FR-53), or `None` for the same two reasons
+    #: `status` has.
+    #:
+    #: **Separate from the status, not part of it.** An event can be `scheduled` and sold
+    #: out at the same time, so the two are not collapsed into one "state" enum. The
+    #: backend's existing vocabulary is unchanged — `Event.Status` for the lifecycle, a
+    #: separate flag for the tickets — and the Detail Screen's own facts already carry
+    #: both in this shape.
+    is_sold_out: bool | None = None
 
 
 class DigestOut(Schema):
@@ -779,12 +803,66 @@ class DetailConflictOut(Schema):
     actions: list[ConflictAction] = []
 
 
-class DetailPersonalOut(Schema):
-    """The signed-in user's own state for an event (FR-24).
+class DetailNoticeOut(Schema):
+    """The newest state-change notice for this event, as the Detail banner shows it.
 
-    **Three independent facts, and none of them implies another.** "There is no
+    **It is the newest notice for this event, regardless of dismissal.** That is the
+    deliberate rule of `delivery.services.notice_state`: the banner is about *this* event,
+    which the user has navigated to on purpose, so dismissing the strip on the digest home
+    must not hide "this event was cancelled" from the event's own page.
+
+    **`dismissed_at` says whether the user has already closed it.** The banner renders
+    that state rather than pretending the correction never happened — the notice is still
+    the truth about this event, and the user may still want to read it.
+
+    **`seen_at` is when it was first put in front of them** — not an act by them, and
+    not the same thing as the dismissal. The two are separate columns on the row and
+    they are separate fields here. (Today a dismissal sets both; the strip's read
+    deliberately does not mark notices seen, because a `GET` that writes is the shape
+    CSRF exists to stop.)
+
+    **No `event_id`.** The Detail read is already scoped to one event and the response's
+    enclosing `event` object names it. A redundant field could disagree with its own
+    parent.
+    """
+
+    #: The notice's own id. The dismiss endpoint names it.
+    id: UUID
+    #: `domain.lifecycle.ChangeKind`'s vocabulary, carried through unchanged.
+    change_kind: str
+    #: The event version the change carried.
+    event_version: int
+    #: The user's local date when the notice was raised.
+    local_date: date
+    #: When the notice was first put in front of the user, or `None`.
+    seen_at: datetime | None = None
+    #: When the user closed it, or `None` while it is still open.
+    dismissed_at: datetime | None = None
+    #: When the notice was raised.
+    created_at: datetime
+
+    @classmethod
+    def from_summary(cls, summary) -> "DetailNoticeOut":
+        """Project `delivery`'s plain data onto the wire shape."""
+        return cls(
+            id=summary.id,
+            change_kind=summary.change_kind,
+            event_version=summary.event_version,
+            local_date=summary.local_date,
+            seen_at=summary.seen_at,
+            dismissed_at=summary.dismissed_at,
+            created_at=summary.created_at,
+        )
+
+
+class DetailPersonalOut(Schema):
+    """The signed-in user's own state for an event (FR-24, FR-54, FR-55).
+
+    **Five independent facts, and none of them implies another.** "There is no
     explanation" and "you have not saved this" are different, and a client that cannot
-    tell them apart renders the wrong thing.
+    tell them apart renders the wrong thing. The same is true of the two newest ones:
+    **a notice and a mute are different facts**, and a client must not read "muted" as
+    "there is nothing to say".
 
     **`why_this` is `None` when no composition exists** for this `(user, event)` pair.
     That is an **explicit absence**: not an empty breakdown, not a zero bucket, and not
@@ -811,6 +889,26 @@ class DetailPersonalOut(Schema):
     #: The caller's **active** conflict pair for this event, or `None`. A `None` means
     #: there is nothing to decide — not that the screen failed to look.
     conflict: DetailConflictOut | None = None
+    #: FR-55: whether this user has silenced state-change notices for this event.
+    #:
+    #: **`False` means "not muted"**, and `True` means "notices for this event are
+    #: silenced". It says nothing about the event: reminders still fire and the event
+    #: still places in the digest (FR-55). A client that read this as "the event is
+    #: off" would hide an event the user still sees.
+    muted: bool = False
+    #: FR-54: the newest state-change notice for this event, or `None`.
+    #:
+    #: **`None` is an explicit absence**: there is no notice for this event — not "the
+    #: notice is empty". The notice read deliberately ignores
+    #: `dismissed_at`, so a notice the user has already closed is **still reported
+    #: here**: the banner is about this event, and dismissing the strip on the digest
+    #: home must not hide "this event was cancelled" from the event's own page.
+    #:
+    #: The strip's list and this field are the **same fact read two ways** — the strip
+    #: lists the open ones, the banner names the newest one for the event you are
+    #: looking at — and they are read from the same table through the same service,
+    #: so they cannot disagree.
+    notice: DetailNoticeOut | None = None
 
 
 class EventDetailFactsOut(Schema):
@@ -1038,6 +1136,17 @@ class TimelineBlockOut(Schema):
     **`conflict` is already decided.** The server projects the pairs onto the blocks, so
     the screen does not have to know what a conflict pair is, and the two surfaces — the
     Pulse Card and the Timeline — cannot disagree about which block is flagged.
+
+    **`state` is the catalog's lifecycle word**, carried through unchanged — the same
+    `str` the event detail and the public page already carry, because the vocabulary is
+    the backend's and a second one here would be a translation layer with nothing to
+    translate. It is null for a personal block, which has no lifecycle, and for a public
+    block whose catalog event has disappeared, where the state is unknown rather than
+    normal — the same distinction `name` already draws.
+
+    A `cancelled` block is still returned. FR-55 removes a cancelled event from the
+    *digest*; the Timeline is the user's calendar, and a cancelled event is still on it
+    until they take it off.
     """
 
     kind: TimelineBlockKind
@@ -1047,6 +1156,7 @@ class TimelineBlockOut(Schema):
     end_time_utc: datetime | None = None
     start_time_tz: str
     conflict: bool = False
+    state: str | None = None
 
     @classmethod
     def from_block(cls, block: TimelineBlock) -> "TimelineBlockOut":
@@ -1059,6 +1169,7 @@ class TimelineBlockOut(Schema):
             end_time_utc=block.end_time_utc,
             start_time_tz=block.start_time_tz,
             conflict=block.conflict,
+            state=block.state,
         )
 
 
@@ -1146,6 +1257,7 @@ __all__ = [
     "ConflictSideKind",
     "ConflictSideOut",
     "ConflictSideRef",
+    "DetailNoticeOut",
     "DetailPersonalOut",
     "DigestCardOut",
     "DigestOut",
