@@ -53,10 +53,7 @@ function withoutComments(source: string): string {
  * assertion below would be about the wrong thing.
  */
 function backendStatuses(): string[] {
-  const source = readFileSync(
-    path.resolve(ROOT, "../backend/apps/ingestion/models.py"),
-    "utf8",
-  );
+  const source = readFileSync(path.resolve(ROOT, "../backend/apps/ingestion/models.py"), "utf8");
   const event = /class Event\(UUIDv7Model\):([\s\S]*?)\n    class Meta:/.exec(source);
   if (!event) throw new Error("backend Event model not found");
 

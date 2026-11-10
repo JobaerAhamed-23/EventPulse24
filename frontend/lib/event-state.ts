@@ -127,4 +127,3 @@ export const STATE_LABELS: Record<CardState, string> = {
   cancelled: "Cancelled",
   postponed: "Postponed",
 };
-

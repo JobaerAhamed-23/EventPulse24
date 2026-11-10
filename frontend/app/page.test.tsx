@@ -17,6 +17,7 @@ import HomePage from "@/app/page";
 
 const getSession = vi.fn();
 const readDigest = vi.fn();
+const readNotices = vi.fn();
 const redirect = vi.fn();
 
 vi.mock("@/lib/session", async () => {
@@ -28,6 +29,10 @@ vi.mock("@/lib/session", async () => {
 
 vi.mock("@/lib/digest-read", () => ({
   readDigest: () => readDigest(),
+}));
+
+vi.mock("@/lib/notice-read", () => ({
+  readNotices: () => readNotices(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -92,8 +97,10 @@ beforeEach(() => {
   getSession.mockReset();
   redirect.mockReset();
   readDigest.mockReset();
+  readNotices.mockReset();
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
   readDigest.mockResolvedValue({ kind: "composed", digest: COMPOSED });
+  readNotices.mockResolvedValue({ kind: "notices", notices: [] });
 });
 
 describe("the routing decision", () => {
@@ -430,6 +437,110 @@ describe("the error state", () => {
     const main = container.querySelector("main");
     expect(main?.querySelectorAll("h2")).toHaveLength(1);
     expect(main?.querySelector("h1")).toBeNull();
+  });
+});
+
+describe("the state-change strip", () => {
+  /**
+   * One notice, as the strip's own read hands it over.
+   *
+   * **The payload carries no title** (AD-13) — so the strip says "This event" and the
+   * page's own surface says which one.
+   */
+  function notice(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "notice-1",
+      event_id: "22222222-2222-2222-2222-222222222222",
+      change_kind: "cancelled",
+      event_version: 3,
+      local_date: "2026-11-07",
+      seen_at: null,
+      dismissed_at: null,
+      created_at: "2026-11-07T12:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("renders nothing at all when there are no notices", async () => {
+    // **No element in the DOM.** The AC says the home screen must render "exactly as it
+    // does today, with no layout shift", and an empty `<section>` is a layout shift
+    // waiting for a stylesheet. No element is not.
+    const { container } = render(await HomePage(props()));
+
+    expect(screen.queryByRole("region", { name: "Changes to your saved events" })).toBeNull();
+    expect(container.querySelector("[data-notice-strip-item]")).toBeNull();
+  });
+
+  it("renders the strip's sentence and the event's link", async () => {
+    readNotices.mockResolvedValue({ kind: "notices", notices: [notice()] });
+
+    render(await HomePage(props()));
+
+    expect(screen.getByText("This event was cancelled.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "This event was cancelled." })).toHaveAttribute(
+      "href",
+      "/events/22222222-2222-2222-2222-222222222222",
+    );
+  });
+
+  it("says what happened to the user's reminders", async () => {
+    readNotices.mockResolvedValue({ kind: "notices", notices: [notice()] });
+
+    render(await HomePage(props()));
+
+    expect(
+      screen.getByText("Your reminders for this event have been cancelled."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders nothing when the read fails, because 'we do not know' is not 'nothing changed'", async () => {
+    // **The two are different claims about the world.** An empty list means nothing
+    // changed; a failed read means we do not know. The page must not make the second
+    // claim in the first one's voice.
+    readNotices.mockResolvedValue({ kind: "unavailable" });
+
+    const { container } = render(await HomePage(props()));
+
+    expect(screen.queryByRole("region", { name: "Changes to your saved events" })).toBeNull();
+    expect(container.querySelector("[data-notice-strip-item]")).toBeNull();
+  });
+
+  it("keeps the digest's single status region", async () => {
+    // **Two status regions would make "which one is the page talking?" a question the
+    // DOM cannot answer.** The strip announces through a bare `aria-live="polite"`.
+    readNotices.mockResolvedValue({ kind: "notices", notices: [notice()] });
+
+    render(await HomePage(props()));
+
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("sits between the header and the cards", async () => {
+    // **Above the header would be a banner**, and a banner is what this is not. Below
+    // the header and above the cards is the reading order a reader expects: *here is
+    // what changed; here is what is on today.*
+    readNotices.mockResolvedValue({ kind: "notices", notices: [notice()] });
+
+    const { container } = render(await HomePage(props()));
+    const main = container.querySelector("main");
+    const strip = main?.querySelector("[data-notice-strip-item]");
+    const heading = screen.getByRole("heading", { level: 1 });
+    const firstCard = screen.getAllByRole("heading", { level: 3 })[0];
+
+    if (!strip) throw new Error("the strip is not in the document");
+
+    expect(heading.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      strip.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("does not read the notices when the visitor is not signed in", async () => {
+    getSession.mockResolvedValue({ kind: "unavailable" });
+
+    await HomePage(props());
+
+    expect(readNotices).not.toHaveBeenCalled();
   });
 });
 

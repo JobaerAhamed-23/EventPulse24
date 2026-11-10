@@ -1,8 +1,9 @@
 ---
 id: event-state-sync
 title: Event State Sync — Propagation, Notices & Conflict Re-evaluation
-status: in_progress
+status: completed
 created: 2026-11-04
+completed_at: 2026-11-10T13:48:08.519Z
 ---
 
 # Intent: Event State Sync — Propagation, Notices & Conflict Re-evaluation

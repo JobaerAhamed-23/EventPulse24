@@ -1,320 +1,159 @@
 ---
 run: run-eventpulse24-025
-work_item: frontend-pulse-card-state
+work_item: e2e-proof-and-contract-tests
 intent: event-state-sync
 generated: 2026-11-10
 mode: confirm
 ---
 
-# Implementation Walkthrough: The Pulse Card has to be able to say what happened to the event
+# Implementation Walkthrough: Proving the whole path works
 
 ## Summary
 
-FR-53's detection has been in the backend since `digest-card-state-fields`. FR-54's notice
-has been composed and sent since `notice-composition-and-email`. **Neither one reaches the
-reader.** The Pulse Card reads neither `status` nor `is_sold_out`, so a card whose event
-had been cancelled — or sold out, or postponed — renders exactly as a live one does, and
-the reader is told nothing.
+Twelve work items built this intent. Each was tested in isolation — the ingestion outbox,
+the propagation consumer, the send lifecycle, the notice, the API, the card, the strip.
+**None of them tested the seams.** And the seams are where the failures live: a send
+cancelled in one test and a notice raised in another are two events, not one user's
+evening.
 
-**This item is the card's state treatment.** One shared table of the words, one badge with
-three states, and the card rendering it.
-
-### The four decisions this item actually turns on
-
-**1. The design system has a sold-out badge and no cancelled or postponed one.** That is a
-real gap in `DESIGN.md` §`component.badge.soldout` and in the mockup, which covers only
-sold out. So the item **extends the sold-out anatomy** rather than inventing a second
-pill: the same `{color.surface.subtle}` fill, the same 1px `{color.border.strong}` stroke,
-the same `{radius.subtle}`, the same ink label. **The three states differ by their glyph
-and their label, and by nothing else** — no new colour token, no new spacing token, no new
-CSS variable. A second pill for cancellation would have been a second visual language for
-one kind of fact.
-
-**2. The sold-out glyph cannot be the design's `●`.** This is a collision *inside the
-design document*, and it is the reason the item needs an amendment at all.
-`component.indicator.conflict` is "a 6px **filled circle** in `{color.warn.amber}`", and
-`{color.signal.warn}` and `{color.warn.amber}` are **the same hex** in both themes
-(`#8a5a1c` light / `#d8a86a` dark) — so a `●` in the badge and the conflict indicator
-would be the same shape in the same colour at the same scale, **in the same card**.
-`DESIGN.md` already requires the conflict indicator to be "distinct in shape and position
-from the Source Badge and Confidence Pulse", and the badge is a third signal on that card.
-So the sold-out glyph is **hollow** (`⊘`) where the conflict dot is solid. Cancelled is `✕`
-(a strike); postponed is `↦` (a deferral) — deliberately **not** a clock, because a
-postponed event has no new time yet (`POSTPONED = "postponed"  # date to be announced`).
-
-**3. The lifecycle state wins over the sold-out flag.** `DigestCardOut`'s own docstring
-says "An event can be `scheduled` and sold out at the same time, so the two are not
-collapsed into one 'state' enum" — so the frontend keeps **both** fields, and only the
-*badge* picks one. It picks the lifecycle state: a badge reading "Sold out" on a
-cancelled event would invite a reader to wait for tickets for an event that is not
-happening.
-
-**4. The badge is `aria-hidden`, and the card's link carries the fact.** The design had it
-both ways — the badge named *and* the card's `aria-label` naming — and the build had to
-pick one. It picks the link, because the link is the tap target and the only focusable
-thing in the card. The **visible** label stays: it is what makes the state legible at a
-glance and what satisfies WCAG 1.4.1.
+**This item adds no production code.** It adds the proof, the contract tests, and the
+mutation probes — and, in doing so, it **found the implementation to be correct in three
+places where the first draft of the test was wrong**. Those three are the most valuable
+output, and they are written down below rather than papered over.
 
 ## Structure Overview
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│  lib/event-state.ts                    (the one table)      │
-│                                                              │
-│  STATUS_LINES          cancelled / postponed — the sentences│
-│  statusLineFor()       the sentence, or null                │
-│  SOLD_OUT_LINE         "Sold out — tickets no longer …"    │
-│  STATE_LABELS          sold out / cancelled / postponed     │
-│                                                              │
-│  cardStateFor()        the two facts → ONE badge state      │
-│                        the lifecycle state wins             │
-│                        an unknown status → null             │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ imported by
-                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│  components/state/event-state-badge.tsx    (the badge)       │
-│                                                              │
-│  ⊘ Sold out     ✕ Cancelled     ↦ Postponed                  │
-│                                                              │
-│  one colour, one pill, three figures                         │
-│  aria-hidden — the card's link names the state                │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ rendered by
-                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│  components/digest/pulse-card.tsx         (the card)         │
-│                                                              │
-│  ┌──────────────────────────────────────────────┐            │
-│  │ kicker          conflict · confidence · src  │ trust row  │
-│  ├──────────────────────────────────────────────┤            │
-│  │                            [ ⊘ Sold out ]     │ its own row│
-│  │ Brooklyn Symphony open rehearsal              │ title row  │
-│  └──────────────────────────────────────────────┘            │
-│                                                              │
-│  the link's aria-label ends with the state's name            │
-│  the share control is rendered from public_slug, NOT state   │
-└──────────────────────────────────────────────────────────────┘
+backend/tests/
+├── domain/
+│   └── test_notices_and_sources.py      (new)  11 tests — the two `domain/` modules the
+│                                                 100% gate was missing
+└── e2e/
+    ├── test_state_change_proof.py       (new)  30 tests — the seven journeys
+    ├── test_state_change_contract.py    (new)  13 tests — the contract the seams are
+    │                                                 bound by
+    └── mutation_probe_state_change_e2e.py (new)  6 probes — each bug applied, the suite
+                                                  run, the file restored
 ```
 
-## Architecture
+## The seven journeys
 
-### The server states the fact (AD-10)
+Every journey drives the **real** write path. The `catalog.guard_event_write` trigger
+refuses a status change without a version bump, so `apply_lifecycle_change` — the
+ingestion write path — is the *only* way a cancellation happens. The proof drives it, so
+the `EventStateChange` it asserts on is the one the pipeline would have written, with the
+version the pipeline would have given it.
 
-**The card never computes a state.** It reads `card.status` and `card.is_sold_out` — two
-separate fields, exactly as `DigestCardOut` sends them — and picks which one the *badge*
-shows. The frontend does not infer "cancelled" from a missing event, nor "sold out" from
-a missing ticket, and it does not treat a `null` status as a state.
-
-### The one table
-
-**The sentences used to be triplicated.** `public-event-page.tsx` held a local
-`STATUS_LINES` table; the city card and the Detail screen each carried a literal copy of
-the sold-out sentence. Every one of them now reads `lib/event-state.ts`, and
-`tests/event-state.test.ts` fails if a literal copy reappears — of a sentence *or* of a
-label.
-
-**The Detail screen was the odd one out, and it is fixed here.** It read only
-`SOLD_OUT_LINE` and rendered **nothing** for a cancelled event, while the public page said
-"Cancelled — this event is not happening." Two screens, two vocabularies, one fact. The
-Detail screen now reads the same table, and its lifecycle line takes precedence over the
-sold-out line for the same reason the badge's does.
-
-### The vocabulary guard
-
-`tests/event-state.test.ts` parses `Event.Status` out of
-`backend/apps/ingestion/models.py` and compares it with the frontend's table. **There are
-two `class Status` choices classes in that file** — `Source.Status` (`active` / `paused`)
-and `Event.Status` (the event's lifecycle) — and the parser scopes to `class Event` first,
-because a regex that took the first match would have read the registry's vocabulary and
-compared the wrong thing.
-
-`scheduled` and `superseded` are **silent by design**: a card that has not been cancelled
-does not need to say so.
-
-## Key Implementation Details
-
-### The three glyphs
-
-| state | glyph | why |
-|---|---|---|
-| sold out | `⊘` | a slashed circle — "no more of this"; **hollow**, because the conflict dot is solid |
-| cancelled | `✕` | a strike — the ordinary mark for "not happening" |
-| postponed | `↦` | a deferral — a movement in time, which is exactly what a postponement is |
-
-**`↦` is right and the alternatives are wrong.** A clock (`◷`) would say "the time is
-provisional", but a postponed event has *no* new time yet, so a clock would promise a time
-that does not exist. `↦` promises only a movement.
-
-### Why the badge is not in the trust row
-
-The trust row already holds the conflict indicator, the five-dot confidence pulse and the
-source badge, and it is a `flex items-center gap-2` that **does not wrap**. A fourth
-element with a visible label would overflow a 360px viewport. So the badge gets **its own
-row, immediately above the title row**, right-aligned — the right-side zone `DESIGN.md`
-names, and a *different place* from the conflict mark as well as a different shape.
-
-### Why the badge is `aria-hidden`
-
-A browse-mode screen-reader user reaches the badge and hears "Cancelled"; then reaches the
-link and hears "Cancelled" again. **The same fact, twice, in one card.** The badge is
-hidden from the accessibility tree and the link carries the fact, because the link is what
-the reader activates. The visible label stays — hiding a badge from a screen reader hides
-it from nobody, and it only stops the announcement happening twice.
-
-### Why the share control survives a cancellation
-
-**This one was wrong in the first draft, and the review caught it.** The card's comment
-said a cancelled event has no public page, so its share control is gone. **The backend does
-the opposite**: the catalog's public read excludes **only** `SUPERSEDED`, so a cancelled
-event is still published, still has a public page, and the server sends its `public_slug`.
-
-So the share stays — a reader who wants to tell a friend that an event was cancelled needs
-a link to the page that says so — and the comment now says what the server actually does.
-**The control is rendered from `public_slug` and never from the state**, so if the catalog
-ever stops publishing cancelled events, the server sends `null` and the control disappears
-on its own, with no frontend change.
-
-## Security Considerations
-
-**Nothing new.** The card reads two fields the server already sends, and it renders no new
-control. The badge is a `<span>`: there is nothing to dismiss and nothing to do about a
-cancelled event, so it is never a focus stop and never in the tab order.
-
-The one thing that *changed* for assistive technology is that the badge is now
-`aria-hidden` — which **removes** an announcement rather than adding one, and leaves the
-card's accessible name carrying the state in a place the reader activates.
-
-## Performance Considerations
-
-**Nothing measurable.** The badge is one extra element in a card that is already a dozen
-elements deep, and it renders only when the server said there is a state to show — a card
-with no state renders **no** badge element at all.
-
-The shared table replaced three literal copies of a sentence, so the bundle is very
-slightly smaller.
-
-## Decisions Made
-
-| Decision | Why |
+| Journey | What it proves |
 |---|---|
-| Extend the sold-out anatomy; do not invent a second pill | One kind of fact, one visual language. A second pill for cancellation would have been a second language for the same sentence |
-| Three states, three **glyphs**, one colour | The conflict indicator's amber and the badge's amber are the same hex, so colour cannot tell them apart — and a badge whose states differ only by colour would be unreadable beside the conflict mark |
-| `⊘` rather than the design's `●` | `●` is the conflict indicator's shape, in the conflict indicator's colour, at the same scale, in the same card |
-| `↦` rather than a clock | A postponed event has no new time yet; a clock would promise one that does not exist |
-| The lifecycle state wins over the sold-out flag | A badge reading "Sold out" on a cancelled event invites a reader to wait for tickets for an event that is not happening |
-| The badge is `aria-hidden`; the link carries the state | The link is the tap target and the only focusable thing. Two namings of one fact is an announcement twice |
-| The badge is in its own row, not the trust row | The trust row does not wrap; a fourth visible label overflows a 360px viewport |
-| The share control is rendered from `public_slug`, never from the state | The card never guesses the server's publishing policy (AD-10) |
-| An unknown status shows nothing | The vocabulary is the backend's; rendering one as "unknown" would invent a claim (ASSUMPTION-9) |
+| **Hold and release** | A send claimed by the sweep while its event is mid-change is **held, not sent**, excluded from the next claim, and released by the propagation. AD-17's race — the one no unit test can catch alone |
+| **Cancellation** | Pending sends cancelled · the conflict pair closes · the card shows cancelled · one notice in the strip and one email |
+| **Postponement** | The snapshot moves · reminders re-mint against the new version · a new overlap surfaces as the **calm Detail notice**, not the FR-58 forced prompt |
+| **Sold out** | Reminders **kept** · badge on the card · the snapshot does not move · one notice |
+| **Reinstatement** | Reminders re-mint from the surviving plan under a **new** key · the save returns to live · the old spent key does not block the new send |
+| **Backlog drain** | Unpropagated changes that predate the intent are drained without manual intervention |
+| **Mute** | A muted event's change produces **no notice and no email**, while its reminders still fire · a **terminal** change is raised anyway |
 
-## Deviations from Plan
+Plus **the strip and the banner**, over the real HTTP stack with a session cookie — the
+only place the server's bound on the strip, the server's mute fact, and the recorded
+dismissal are observable.
 
-**1. The badge is `aria-hidden`, where the design asked for an `aria-label`.** `DESIGN.md`
-and `EXPERIENCE.md` both asked for `aria-label="Sold out"` on the badge, *and* for the
-Pulse Card's own `aria-label` to name the state — two namings of one fact. The design was
-amended (A-22) rather than the build contradicting it silently.
+## The four decisions this item turns on
 
-**2. The badge sits in its own row, not "top-right of the title row".** The trust row is
-at capacity, and the design's own text says the badge is not in the trust row. The design's
-wording was amended to match the build.
+**1. The version is the spine, and every journey asserts one.** AD-17 gates every consumer
+on `EventStateChange.event_version`. A proof that asserted only *existence* would pass
+against a propagation that applied the wrong version to the wrong rows. So each journey
+names the version it expects and finds it on the row — not merely "a row exists".
 
-**3. The typography follows `DESIGN.md`, not the mockup.** `DESIGN.md` says weight 600 and
-`0.06em`; the mockup says 600 and `0.08em` in a mono family; the build had weight 500 and
-`0.08em` in the body family. It is now weight 600, `0.06em`, and the mockup's mono family
-is explicitly not adopted. Recorded in A-22.
+**2. The clock is frozen at a fixed instant, and the event starts two days past the wall
+clock.** Two reads are bounded by the wall clock — `get_public_event` and the Detail
+endpoint — and a proof whose answer depended on the hour it ran would be flaky. The event
+starts on the 13th while `NOW` is the 10th, so the Detail read finds it whenever the
+suite runs.
 
-**4. `DESIGN.md`'s Do's-and-Dont's row said `event.status = sold_out`, which the backend
-cannot send.** `sold_out` is the boolean field `event.is_sold_out`; `Event.Status` is
-`scheduled | postponed | cancelled | superseded`. The row was amended.
+**3. The proof asserts on `idempotency_key` membership, never on a mail count.** The first
+draft asserted `counts.sent == 1` and found **two** mails: the reminder and the notice. A
+total would also be a claim about the *notice* — a different journey's business. Each
+journey's claim is about *which* mail went out, and that is what is asserted.
 
-**5. The Detail screen gained the cancelled and postponed lines.** Not in the plan — it was
-found by the review, and it was a two-surface vocabulary that should not have survived the
-item that was specifically about unifying the vocabulary.
+**4. The contract tests delegate to the tree's own rules rather than re-implementing
+them.** The first draft of "ingestion never writes to personal" scanned for the word
+`PERSONAL` and **failed on `apps/ingestion/admin.py`** — which *reads* the user model
+from `personal` to show an actor's name in the admin's list column. **A read across the
+wall is legal**; AD-3 is about a write and about a transaction spanning both schemas. So
+the test now calls the tree's own `test_no_app_writes_a_table_it_does_not_own` over its
+own source list. **One rule, one discovery, and the two lists can never disagree.**
 
-## Dependencies Added
+## Three places the implementation was right and the test was wrong
 
-**None.** No new package, no new dependency, no new token, no new CSS variable.
+These are the review's most valuable output. In all three, the fix was to the test — with
+the reasoning recorded in the test so a later reader does not "fix" it back.
 
-## How to Verify
+**1. The `CANCEL` branch leaves a held row's `held_at` marker on it, and that is inert.**
+`claim_due_sends` filters on `status = PENDING` **and** `held_at IS NULL`;
+`count_stuck_holds` filters on `status = PENDING`. **So the marker is inert on a terminal
+row.** Clearing it would change no observable behaviour and would cost a write. The test
+now asserts the marker **stays**, that the claim returns `[]`, and why.
 
-**Static checks**
+**2. A reinstatement raises one notice, not two — and that is the daily cap.** FR-54 caps
+notices at one per event per local day, resolved by `domain.lifecycle.PRECEDENCE`, which
+puts `cancelled` above `reinstated`. The reinstatement was moved to `NOW + 1 day`, **and
+the cap is now proved deliberately** by its own test. **A test that proves the rule beats
+a test that works around it.**
 
-```bash
-cd frontend
-npx tsc --noEmit      # clean
-npx eslint .          # clean
-```
+**3. The `CANCEL` branch does not re-stamp the row's version — and that is right.** A
+cancelled send is terminal, so its working version is nobody's business. The test asserts
+the row keeps the version it was minted at.
 
-**The new and changed tests**
+## The mutation probes
 
-```bash
-npx vitest run components/digest/pulse-card-state.test.tsx \
-  tests/event-state.test.ts tests/event-state-badge-boundary.test.ts \
-  app/events/[id]/page.test.tsx tests/digest-home-a11y.test.tsx
-```
+Six bugs, one at a time, each applied to the source, the suite run, and the source
+restored. **6 of 6 caught.** Every probe plants a bug that still *parses* and still runs —
+a probe that broke the file badly enough to fail collection would "pass" the harness
+while proving nothing.
 
-**The whole frontend suite** — `npx vitest run`: **102 files / 1663 tests, 0 failed**. The
-baseline at `HEAD` is **99 files / 1577 tests** — **86 net new tests, zero new failures**.
-
-**Node 24 is required.** `package.json`'s `engines` says `>=24.15`; under Node 20 every
-component test file is *silently skipped* and the suite reports a false pass of "398
-passed". Check `node -v` before trusting a green run.
-
-**The backend** — untouched by this item. The full suite stands at **5637 passed, 16
-failed**, the same sixteen date-expired fixture failures as the established baseline.
-
-### The end-to-end path (manual, against a running server)
-
-Sign in → the digest home shows a Pulse Card → the card's event has been cancelled in the
-catalog → the card shows a `✕ Cancelled` badge → the badge sits above the title, right
-aligned → the card's link announces "…Cancelled" → the card still offers its Share
-control, because the server still sends a `public_slug` → the Detail screen for that event
-shows "Cancelled — this event is not happening."
-
-## Test Coverage
-
-| File | Tests | What it holds |
+| # | The bug | Caught by |
 |---|---|---|
-| `components/digest/pulse-card-state.test.tsx` | **31** | Per state: the label, the accessible name, the affordances, the coexistence with the conflict indicator, the unknown-status case, the two-facts-at-once precedence, the glyph shapes, and that the badge is not a control |
-| `tests/event-state.test.ts` | **31** | The backend's `Event.Status` against the frontend's vocabulary; `cardStateFor`'s precedence; the five consuming surfaces hold no literal copy of a sentence *or* a label |
-| `tests/event-state-badge-boundary.test.ts` | **18** | The rules a rendering test cannot see: no literal hex, no raw `rgb()`/`hsl()`, every colour from a token, no motion class, the label in ink, the design's weight and tracking, three different glyphs, and none of them the conflict indicator's filled circle |
-| `app/events/[id]/page.test.tsx` | **+4** | The Detail screen's lifecycle line, the unknown-status case, and the precedence over the sold-out line |
-| `tests/digest-home-a11y.test.tsx` | **+2** | axe-core, over the three states together and over sold-out-and-conflicted |
+| 1 | The propagation applies the change but **never marks it propagated** | 6 tests |
+| 2 | The `CANCEL` branch **runs and cancels nothing** | 2 tests |
+| 3 | The `KEEP` branch **cancels the reminder anyway** | 3 tests |
+| 4 | The mute is **never consulted** | 3 tests |
+| 5 | The hold **does not exclude the row from the next claim** | 1 test |
+| 6 | The **terminal exception is gone**, so a mute silences a cancellation | 2 tests |
 
-### The mutations
+**Probe 3 is the one this item exists to make impossible.** "The event is sold out, so
+stop nagging about it" reads as sensible and is exactly wrong: `sold_out` maps to `KEEP`
+because **the event still happens**, and a user who saved a sold-out concert still wants
+to be reminded to go to it. The planted bug deletes the reminder for an event that is
+going ahead.
 
-**9 of 9 caught.** Each was applied to the source, the suite run, and the source restored.
+**Probe 5 is AD-17's race, and it is the one no unit test can catch alone.** A unit test
+of `hold_stale_sends` proves the row is held; a unit test of `claim_due_sends` proves the
+claim filters on what it filters on. Only a test that **holds a row and then claims
+again** proves that the hold is what stops it.
 
-| # | Mutation | Caught by |
-|---|---|---|
-| 1 | The lifecycle precedence is inverted | 4 tests |
-| 2 | An unknown status falls back to "cancelled" | 1 test |
-| 3 | All three glyphs become the same character | 5 tests |
-| 4 | The sold-out glyph becomes `●` — the conflict mark | 4 tests |
-| 5 | The label is put in the signal colour instead of ink | 2 tests |
-| 6 | The badge loses its `aria-hidden` | 1 test |
-| 7 | The state is dropped from the card's accessible name | 4 tests |
-| 8 | The badge is not rendered at all | 17 tests |
-| 9 | The Detail screen drops the lifecycle line | 3 tests |
+## What this item also fixed
 
-**Mutation 1 survived the first draft, and that is the most useful thing in this run.** The
-item's own reasoning says the lifecycle state must win over the sold-out flag, and **no
-test covered it** — the card was never rendered with both facts at once. The rule was
-documentation and nothing else. The fix added a `describe` block for a card that is *both*
-sold out and cancelled, plus four direct `cardStateFor` cases: **the rule is now pinned by
-six tests instead of asserted in a comment.**
+**The `domain/` coverage gate was red at `HEAD` and is green now.** `make coverage-backend`
+requires **100% for `domain/`**; it was at **99%**, on nine lines across two files —
+`domain/notices.py` (**this intent's own module**) and `domain/sources.py`. Every one is
+a branch a user can reach, and each changes what the user is told. **The gate is on the
+whole directory, so an older gap keeps this intent's build red** — and a red gate is a
+gate nobody reads.
 
-## Ready for Review
+**Two committed files failed `prettier --check`.** CI runs `make lint-web`, so the gate
+was red on files this run did not touch. Fixed — whitespace only.
 
-### What this item does not do
+## The numbers
 
-- **The Detail Screen's "Save & Reminder" actions are not removed for a cancelled event.**
-  `EXPERIENCE.md` says the sold-out state replaces them with a calm line, and the Detail
-  screen already does that for a sold-out event. For a **cancelled** event it does not.
-  That is the Detail screen's own state treatment, and it belongs to
-  `frontend-digest-strip-and-detail-banner` — the next item.
-- **The digest strip and the Detail banner are not built.** They are
-  `frontend-digest-strip-and-detail-banner`, and they need the API this run already has.
-- **The backend is unchanged.** Nothing here needed a schema change; the two facts were
-  already on `DigestCardOut` and on `EventDetailFactsOut`.
+| | Result |
+|---|---|
+| **Tests added** | **54** (30 proof + 13 contract + 11 domain) |
+| **Mutations proven able to fail** | **6 of 6** |
+| Full backend suite | **5691 passed, 16 failed** — all 16 pre-existing |
+| The baseline at `HEAD` | **17 failed** — so the delta is **−1**, not 0 |
+| `domain/` coverage | **100%** (was 99%) |
+| Overall coverage | **98.81%** (gate 80%) |
+| Full frontend suite | **106 files / 1765 tests, 0 failed** |
+| `lint-imports` | **19 contracts kept, 0 broken** |
+| `axe-core` on both touched surfaces | **zero serious violations** |

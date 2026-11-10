@@ -13,6 +13,7 @@ import { BrandTopbar } from "@/components/brand-topbar";
 import { PreAuthFooter } from "@/components/pre-auth/pre-auth-footer";
 import { PublicEventPage } from "@/components/public-event/public-event-page";
 import { AppShell } from "@/components/shell/app-shell";
+import { DetailNoticeBanner } from "@/components/state/detail-notice-banner";
 import { factorLine } from "@/lib/detail-labels";
 import { browserTimeZone, detailTimes } from "@/lib/detail-time";
 import { readEventDetail } from "@/lib/event-detail-read";
@@ -431,10 +432,7 @@ async function DetailBranch(id: string) {
         that is not happening.
       */}
       {stateLine ? (
-        <p
-          className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
-          data-detail-state
-        >
+        <p className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]" data-detail-state>
           {stateLine}
         </p>
       ) : event.is_sold_out ? (
@@ -444,6 +442,30 @@ async function DetailBranch(id: string) {
         >
           {SOLD_OUT_LINE}
         </p>
+      ) : null}
+
+      {/*
+        **The state-change banner (FR-54).**
+        **It comes after the state line and before the actions**, and the order is the
+        reading order: *what the event is now* (the state line), then *what changed and
+        what it means for your reminders* (the banner), then *what you can do about it*
+        (the actions).
+
+        **The banner needs the personal payload**, because both of its facts live there:
+        `personal.notice` is the newest notice for this event and `personal.muted` is
+        FR-55's per-event mute. **No new read** — the Detail read already carries both
+        (AD-10: the server states the facts; the page renders them).
+
+        **It renders nothing for an anonymous reader**, and so does the whole `personal`
+        branch below it: an anonymous visitor has no notices and no mute, because a mute
+        is a thing about *their* relationship with the event and they have none.
+      */}
+      {personal ? (
+        <DetailNoticeBanner
+          notice={personal.notice ?? null}
+          muted={personal.muted}
+          eventId={event.id}
+        />
       ) : null}
 
       {/*

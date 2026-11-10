@@ -4,7 +4,7 @@ title: Proof the whole path works — end-to-end and contract tests
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - propagation-consumer
   - notice-composition-and-email
@@ -12,6 +12,8 @@ depends_on:
   - polling-cadence-floors
   - frontend-digest-strip-and-detail-banner
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T13:48:08.507Z
 ---
 
 # Work Item: Proof the whole path works — end-to-end and contract tests

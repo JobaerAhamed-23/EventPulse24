@@ -203,6 +203,37 @@ const TEXT_PAIRS = [
     background: "surface-paper",
   },
   {
+    // **The state-change strip's change sentence, on the strip's own surface.** The
+    // strip is `bg-surface-elevated` (`components/state/notice-strip.tsx`), and its
+    // change sentence is the link the reader presses to reach the event — so it is
+    // **ink on elevated**, not ink on paper.
+    where: "the state-change strip's change sentence, on the strip",
+    foreground: "ink-secondary",
+    background: "surface-elevated",
+  },
+  {
+    // **The strip's reminder-consequence line.** The sentence that tells the reader
+    // what happened to their reminders, in `Text.Meta` — the weakest text in the strip,
+    // and therefore the one whose contrast matters most.
+    where: "the state-change strip's reminder line, on the strip",
+    foreground: "ink-muted",
+    background: "surface-elevated",
+  },
+  {
+    // **The Detail Screen's banner, on its own surface.** The banner is
+    // `bg-surface-elevated` (`components/state/detail-notice-banner.tsx`) — the same
+    // surface as the strip, and the same reasoning applies.
+    where: "the detail screen's state-change banner, on the banner",
+    foreground: "ink-primary",
+    background: "surface-elevated",
+  },
+  {
+    // **The banner's reminder-consequence line.**
+    where: "the detail screen's banner's reminder line, on the banner",
+    foreground: "ink-secondary",
+    background: "surface-elevated",
+  },
+  {
     where: "the detail screen's headline, on the page",
     foreground: "ink-primary",
     background: "surface-paper",

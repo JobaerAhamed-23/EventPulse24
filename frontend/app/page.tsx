@@ -7,8 +7,10 @@ import { DigestError } from "@/components/digest/digest-error";
 import { DigestHeader } from "@/components/digest/digest-header";
 import { DigestPreparing } from "@/components/digest/digest-preparing";
 import { AppShell } from "@/components/shell/app-shell";
+import { NoticeStrip } from "@/components/state/notice-strip";
 import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
+import { readNotices } from "@/lib/notice-read";
 import { getSession, homeRoute } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
 
@@ -54,7 +56,22 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
   if (session.kind !== "signed-in") return <HomeUnavailable />;
 
-  const digest = await readDigest();
+  /**
+   * **The digest and the strip's notices, read together.**
+   *
+   * **`DigestOut` carries no notices field**, so the strip needs its own read. The two
+   * are started **together**, so the strip is not a second round trip *after* the digest:
+   * the page waits for both at once and renders both at once. **Both promises are created
+   * before either is awaited** — that is what makes them concurrent, and it is the
+   * difference between a page that waits for `max(digest, notices)` and one that waits for
+   * `digest + notices`.
+   *
+   * **And the strip still renders nothing when the read fails.** `unavailable` is not an
+   * empty list — an empty list means "nothing changed", and a failed read means "we do
+   * not know". The two are different claims about the world, and the page must not make
+   * the second one in the first one's voice.
+   */
+  const [digest, notices] = await Promise.all([readDigest(), readNotices()]);
 
   /**
    * **The failure count is the server's, and it is consecutive.**
@@ -77,6 +94,27 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
             city={digest.digest.city ?? null}
             empty={digest.kind === "empty"}
           />
+
+          {/*
+            The strip. **It is between the header and the cards**, not inside the
+            header and not above it.
+
+            **Above the header would be a banner**, and a banner is what this is not:
+            FR-10 removed the topbar Notifications button because "there is no in-app
+            notifications inbox", and a strip pinned to the very top of the page reads
+            as exactly that — an alert region the reader has to clear before the page
+            begins.
+
+            **Below the header and above the cards** puts it where the user already is,
+            after the greeting and before the digest, and it is the reading order a
+            reader expects: *here is what changed; here is what is on today.*
+
+            **It is a sibling of the header, not a child of it.** The header is the
+            digest's own heading — "Today, three things matter." — and a change notice
+            is not part of the digest's headline. Putting it inside the header would
+            make the strip part of the greeting.
+          */}
+          {notices.kind === "notices" ? <NoticeStrip notices={notices.notices} /> : null}
 
           <div className="mt-8">
             {digest.kind === "not_composed" ? <DigestPreparing /> : null}

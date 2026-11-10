@@ -75,21 +75,21 @@ work_items:
   - id: frontend-digest-strip-and-detail-banner
     intent: event-state-sync
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
-current_item: frontend-digest-strip-and-detail-banner
-status: in_progress
+    status: completed
+    current_phase: plan
+    checkpoint_state: approved
+    current_checkpoint: plan
+current_item: null
+status: completed
 started: 2026-11-04T13:11:36.097Z
-completed: null
+completed: 2026-11-10T13:48:55.208Z
 ---
 
 # Run: run-eventpulse24-025
@@ -108,18 +108,28 @@ wide (12 work items)
 8. **notice-and-mute-api** (confirm) — completed
 9. **detail-overlap-notice** (confirm) — completed
 10. **frontend-pulse-card-state** (confirm) — completed
-11. **frontend-digest-strip-and-detail-banner** (confirm) — in_progress
-12. **e2e-proof-and-contract-tests** (confirm) — pending
+11. **frontend-digest-strip-and-detail-banner** (confirm) — completed
+12. **e2e-proof-and-contract-tests** (confirm) — completed
 
 
 ## Current Item
-frontend-digest-strip-and-detail-banner (confirm)
+(all completed)
 
 ## Files Created
-(none yet)
+(none)
 
 ## Files Modified
-(none yet)
+(none)
 
 ## Decisions
-(none yet)
+(none)
+
+
+## Summary
+
+- Work items completed: 12
+- Files created: 0
+- Files modified: 0
+- Tests added: 54
+- Coverage: 98.81%
+- Completed: 2026-11-10T13:48:55.208Z

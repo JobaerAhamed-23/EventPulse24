@@ -3504,3 +3504,384 @@ component test file is silently skipped and the suite reports a false pass.
 
 `DESIGN.md` §`component.badge.soldout` (amended by A-22), §`component.indicator.conflict`;
 `EXPERIENCE.md` §`Component.Badge.SoldOut`. PRD FR-53, FR-54.
+
+---
+
+## Work Item: frontend-digest-strip-and-detail-banner
+
+### Approach
+
+The in-app half of FR-54, plus FR-55's per-event mute. Two surfaces, one API.
+
+**The API is already built** (`notice-and-mute-api`, completed): `GET /api/notices`,
+`POST /api/notices/{notice_id}/dismiss`, and `PUT`/`DELETE /api/notices/events/{event_id}/mute`.
+The generated contract carries `NoticeOut`, `NoticeListOut`, `NoticeDismissOut`,
+`EventMuteOut`, and — on the **existing** Detail read — `DetailPersonalOut.muted` and
+`DetailPersonalOut.notice`. **So the banner and the mute need no new read at all**: the
+Detail screen already fetches both facts.
+
+**What needs building is three surfaces and one shared vocabulary.**
+
+1. **`frontend/lib/notice-copy.ts`** — the wording table. The banner must "state the change
+   and what happened to the user's reminders", and the backend already owns that wording:
+   `domain/notices.py`'s `NOTICE_SUBJECTS` (what changed) and `REMINDER_CONSEQUENCE` (what
+   it means for your reminders). The frontend **restates** that table — it cannot import
+   Python — and a test parses the backend's table out of `backend/domain/notices.py` and
+   fails on drift, exactly as `frontend/tests/event-state.test.ts` already does for
+   `Event.Status`. **One vocabulary, two languages, one test holding them together.**
+
+2. **`frontend/components/state/notice-strip.tsx`** — the dismissible strip on the digest
+   home. It is a **client island** (it dismisses, which is a write), mounted between
+   `<DigestHeader>` and the digest's cards. It renders **nothing** when there are no
+   notices.
+
+3. **`frontend/components/state/detail-notice-banner.tsx`** — the persistent banner on the
+   Detail screen, plus **`frontend/components/state/detail-mute-control.tsx`** — FR-55's
+   per-event mute.
+
+**The four decisions this item makes that its wording leaves open**, resolved below and
+stated in the code's own docstrings:
+
+- **The strip renders nothing at all when there are no notices.** Not an empty container, not
+  a collapsed one, not a `hidden` one — **no element in the DOM**. The AC says "with no
+  unseen notices … the home screen renders exactly as it does today, with no layout shift".
+  An empty `<section>` is a layout shift waiting for a stylesheet; no element is not.
+- **The strip's own read is a separate request from the digest's.** `DigestOut` carries no
+  notices field, and the AC's "no extra request on the critical path if the digest response
+  can carry the flag" is a conditional the API does not satisfy — so the strip makes its own
+  `GET /api/notices`. It is **not** on the critical path: the strip is a client island that
+  fetches after mount, so the digest's cards render without waiting for it.
+- **The strip announces through a bare `aria-live="polite"`, not a second `role="status"`.**
+  The digest home already carries exactly one `role="status"` — "Pulse Digest ready, N
+  events for today." (`app/page.tsx:133`) — and `EXPERIENCE.md` §`Live Regions` says the
+  digest's ready line is a live region. Two status regions would make "which one is the
+  page talking?" a question the DOM cannot answer. **And the strip does not steal focus**:
+  it is not `role="alert"`, it moves no focus, and it renders no focusable element until
+  the user tabs into it.
+- **The banner shows the notice whether or not it has been dismissed**, with the dismissal
+  stated. That is the backend's deliberate rule (`delivery.services.notice_state`: the
+  banner is about *this* event, which the user navigated to on purpose, so dismissing the
+  strip on the digest home must not hide "this event was cancelled" from the event's own
+  page). The banner's copy says so — "You've already dismissed this" — rather than
+  pretending the correction never happened.
+
+### The register, and why it is `component.emptystate.quiet`'s
+
+The work item is emphatic: *"Register matters more than usual here. Everything the user is
+being told is bad news about plans they made, delivered by a product whose positioning is
+calm."* `EXPERIENCE.md` §5 is canonical and stricter than both `DESIGN.md` and the mockups
+— the empty-state precedent, where a terracotta primary button in the mockup was ruled a
+mockup bug.
+
+**So: no terracotta, no `role="alert"`, no red, no exclamation marks, no "Urgent".** The
+strip's vocabulary is the empty state's — a quiet card with a border and a subtle fill, one
+line of plain ink, an underlined text control, no fill. The banner is the same weight.
+
+**And the copy is the product's voice, not a notification service's.** `EXPERIENCE.md` §3's
+microcopy contract has a row for the state-change email: *"EventPulse24: {event name} was
+moved to {new date}"* — **not** *"⚠️ Important update about your event!"*. The strip and
+the banner say the same thing in the same register.
+
+### The banner's two sentences
+
+The AC: *"stating the change and what happened to the user's reminders."* Two sentences, two
+tables:
+
+- **What changed** — the change kind's subject, without the email's `EventPulse24: ` prefix
+  and with the event's name **not** in it (the notice carries no title; the Detail screen
+  already has the title, and AD-13 keeps titles off the wire).
+- **What it means for your reminders** — the backend's own `REMINDER_CONSEQUENCE` line,
+  restated verbatim: *"Your reminders for this event have been cancelled."*
+
+**The second sentence is the reason the banner exists.** A user whose event moved needs to
+know whether their 1-day-before reminder still fires and at what time — "your reminders have
+been rescheduled to the new time" is the sentence that answers it. The backend derives it
+from `LIFECYCLE_SEND_BEHAVIOUR`, so **it cannot promise something the send machinery did not
+do**, and the frontend restating it keeps that guarantee.
+
+### The mute control's off state
+
+FR-55 asks for "a legible off state so a user can tell they have muted it". So the control
+is **not** a bare toggle whose meaning is in its position — it carries its state in its
+**label**: unmuted reads "Mute updates about this event", muted reads "Updates about this
+event are muted", and the muted state is **stated in words** (WCAG 1.4.1 again) and marked
+with `aria-pressed`.
+
+**The mute hides the banner.** The AC says "mute hides the banner and suppresses the strip
+entry". **A mute hides the banner's *content*, not the banner's row** — no: a muted event
+has nothing to correct the user about, so the banner **does not render at all** when the
+event is muted. That is the whole point of the mute, and a banner that kept showing a
+muted event's cancellation would make the mute a lie.
+
+**But the mute control stays.** The user needs a way *back* — FR-55's mute is per-event and
+reversible, and a control that could be set but never unset would be a trap.
+
+### Files to Create
+
+| File | Contents |
+|---|---|
+| `frontend/lib/notice-copy.ts` | The shared wording table: `NOTICE_CHANGE_LINES`, `noticeChangeLineFor`, `NOTICE_REMINDER_LINES`, `noticeReminderLineFor`. |
+| `frontend/lib/notice-read.ts` | The server-side read: `readNotices()` → `NoticeRead`. |
+| `frontend/components/state/notice-strip.tsx` | The dismissible strip — a client island. |
+| `frontend/components/state/detail-notice-banner.tsx` | The Detail screen's persistent banner. |
+| `frontend/components/state/detail-mute-control.tsx` | FR-55's per-event mute control. |
+| `frontend/components/state/notice-strip.test.tsx` | The strip's rendering and dismissal. |
+| `frontend/components/state/detail-notice-banner.test.tsx` | The banner, per kind, and the mute's effect on it. |
+| `frontend/tests/notice-copy.test.ts` | The drift guard: the backend's `NOTICE_SUBJECTS` and `REMINDER_CONSEQUENCE`, parsed, compared. |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `frontend/app/page.tsx` | The strip mounted between `<DigestHeader>` and the digest's cards. |
+| `frontend/app/events/[id]/page.tsx` | The banner and the mute control; `personal.muted` and `personal.notice` handed down. |
+| `frontend/components/digest/digest-header.tsx` | **Unchanged** — the strip is a sibling of the header, not a child. |
+
+### Deliberately unchanged
+
+- **`frontend/lib/api/schema.ts` and `openapi.json`** — the API is already built and the
+  contract already carries every field this item reads. **No regeneration.**
+- **The backend.** `notice-and-mute-api` shipped the endpoints; this item consumes them.
+- **`detail-actions.tsx`** — the sold-out CTA removal is **already implemented**
+  (`page.tsx:472` drops `DetailReminderLink`, `detail-actions.tsx:407` drops the Save
+  button, `page.test.tsx:695` asserts it). The work item's technical note carries
+  out-of-date line numbers; **AC 4 is already done and already tested.**
+
+### Tests
+
+- **`components/state/notice-strip.test.tsx`** — the strip renders the notice's sentence and
+  the event's link; **dismissing calls the API** and removes the entry; a **failed**
+  dismissal restores the entry; the strip renders **nothing** for an empty list; the strip
+  has **no count badge**, no "view all", no history.
+- **`components/state/detail-notice-banner.test.tsx`** — the banner renders per kind; the
+  banner says what happened to the reminders; a **dismissed** notice still renders, and says
+  so; a **muted** event renders **no banner**; the mute control's two labels; the mute
+  control's off state is legible in words.
+- **`tests/notice-copy.test.ts`** — the backend's `NOTICE_SUBJECTS` and
+  `REMINDER_CONSEQUENCE` are parsed out of `backend/domain/notices.py` and compared against
+  the frontend's table; an unknown change kind has **no** line (ASSUMPTION-9); the
+  consuming surfaces hold **no literal copy** of the sentences.
+- **`app/page.test.tsx`** — the home renders exactly as before with no notices (no layout
+  shift).
+- **`app/events/[id]/page.test.tsx`** — the banner and the mute, end to end through the
+  page.
+
+### Verification
+
+**Static checks** — `npx tsc --noEmit` clean, `npx eslint .` clean.
+
+**The new and changed tests** — the five files above.
+
+**The whole frontend suite** — `npx vitest run`. The baseline at `HEAD` is **99 files /
+1577 tests** plus whatever the previous item added; this item must land with **zero new
+failures**.
+
+**Node 24 is required.** `package.json`'s `engines` says `>=24.15`; under Node 20 every
+component test file is silently skipped and the suite reports a false pass.
+
+### The design documents
+
+`EXPERIENCE.md` §5 (the canonical register), §3 (the microcopy contract), §7 (the
+accessibility floor — live regions, non-colour signals); `DESIGN.md`
+§`component.emptystate.quiet` (the strip's weight). PRD FR-10, FR-53, FR-54, FR-55.
+
+
+---
+
+# Implementation Plan: Proof the whole path works — end-to-end and contract tests
+
+**Work item**: `e2e-proof-and-contract-tests` · **Intent**: `event-state-sync` ·
+**Mode**: confirm
+
+## Approach
+
+**This item writes tests, not features.** Every preceding item of the intent is
+implemented and unit-tested in isolation. What none of them can prove is that the seams
+compose — that a cancellation upstream actually reaches a saved user's reminders, their
+conflict, their card, and their inbox, *in that order*, *exactly once*.
+
+So the work is **one file of journeys**, plus **one file of contracts**, plus the
+**mutation probes** that prove the journeys would fail if the seams broke.
+
+### The composition, and why the seams are the point
+
+```
+ingest (catalog)          EventStateChange row, appended, version-gated
+   ↓  propagation         worker.propagation.propagate(state_change_id=…, now=…)
+personalization           cancel_saved_event → close_pairs_for_side   (AD-3 wall)
+delivery                 apply_lifecycle_change → CANCEL / REMINT / KEEP
+   ↓
+notices                  raise_state_notice → one notice row, or none if muted
+   ↓
+sends                    state_notice send → Stream.TRANSACTIONAL, no unsubscribe URL
+```
+
+**Each arrow is a seam, and each seam is where a unit test stops.** The propagation
+consumer was tested with a fake `EventStateChange`; the delivery behaviour was tested
+with a fake change kind; the notice was tested with a fake user. **None of them tested
+the fact that `propagation` reads the change row and hands the *same* version to all
+three consumers** — and that is the failure mode a user would experience.
+
+**The version is the spine.** `EventStateChange` carries `event_version`, and all three
+consumers are version-gated against it. A journey that asserts a *version* — the send's
+`send_key`, the notice's `event_version`, the saved event's `event_version` — proves the
+spine holds across the wall. A journey that only asserts "a notice exists" does not.
+
+### The journeys, and what each one proves that no unit test does
+
+| Journey | The seam it proves | What no unit test could catch |
+|---|---|---|
+| **Cancellation** | catalog → propagation → personal → delivery → notice → email | That the *same* change reaches all three consumers, and that the notice and the email are about the *same* event at the *same* version |
+| **Postponement** | the REMINT branch | That the new send is minted at the **new** version and the stale one is cancelled — a unit test of `apply_lifecycle_change` never sees the propagation's version hand-off |
+| **Sold-out** | the KEEP branch | That the reminders **still fire** after the change — the branch where nothing is cancelled and everything is merely re-stamped, which is the branch most likely to be broken by an over-eager cancellation |
+| **Reinstatement** | the REINSTATE branch, and the **spent send key** | That the old spent send key does not block the new send — a key collision that only shows up when the *same* event is cancelled and then revived |
+| **Hold-and-release** | the claim-then-change race | That a send claimed by the sweep *while its event is mid-change* is **held, not sent**, and is released by propagation. **This is the race AD-17 exists for** |
+| **Backlog drain** | the reconciler | That unpropagated rows **predating** this intent are propagated without manual intervention — the migration's other half |
+| **Mute** | the mute in the real path | That a muted event's change produces **no notice and no email**, while its reminders **still fire** — the mute's scope, end to end |
+
+**The hold-and-release journey is written first**, as the work item's Technical Note says.
+It is the only one that can fail for a reason none of the unit tests would catch, and
+staging a deterministic claim-then-change race shapes how the others are staged.
+
+### The mute journey is the one that proves the *scope*
+
+**FR-55's mute is narrow, and the narrowness is the whole point.** The mute silences
+*the correction* — the notice and the email — and **not the reminders**. So the mute
+journey must assert **two** things at once: no notice row, no email, **and** the pending
+send still fires. **A test that only asserts the silence would pass against a mute that
+also killed the user's reminders** — which is the failure a user would be most upset by.
+And the *terminal* exception must be proved in the same journey: a **cancelled** event
+raises its notice **despite** the mute, because silence about a cancelled event is the
+one failure with no second channel to catch it.
+
+### The clock is frozen, and every service takes `now`
+
+Every service on this path takes `now` as an argument. **The proof passes its own
+instant and never reads the wall clock** — a proof that sleeps is slow, flaky, and its
+answer can depend on the hour it ran. `EventFactory(..., last_seen_at=NOW)` is pinned
+too, or the event is stale against the frozen `NOW` and is dropped before composition.
+
+### The database wall is respected, not worked around
+
+`pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])` gives the test both
+schemas, and **no transaction spans them** (AD-3). Each service opens its own
+`transaction.atomic(using=…)`. The proof **does not use `transaction=True`** — it needs
+no committed rows for another thread, and using it would let a bug hide behind a
+committed intermediate state.
+
+### The frontend half is *not* re-proved here, and that is a decision
+
+**The rendered half was proved by the two frontend items**, and proved better than a
+browser could: the digest home's own tests assert the rendered cards, the Detail
+screen's assert the rendered breakdown, and *this* file asserts the **same persisted
+row** that those screens read — the `DigestComposition`, the `StateChangeNotice`, the
+`ScheduledSend`. The two halves meet on a row, which is the seam that matters.
+
+**What this item adds on the frontend side is the contract**: that the endpoints this
+intent added are in the committed OpenAPI document, that the generated client is in
+sync, and that the frontend's notice vocabulary has not drifted from the backend's —
+the last of which `frontend/tests/notice-copy.test.ts` already proves by reading the
+backend's tables out of the source.
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `backend/tests/e2e/test_state_change_proof.py` | The seven journeys, each one scenario with one user, one database, and one transaction's worth of shared state |
+| `backend/tests/e2e/test_state_change_contract.py` | The contracts: the OpenAPI paths this intent added, the generated client in sync, the import contracts, and the proof running offline |
+| `backend/tests/e2e/mutation_probe_state_change_e2e.py` | The mutation probes — one real bug per seam, each of which must break a journey |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| (none) | — |
+
+**Nothing is modified.** This item is **tests only**, and that is deliberate: it is the
+proof of the items that came before it, and a proof that changes the thing it proves is
+not a proof. **If a journey fails, the fix is to the implementation** — and that fix
+belongs to the item that owns the implementation, in its own commit.
+
+## Tests
+
+| File | What it holds |
+|------|---------------|
+| `backend/tests/e2e/test_state_change_proof.py` | The seven journeys |
+| `backend/tests/e2e/test_state_change_contract.py` | The contracts |
+| `backend/tests/e2e/mutation_probe_state_change_e2e.py` | The mutation probes (not a pytest file — a script, like the existing probes) |
+
+### The journeys, one by one
+
+1. **The cancellation journey** — a published event, a saved user, a pending reminder.
+   The event is cancelled upstream; an `EventStateChange` is recorded; propagation runs;
+   the pending send is **cancelled**; the conflict pair **closes**; the card shows
+   **cancelled**; **one** notice appears in the strip; **one** email is sent, on
+   `Stream.TRANSACTIONAL`, with **no unsubscribe URL**, subject
+   *"EventPulse24: <name> was cancelled."*
+2. **The postponement journey** — the same, but the snapshot **moves**, the reminders are
+   **re-minted against the new version**, the stale send is cancelled, and a newly-created
+   overlap surfaces as the **calm Detail notice** — not the FR-58 forced prompt.
+3. **The sold-out journey** — the badge on the card and the Detail, the "Save Reminder"
+   CTA **removed**, the reminders **kept** (`LIFECYCLE_SEND_BEHAVIOUR` maps
+   `sold_out → KEEP`), and **one** notice.
+4. **The reinstatement journey** — a cancelled event comes back; the reminders are
+   re-minted **from the surviving plan**; the save returns to live; the **old spent send
+   key does not block the new send**.
+5. **The hold-and-release journey** — a send claimed by the sweep while its event is
+   mid-change is **held, not sent**, and is **released by propagation**.
+6. **The backlog drain** — unpropagated `EventStateChange` rows that predate this intent
+   are propagated by the reconciler **without manual intervention**.
+7. **The mute journey** — a muted event's change produces **no notice and no email**,
+   while its reminders **still fire**; and a **cancelled** event raises its notice
+   **despite** the mute.
+
+### The mutation probes — one real bug per seam
+
+Each probe applies **one real bug** to the implementation, runs the journey suite, and
+checks that **at least one test fails**. A probe that passes means the journeys do not
+prove that rule, and either the implementation or the journey has to change.
+
+| # | The bug | The seam it breaks |
+|---|---|---|
+| 1 | propagation does not mark the change propagated | The backlog drain |
+| 2 | the CANCEL branch cancels nothing | The cancellation journey |
+| 3 | the KEEP branch cancels the sends anyway | The sold-out journey |
+| 4 | the mute is not consulted | The mute journey |
+| 5 | the hold does not exclude the send from the claim | The hold-and-release journey |
+| 6 | the notice is raised for every kind, terminal or not | The mute journey's terminal half |
+
+### Verification
+
+**Static checks**
+
+```
+cd backend
+uv run ruff check .
+uv run ruff format --check .
+uv run lint-imports            # 19 contracts kept, 0 broken
+```
+
+**The new tests**
+
+```
+uv run pytest tests/e2e/test_state_change_proof.py tests/e2e/test_state_change_contract.py -q
+```
+
+**The mutation probes** — each one must break the suite, and each must leave the tree
+unchanged afterwards:
+
+```
+uv run python tests/e2e/mutation_probe_state_change_e2e.py
+```
+
+**The whole backend suite** — `make test-backend`. The **16 pre-existing failures** from
+the `timeline-and-conflicts` item (date-expired fixtures) are expected and unrelated;
+the baseline is **{0} new failures**.
+
+**The frontend suite** — unchanged by this item, but it must still pass, because the
+contract file asserts the generated client is in sync with the committed OpenAPI
+document. `npx vitest run` (Node 24), `npx tsc --noEmit`, `npx eslint .`.
+
+**The end-to-end path** (manual, against a running server): cancel an event upstream →
+re-ingest → the digest card shows cancelled → the reminders stop → the conflict closes →
+the strip carries one notice → one email arrives.

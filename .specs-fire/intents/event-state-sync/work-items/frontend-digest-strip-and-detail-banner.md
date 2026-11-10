@@ -4,11 +4,13 @@ title: Told once, calmly, where they already are — the strip and the banner
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - notice-and-mute-api
   - frontend-pulse-card-state
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T12:15:27.411Z
 ---
 
 # Work Item: Told once, calmly, where they already are — the strip and the banner

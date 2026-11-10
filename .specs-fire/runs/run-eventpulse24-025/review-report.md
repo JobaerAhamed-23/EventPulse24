@@ -871,3 +871,315 @@ asserted in prose, and the mutation (inverting the precedence) is caught by four
 - **The `superseded` case is safe.** Superseded events are excluded from
   `get_public_events`, so the card gets `status=null, catalog_event_missing=true` and
   shows no badge.
+
+---
+
+# Code Review: frontend-digest-strip-and-detail-banner
+
+### Files reviewed
+
+| File | What was checked |
+|---|---|
+| `frontend/lib/notice-copy.ts` | The restated backend vocabulary, and the terminal-kind rule |
+| `frontend/lib/notice-read.ts` | The read, and that it reads only what the server said |
+| `frontend/components/state/notice-strip.tsx` | The strip's anatomy, its live region, its dismiss write |
+| `frontend/components/state/detail-notice-banner.tsx` | The banner, the mute's reach, the dismissed-notice line |
+| `frontend/components/state/detail-mute-control.tsx` | The mute's write, its failure line, its accessible name |
+| `frontend/app/page.tsx` | The strip's placement, and that the two reads are concurrent |
+| `frontend/app/events/[id]/page.tsx` | The banner's placement, and the one-status-region rule |
+| `frontend/tests/contrast.test.ts` | The new surfaces' colour pairs |
+| `frontend/components/state/notice-strip.test.tsx` | 20 tests |
+| `frontend/components/state/detail-notice-banner.test.tsx` | 26 tests |
+| `frontend/tests/notice-copy.test.ts` | The drift guard against the backend's tables |
+| `frontend/tests/notice-surfaces-a11y.test.tsx` | 9 audits through the pages, not the islands |
+
+**Linters**: `tsc --noEmit` clean; `eslint .` clean; `prettier --check` clean on every file
+this item touched. (`frontend/lib/event-state.ts` and `frontend/tests/event-state.test.ts`
+were already failing `prettier --check` at `41e2313` and were not touched.)
+
+**No backend change.** `DetailPersonalOut.muted` and `.notice`, and `GET /api/notices`,
+already exist — this item is the frontend's half of a contract that was already signed.
+`tests/api/test_contract.py` and the 861 architecture tests pass unchanged.
+
+### Findings, and what was done about them
+
+**1. The mute hid the terminal notices the backend raises *despite* a mute — FIXED.**
+This was the item's one real bug. `detail-notice-banner.tsx` gated the banner on
+`isMuted` alone, so a **cancelled** or **superseded** notice was hidden on a muted event
+— and the backend raises those two kinds *on purpose*.
+`backend/apps/delivery/services/state_notices.py:69` defines
+`TERMINAL_KINDS = frozenset({ChangeKind.CANCELLED, ChangeKind.SUPERSEDED})`, and line 245
+skips the mute check for exactly those two; `services/mutes.py` says why: *"FR-55 has
+already pulled a cancelled event out of the digest, so silence about it is the one
+failure with no second channel to catch it."* `services/notice_state.py` says the same
+from the other side: *"A caller that read one and assumed the other would get one of
+those two cases wrong."*
+
+**A frontend that hid it was undoing the server's deliberate decision (AD-10).** The fix
+is `muteSilencesNotice(changeKind)` in `lib/notice-copy.ts`: the mute silences the
+non-terminal corrections, and leaves the terminal ones alone. Pinned by two tests — *"still
+shows a terminal change, because the backend raised it despite the mute"* and *"still shows
+a supersede"*.
+
+**2. The banner and the strip invented a sentence for a kind they could not name —
+FIXED.** Both fell back to *"This event has changed."* / *"An event you saved has
+changed."* **That is a claim about the world made by a client that was told *what*
+changed and could not understand it.** The backend does the opposite: `domain/notices.py`'s
+`subject_template` raises `KeyError` for a kind it has no subject for, and the renderer
+turns that into a cancelled send — *"a kind `domain.lifecycle` gained without this module
+learning it must not produce a generic subject — FR-54 fixes the copy, and a wrong subject
+is worse than no email."*
+
+**So both now render nothing at all** (ASSUMPTION-9). The strip renders the entries it
+*can* put into words and leaves the rest out; one unknown kind does not take the whole
+strip down.
+
+**3. The mute control was a second `role="status"` on the Detail Screen — FIXED.** The
+Detail Screen's action row already owns that page's one status region (the
+conflict-resolution failure line, `components/detail/detail-actions.tsx:443`), and two
+status regions on a page make *"which one is the page talking?"* a question the DOM
+cannot answer. The mute control's failure line is now a bare `aria-live="polite"`, always
+in the DOM. Pinned by *"does not turn the mute control's failure line into a second status
+region"*.
+
+**4. The mute control was unreachable on an event with no notice — FIXED.** The banner
+component returned `null` before reaching the control, so a user could not mute an event
+*before* a change arrived — which is the only time muting is useful. The banner is now
+gated on the notice, and the control is not.
+
+**5. The optimistic mute hid the banner before the server confirmed it — FIXED.** The
+control called `onMuteChange` *before* the write, so the banner vanished on a click and
+came back if the write failed. **The banner's disappearance is a claim about the world**
+— *"you will not be told about changes to this event"* — and a claim the server has not
+agreed to is the client deciding the server's fact (AD-10).
+
+**So the button's label still flips at once** (so the control feels responsive) **but the
+banner moves only after the server confirms.** Pinned by *"keeps the banner while the mute
+is still in flight"*.
+
+**6. `aria-pressed` on a button whose accessible name changed with its state — FIXED.**
+The control's accessible name was *"Mute updates about this event"* when unmuted and
+*"Updates about this event are muted"* when muted. **A toggle button whose accessible name
+changes with its state is a contradiction** — `aria-pressed="true"` on a button called
+"Mute updates about this event" says both *"this is on"* and *"press me to turn it on"*,
+and *"Updates about this event are muted"* is a status with nothing to press.
+
+**So the accessible name is stable** (it names the action the control performs) **and
+`aria-pressed` carries the state** (WCAG 4.1.2). The *visible* text still changes, so a
+sighted reader sees the state too, and an explicit `aria-label` keeps the two apart.
+Pinned by *"keeps the accessible name stable while the state changes"*.
+
+**7. The strip's live region left the DOM with the strip — FIXED.** A live region added to
+the page together with its text is not announced reliably; a region that is *already
+there* and then changes is. **The moment that matters most is the dismissal of the last
+notice** — which is exactly when a strip that returned `null` took its own live region
+with it. The region is now always in the DOM and always `sr-only`, so the "no layout
+shift" claim still holds. Pinned by *"keeps the live region in the DOM when the strip
+empties"*.
+
+**8. Two identical changes produced two identically-named dismiss buttons — FIXED.** Two
+events cancelled on the same day gave two buttons both called *"Dismiss: This event was
+cancelled."*, and the strip **cannot name the event** — the payload carries no title
+(AD-13). So the name carries the position as well: *"Dismiss: This event was cancelled.
+(1 of 2)"*. The position is counted over the entries that *render*, so an unknown kind
+does not make the numbers skip. The visible text stays "Dismiss" — the position is a
+screen-reader affordance, not something to print on the page.
+
+**9. The announcement counted notices the strip did not show — FIXED.** It said *"Two
+changes"* over a screen showing one, when one of the two was a kind the table had no word
+for. It now counts the entries that render.
+
+**10. The two home-page reads were serial, and the comment claimed otherwise — FIXED.**
+`app/page.tsx` said the reads were concurrent and awaited them one after the other. Now
+`Promise.all`.
+
+**11. The strip's link was below the 44px tap-target floor — FIXED.** Every other tap
+target on the site has it; the strip's link — its primary tap target, and the way to the
+event — did not.
+
+**12. The new surfaces' colour pairs were not named in the contrast gate — FIXED.**
+`tests/contrast.test.ts` computes WCAG ratios statically from `styles/tokens.css` (the
+axe gate cannot: jsdom computes no layout, which is why `color-contrast` is disabled in
+every axe gate in this repo). The strip's and the banner's own pairs are now named in
+`TEXT_PAIRS` — `ink-secondary` and `ink-muted` on `surface-elevated`, which is the surface
+both surfaces actually sit on.
+
+### Considered, and deliberately not changed
+
+| Consideration | Decision |
+|---|---|
+| **Should the banner's dismissal line be a `role="status"`?** | No. The Detail Screen already has one, and two make *"which one is the page talking?"* unanswerable. A bare `aria-live="polite"`, always in the DOM — the same rule `components/share/share-control.tsx` and `components/add-event-button.tsx` already follow |
+| **Should the mute control's label be a stable "Mute updates" with a separate state chip?** | No. A second element would need its own contrast pair and its own accessible-name rules, for no gain the `aria-pressed` attribute does not already give. The visible text carries the state, the name carries the action, and the attribute carries it to assistive technology — three carriers for one fact, each in the medium it belongs to |
+| **Should the strip count undismissed notices server-side instead of rendering "N of M" positions?** | No. The count is not a badge, and a count in the payload would be a number a client renders — the exact "client re-decides a fact the server stated" that AD-10 forbids. The position is a *disambiguation aid*, not a claim about how many notices exist |
+| **Should the strip's link name the event?** | It cannot. The notice payload carries no title (AD-13), and the change's before/after values are source payload and stay off the wire. The link's text is the change, and the event's own card is in the digest right below |
+| **Should the banner disappear for a muted event at all?** | Only for the kinds the backend would have suppressed anyway. The backend raises a terminal notice *despite* the mute, so hiding it would undo the server's decision — finding 1 |
+| **Should the strip render a fallback line for an unknown kind?** | No. The backend raises `KeyError` rather than produce a generic subject — *"a wrong subject is worse than no email"* — and ASSUMPTION-9 says a kind this system has never heard of shows nothing |
+| **Should the banner offer a dismissal?** | No. The banner is persistent; the strip is dismissible. The user came to the Detail Screen on purpose, and the page's job there is to say what happened to the event they were planning around |
+
+### Mutations
+
+Each of the item's claims is proved by a mutation that breaks a test. The five added for
+this review pass:
+
+| # | Mutation | Caught by | Tests failing |
+|---|---|---|---|
+| A | The banner moves optimistically, before the server confirms | *"keeps the banner while the mute is still in flight"*, *"keeps the banner when the mute fails"* | 2 |
+| B | The accessible name changes with the mute state | *"keeps the accessible name stable while the state changes"* + 3 | 4 |
+| C | The live region leaves the DOM when the strip empties | *"keeps the live region in the DOM when the strip empties"* + 1 | 2 |
+| D | The dismiss position is dropped from the accessible name | *"gives two identical changes distinguishable dismiss buttons"* + 2 | 3 |
+| E | The announcement counts notices the strip does not render | *"counts only the changes it can put into words"* | 1 |
+
+The four from the test phase (the terminal-notice rule, the unknown-kind silence, the
+single status region, and the concurrent reads) were proved in the test phase and are
+unchanged.
+
+### Outcome
+
+**13 findings, all fixed.** 106 files / 1765 frontend tests pass; 861 backend contract and
+architecture tests pass. `tsc`, `eslint` and `prettier` are clean on every file this item
+touched. No backend change, no migration, no contract regeneration.
+
+---
+
+## Work Item: e2e-proof-and-contract-tests
+
+**Mode:** confirm · **Reviewed:** the proof, the contract tests, the domain tests and the
+six mutation probes.
+
+### Scope
+
+| File | Action |
+|---|---|
+| `backend/tests/e2e/test_state_change_proof.py` | created — 30 tests, seven journeys |
+| `backend/tests/e2e/test_state_change_contract.py` | created — 13 tests |
+| `backend/tests/domain/test_notices_and_sources.py` | created — 11 tests |
+| `backend/tests/e2e/mutation_probe_state_change_e2e.py` | created — 6 probes |
+| `frontend/lib/event-state.ts` | modified — whitespace only (prettier) |
+| `frontend/tests/event-state.test.ts` | modified — whitespace only (prettier) |
+
+**No production code changed.** The review's most useful finding was that the proof
+*found* the implementation to be correct in three places where the first draft of the
+test was wrong — recorded below rather than papered over.
+
+### Linters
+
+`ruff check` clean · `ruff format` clean · `lint-imports` 19 kept / 0 broken ·
+`tsc --noEmit` clean · `eslint .` clean · `prettier --check` clean ·
+`axe-core` zero serious violations on both touched surfaces.
+
+### Findings requiring a change — fixed
+
+#### 1. A contract test asserted a rule the tree does not state (correctness)
+
+`test_ingestion_never_writes_to_the_personal_schema` scanned every module in
+`apps/ingestion/` for the string `PERSONAL` — and **failed on `apps/ingestion/admin.py`**,
+which *reads* the user model from `personal` to show an actor's name in the admin's list
+column.
+
+**A read across the wall is legal.** AD-3 is about a *write* and about a transaction
+spanning both schemas. The scan would have flagged a legitimate pre-existing read as a
+breach — and a contract test that fails on correct code is worse than no contract test,
+because it teaches the reader to ignore it.
+
+Fixed by delegating to the tree's own rules: `test_no_app_writes_a_table_it_does_not_own`
+over `_source_files()`, plus the import half (`ingestion` may not reach
+`personalization`'s services). **One rule, one discovery, and the two lists can never
+disagree.**
+
+#### 2. Two tests carried a `self` they did not use (correctness)
+
+`test_the_proof_runs_fully_offline` and
+`test_the_state_change_path_does_not_import_a_network_client` were written with a `self`
+parameter in a module with no class. **Pytest then treated them as test *methods* and
+asked for a `self` fixture**, so both errored at setup rather than running. A contract
+test that never runs is a contract test that proves nothing.
+
+Fixed by dropping the parameter.
+
+#### 3. The `domain/` coverage gate was red, and this intent's own module was half of it
+
+`make coverage-backend` requires **100% for `domain/`**. At `HEAD` it was at **99%** —
+nine lines across two files:
+
+| Module | Missing | Whose gap |
+| --- | --- | --- |
+| `domain/notices.py` | 258, 355–358 | **this intent's** — the notice copy |
+| `domain/sources.py` | 107–110 | an earlier intent's — `humanise_duration` |
+
+Every one of the nine is a branch a user can reach, and each changes what the user is
+told — a missing title that folds to nothing, a kind the behaviour map does not carry, a
+cadence of 30 minutes that must not read "0 hours".
+
+**The gate is on the whole directory, so an older gap keeps this intent's build red** —
+and a red gate is a gate nobody reads. Fixed by `tests/domain/test_notices_and_sources.py`
+(11 tests), which asserts the *words* rather than the calls.
+
+#### 4. Two committed files failed `prettier --check` (CI)
+
+`frontend/lib/event-state.ts` and `frontend/tests/event-state.test.ts` were committed
+unformatted at `41e2313`. **CI runs `make lint-web`**, so the gate was red on files this
+run did not touch — and "CI stays green" is this item's own criterion. Fixed by
+`prettier --write`: a trailing blank line and a line join. **Whitespace only.**
+
+### Findings about the *implementation* — deliberately not changed
+
+These are the review's most valuable output, and in all three cases **the implementation
+was right and the test was wrong.** The fix was to the test, with the reasoning
+recorded in the test so a later reader does not "fix" it back.
+
+#### 1. The `CANCEL` branch leaves a held row's `held_at` marker on it — and that is inert
+
+`apply_lifecycle_change`'s `CANCEL` branch cancels the stale row and does **not** clear
+`held_at`. The first draft of the proof asserted the marker was cleared, and it failed.
+
+**The investigation:** `claim_due_sends` filters on `status = PENDING` **and**
+`held_at IS NULL`; `count_stuck_holds` filters on `status = PENDING`. **So the marker is
+inert on a terminal row** — a cancelled row is not claimable either way, and the stuck-hold
+alarm does not see it. Clearing the marker would change no observable behaviour and would
+cost a write.
+
+The test now asserts the marker **stays**, that `claim_due_sends` returns `[]`, and says
+why in a comment. **Changing the implementation to satisfy a test here would have been a
+regression dressed as a fix.**
+
+#### 2. A reinstatement raises one notice, not two — and that is the daily cap
+
+FR-54 caps notices at one per event per local day, resolved by
+`domain.lifecycle.PRECEDENCE`, which puts `cancelled` above `reinstated`. So a
+cancellation followed by a reinstatement on the same day raises **one** notice.
+
+The first draft treated this as a defect. It is not — it is the cap working. The
+reinstatement was moved to `NOW + 1 day`, **and the cap is now proved deliberately** by
+`test_the_daily_cap_keeps_the_second_notice_of_one_day_out`. **A test that proves the
+rule beats a test that works around it.**
+
+#### 3. The `CANCEL` branch does not re-stamp the row's version — and that is right
+
+A cancelled send keeps the version it was minted at. The first draft asserted it moved.
+The `CANCEL` branch cancels the row and stops; a cancelled row is terminal, so its
+working version is nobody's business. The test now asserts the row keeps the version it
+was minted at.
+
+### Considered and deliberately not changed
+
+| Observation | Why it stands |
+|---|---|
+| The proof asserts on `idempotency_key` membership rather than on a mail count | A total would also be a claim about the *notice* — a different journey's business. The first draft asserted `counts.sent == 1` and found **two** mails: the reminder and the notice |
+| The contract test shells out to `lint-imports` | It is the check CI runs, and the contract count is pinned at 19 — a contract deleted from `pyproject.toml` would otherwise pass with one fewer wall |
+| The contract test regenerates `schema.ts` and compares | The question is "does regenerating change anything?", and the file is restored in a `finally` — so the test is a *measurement*, not a rewrite |
+| The proof drives `apply_lifecycle_change` rather than writing rows | The `catalog.guard_event_write` trigger refuses a status change without a version bump, so this is the *only* way a cancellation happens. The proof drives the real path |
+| The `domain/` test patches `LIFECYCLE_SEND_BEHAVIOUR` with a synthetic kind | Nothing is stubbed — only the table the function reads is extended, which is exactly what a new kind in `ingestion` would do. The function takes its ordinary path |
+| The proof's `NOW` is a fixed instant, not "now" | Two reads are bounded by the wall clock (`get_public_event` and the Detail endpoint), so a proof whose answer depended on the hour it ran would be flaky. The event starts two days past the wall clock, so the Detail read finds it whenever the suite runs |
+| The frontend suite needs Node 24 | `package.json` requires `>=24.15` and CI pins Node 24 via `.nvmrc`. Under Node 20 the forks pool crashes and 83 files report as **errors** — the suite looks broken rather than skipped |
+
+### A note on the pre-existing failures
+
+**16 backend tests fail, and all 16 are pre-existing.** Confirmed against a clean
+worktree at `HEAD`: the *same 16 test names* fail there, with the same date-expired
+fixtures. **The baseline at `HEAD` is 17** — this item **fixed** one
+(`test_the_generated_client_is_in_sync_with_the_document`, because the committed client
+now matches the document). **The delta is −1, not 0.**
+
+They are not this item's to fix: they are the `timeline-and-conflicts` item's
+date-expired fixtures, and fixing them would mean editing another work item's tests
+without its review.
