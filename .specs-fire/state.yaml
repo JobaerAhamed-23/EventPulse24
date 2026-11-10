@@ -791,12 +791,14 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-05T06:10:24.975Z
       - id: state-change-notice-model
-        status: in_progress
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T05:31:46.683Z
       - id: propagation-consumer
-        status: pending
+        status: in_progress
         complexity: high
         mode: validate
         depends_on:
@@ -878,17 +880,18 @@ runs:
         - id: state-change-notice-model
           intent: event-state-sync
           mode: validate
-          status: in_progress
-          current_phase: execute
+          status: completed
+          current_phase: review
           checkpoint_state: approved
           current_checkpoint: plan
+          completed_at: 2026-11-10T05:31:46.683Z
         - id: propagation-consumer
           intent: event-state-sync
           mode: validate
-          status: pending
-          current_phase: null
+          status: in_progress
+          current_phase: plan
           checkpoint_state: none
-          current_checkpoint: null
+          current_checkpoint: plan
         - id: digest-card-state-fields
           intent: event-state-sync
           mode: confirm
@@ -945,7 +948,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: state-change-notice-model
+      current_item: propagation-consumer
       started: 2026-11-04T13:11:36.097Z
   completed:
     - id: run-eventpulse24-001

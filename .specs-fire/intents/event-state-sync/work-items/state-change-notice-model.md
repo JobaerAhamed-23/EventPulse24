@@ -4,9 +4,11 @@ title: One calm notice, once, and a way to silence it — the state-change notic
 intent: event-state-sync
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T05:31:46.683Z
 ---
 
 # Work Item: One calm notice, once, and a way to silence it — the state-change notice

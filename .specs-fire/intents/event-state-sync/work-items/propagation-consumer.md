@@ -4,7 +4,7 @@ title: The job that was always a stub — AD-17's propagation consumer
 intent: event-state-sync
 complexity: high
 mode: validate
-status: pending
+status: in_progress
 depends_on:
   - saved-event-lifecycle-state
   - held-for-propagation-status
