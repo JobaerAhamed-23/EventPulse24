@@ -4,9 +4,11 @@ title: Four hours for the sources that matter — FR-53's detection floors
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T08:02:11.281Z
 ---
 
 # Work Item: Four hours for the sources that matter — FR-53's detection floors

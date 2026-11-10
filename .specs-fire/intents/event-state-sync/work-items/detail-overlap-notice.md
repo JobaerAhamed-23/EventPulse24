@@ -4,7 +4,7 @@ title: Someone else moved the event and now it clashes — the calm overlap noti
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - saved-event-lifecycle-state
 created: 2026-11-04

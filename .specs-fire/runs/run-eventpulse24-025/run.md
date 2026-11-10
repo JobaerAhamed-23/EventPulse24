@@ -40,31 +40,31 @@ work_items:
   - id: polling-cadence-floors
     intent: event-state-sync
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: notice-composition-and-email
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: notice-and-mute-api
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: detail-overlap-notice
     intent: event-state-sync
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: frontend-pulse-card-state
     intent: event-state-sync
     mode: confirm
@@ -86,7 +86,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: polling-cadence-floors
+current_item: detail-overlap-notice
 status: in_progress
 started: 2026-11-04T13:11:36.097Z
 completed: null
@@ -103,17 +103,17 @@ wide (12 work items)
 3. **state-change-notice-model** (validate) — completed
 4. **propagation-consumer** (validate) — completed
 5. **digest-card-state-fields** (confirm) — completed
-6. **polling-cadence-floors** (confirm) — in_progress
-7. **notice-composition-and-email** (confirm) — pending
-8. **notice-and-mute-api** (confirm) — pending
-9. **detail-overlap-notice** (confirm) — pending
+6. **polling-cadence-floors** (confirm) — completed
+7. **notice-composition-and-email** (confirm) — completed
+8. **notice-and-mute-api** (confirm) — completed
+9. **detail-overlap-notice** (confirm) — in_progress
 10. **frontend-pulse-card-state** (confirm) — pending
 11. **frontend-digest-strip-and-detail-banner** (confirm) — pending
 12. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-polling-cadence-floors (confirm)
+detail-overlap-notice (confirm)
 
 ## Files Created
 (none yet)

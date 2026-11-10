@@ -294,3 +294,386 @@ caught the wrong design exists and is proven able to fail.
 
 Approved. No critical issues. No architecture contract broken. No migration. The one
 documentation gap found was the OpenAPI description, and it is fixed.
+
+---
+
+# Code Review: polling-cadence-floors
+
+### Files reviewed
+
+| File | What was checked |
+|---|---|
+| `backend/shared/constants.py` | The two ceilings and the high-priority method set |
+| `backend/domain/sources.py` | The derivation, and that it is stdlib-only |
+| `backend/apps/ingestion/models.py` | The check constraint, and that its "else" branch matches the derivation |
+| `backend/apps/ingestion/migrations/0007_source_cadence_ceiling.py` | The clamp, the operation order, and the reverse |
+| `backend/apps/ingestion/services/source_registry.py` | The cleaner, the effective-method resolution, the method-change re-check |
+| `backend/apps/ingestion/services/scheduling.py` | The floor check, and that it is not a duplicate of the stale flag |
+| `backend/worker/tasks.py` | The tick's use of the count, and the log line |
+| `backend/apps/ingestion/admin.py` | The form's help text and the inheritance of the check |
+| `backend/tests/e2e/test_state_detection_window.py` | The consequence test, and whether it proves what it claims |
+| `backend/tests/ingestion/test_migrations.py` | The backfill, and whether it can be tested at all |
+
+### Findings, and what was done about them
+
+**1. The method's default cadence was never checked against the ceiling — FIXED.**
+
+`register_source` applied `DEFAULT_INGESTION_CADENCE[method]` *after* `check_source_change`
+had run, so the default was the one cadence value that skipped the cleaner entirely. Every
+default is currently inside its tier's ceiling, so nothing was broken — but nothing
+*enforced* it either. A future default above its ceiling would have produced an
+`IntegrityError` from the database constraint, at registration, in production, rather than a
+refusal with a message.
+
+The default now goes through the same cleaner as a given cadence, and the refusal is raised
+in the shape the caller already handles (`_checked_cadence` turns `_FieldError` into a
+`ValidationError` naming `ingestion_cadence`, because the default path has no collection loop
+around it).
+
+Three tests were added: one asserting every shipped default is inside its own ceiling (the
+invariant, so a future default cannot drift silently), one proving a default above the
+ceiling is *refused* rather than written, and one proving the default is measured against
+**its own** tier — a 12-hour default is illegal for `api` and legal for `rss`, so a check
+against the wrong tier is caught in one direction or the other.
+
+**2. The floor check's boundary was inclusive, and the first test asserted the opposite —
+CORRECTED.**
+
+`report_cadence_floor_breaches` uses `__lte`, so a source last ingested exactly its ceiling
+ago is a breach. The implementation was **kept**: it matches `flag_stale_sources`'s own
+convention ("exactly 2x is stale") and it is the right reading of "detected *within* 4
+hours" — at the instant the window closes, the promise has expired. The test was corrected,
+and the boundary is now stated in the docstring so the next reader does not re-derive it.
+
+**3. The consequence test could not drive both halves at once — SPLIT, AND SAID SO.**
+
+No high-priority method has a parser: `api` and `partnership` have no adapter in this
+codebase, and `PARSERS` holds `jsonld`, `rss`, `ics` and `email_ics`. A high-priority source
+therefore cannot be ingested today, so a single test driving the scheduler *and* the
+detection would have had to fake the parser — and **faking the parser would make the test
+prove a fiction**.
+
+The file is split instead: the scheduler half is proved on a high-priority source, the
+detection half on a source whose method has a parser, and the file's docstring says exactly
+why. This is a limitation of the codebase, not a gap in the work, and it is stated rather
+than papered over.
+
+### Considered, and deliberately not changed
+
+| Consideration | Decision |
+|---|---|
+| **Should the tier be a stored field?** | No. FR-17's own order is the codebase's statement of which sources matter more, and `AcquisitionMethod`'s docstring says "FR-17 priority order, highest first". A second priority column would be a second opinion about a question the codebase has already answered, and the two could disagree — and a priority that disagrees with the method is a guarantee nobody can check. `HIGH_PRIORITY_METHODS` derives it in one place (`domain/sources.py`), and mutation 13 inverts the derivation and fails 14 tests |
+| **Should `jsonld`, `rss` and `ics` be in the high tier?** | No. FR-53's parenthetical is "official sites", and the official sources are the API and partnership ones. Their 4-hour *defaults* are unchanged — a default is a starting point, and a source may poll more often than its tier requires. What the item adds is the 24-hour *ceiling* underneath, which forbids only what the guarantee cannot support |
+| **Should the constraint be `DEFERRABLE`?** | No. The check is on one row's own columns, so it is evaluated immediately and correctly, and the constraint it sits beside (`source_cadence_positive_ck`) is not deferrable. Following the local convention |
+| **Should the constraint's "else" branch be a whitelist of lower methods?** | No — it is `~Q(acquisition_method__in=HIGH_PRIORITY_METHODS)`, exactly the Python derivation. A whitelist would make every row with a method added later illegal until the constraint was updated, and would disagree with `source_priority`, which puts anything outside the high set in the lower tier. The two layers must be the same rule |
+| **Should the constraint be added *before* the clamp?** | No — `AddConstraint` validates existing rows, so the constraint would fail on exactly the rows the migration exists to fix. The order is stated in the migration's docstring, and mutation 9 catches a clamp that does nothing |
+| **Should the migration restore the clamped values on reverse?** | It cannot: it does not know them, and guessing would be worse than leaving them. The reverse drops the constraint and says what it does, in the function's docstring |
+| **Should the floor check be about `last_attempted_at`?** | No. The guarantee is about *detection*, and a failed poll detects nothing. `flag_stale_sources` is about the data's freshness at 2× the row's own cadence; the floor check is about the promise at 1× the tier's ceiling. Mutation 5 swaps the two columns and 5 tests fail, including the one that pins the case where they differ |
+| **Should the floor check return a list rather than a count?** | No. A count is enough to say the guarantee is at risk, and the codebase's convention is ids and counts in logs (AD-13). Who it is belongs in the registry, not in a log line |
+| **Should a breach of zero be logged as a warning?** | No. A warning that fires on every tick for a healthy registry is noise, and a signal that always fires is a signal nobody reads. Mutation 12 makes it fire on a zero count and one test fails |
+| **Should the floor check live in `scheduling.py`?** | Yes — it is the scheduler's question, it uses the same `_schedulable()` filter as the other two commands, and it is called by the same tick |
+| **Should the rule live in `apps/ingestion/services/source_registry.py`?** | No — `domain/sources.py`. Three modules need it (the registry's cleaner, the scheduler's floor check, and the migration), and a pure function that three modules need does not belong to any one of them. `domain` is stdlib-only, so putting it there costs the layering nothing, and `lint-imports` confirms the contract still holds |
+| **Should the migration import `domain.sources.cadence_ceiling`?** | No. A migration that imports live application code is a migration whose behaviour depends on the day it is run. The migration restates the rule against `shared.constants`, and a test asserts the two agree |
+
+### Architecture
+
+| Decision | How it holds |
+|---|---|
+| **AD-2 (only `apps.<X>` imports `apps.<X>.models`)** | Unchanged. `domain/sources.py` imports no model at all — it is a pure function of a method string |
+| **AD-2 (`domain` is pure)** | `domain/sources.py` imports only `datetime.timedelta` and `shared.constants`, which the import-linter's contract explicitly permits ("stdlib, plus shared.constants and shared.ids"). `lint-imports`: 19 kept, 0 broken |
+| **AD-3 (no transaction spans `catalog` and `personal`)** | Nothing crosses the wall. Every write is `atomic(using=CATALOG)` |
+| **AD-5 (every write goes through a command)** | The registry's two write paths (`register_source`, `update_source`) are the only ones, and both reach the cleaner. The admin's `save_model` calls one of them and never `obj.save()` |
+| **AD-7 / AD-13 (logs carry ids and counts)** | The new log line carries a count and a job name. No source id, no source name |
+| **AD-16 (write ownership)** | `models.py` declares the constraint; no module writes the table outside the registry. `makemigrations --check`: no changes detected |
+| **The constraint has two guards, each with its own catcher** | The **migration** builds the schema the tests run against (mutation 4 attacks it, 29 tests fail). The **model** is held to the migration by `makemigrations --check` (mutation 15 attacks it, exit 1) |
+
+### Security
+
+| Concern | Assessment |
+|---|---|
+| **PII in logs or payloads** | None. A count. No source id, no source name, no URL |
+| **New attack surface** | None. No new endpoint, no new parameter, no new credential, no new external call |
+| **New input** | The cadence, which was already an input. The ceiling only *narrows* what is accepted — it cannot widen any attack surface |
+| **The migration rewrites data** | Yes — it clamps cadences down to the ceiling. It cannot raise one, and it prints the count of what it changed. The clamped value is a legal cadence under the tier it is in, so no row becomes invalid |
+| **Denial of service via the constraint** | The check is on one row's own columns and costs one comparison. No lock, no table scan, no contention |
+
+### One thing worth saying plainly
+
+**The guarantee is now enforceable, but it is not yet keepable, and that is a statement about
+the codebase rather than about this work.** FR-53 promises that a cancellation on an official
+source is detected within four hours. This item makes that promise *checkable* — the cadence
+cannot exceed the window, the scheduler honours it, and a source that has not successfully
+ingested inside the window is counted and warned about. But no high-priority method has a
+parser: `api` and `partnership` have no adapter, so a high-priority source cannot be
+ingested at all today, and there is nothing for the window to protect.
+
+That is not a reason to soften the ceiling — the ceiling is right, and it is enforced by the
+database — but it is a reason not to call FR-53 satisfied. The consequence test says so at
+the top of the file rather than arranging the tests to look complete: the scheduler half is
+proved on an `api` source, the detection half on an `ics` source, and the gap between them
+is named. When the first API adapter lands, the second half moves to the first source and
+the gap closes. Until then, the promise is enforced and unexercised, which is the honest
+state of it.
+
+### Verdict
+
+Approved. Two findings, both fixed. No critical issues. No architecture contract broken. One
+migration, correctly ordered, with a reverse that says what it cannot do.
+
+---
+
+## Work Item: notice-composition-and-email
+
+**Mode:** confirm · **Files changed:** 9 · **Tests added:** 38
+
+### What was reviewed
+
+FR-54's four verbatim subjects and the body that says what changed *and* what it means for
+the user's reminders; the rule that a `detail_changed` which did not move the venue is
+silenced; the escaping of an untrusted ingested title; and the dispatch that routes a
+`STATE_NOTICE` row to the notice renderer rather than the reminder one.
+
+### Findings
+
+**Two found, both fixed.** Both were found by reading the diff against the intent's own
+acceptance criteria rather than against the tests, which is the point of a review that
+runs after the suite is green.
+
+#### Finding 1 — a redundant catalog read, and a second *answer*
+
+`_state_notice_facts` read the event for its name and its venue. `_change_zone` then read
+**the same event again** to find the zone, because it was written to take the change alone.
+
+Two problems, and the second is the one that matters:
+
+1. **A second round trip** on the path that renders a notice for every saver of an event.
+   `propagation-consumer` had just learned this lesson — `_current_start` was hoisted out of
+   the per-user loop for exactly this reason — and the same mistake was reintroduced one
+   layer down.
+2. **A second *answer*.** `get_public_event` reads the live row. Two reads of a live row
+   are two answers, and a row that changed between them could give the notice a name from
+   one moment and a zone from another. A notice whose whole purpose is to be right about
+   the user's evening should not be assembled from two moments.
+
+**Fixed** by passing the already-read event into `_change_zone`. Pinned by
+`test_the_catalog_is_read_once_per_notice`.
+
+**The test's first version did not bite, and that is worth recording.** It was written
+against a `time_moved` change, whose `after` carries `start_time_tz` — so `_change_zone`
+returned the change's own zone and **never reached the branch that re-reads the event**.
+The mutation survived. The test was then rewritten against a **cancellation**, which
+records no zone and so exercises the fallback — and the mutation was caught
+(`Left contains one more item`). A test that passes against the defect it was written for
+is worse than no test, because it is counted.
+
+#### Finding 2 — a self-contradictory docstring
+
+`domain.notices.notice_subject` said: *"The title is the caller's to fold. This module does
+not sanitise."* — in a module that now **contains** the fold. The sentence was written when
+the fold lived elsewhere, and it was left behind when the fold moved in. A reader would
+have had to decide which half of it was true, and the wrong half is the one that invites
+a second folding rule.
+
+**Fixed** by rewriting the paragraph to say what is true: the caller folds, the fold is
+`fold_title`, and `fold_title` is right here so the subject and the body cannot disagree.
+
+### What was checked and found correct
+
+| Concern | Assessment |
+|---|---|
+| **The subject is FR-54's, verbatim** | Seven literal assertions in `test_state_notice_email.py`, one per kind, asserted through the **whole rendering path** — not against the vocabulary alone. A well-meaning rewrite of the template fails the test rather than ships |
+| **The four PRD subjects vs. our three** | `domain.notices.PRD_SUBJECT_KINDS` records which is which, so the file's table is a fact rather than a claim. The PRD names no subject for `postponed`, `reinstated` or `superseded`; the three we wrote are in the PRD's register and marked ours |
+| **The body's reminder line cannot lie** | The consequence is **derived** from `LIFECYCLE_SEND_BEHAVIOUR` — the table the sends already follow — with `reinstated`'s override written out explicitly. A body saying "your reminders have been cancelled" while the reminders still fired is exactly the bug class this intent exists to prevent, and the derivation makes it unwriteable |
+| **An untrusted title cannot inject a header** | The title is folded *before* the facts reach the renderer, so the subject and the body quote the same name. `EmailMessage.subject` is a plain `str`, so a `\n` would be SMTP header injection. The HTML body escapes by Django's default (no `|safe`) |
+| **A missing name degrades legibly** | `EventPulse24: your saved event was cancelled.` — the same phrase the reminder body already uses, so two mails from one product do not say it two ways. A whitespace-only title folds to `None` and takes the same path |
+| **No RFC 8058 unsubscribe URL, and no footer implying one** | `unsubscribe_url=None`; transactional stream. The body's only link is the Detail Screen |
+| **The mute is the opt-out, not an unsubscribe link** | The body carries **no** "Stop reminders for this event" link. A link there would be a lie twice over: the mail is not a reminder, and the change it reports may have cancelled the reminders already |
+| **One minting path (AD-7)** | `test_the_state_notice_is_minted_in_exactly_one_place`, **rewritten** from a substring scan to an AST check of assignments. The old scan fired a false positive on `delivery_messages.py`, which *reads* the kind to dispatch on it — a reader is not a second writer |
+| **AD-3 (no transaction spans the two schemas)** | The change's `before`/`after` are passed **by value** into `raise_state_notice`, and the renderer's reads are separate published reads. No transaction crosses the wall |
+| **AD-13 (no PII in logs)** | Nothing new is logged. The failure log in `propagation.py` still carries ids only |
+| **AD-2 (layering)** | `lint-imports`: **19 kept, 0 broken**. `domain/notices.py` imports only `domain.lifecycle` and `shared.constants` |
+| **No migration, no new column** | `makemigrations --check`: no changes detected. `ScheduledSend` has no `state_change_id` — AD-7 put it in the key, and `send_keys.state_change_id_from_key` reads it back out, beside the builder that writes it |
+
+### Design decisions
+
+| Decision | Reasoning |
+|---|---|
+| **Should `detail_changed` be silenced wholesale?** | No — and this is the decision the whole item turns on. The PRD's third subject is "moved to [new location]", and a venue move is filed under `detail_changed` because `venue_fingerprint` is one of its detail facts. Silencing the kind silences the PRD's own subject. The rule is about the **change**, not the kind: a `detail_changed` whose venue fingerprints differ is notified; one that fixed a title is not. FR-53 asks for this ("would be engagement-trap"), and the body's own requirement — "what changed and what it means for the user's reminders" — has no answer for a title edit, because `detail_changed` maps to `KEEP` and `NONE` |
+| **Should the silence happen in the renderer instead?** | No. A notice the renderer refuses to render would still have been **raised** — consuming the day's one-notice cap slot, cancelling a less important notice on its way to being refused, and leaving an entry in the user's in-app strip saying nothing. Silencing at the source (`raise_state_notice`, guard 0) is the only place it can be decided once. `test_a_silenced_detail_change_does_not_consume_the_days_cap` pins the half that is easiest to get wrong |
+| **Should the venue be named in the subject?** | Only the **new** one. A venue is identified by a fingerprint — a hash — so the old venue's name is not recoverable. The subject names the new place, read from the catalog at render time. This is a deliberate narrowing of what the PRD's subject can say, and it is recorded rather than papered over |
+| **Should the change's times come from the live event?** | No. A poll appends **one change per kind**, so the live event already holds the *last* kind's facts. Pairing this change's version with those times would state a move that never happened. The change's own `after`/`before` carry the times; the catalog carries the *name*, which a hash cannot |
+| **Should a superseded event link to its own Detail Screen?** | No — that page is a 404, and `catalog_read.get_public_event_by_slug` refuses it. The notice links to the **replacement's** Detail Screen, whose id is on the change row (`after["superseded_by"]`) |
+| **Should the renderer read the change, or should the row carry it?** | The row does not, and adding a column would be a migration. AD-7 put the change's id in the send key, so the renderer reads it back out — and the parser lives beside the builder, following `digest_local_date_from_key`'s precedent. A key shape parsed in two places is a key shape that will be parsed wrongly in one of them |
+| **Should the body carry a "stop reminders" link?** | No. FR-54 asks for none, and the transactional stream carries no stream-level opt-out. The mute is the per-event opt-out and it lives on the Detail Screen — which is where the body points |
+| **Should the notice be on the bulk stream?** | No. It is a one-time correction about a record the user created themselves. The bulk stream's obligation is an RFC 8058 unsubscribe URL, and a state notice is not a list |
+| **Should a kind with no subject fall back to a generic one?** | No — it raises. FR-54 fixes the copy, and a notice reading "your saved event was cancelled" about an event that was not cancelled is worse than no mail, because the user reads it |
+
+### One thing worth saying plainly
+
+**The old venue is never named, and that is a limitation of the data rather than of the
+copy.** The PRD's subject — "moved to [new location]" — reads as though both places were
+nameable. A venue is identified in this codebase by `venue_fingerprint`, a hash, so the
+old place has no name to print. The subject names the new one and the body says the venue
+moved. If the PRD wants "moved from The Barbican to The Barbican Annexe", the catalog would
+have to keep the old name — which is a change to the catalog's facts, not to the notice,
+and is recorded here as a follow-up rather than smuggled in.
+
+### Verdict
+
+Approved. Two findings, both fixed, both now pinned by a test that was **proven** to fail
+against the defect — including the first version of the read-count test, which passed
+against the very defect it was written for and had to be rewritten. No critical issues. No
+architecture contract broken. No migration, and none needed.
+
+---
+
+## Work Item: notice-and-mute-api
+
+**Mode:** confirm · **Reviewed by:** a code-review agent against the real import graph and
+the real SQL · **Findings:** 8 (3 real defects, 5 coverage/drift) · **All 8 fixed**
+
+### What the review actually did
+
+It did not read the plan and agree with it. It:
+
+- rebuilt the **whole backend import graph** from AST (264 files) and checked the claimed
+  import cycle against it;
+- **instrumented the real SQL** of a live request, rather than trusting the query-count
+  assertions;
+- **mutated the code** — adding the exact edge the plan said would break a cycle — and
+  re-ran `lint-imports`;
+- built a **clean worktree at `HEAD`** and ran the whole suite there, to separate this
+  change's failures from the ones that were already there.
+
+### The three real defects
+
+#### 1. HIGH — the stated reason for the module's shape was **factually wrong**
+
+`notice_state.py`'s docstring justified reading the two models directly by claiming a
+`personalization → notice_state → state_notices → scheduled_sends → personalization` cycle.
+
+**That chain does not close.** `scheduled_sends` imports only
+`apps.personalization.services.digest_preferences`, and that module reaches none of
+`detail_read`, `personalization.schemas`, `detail_conflict` or `neighbor_count`. The review
+proved it two ways: adding the edge `notice_state → state_notices` leaves `lint-imports` at
+**19 kept, 0 broken**, and `import apps.personalization.services.detail_read` still
+succeeds with that edge present.
+
+**Fixed.** The rationale now names the reason that actually holds — **the model must not
+cross the app boundary** (AD-2/AD-16), which is real and enforced — and says plainly that
+there is no cycle to avoid. A false rationale is worse than a missing one: it makes a real
+constraint look inviolable when it is not, and it is the reason a future maintainer would
+cite to reject a legitimate refactor.
+
+#### 2. MEDIUM — a dead function, and the query it used, duplicated verbatim
+
+`state_notices.latest_notice_for_event` had **zero production callers** once this read
+arrived — only tests and docstrings — while `notice_state.read_event_notice_state`
+re-implemented its query **byte for byte**.
+
+Two places defining "the newest notice for an event" is exactly the drift the
+`NoticeSummary` projection was introduced to prevent: the projection was applied to the
+*shape* but not to the *query*.
+
+**Fixed.** `latest_notice_for_event` is **deleted**; the rule now lives in
+`services.notice_state`, which owns it, and the strip's read in
+`state_notices.list_undismissed_notices` uses the **same ordering**. The three tests that
+covered the dead function moved to `test_notice_state.py` with it.
+
+**And the ordering got a tiebreaker.** `order_by("-created_at")` had no secondary key, and
+`created_at` is `auto_now_add` with microsecond resolution — while
+`ingestion.event_writes` appends *one `EVENT_STATE_CHANGE` per kind within a single poll*,
+so several notices genuinely can share a `created_at`. Without a tiebreaker the database is
+free to return either row from an unordered tie, and it is free to choose differently each
+time: **the strip and the banner could disagree about which notice was newest.**
+
+Both reads now order by `("-created_at", "-id")`. **`-id` is the natural tiebreak** because
+the primary key is a UUIDv7, which is time-ordered by construction. Two new tests pin it:
+one asserts a stable winner, the other asserts **the strip and the banner agree**.
+
+#### 3. MEDIUM — the query bound was **wrong on the path nobody tested**
+
+The Detail read's query count was widened `4 → 6` to absorb the two new reads. But the
+conflict read is **gated on the caller having saved the event**, so a *saved* user costs
+**8** queries, not 6 — and **none of the three `<= 6` assertions set up a save**, so all
+three ran the 6-query path.
+
+The review instrumented a signed-in user who *has* a `SavedEvent` row: **8** personal
+queries, two of them `personalization_conflictpair` reads.
+
+**Fixed.** The bounds are now **named constants** — `UNSAVED_READ_QUERIES = 6`,
+`CONFLICT_READ_QUERIES = 2`, `SAVED_READ_QUERIES = 8` — and a new test asserts the
+difference **relatively**:
+
+```python
+assert saved == unsaved + CONFLICT_READ_QUERIES
+```
+
+That form survives the next read anyone adds to the surface, while still catching the
+regression the test is for (a per-save or per-conflict loop). **The saved path is the path
+most users are on** — a user who saved the event is the one reading the Detail Screen at
+all.
+
+### The five coverage and drift findings
+
+| # | Finding | Fix |
+|---|---|---|
+| 4 | **No CSRF test on any of the four endpoints.** The whole file uses `CsrfClient`, which always sends a token — so the CSRF path was never exercised, and a regression that dropped `require_csrf` would leave the suite green | Three tests added: the dismiss, the mute and the unmute, each with a plain `Client`, each asserting **403 / `csrf_failed`** *and* that the row did not change |
+| 5 | **`mark_seen` has no production caller.** `dismiss_notice` is the only production writer of `seen_at`, so it is either `None` or a duplicate of `dismissed_at` — while the schema docstrings described a state the system cannot produce | **Decided, not removed.** The strip's read deliberately does *not* mark notices seen — a `GET` that writes is the shape CSRF exists to stop. The docstrings now say so plainly: "Today a dismissal sets both", with the reason |
+| 6 | **The work item's acceptance criteria still said "unseen"** and "marks a notice seen", and "an undismissed notice" for the Detail — contradicting what was built | The two criteria **amended in place**, with the amendment and its reason recorded in the work item rather than left for a reader to discover |
+| 7 | **The router's declared response codes diverged from every sibling.** `401` was declared (no sibling declares it) and **`403` was not** — though `csrf_failed` genuinely fires on all four endpoints. A generated client could not type a response the server actually gives | `403: ErrorOut` added to all four, and the divergence is now **documented as a decision** in the module docstring: the frontend must branch on "sign in" (401) against "fetch a fresh token" (`csrf_failed` 403) |
+| 8 | **`config/health.py` was outside the discovery.** It defines its own `Router` and is mounted at `/health`, but it is not named `api.py`, so the shape rule missed it — and a request handler outside the list is one nothing checks | Added by name to both `api_modules()` and `surface_files()`. The count goes **18 → 19**, and `REQUEST_MODULES` in the AD-11 guard grows to match |
+
+### What the review confirmed as sound
+
+- **The dismiss write is airtight.** `dismiss_notice`'s `UPDATE` is scoped
+  `filter(user_id=..., pk=..., dismissed_at__isnull=True)`, so **another user's notice can
+  never be dismissed** — the write itself is user-scoped, not the check after it. The four
+  cases (yours/open, yours/dismissed, not yours, no such notice) map to 200/200/404/404, and
+  the two 404s are byte-identical.
+- **The anonymous leak floor is intact.** `read_event_notice_state` is called at
+  `detail_read.py:241`, strictly after the `user_id is None` early return. An anonymous
+  `GET` issues **0** personal queries.
+- **The two-query claim is exact** — instrumented SQL is one `EXISTS` on the mute and one
+  `LIMIT 1` on the notice — and **constant** across 0, 1, 50 notices and 150 neighbours.
+- **The `limit` bound cannot be bypassed.** `limit` is keyword-only, **required, no
+  default**; the only production caller passes `NOTICE_STRIP_LIMIT`. The unbounded call is
+  inexpressible.
+- **AD-2 holds.** `apps.personalization` never imports `apps.delivery.models` — directly or
+  transitively. The `models-delivery` contract breaks on a direct import, so it is enforced
+  rather than vacuous.
+- **The count of 18 (now 19) is right**, and the four previously-unchecked surface files
+  genuinely write no ORM.
+
+### Design decisions
+
+| Decision | Reasoning |
+|---|---|
+| **Should `notice_state` go through `state_notices`?** | It would have been fine — the review proved the cycle was never real. But it would have handed `personalization` a `StateChangeNotice` **model instance**, which is the AD-2/AD-16 leak. Reading the models directly is **right**, for the reason the docstring now gives: the projection happens inside the owning app, and the caller receives plain data |
+| **Should the "newest notice" rule stay in `state_notices`?** | No. It had no production caller once the combined read arrived, and its query was duplicated verbatim. A dead function and a live copy of its query is the shape drift takes. The rule moved to the module that actually reads it |
+| **What should break a `created_at` tie?** | `-id`. The primary key is a UUIDv7, which is time-ordered by construction, so of two notices raised in the same instant the later one has the larger id. The alternative — a `NULLS LAST` on a nullable column, or a second timestamp — would need a column, and a column is a migration |
+| **Should the query bound be one absolute number or two?** | Two, and **named**. The conflict read is gated on the save, so the two paths differ by exactly two. One absolute number is right for half the readers; the relative form (`saved == unsaved + 2`) is right for all of them and survives the next change |
+| **Should `mark_seen` be called by the strip's read?** | No. It would make the strip's `GET` a write, and the strip's read is asserted to be **one query**. The Detail Screen already refuses a `GET` that writes. `seen_at` stays as a separate column and a separate wire field, ready for the moment something marks a notice seen on render |
+| **Should the router declare `401` and `403` when no sibling does?** | Yes — deliberately, and now documented. `identity`'s own router declares `403: ErrorOut` for the same reason. The other app routers declare neither, which means their generated clients cannot type a response the server actually gives |
+
+### One thing worth saying plainly
+
+**The plan's own premise was the source of two of the three defects.** The plan said the
+module "must" be a leaf to avoid an import cycle. That premise was false, and it was the
+reason a dead function was left behind with a duplicated query — the plan made the shape
+feel forced, so nobody asked whether the function was still needed. And the plan widened the
+query bound from `4` to `6` by adding two to the number it had, without asking which path
+that number described.
+
+**Both were caught by a review that checked the claims rather than the code.** The cycle
+claim fell to a single mutation experiment — add the edge, run the linter. The query bound
+fell to instrumenting a saved user.
+
+### Verdict
+
+Approved after fixes. **All eight findings fixed**, each pinned by a test — the three
+defects by new tests that were **proven** to fail against the defect, and the five
+coverage findings by new tests that exercise paths nothing had exercised before. No
+critical issues. No architecture contract broken. **19 import contracts kept, 0 broken.**
+No migration, and none needed. The full suite is at **5637 passed, 16 failed** — the same
+sixteen that fail on a clean worktree at `HEAD`.

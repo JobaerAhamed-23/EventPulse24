@@ -808,17 +808,21 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-10T06:26:57.512Z
       - id: notice-composition-and-email
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - state-change-notice-model
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T08:43:52.084Z
       - id: notice-and-mute-api
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - state-change-notice-model
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T10:25:14.746Z
       - id: digest-card-state-fields
         status: completed
         complexity: medium
@@ -827,16 +831,18 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-10T07:16:41.454Z
       - id: detail-overlap-notice
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
           - saved-event-lifecycle-state
       - id: polling-cadence-floors
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-025
+        completed_at: 2026-11-10T08:02:11.281Z
       - id: frontend-pulse-card-state
         status: pending
         complexity: medium
@@ -908,31 +914,34 @@ runs:
         - id: polling-cadence-floors
           intent: event-state-sync
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T08:02:11.281Z
+        - id: notice-composition-and-email
+          intent: event-state-sync
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T08:43:52.084Z
+        - id: notice-and-mute-api
+          intent: event-state-sync
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T10:25:14.746Z
+        - id: detail-overlap-notice
+          intent: event-state-sync
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: notice-composition-and-email
-          intent: event-state-sync
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: notice-and-mute-api
-          intent: event-state-sync
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: detail-overlap-notice
-          intent: event-state-sync
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: frontend-pulse-card-state
           intent: event-state-sync
           mode: confirm
@@ -954,7 +963,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: polling-cadence-floors
+      current_item: detail-overlap-notice
       started: 2026-11-04T13:11:36.097Z
   completed:
     - id: run-eventpulse24-001

@@ -4,10 +4,12 @@ title: Four subjects the PRD already wrote — the state-change email
 intent: event-state-sync
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - state-change-notice-model
 created: 2026-11-04
+run_id: run-eventpulse24-025
+completed_at: 2026-11-10T08:43:52.084Z
 ---
 
 # Work Item: Four subjects the PRD already wrote — the state-change email

@@ -617,3 +617,583 @@ and blocks CI on any branch.
   them yet.
 - **FR-54's four verbatim subjects** and the `postponed`/`reinstated`/`superseded` gap are
   unchanged — they belong to `notice-composition-and-email`.
+
+---
+
+## Work Item: polling-cadence-floors
+
+**Mode:** confirm · **Tests added:** 55 · **Mutations proven able to fail:** 17
+
+### The change
+
+FR-53's guarantee, enforced in three places and checked in a fourth:
+
+- **`shared/constants.py`** — `HIGH_PRIORITY_METHODS = ("api", "partnership")`,
+  `HIGH_PRIORITY_CADENCE_MAX = 4h`, `LOW_PRIORITY_CADENCE_MAX = 24h`.
+- **`domain/sources.py`** (new) — the derivation, in one place: `source_priority(method)`,
+  `cadence_ceiling(method)`, `humanise_duration(duration)`.
+- **`apps/ingestion/models.py`** — `source_cadence_within_priority_ceiling_ck`, a check
+  constraint on the table itself.
+- **`apps/ingestion/migrations/0007_source_cadence_ceiling.py`** (new) — clamps the rows that
+  break the rule, *then* adds the constraint (the order matters: `AddConstraint` validates
+  existing rows).
+- **`apps/ingestion/services/source_registry.py`** — the ceiling in the cadence cleaner, and
+  the method-change re-check.
+- **`apps/ingestion/services/scheduling.py`** — `report_cadence_floor_breaches(now)`.
+- **`worker/tasks.py`** — the tick asks for the count and logs a warning when it is non-zero.
+- **`apps/ingestion/admin.py`** — the form's help text explains the ceiling.
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `tests/ingestion/test_source_registry.py` | **98 passed** (69 pre-existing + 29 new) |
+| `tests/ingestion/test_scheduling.py` | **41 passed** (24 pre-existing + 17 new) |
+| `tests/ingestion/test_models.py` | **58 passed** (52 pre-existing + 6 new) |
+| `tests/ingestion/test_migrations.py` (new) | **12 passed** |
+| `tests/e2e/test_state_detection_window.py` (new) | **7 passed** |
+| `tests/worker/test_scheduling_tasks.py` | **20 passed** (18 pre-existing + 2 new) |
+| `lint-imports` | **19 kept, 0 broken** |
+| `ruff check` / `ruff format --check` | **All checks passed!** / **528 files already formatted** |
+| `makemigrations --check --dry-run` | **No changes detected** |
+| Full backend suite | **5519 passed, 16 failed** — all 16 pre-existing |
+
+### Mutations
+
+Each was applied to the source, the suite run, and the source restored.
+
+| # | Mutation | Caught by |
+|---|---|---|
+| 1 | The ceiling is not enforced in the cleaner (`if False:`) | **4 tests** |
+| 2 | Every method uses the daily ceiling | **4 tests** |
+| 3 | A method change does not re-check the stored cadence | **3 tests** |
+| 4 | The migration's constraint never refuses anything | **29 tests** |
+| 5 | The floor check counts the last **attempt**, not the last success | **5 tests** |
+| 6 | The floor check never fires | **6 tests** |
+| 7 | The lower tier is measured against the four-hour window | **4 tests** |
+| 8 | The scheduler's cadence filter slips (2× the cadence) | **9 tests** |
+| 9 | The migration clamps nothing | **8 tests** |
+| 10 | The migration clamps the wrong tier | **9 tests** |
+| 11 | The worker stops asking for the breach count | **2 tests** |
+| 12 | The warning fires even on a zero count | **1 test** |
+| 13 | The tier derivation is inverted | **14 tests** |
+| 14 | The cleaner measures the cadence against the **stored** method | **4 tests** |
+| 15 | The model's constraint drifts from the migration's | **`makemigrations --check`** (exit 1) |
+| 16 | The method's default cadence skips the ceiling check | **2 tests** |
+| 17 | The default is checked against the wrong tier | **1 test** |
+
+**Mutation 8 is the one that matters most.** It breaks the *scheduler's* cadence filter — the
+exact defect FR-53 exists to prevent — and nine tests fail, three of them the consequence
+test's own boundary assertions. A scheduler that polled every eight hours would still pass a
+test that only asserted "the constant is four hours".
+
+**Mutation 5 is the one that proves the floor check is not a duplicate of the stale flag.** It
+swaps `last_ingested_at` for `last_attempted_at` — the exact confusion the item's design
+discussed — and five tests fail, including
+`test_the_floor_counts_the_failure_case_the_stale_flag_is_too_late_for`, which is the case the
+two signals differ on: a high-priority source polled every four hours that keeps failing. The
+stale flag has not fired (it waits for 2× the cadence); the floor check has, because the
+guarantee is about detection.
+
+**Mutation 15 is caught by a different tool, and that is worth recording.** The test database
+is built from the **migration**, not from the model, so mutating the *model's* constraint
+survives the suite. What catches it is `makemigrations --check`, which reports the drift and
+exits 1:
+
+```
+Migrations for 'ingestion':
+  apps/ingestion/migrations/0008_remove_source_..._and_more.py
+    - Remove constraint source_cadence_within_priority_ceiling_ck from model source
+    + Create constraint source_cadence_within_priority_ceiling_ck on model source
+```
+
+**So the constraint has two independent guards, each with its own catcher**: the migration
+(which builds the schema the tests run against) and the model (which `makemigrations --check`
+holds to the migration). Mutation 4 attacks the first and is caught by 29 tests; mutation 15
+attacks the second and is caught by the check.
+
+### Acceptance criteria
+
+| Criterion | Evidence |
+|---|---|
+| A cadence above the tier's ceiling is **rejected where it is written**, not discovered later | `source_registry.py`'s `_cadence` — the one place every write path reaches. Pinned by `test_register_high_priority_source_over_its_ceiling_refused` and its lower-tier twin; the refusal is a `ValidationError` naming `ingestion_cadence`, and `_nothing_written()` asserts the row was not created |
+| The tier is **derived**, not stored — no second source of truth | `domain/sources.py`'s `source_priority(method)`; the derivation is from `acquisition_method`, FR-17's own order. Mutation 13 inverts it and 14 tests fail |
+| A method change that would leave the row over the new tier's ceiling is refused | `_check_stored_cadence_against_new_tier` — the case the cleaner cannot see, because a method-only change carries no cadence. Pinned by `test_update_source_to_a_higher_tier_without_a_cadence_refused` (and refused), `..._with_a_legal_cadence_accepted` (and accepted) |
+| Existing rows are brought within the rule by a **migration**, not by hand | `0007_source_cadence_ceiling.py` clamps, then adds the constraint. `tests/ingestion/test_migrations.py` asserts the clamp, the untouched legal row, the report line, and that the migration and the application agree on the ceiling |
+| The scheduler honours the cadence | Already true; now asserted by `test_a_high_priority_source_is_polled_inside_its_four_hour_window` and the boundary pair. Mutation 8 breaks it and nine tests fail |
+| A cadence guarantee nobody is checking is worse than no guarantee | `report_cadence_floor_breaches` + the worker's warning. Mutation 6 (never fires) and mutation 11 (the worker stops asking) each fail tests |
+| **A test that can fail on the FR-53 consequence itself** — not a test that the constant equals four | `tests/e2e/test_state_detection_window.py`. It drives the real `claim_due_sources` and the real `ingest_source`, and asserts the boundary from **both** sides: not due at `cadence - 1s`, due at `cadence` |
+
+### Corrections made during the work
+
+**1. `ingestion_cadence` was dropped from `_CLEANERS`, and the cleaner then refused every
+cadence.** The ceiling needs the effective method, and a flat field → cleaner map has nowhere
+to carry it, so `ingestion_cadence` was moved out of `_CLEANERS` into a branch of
+`clean_source_input`. But the branch was written *after* the `field not in _CLEANERS` guard,
+so every cadence was rejected as "This field can't be changed here." Fifteen tests failed at
+once. The branch now comes first. Worth recording because the failure looked like a policy
+refusal rather than a control-flow mistake.
+
+**2. The boundary is inclusive, and the first test asserted the opposite.** `report_cadence_floor_breaches`
+uses `__lte`, so a source last ingested exactly its ceiling ago **is** a breach — the same
+convention `flag_stale_sources` uses ("exactly 2x is stale"), and the same reading of "detected
+*within* 4 hours": at the instant the window closes, the promise has expired. The first test
+asserted the opposite and failed. The implementation was kept and the test corrected, and the
+boundary is now stated in the docstring so the next reader does not have to re-derive it.
+
+**3. A `crawl` source moved to `api` now needs its cadence brought along.** `crawl`'s default
+cadence is 24 hours and `api`'s ceiling is 4, so the method change alone would leave the row
+illegal. `test_update_source_crawl_to_api_needs_no_review` asserted the old behaviour and now
+brings a 4-hour cadence with the change. **This is a real behaviour change to an existing
+test, and it is the item working as designed** — the row must be legal after the write,
+whichever field changed.
+
+**4. The consequence test is split into two halves, and the reason is real.** No
+high-priority method has a parser — `api` and `partnership` have no adapter in this codebase
+(`PARSERS` holds `jsonld`, `rss`, `ics`, `email_ics`) — so a high-priority source cannot be
+ingested today. A single test driving both halves at once would have had to fake the parser,
+and **faking the parser would make the test prove a fiction.** So the scheduler half is proved
+on a high-priority source (`api`), the detection half is proved on a source whose method has a
+parser (`ics`), and the file says so at the top.
+
+### Review findings, and what they cost
+
+The code review found two things the tests had not caught, and both are now fixed and
+mutation-covered:
+
+| Finding | Fix | New tests | New mutations |
+|---|---|---|---|
+| The method's **default** cadence skipped the cleaner entirely — it was applied after `check_source_change` had run | The default now goes through the same cleaner, and the refusal is raised in the shape the caller handles (`_checked_cadence`) | 3 | 2, both caught |
+| The floor check's boundary was inclusive and the first test asserted the opposite | The implementation was kept (it matches `flag_stale_sources`'s convention and the right reading of "within 4 hours"); the test was corrected and the boundary documented | 2 (one split into two) | — |
+
+**The default-cadence finding is the one worth naming.** Every default is currently inside its
+tier's ceiling, so nothing was broken — but nothing enforced it either. A future default
+above its ceiling would have produced an `IntegrityError` at registration, in production,
+instead of a refusal with a message. Three tests now hold that: one asserts every shipped
+default is inside its own ceiling, one proves an over-ceiling default is *refused* rather
+than written, and one proves the default is measured against **its own** tier (a 12-hour
+default is illegal for `api` and legal for `rss` — so a check against the wrong tier is
+caught in one direction or the other).
+
+### Pre-existing failures (not caused by this work item)
+
+**16 failures, reproduced identically on stashed code.** The same date-expired fixtures the
+previous two items recorded:
+
+| Suite | Failures |
+|---|---|
+| `tests/e2e/test_timeline_and_conflict_proof.py` | 9 |
+| `tests/e2e/test_save_race.py` | 4 |
+| `tests/e2e/test_personal_events_and_saved_catalog.py` | 1 |
+| `tests/delivery/test_reminder_plan_api.py` | 1 |
+| `tests/ingestion/test_url_feed_read.py` | 1 |
+
+Verified by stashing the change and re-running `tests/ingestion/test_url_feed_read.py`: **the
+same failure, identically.** Not caused by this work; it belongs to `timeline-and-conflicts`
+and blocks CI on any branch.
+
+### Carried forward
+
+- **No high-priority source can be ingested today.** `api` and `partnership` have no adapter
+  and no parser. The high tier's 4-hour window is enforced and tested, but the *detection* it
+  promises cannot happen until an adapter exists. The consequence test says this at the top
+  rather than papering over it.
+- **The floor check is a count, and a count is not a fix.** A breach says the promise is at
+  risk; nothing yet says which source, to whom, or what to do. The registry's admin surface
+  (`list_display`, `is_stale`) is where that would land.
+- **FR-53's webhook half is untouched.** Polling is the fallback; the near-real-time path
+  needs an adapter that does not exist. Out of scope for this intent, and recorded at capture.
+
+---
+
+## Work Item: notice-composition-and-email
+
+**Mode:** confirm · **Tests added:** 38 · **Mutations proven able to fail:** 9
+
+### The change
+
+FR-54's four PRD-verbatim subjects, the body that says what changed *and* what it means for
+the user's reminders, and the rule that a `detail_changed` which did not move the venue is
+not worth an email.
+
+- **`domain/notices.py`** — `MISSING_TITLE` ("your saved event"), and `fold_title`, which
+  collapses a whitespace run so a folded name is quoted identically by the subject and the
+  body.
+- **`domain/notices.py`** — `notice_subject(kind, title, when, where)` builds the subject
+  from the vocabulary; an unknown kind raises rather than producing a generic subject.
+- **`apps/delivery/services/email_templates.py`** — `StateNoticeFacts` grows
+  `previous_time_text`, `venue_name`, `detail_url` and `reminder_consequence`;
+  `render_state_notice` builds the subject through `notice_subject`.
+- **`apps/delivery/templates/delivery/state_notice.{txt,html}`** — rewritten. The body says
+  what changed (new time, previous time, new venue) and what it means for the reminders
+  (the consequence sentence).
+- **`apps/delivery/send_keys.py`** — `state_change_id_from_key`, the parser beside the
+  builder. `ScheduledSend` has no `state_change_id` column; AD-7 put it in the key.
+- **`apps/delivery/services/delivery_messages.py`** — `renderer_for` dispatches a
+  `STATE_NOTICE` row to `render_state_notice`; `_state_notice_facts` assembles the facts from
+  the change row, the catalog event and the parsed send key.
+- **`apps/delivery/services/state_notices.py`** — `raise_state_notice` takes the change's
+  `before`/`after` facts and refuses a `detail_changed` that did not move the venue.
+- **`worker/propagation.py`** — passes `before=change.before, after=change.after` through.
+
+**No migration and no new column.** `makemigrations --check` reports no changes detected.
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `tests/delivery/test_state_notice_email.py` (new) | **34 passed** |
+| `tests/delivery/test_state_notices.py` | **48 passed** (44 pre-existing + 4 new) |
+| `tests/delivery/test_email_templates.py` | **21 passed** (17 pre-existing + 4 rewritten) |
+| `tests/delivery/` + `tests/architecture/` + `tests/worker/` | **1589 passed**, 1 pre-existing failure |
+| `lint-imports` | **19 kept, 0 broken** |
+| `ruff check` / `ruff format --check` | **All checks passed!** / **530 files already formatted** |
+| `makemigrations --check --dry-run` | **No changes detected** |
+| Full backend suite | **5559 passed, 16 failed** — all 16 pre-existing |
+
+### Mutations
+
+Each was applied to the source, the suite run, and the source restored.
+
+| # | Mutation | Caught by |
+|---|---|---|
+| 1 | `fold_title` returns the raw title (no whitespace collapse) | `test_a_name_with_a_newline_in_it_cannot_inject_a_header` |
+| 2 | The subject falls back to a generic string for an unknown kind | `test_an_unknown_kind_raises_rather_than_producing_a_generic_subject` |
+| 3 | `MISSING_TITLE` is dropped from the subject | `test_a_missing_name_says_your_saved_event` |
+| 4 | The body omits the previous time | `test_the_state_notice_says_what_changed_and_what_it_was` |
+| 5 | The body omits the reminder consequence | `test_the_body_says_what_it_means_for_the_reminders` (parametrized over all 7 kinds) |
+| 6 | `notice_subject` is given the old time instead of the new one | `test_a_time_move_row_says_the_new_time_in_the_subject` |
+| 7 | A `detail_changed` that moved the venue is silenced | `test_a_detail_change_that_moved_the_venue_is_notified` |
+| 8 | Every `detail_changed` is notified | `test_a_detail_change_that_did_not_touch_the_venue_is_not_notified` |
+| 9 | A silenced `detail_changed` still consumes the day's cap slot | `test_a_silenced_detail_change_does_not_consume_the_days_cap` |
+
+**Mutation 8 is the one that matters most**, because it is the *tempting* implementation. The
+PRD's third subject is "moved to [new location]", and the only kind that carries a venue is
+`detail_changed` — so the easy reading is "notify on `detail_changed`". Mutation 8 proves
+that reading is wrong in the direction that matters: a title typo fix is not an email, and
+a suite that breaks when it is notified is what FR-53 ("not every change deserves a
+notification") looks like when it is proven rather than asserted.
+
+**Mutation 9 is the one that proves the silence happens at the right place.** Silencing at
+the *source* — in `raise_state_notice`, before the row is written — means a silenced change
+consumes neither the day's one-notice cap nor a strip entry saying nothing. Silencing later,
+in the renderer, would have left the user's notice strip carrying an entry with no mail
+behind it.
+
+### Acceptance criteria
+
+| Criterion | Evidence |
+|---|---|
+| The four PRD subjects, verbatim, prefixed `EventPulse24: ` | `domain.notices.NOTICE_SUBJECTS`; seven literal assertions in `test_state_notice_email.py`, one per kind, and `test_every_kind_has_a_subject` |
+| The PRD names no subject for `postponed`, `reinstated` or `superseded` | Three further subjects written — "was moved to [new date]", "was replaced by a new event", "is back on" — and each pinned by its own test. The PRD's three that *are* named are used verbatim and the three that are not are marked ours in the file's table |
+| The body says what changed | New time, previous time, new venue; a missing fact is omitted rather than shown as empty |
+| The body says what it means for the reminders | The consequence is **derived** from `LIFECYCLE_SEND_BEHAVIOUR`, so the body cannot promise something the send machinery did not do. Parametrized over all seven kinds, with `reinstated`'s override written out |
+| A name is never injected into a header | `fold_title` collapses whitespace runs before the facts reach the renderer; the subject and the body quote the same folded name |
+| A missing name says "your saved event" | The same phrase the reminder body already uses, so two mails from one product do not say it two ways |
+| The notice carries no RFC 8058 unsubscribe URL | `unsubscribe_url=None`; the transactional stream |
+| The mute is the opt-out, not an unsubscribe link | The body carries **no** "Stop reminders for this event" link — the Detail Screen it links to is where the mute lives |
+| A `detail_changed` that did not move the venue is not notified | `is_notified` decides on the *change*, not the kind; a venue move is a `detail_changed` and is notified, a title edit is not |
+| A superseded event links to its replacement | `after["superseded_by"]` — the superseded event's own Detail Screen is a 404 |
+| One minting path | `test_the_state_notice_is_minted_in_exactly_one_place`, rewritten from a substring scan to an **AST-based** check of assignments, so a module that merely *reads* the kind to dispatch on it is not caught |
+
+### Corrections made during the work
+
+**1. A test that was testing the string, not the invariant.** The one-minting-path guard
+scanned `apps/` for the text `STATE_NOTICE`. When `delivery_messages.py` began naming the
+kind to dispatch a row on the right renderer, the guard fired — a **false positive**, because
+a *reader* is not a second writer. Rewritten as an AST check that finds only *assignments* of
+the kind (a `kind=` keyword, a `"kind":` dict key, or the enum's own declaration). The
+invariant is unchanged and now provably narrower than the thing it was standing in for.
+
+**2. Three tests were passing vacuously.** `test_a_less_important_change_the_same_day_raises_nothing`
+and `test_a_more_important_change_replaces_the_days_notice` used `DETAIL_CHANGED` as a
+convenient "the least important kind" — which, after correction 3 below, raises nothing at
+all. They were asserting the cap on a notice that was never raised. Given venue-move facts
+so they test the cap again. Two further tests that used the same convenience kind were
+given venue facts too.
+
+**3. The rule is about the change, not the kind.** The first implementation silenced
+`detail_changed` wholesale. That is wrong in the direction the PRD names: "moved to [new
+location]" **is** a `detail_changed` (`venue_fingerprint` is one of its detail facts), so
+silencing the kind silences the PRD's third subject. `is_notified` now compares the
+venue fingerprint in `before` and `after`, and decides on the *change*.
+
+**4. The old venue cannot be named, only the new one.** A venue is identified by a
+fingerprint — a hash — so "moved from [old location]" has no old location to print. The
+subject names the **new** venue, read from the catalog at render time. Recorded here because
+it is a deliberate narrowing of what the PRD's subject can say, not an oversight.
+
+**5. A superseded event's Detail Screen is a 404.** The notice links to the **replacement**'s
+Detail Screen (`after["superseded_by"]`). The body would otherwise send a user to a page
+that cannot load.
+
+### The subject table, and whose each subject is
+
+`domain.notices.NOTICE_SUBJECTS` is the vocabulary, and `test_state_notice_email.py` pins
+every entry against the whole rendering path — so "the vocabulary is right" and "the mail
+that goes out says it" cannot come apart.
+
+| subject | for | whose |
+|---|---|---|
+| `EventPulse24: [event name] was cancelled.` | a cancellation | PRD verbatim |
+| `EventPulse24: [event name] was moved to [new date].` | a postponement or a time move | PRD verbatim |
+| `EventPulse24: [event name] moved to [new location].` | **a venue move** | PRD verbatim |
+| `EventPulse24: [event name] is sold out.` | a sell-out | PRD verbatim |
+| `EventPulse24: [event name] was replaced by a new event.` | a supersede | ours |
+| `EventPulse24: [event name] is back on.` | a reinstatement | ours |
+
+The last three are ours because the PRD does not name them — a gap this item's predecessor
+recorded and carried forward. The PRD's third subject has **no kind of its own**, which is
+the fact correction 3 turns on.
+
+### Pre-existing failures (not caused by this work item)
+
+**16 failures, reproduced identically against a clean `git worktree` at `HEAD`.** The same
+date-expired fixtures the previous three items recorded:
+
+| Suite | Failures |
+|---|---|
+| `tests/e2e/test_timeline_and_conflict_proof.py` | 9 |
+| `tests/e2e/test_save_race.py` | 4 |
+| `tests/e2e/test_personal_events_and_saved_catalog.py` | 1 |
+| `tests/delivery/test_reminder_plan_api.py` | 1 |
+| `tests/ingestion/test_url_feed_read.py` | 1 |
+
+Verified by building a worktree at `8d4fe74` (the same commit, the same fixtures) and
+running `test_reminder_plan_api.py::test_a_saved_plan_and_its_sends_move_together` there:
+**the identical failure**. Not caused by this work; it belongs to `timeline-and-conflicts`
+and blocks CI on any branch.
+
+### Carried forward
+
+- **The notice strip and the Detail Screen banner do not exist yet.** This item composes
+  and sends the mail; `frontend-digest-strip-and-detail-banner` renders it.
+- **The mute is not reachable from the mail.** The body links to the Detail Screen, and the
+  Detail Screen's mute is `notice-and-mute-api`'s job.
+- **The old venue is never named** — a fingerprint is a hash. A subject naming both venues
+  would need the catalog to keep the old name, which it does not.
+
+---
+
+## Work Item: notice-and-mute-api
+
+**Mode:** confirm · **Tests added:** 67 · **Mutations proven able to fail:** 8
+
+### The change
+
+The in-app half of FR-54: the digest strip's read, the dismiss, FR-55's per-event mute, and
+the Detail Screen's two new fields — so the banner and the mute control render from **one**
+round trip.
+
+- **`backend/apps/delivery/services/notice_state.py`** (new) — a **leaf** read module.
+  `NoticeSummary`, `EventNoticeState`, `read_event_notice_state`, and the public
+  `summarize_notice` projection. It reads the two models **directly** rather than through
+  `state_notices` / `mutes`, so it cannot close the import cycle
+  `personalization.detail_read → notice_state → state_notices → scheduled_sends →
+  personalization`, and so the model never leaves `delivery`.
+- **`backend/apps/delivery/notices_api.py`** (new) — the router, `auth=current_user`.
+  Four handlers: `GET ""`, `POST /{notice_id}/dismiss`, `PUT` and `DELETE`
+  `/events/{event_id}/mute`.
+- **`backend/apps/delivery/services/state_notices.py`** — `list_undismissed_notices` gains a
+  **required keyword-only `limit`**; new `notice_belongs_to_user`.
+- **`backend/apps/delivery/schemas.py`** — `NoticeOut`, `NoticeListOut`, `NoticeDismissOut`,
+  `EventMuteOut`.
+- **`backend/apps/personalization/schemas.py`** — `DetailNoticeOut`; `DetailPersonalOut`
+  gains `muted` and `notice`.
+- **`backend/apps/personalization/services/detail_read.py`** — the two facts, read **after**
+  the anonymous early return.
+- **`backend/apps/personalization/detail_api.py`** — the two fields projected.
+- **`backend/shared/constants.py`** — `NOTICE_STRIP_LIMIT = 5`.
+- **`backend/config/api.py`** — the router mounted at `/api/notices`.
+
+**No migration.** `makemigrations --check` reports no changes detected.
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `tests/delivery/test_notices_api.py` (new) | **38 passed** |
+| `tests/delivery/test_notice_state.py` (new) | **13 passed** |
+| `tests/delivery/test_state_notices.py` | **48 passed** (44 pre-existing + 4 new) |
+| `tests/personalization/test_event_detail_api.py` | **65 passed** (53 pre-existing + 12 new) |
+| `tests/architecture/` | **858 passed** |
+| `tests/api/` + `tests/e2e/test_delivery_contract.py` | **10 passed** |
+| `lint-imports` | **19 kept, 0 broken** |
+| `ruff check` / `ruff format --check` | **All checks passed!** / clean |
+| `makemigrations --check --dry-run` | **No changes detected** |
+| Full backend suite | **5637 passed, 16 failed** — all 16 pre-existing |
+
+**67 tests added.** The baseline at `HEAD` (`8d4fe74`) is **5438 passed, 16 failed** on a
+clean worktree — the same sixteen. **Zero new failures**, and 199 net new passing tests.
+
+### Mutations
+
+Each was applied to the source, the suite run, and the source restored.
+
+| # | Mutation | Caught by |
+|---|---|---|
+| 1 | The route is `"/"` instead of `""` | Every strip test — a trailing-slash 301 |
+| 2 | `limit` is dropped from the slice | `test_the_strip_is_bounded` |
+| 3 | The slice keeps the **oldest** notices | `test_the_strip_keeps_the_newest_when_it_is_bounded` |
+| 4 | `notice_belongs_to_user` is not user-scoped | `test_dismissing_another_users_notice_is_a_404` |
+| 5 | The dismiss 404 is raised for an already-dismissed notice | `test_dismissing_an_already_dismissed_notice_is_a_success` |
+| 6 | `read_event_notice_state` is hoisted above the anonymous early return | `test_the_anonymous_path_still_never_queries_the_personal_schema` |
+| 7 | The read loops over the notices | `test_the_read_is_two_queries` |
+| 8 | The Detail reports only an **undismissed** notice | `test_the_detail_reports_a_dismissed_notice_too` |
+
+**Mutation 6 is the one that matters most.** `read_event_notice_state` is one line above the
+place it belongs, and moving it one line up would be invisible to every other test — the
+notice would still be reported, the mute would still be reported, and the response would be
+identical for a signed-in user. The **only** thing that would change is that an anonymous
+caller's request would touch the `personal` schema, which is the leak AD-12 forbids and the
+existing `test_the_anonymous_path_never_queries_the_personal_schema` already guarded. The new
+test restates that guard under this change's name so the property cannot be lost with it.
+
+**Mutation 8 is the one the AC's wording would have got wrong.** Criterion 4 says "whether it
+has an undismissed notice"; the service's own rule says the opposite — the banner is about
+*this* event, and the user navigated here on purpose, so dismissing the strip on the digest
+home must not hide *"this event was cancelled"* from the event's own page. The test pins the
+service's rule, and `dismissed_at` is on the wire so the client can render the state.
+
+### Acceptance criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| A read of the signed-in user's notices, newest first, bounded | met | `GET /api/notices` → `NOTICE_STRIP_LIMIT` items, newest first; one query; no `total`, no cursor |
+| A dismiss write that makes "one-time, never repeats" true | met | `POST /api/notices/{id}/dismiss` sets `dismissed_at`; the row survives, so the daily cap and the never-repeat rule still hold |
+| A mute set/clear write, per event (FR-55) | met | `PUT` / `DELETE /api/notices/events/{event_id}/mute`; no request body at all |
+| The Detail read reports the mute and the notice in one round trip | met | `personal.muted` and `personal.notice`; both facts, one response, **two queries total** |
+| Every endpoint is session-scoped | met | `auth=current_user` on the router, **and** four authorization tests — the scoping is tested, not assumed |
+| Idempotent dismiss and mute answer success | met | `changed: false` on the no-op; `dismissed_at` unchanged; **one** row, not two |
+| A notice for an un-saved event still reads and dismisses | met | The read never crosses to `catalog`; a mute for an unknown event is allowed on purpose |
+| The OpenAPI schema regenerates and the client is rebuilt | met | `make openapi && make client`; `frontend/lib/api/openapi.json` and `frontend/lib/api/schema.ts` committed; `tests/api/test_contract.py` green |
+| Contract tests cover each shape, the empty case, and the authorization case | met | `tests/delivery/test_notices_api.py` — 5 groups, 35 tests |
+
+### Two ambiguities the AC left open, and how they were settled
+
+**1. "Unseen" in criterion 1 — the strip is keyed on `dismissed_at`, not `seen_at`.**
+The service's own rule is explicit (*"the strip is a queue, and closing an item should empty
+it"*), and criterion 2's own wording says dismissal is what makes "one-time, never repeats"
+true. A `GET` that writes `seen_at` is exactly the shape `detail_api.py` refuses (*"a `GET`
+that writes is the shape CSRF exists to stop"*), so **`mark_seen` is not called by this API
+at all.** `seen_at` is on the wire — it is a fact about the row — but it does not gate the
+strip.
+
+**2. "Undismissed notice" in criterion 4 — the banner reports the newest notice whatever
+its dismissal state.** See mutation 8 above. `latest_notice_for_event` ignores `dismissed_at`
+on purpose, and `dismissed_at` rides along so the client can tell the two apart.
+
+### The dismiss 404-vs-idempotence resolution
+
+`dismiss_notice` returns a `bool` that collapses three cases: not yours, does not exist,
+already dismissed. Criterion 6 wants the third to answer success; criterion 5 wants the first
+two refused. The resolution:
+
+- `changed == True` → **200** `{id, dismissed: true, changed: true}` — **zero** extra queries.
+- `changed == False` → one extra **user-scoped** existence check:
+  - yours, already dismissed → **200** `{id, dismissed: true, changed: false}`
+  - not yours, or no such id → **404**, and **the same 404 for both**.
+
+A 403 would confirm that the record exists, so the endpoint could be used to probe for other
+users' notice ids. The extra query is scoped by `user_id`, so it can only ever answer about
+the caller's own notices — and it runs **only** on the `changed == False` path, so the common
+case costs nothing.
+
+### Corrections made during the work
+
+**1. The route was `"/"`, and Django redirected.** `@router.get("/")` registers
+`/api/notices/`; Django's `APPEND_SLASH` then answers `GET /api/notices` with a **301** to
+the slashed path, which broke every strip test at once. Changed to `@router.get("")`, which
+registers `/api/notices` exactly — confirmed in the regenerated `openapi.json`.
+
+**2. A helper that returned the wrong thing.** The bounded-strip test read `raise_notice(...)`
+as though it returned the notice row; it returns a `bool`. The test was reading the newest
+row directly instead.
+
+**3. `created_at` is `auto_now_add`, so the insert could not set it.** The ordering tests and
+the wire-format assertion both needed a *stated* timestamp. The helper inserts, then
+`.update(created_at=...)`, then `refresh_from_db()`.
+
+**4. A pre-existing hole in an architecture guard, closed here.** `checkers.surface_files()`
+globbed `apps/*/api.py`, which matches only files named exactly `api.py` — so
+`apps/catalog/preview_api.py`, `apps/delivery/email_api.py`,
+`apps/delivery/preferences_api.py` and `apps/personalization/detail_api.py` were **exempt
+from AD-5**: nothing would have caught any of them writing through the ORM. The discovery is
+now **by shape** (`admin.py`, `api.py`, `*_api.py`), the same rule
+`test_digest_composition_separation.py` already used. The count goes **13 → 18**
+(6 admins + 6 `api.py` + 5 `*_api.py` + `config/api.py`), and the four previously-unchecked
+files were **checked for the first time** — all four pass.
+
+**5. The AD-11 guard and the AD-5 guard needed different lists.** The first widening made
+`surface_files()` include the admins, which broke
+`test_the_request_modules_are_the_ones_we_think` — the AD-11 list is *routers*, not admins.
+Split into two discoveries in `checkers.py`: `api_modules()` (routers only, used by AD-11)
+and `surface_files()` (admins + routers, used by AD-5). **One rule, one discovery** — the two
+guards can no longer disagree about what a request handler is.
+
+**6. One projection instead of two.** `notices_api.py` first carried its own `_summary()`
+helper, duplicating the strip card and the Detail banner's fields. Refactored so
+`summarize_notice()` is public in `notice_state.py` and both surfaces use it — the strip card
+and the banner carry the same fields **by construction**.
+
+### Pre-existing failures (not caused by this work item)
+
+**16 failures, reproduced identically against a clean `git worktree` at `HEAD`.** Verified by
+building a worktree at `8d4fe74` and running the whole suite there: **5438 passed, 16 failed**
+— the same sixteen, in the same files:
+
+| Suite | Failures |
+|---|---|
+| `tests/e2e/test_timeline_and_conflict_proof.py` | 9 |
+| `tests/e2e/test_save_race.py` | 4 |
+| `tests/e2e/test_personal_events_and_saved_catalog.py` | 1 |
+| `tests/delivery/test_reminder_plan_api.py` | 1 |
+| `tests/ingestion/test_url_feed_read.py` | 1 |
+
+(The baseline worktree also failed `tests/e2e/test_delivery_contract.py` — because it has no
+`node_modules`. In the real tree that test passes: **10 passed** across `tests/api/` and
+`tests/e2e/test_delivery_contract.py`.)
+
+The same date-expired fixtures the previous five items recorded. It belongs to
+`timeline-and-conflicts` and blocks CI on any branch.
+
+### The corrections code review forced
+
+The review found **three real defects and five coverage gaps**, all fixed — see
+`review-report.md` for the full account. Three of them changed what this report counts,
+so they are recorded here:
+
+1. **A dead function and a duplicated query.** `state_notices.latest_notice_for_event` had
+   no production caller once the combined read arrived, while `notice_state` re-implemented
+   its query verbatim. It is **deleted**, the rule moved to `notice_state`, and the strip's
+   read now uses the **same ordering** — so the strip card and the Detail banner cannot
+   disagree about which notice is newest.
+
+2. **A tiebreaker, and the test that pins it.** `order_by("-created_at")` had no secondary
+   key, and a single ingestion poll can raise several notices at once — so two rows can
+   share a `created_at`, and the database is free to return either. Both reads now order by
+   `("-created_at", "-id")`; `-id` is the natural tiebreak because the primary key is a
+   UUIDv7. Two new tests: one asserts a stable winner, the other asserts **the strip and
+   the banner agree**.
+
+3. **The query bound was wrong on the path nobody tested.** The conflict read is gated on
+   the caller having saved the event, so a **saved** user costs **8** queries, not 6 — and
+   all three `<= 6` assertions ran the unsaved path. The bounds are now named constants
+   (`UNSAVED_READ_QUERIES = 6`, `CONFLICT_READ_QUERIES = 2`, `SAVED_READ_QUERIES = 8`),
+   and a new test asserts the difference **relatively**: `saved == unsaved + 2`.
+
+**Three more tests are the CSRF cases** — the dismiss, the mute and the unmute, each with a
+plain client, each asserting 403 / `csrf_failed` *and* that the row did not change. The
+whole file used a client that always sends a token, so the CSRF path had never been
+exercised.
+
+### Carried forward
+
+- **The strip and the banner are not rendered yet.** This item builds the API they read;
+  `frontend-digest-strip-and-detail-banner` renders them.
+- **The Pulse Card's state fields are read from the catalog, not from a notice.** A notice
+  is about a *change*, a card field is about the event's *current* state — two different
+  facts, and `detail-overlap-notice` has to say which one the Detail Screen shows when both
+  exist.
+- **The mute is still not reachable from the mail.** The notice body links to the Detail
+  Screen; the mute lives there, and this item gives the Detail Screen the button's write.

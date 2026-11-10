@@ -1,314 +1,466 @@
 ---
 run: run-eventpulse24-025
-work_item: digest-card-state-fields
+work_item: notice-and-mute-api
 intent: event-state-sync
 generated: 2026-11-10
 mode: confirm
 ---
 
-# Implementation Walkthrough: The card that could not say an event was cancelled
+# Implementation Walkthrough: The strip needs something to read and the mute needs somewhere to write
 
 ## Summary
 
-FR-53's testable consequence is that *"a sold-out event is marked with a 'Sold Out' tag on
-the Pulse Card and Detail Screen."* The Detail Screen half was already done. The Pulse Card
-half was not — and could not be, because `DigestCardOut` carried neither the lifecycle status
-nor the sold-out flag. The card had no vocabulary for saying an event was no longer what it
-was.
+FR-54's in-app half is a **dismissible strip** on the digest home and a **banner** on the
+Detail Screen. FR-55's **per-event mute** needs a write, from the Detail Screen. Both need
+a **read**, and the Detail Screen needs **both facts in one round trip** — the banner and
+the mute control render from one response, and two snapshots could disagree.
 
-This item gives the card that vocabulary: two fields, read live, joined in.
+The previous work item built the notice row and the email but deliberately stopped at the
+surface boundary: `list_undismissed_notices` was **unbounded**, `dismiss_notice` and
+`mute_event_notices` existed but nothing called them over HTTP, and the Detail read knew
+nothing about notices or mutes.
 
-**The design's central claim is what it does *not* add.** No column on the composition, no
-migration, no cache. The status is not *stored* — it is *read*, at request time, from the same
-catalog row the read was already fetching. The obvious implementation — a `status` column on
-`DigestComposition` — would have passed every acceptance criterion's letter and failed its
-third one, because a card composed at 09:00 would keep saying `scheduled` for an event
-cancelled at 10:00.
+**This item is the API slice.** Four endpoints, one combined read, two new Detail fields,
+and the regenerated contract.
+
+### The three decisions this item actually turns on
+
+**1. The strip is keyed on `dismissed_at`, not `seen_at`.** The work item's criterion 1 said
+"unseen" and criterion 2 said a dismiss "marks a notice seen" — and the two pull in
+different directions. The service's own rule is explicit (*"the strip is a queue, and
+closing an item should empty it"*), and criterion 2's own wording says dismissal is what
+makes FR-54's "one-time, never repeats" true.
+
+**So `mark_seen` is not called by this API at all.** A `GET` that writes `seen_at` is
+exactly the shape `apps/personalization/detail_api.py` refuses (*"a `GET` that writes is the
+shape CSRF exists to stop"*), and the strip's read is asserted to be **one query**. `seen_at`
+is still on the wire — it is a fact about the row — but it does not gate the strip.
+
+**2. The banner reports the newest notice whatever its dismissal state.** Criterion 4 said
+"an undismissed notice"; the service's own rule says the opposite — the banner is about
+*this* event, which the user navigated to on purpose, so dismissing the strip on the digest
+home must not hide *"this event was cancelled"* from the event's own page. `dismissed_at`
+rides on the wire so the client can tell the two states apart.
+
+**3. The dismiss 404 and the dismiss idempotence are the same endpoint.** `dismiss_notice`
+returns a `bool` that collapses three cases: not yours, does not exist, already dismissed.
+Criterion 6 wants the third to answer success; criterion 5 wants the first two refused.
+
+The resolution keeps the common path free:
+
+| case | `dismiss_notice` | the scoped check | result |
+|---|---|---|---|
+| yours, open | `True` | *not called* | **200** `changed: true` |
+| yours, already dismissed | `False` | `True` | **200** `changed: false` |
+| another user's | `False` | `False` | **404** |
+| no such notice | `False` | `False` | **404** |
+
+The two 404s are **byte-identical** — a 403 would confirm that the record exists, so the
+endpoint could be used to probe for other users' notice ids. And the extra query runs
+**only** on the `changed == False` path, so the common case costs **zero** extra queries.
 
 ## Structure Overview
 
-The change touches four files, all of them in existing seams:
-
 ```text
-┌──────────────────────────────────────────────┐
-│  ingestion · catalog_read                    │
-│  PublicEvent += is_sold_out                  │
-│  (the same fact PublicEventDetail had)       │
-└───────────────────┬──────────────────────────┘
-                    │ get_public_events — ONE batched read
-                    │ (already there; the card already joined it)
-┌───────────────────▼──────────────────────────┐
-│  personalization · digest_read               │
-│  DigestCard += status, is_sold_out           │
-│  _card_for_public  → the catalog's facts     │
-│  _card_for_personal → None, None             │
-└───────────────────┬──────────────────────────┘
-                    │
-┌───────────────────▼──────────────────────────┐
-│  personalization · schemas + api             │
-│  DigestCardOut += status, is_sold_out        │
-│  → OpenAPI → the TypeScript client           │
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  apps/delivery/notices_api.py           (the surface)         │
+│                                                              │
+│  GET    /api/notices                     → the strip's read    │
+│  POST   /api/notices/{id}/dismiss        → close one          │
+│  PUT    /api/notices/events/{id}/mute    → silence it         │
+│  DELETE /api/notices/events/{id}/mute    → let it through     │
+│                                                              │
+│  auth=current_user — the id comes from the session,          │
+│  never from a payload                                      │
+└────────────────────────────┬─────────────────────────────────┘
+                             │ calls a published service
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│  apps/delivery/services/notice_state.py   (the read)          │
+│                                                              │
+│  NoticeSummary          plain data, not a model instance     │
+│  EventNoticeState       the notice and the mute, together    │
+│  summarize_notice()     the projection                      │
+│  read_event_notice_state()  TWO queries, both user-scoped   │
+│                                                              │
+│  owns the "newest notice" rule — and the tiebreaker          │
+└────────────────────────────┬─────────────────────────────────┘
+                             │ plain data crosses the boundary
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│  apps/personalization/services/detail_read.py                │
+│                                                              │
+│  read_event_notice_state() is called AFTER the              │
+│  `user_id is None` early return — the leak floor             │
+└──────────────────────────────────────────────────────────────┘
 ```
-
-The read already did the hard part. `_public_display_facts` batches `get_public_events` into
-one map, and `_card_for_public` already received the joined `PublicEvent`. **`status` was
-already on the object.** The card simply did not hand it over.
 
 ## Architecture
 
-### Pattern Used
+### The wall (AD-2)
 
-A **live-fact join**, distinct from the **persisted explanation** that AD-10 governs. The
-composition holds the *why* — bucket, tags, badge — and those are frozen at composition time
-on purpose, because the bucket the user saw this morning must not change while they look at
-it. The lifecycle status is a *what*, and a what has to be current.
+`apps.personalization` never imports `apps.delivery.models` — directly or transitively. It
+imports two things from `delivery`'s **service** layer: `NoticeSummary` and
+`read_event_notice_state`. Both are plain frozen dataclasses.
 
-The card already carried two live facts of exactly this kind: `tz_review_pending` (read from
-the catalog at request time) and `conflict` (read from the persisted pairs at request time).
-The new fields are a third and fourth of the same species, not a new kind of thing.
+**`notice_state.py` reads the two models directly** rather than going through
+`services.state_notices` and `services.mutes`, and the reason is the **model boundary**:
+`state_notices` publishes reads that return `StateChangeNotice` *model instances*, and
+handing one to `personalization` would put a reference to `apps.delivery.models` in another
+app's hands. The projection happens **inside the owning app**.
 
-### The three facts that settled the design
+> **A note on what this is *not*.** An earlier draft justified the direct model read by
+> claiming an import cycle: `personalization → notice_state → state_notices →
+> scheduled_sends → personalization`. The code review checked that against the real import
+> graph and it is **false** — `scheduled_sends` imports only
+> `apps.personalization.services.digest_preferences`, which reaches none of `detail_read`,
+> `personalization.schemas`, `detail_conflict` or `neighbor_count`. Adding the edge leaves
+> `lint-imports` at 19 kept, 0 broken. The docstring now names the reason that **does**
+> hold, and says plainly that there is no cycle to avoid.
 
-1. **`DigestComposition` cannot hold it.** Append-only, `append_only_mutable = frozenset()` —
-   *"Nothing about a composition becomes known after it is written."* A status stored there
-   would be written at composition time, and frozen.
-2. **AD-10 says the composition explains *why*, not *what*.** The bucket, the tags and the
-   badge are a fact about the user's day. The event's lifecycle is a fact about the event.
-3. **The read already joins the catalog's current facts.** The status was *already on the
-   object* the card was built from. This is plumbing, not a new read.
+### The leak floor (AD-12)
 
-### Data flow
+`read_event_notice_state` is called in `read_event_detail` **strictly after** the
+`user_id is None` early return. An anonymous `GET /api/events/{id}` issues **zero** personal
+queries — and the test that says so is restated under this change's name, so the property
+cannot be lost with it.
 
-1. The user requests the digest.
-2. `_public_display_facts` makes **one** batched `get_public_events` call — unchanged.
-3. `_card_for_public` hands `public.status` and `public.is_sold_out` to the card.
-4. The endpoint passes both to `DigestCardOut`; the OpenAPI schema carries them; the
-   TypeScript client is regenerated from it.
+### The wall (AD-3)
+
+Neither read crosses to `catalog`. The `event_id` names a row in another schema, and a
+notice for an event that has since gone still reads and still dismisses.
+
+### The guards
+
+`checkers.py::surface_files()` used to glob `apps/*/api.py`, which matches only files named
+exactly `api.py` — so **four** surface files were **exempt from AD-5**: nothing would have
+caught `apps/catalog/preview_api.py`, `apps/delivery/email_api.py`,
+`apps/delivery/preferences_api.py` or `apps/personalization/detail_api.py` writing through
+the ORM.
+
+The discovery is now **by shape** (`admin.py`, `api.py`, `*_api.py`), the same rule the AD-11
+guard already used. The count goes **13 → 18 → 19** (the last step is `config/health.py`,
+which defines its own `Router` and is mounted at `/health`, and is included by name because
+the shape rule does not match it). The four previously-unchecked files were **checked for
+the first time** — all four pass.
+
+**One discovery, two rules.** `api_modules()` (routers only, for AD-11) and
+`surface_files()` (admins + routers, for AD-5) live side by side in `checkers.py`, so the
+two guards can never disagree about what a request handler is.
 
 ## Files Changed
 
-### Created
-
-| File | Purpose |
-|------|---------|
-| (none) | — |
-
-### Modified
-
-| File | Changes |
-|------|---------|
-| `backend/apps/ingestion/services/catalog_read.py` | `PublicEvent` gains `is_sold_out`; `_to_public_event` fills it |
-| `backend/apps/personalization/services/digest_read.py` | `DigestCard` gains `status` and `is_sold_out`; the four construction sites fill them |
-| `backend/apps/personalization/schemas.py` | `DigestCardOut` gains the same two |
-| `backend/apps/personalization/api.py` | The endpoint passes them through; the OpenAPI description was updated |
-| `backend/tests/personalization/test_digest_api.py` | 9 tests |
-| `backend/tests/api/test_catalog_read_service.py` | 3 tests |
-| `frontend/lib/api/openapi.json` | Regenerated |
-| `frontend/lib/api/schema.ts` | Regenerated |
+| File | What changed |
+|---|---|
+| `backend/apps/delivery/notices_api.py` | **new** — the router and the four handlers |
+| `backend/apps/delivery/services/notice_state.py` | **new** — the leaf combined read; `NoticeSummary`, `EventNoticeState`, `summarize_notice`, `read_event_notice_state` |
+| `backend/apps/delivery/services/state_notices.py` | `list_undismissed_notices` gains a required keyword-only `limit` and a tiebreaker; `notice_belongs_to_user` added; `latest_notice_for_event` **deleted** as dead code |
+| `backend/apps/delivery/schemas.py` | `NoticeOut`, `NoticeListOut`, `NoticeDismissOut`, `EventMuteOut` |
+| `backend/apps/personalization/schemas.py` | `DetailNoticeOut`; `DetailPersonalOut` gains `muted` and `notice` |
+| `backend/apps/personalization/services/detail_read.py` | `DetailPersonal` gains the two facts; the read is placed after the anonymous early return |
+| `backend/apps/personalization/detail_api.py` | the two fields projected onto the wire |
+| `backend/shared/constants.py` | `NOTICE_STRIP_LIMIT = 5` |
+| `backend/config/api.py` | the router mounted at `/api/notices` |
+| `backend/tests/architecture/checkers.py` | `api_modules()` split out; `surface_files()` discovered by shape; `config/health.py` included |
+| `backend/tests/architecture/test_no_direct_writes.py` | the surface count 13 → 18 → 19 |
+| `backend/tests/architecture/test_digest_composition_separation.py` | uses the shared `api_modules()` discovery; `REQUEST_MODULES` gains the notices router and `config/health.py` |
+| `backend/tests/delivery/test_notices_api.py` | **new** — 38 tests |
+| `backend/tests/delivery/test_notice_state.py` | **new** — 13 tests |
+| `backend/tests/delivery/test_state_notices.py` | `limit=` added; two bound tests; the banner tests moved to `test_notice_state.py` |
+| `backend/tests/personalization/test_event_detail_api.py` | 12 new Detail tests; the pinned `personal` shape widened; the query bounds split by path |
+| `frontend/lib/api/openapi.json` | **regenerated** |
+| `frontend/lib/api/schema.ts` | **regenerated** |
 
 ## Domain Model
 
-**No new entities. No new fields on any model. No migration.** `makemigrations --check` reports
-no changes detected — which is the design's claim, held.
+No new model, no new column, **no migration**. `makemigrations --check` reports no changes
+detected.
 
-| Entity | Change | Business Rules |
-|--------|--------|----------------|
-| `DigestComposition` | **none** | Its `append_only_mutable = frozenset()` is the reason this item is a read and not a write |
-| `Event` | **none** | `status` and `is_sold_out` already exist on the catalog row; this item only makes them reachable from the read the digest already makes |
-| `PublicEvent` | `is_sold_out` added | Plain data across the wall (AD-3). Required, not defaulted |
-| `DigestCard` | `status`, `is_sold_out` added | Both `| None`. `None` means "not applicable", not "fine" |
-| `DigestCardOut` | `status`, `is_sold_out` added | The wire shape |
+The two tables this item reads — `StateChangeNotice` and `EventNoticeMute` — were built by
+`state-change-notice-model`. The one thing this item *adds* is a rule, and the rule is not
+a column: **which notice is the newest one**, and how a tie is broken.
 
 ## Key Implementation Details
 
-### 1. `is_sold_out` had to travel; `status` did not
+### The tiebreaker, and why it was needed
 
-`PublicEvent` carried `status` but not `is_sold_out`. `PublicEventDetail` carried both. So the
-one field that had to move was the one the digest's read happened to be missing — and adding it
-is the same one-line change `PublicEventDetail` already made, in the same module, for the same
+Both "newest notice" reads order by `("-created_at", "-id")`. The `-id` is not decoration.
+
+`created_at` is `auto_now_add` with microsecond resolution, and
+`ingestion.event_writes` appends **one `EVENT_STATE_CHANGE` per kind within a single poll**
+— so a source update that moves an event's time *and* marks it sold out produces two
+notices seconds apart, and two notices can genuinely share a `created_at`.
+
+Without a secondary sort key the database is free to return either row from an unordered
+tie, and it is free to make a **different choice each time**. The strip's read and the
+banner's read are two separate queries — so the strip could show one notice and the banner
+could name a different one, for the same event, at the same moment.
+
+**`-id` is the natural tiebreak** because the primary key is a **UUIDv7**, which is
+time-ordered by construction: of two notices raised in the same instant, the later one has
+the larger id.
+
+### The two queries
+
+`read_event_notice_state` issues **exactly two**: the mute is an `EXISTS` and the notice is
+the newest row for the pair. They are **not** merged, because there is no honest way to: a
+cross-table join would answer "is there a notice" only for events that also have a mute
+row, and an `EXISTS` against a join is the kind of thing that is subtly wrong in exactly
+the case nobody tests.
+
+The count is **constant** — verified at 0, 1 and 50 notices, and 150 neighbours.
+
+### The bound is at the service, not the surface
+
+`list_undismissed_notices(*, user_id, limit)` — the `limit` is **keyword-only, required,
+and has no default**. A default would leave the unbounded read reachable, and "somebody
+forgot to pass a limit" is exactly the failure the bound exists to prevent. The slice is
+applied by the database, through the slice on the ordered queryset, so a busy day costs one
+query and one index range.
+
+The API takes **no `?limit=` parameter**: the bound is a product decision (FR-54's "one calm
+correction"), so it belongs in the server, not in the client's hands.
+
+### The two paths of the Detail read
+
+The Detail read's query count is **path-dependent**, because the conflict read is gated on
+the caller having saved the event:
+
+| path | queries | |
+|---|---|---|
+| unsaved user | **6** | composition, save row, 2 signal aggregates, mute `EXISTS`, notice `LIMIT 1` |
+| **saved user** | **8** | the above **+ 2** conflict-pair reads |
+
+The bounds are **named constants** — `UNSAVED_READ_QUERIES = 6`,
+`CONFLICT_READ_QUERIES = 2`, `SAVED_READ_QUERIES = 8` — and the saved path is asserted
+**relatively**: `saved == unsaved + 2`. That form survives the next read anyone adds to the
+surface, while still catching the regression the test is for: a per-save or per-conflict
+loop.
+
+**The saved path is the path most users are on** — a user who saved the event is the one
+reading the Detail Screen at all.
+
+### Why the router declares `401` and `403`
+
+No sibling router declares either. `401` is the anonymous refusal and `403` is the CSRF
+refusal (`csrf_failed`), and both are reachable on every endpoint here — `identity`'s
+`current_user` resolver answers the first with a 401 and raises the second.
+`apps/identity/api.py` declares `403: ErrorOut` on its own endpoints for exactly this
 reason.
 
-**This is not widening the public contract.** The docstring on `PublicEventCandidate` warns
-that *"widening `PublicEvent` would put digest-only fields on the public catalog's contract."*
-`is_sold_out` is **not** digest-only — it is already on the public contract, via
-`PublicEventDetail` and `apps/catalog/schemas.py`. This makes an existing fact reachable from
-the one read that lacked it.
+The other app routers declare neither, which means their generated clients **cannot type a
+response the server actually gives**. Declaring them here is deliberate: the frontend needs
+to branch on "sign in" (a 401) against "fetch a fresh token and retry" (a `csrf_failed`
+403), and it can only do that if the contract says both are possible.
 
-### 2. `None` is a fact; `"scheduled"` is a claim
+### Why a router of its own
 
-Both fields are `str | None` / `bool | None`, and every personal or missing branch says
-`None`. The alternative — defaulting a personal card to `"scheduled"` — would claim the
-catalog had an opinion about a row it has never seen, and the client could not tell "no
-lifecycle here" from "a live event that happens to be fine".
+The mount path is public contract (AD-19): `frontend/lib/api/openapi.json` and
+`frontend/lib/api/schema.ts` are generated from it and committed, and
+`tests/api/test_contract.py` fails on any drift. So a path has to name the thing it
+serves.
 
-**Mutations 3 and 4 pin this.** Each of the two `None` branches was mutated to `"scheduled"`
-and each was caught.
+`/api/reminders` names **Reminder Plans** — a plan has slots, and its path shape is
+`/{target_kind}/{target_id}`. A state-change notice is not a plan, and an FR-55 mute is not
+a plan either; hanging them off that router would make `/api/reminders/<uuid>` mean two
+different things depending on which handler matched.
 
-### 3. The two facts stay apart
+### Two routes that are not the same verb
 
-An event can be `scheduled` **and** sold out at the same time. A collapsed "state" enum
-could not say both, and the acceptance criterion forbids it. The backend's existing vocabulary
-is unchanged: `Event.Status` for the lifecycle, a separate flag for the tickets —
-`EventDetailFactsOut` already sets this precedent with the same two fields in the same shape.
+**The mute is a state, so it is `PUT` and `DELETE`.** Setting a state is `PUT`; clearing it
+is `DELETE`; there is **no request body at all**, so the client cannot encode "clear this"
+as a field that could be confused with "leave it alone".
 
-### 4. The FR-55 question was settled elsewhere, and the two answers agree
-
-FR-55 says *"event is removed from the digest"*, and `saved-event-lifecycle-state` settled it
-at the **candidate** stage: `digest_candidates.py:336` drops a save the catalog says is
-cancelled, before it can become a candidate.
-
-**So a newly cancelled event never enters a composition at all.** A *newly* cancelled event is
-never a card. But a card composed *before* the cancellation is still on the digest — and that
-card must say `status="cancelled"`.
-
-Removing it at read time would be a **second, different removal** with a different trigger
-than FR-55's, and it would break AD-10's rule that digest rows are served as stored. It would
-also make the digest flicker: a card the user was looking at would vanish.
-
-**Both answers agree.** FR-55 removes at the door. This item marks what is already on the
-digest. The card tells the truth; tomorrow's composition will not contain the event at all.
-
-### 5. A cancelled card keeps its explanation
-
-The state changed; the *why* did not. `test_a_cancelled_card_says_cancelled_and_stays_on_the_digest`
-asserts the bucket and the tags are untouched alongside the status — AD-10's rule, made
-executable.
+**The dismiss is a `POST`, not a `DELETE`.** The notice row is **not** deleted — FR-54's
+"never repeats" and the daily cap both depend on the row surviving — and `dismiss_notice`
+sets `dismissed_at` rather than deleting. A `DELETE` that does not delete is a lie in the
+method, so the path names the act.
 
 ## Security Considerations
 
-| Concern | Approach |
-|---|---|
-| PII | None. Two booleans and a status word — no title, no address, no name (AD-13) |
-| New attack surface | None. No new endpoint, no new parameter, no new credential, no new external input |
-| New query | None. The read reuses the batch it already made — the query-count tests pass unchanged |
-| The `status` value on the wire | The catalog's own `Event.Status`: one of four fixed strings chosen by the server. A client meeting an unknown value is no worse off than one meeting `null` |
-| Writes | None. No transaction, no migration, no wall crossing |
+- **The user id comes from the session, never from a payload.** `auth=current_user` is on
+  the **router**, and no endpoint accepts a user id as an input. Tested as an authorization
+  case, not assumed from the router.
+- **The dismiss write is scoped by `user_id` in the `UPDATE` itself** —
+  `filter(user_id=..., pk=..., dismissed_at__isnull=True)` — so another user's notice
+  **cannot** be dismissed. The scoping is in the write, not only in the check after it.
+- **The two 404s are byte-identical**, so the endpoint is not an existence oracle over
+  notice ids.
+- **No PII on the wire.** The change's *content* — the before/after values — is source
+  payload and is deliberately absent. `change_kind` is the vocabulary
+  `domain.lifecycle.ChangeKind` defines, carried through unchanged. No title, no venue.
+- **`state_change_id` is not on the wire.** It is the notice's internal uniqueness key and
+  no client acts on it.
+- **The writes refuse a request without a CSRF token**, with `403` / `csrf_failed` — and
+  the row does not change. Tested, because the whole suite otherwise uses a client that
+  always sends a token.
 
 ## Performance Considerations
 
-| Requirement | Implementation |
-|-------------|----------------|
-| **No new query** | `_public_display_facts` already batched `get_public_events`; the status rides on the `PublicEvent` that was already joined. `test_the_query_count_does_not_grow_with_the_number_of_cards` passes unchanged |
-| **No per-card catalog read** | The join happens once per card from an in-memory map, not a query |
-| **No recomputation at render** | Nothing is scored, ranked, or derived. AD-10's own architecture test still passes |
+- **The strip's read is one query**, bounded by the database, and it does not grow with the
+  number of notices.
+- **The combined read is two queries**, and the count does not grow with notices, saves or
+  neighbours.
+- **The Detail read's count is a constant per path** — 6 unsaved, 8 saved — and neither
+  grows with the number of neighbours.
+- **The strip's bound drops the tail rather than paging it.** Unlike `SAVERS_PAGE` — a page,
+  because propagation must reach *every* saver — the sixth notice loses nothing here: the
+  user who needs it opens the sixth event.
 
 ## Decisions Made
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Where the state lives | **Read at read time, not stored on the composition** | The composition is append-only and AD-10 says it explains *why*. A stored status would be frozen — and the wrong design would have passed every criterion's letter |
-| The personal card | **`None` for both fields** | "Not applicable" and "fine" are different facts. `"scheduled"` would claim the catalog had an opinion about a row it has never seen |
-| The vocabulary | **The backend's own, unchanged** | `Event.Status` plus a separate flag. A collapsed "state" enum could not say "scheduled and sold out" |
-| `is_sold_out` on `PublicEvent` | **Required, not defaulted** | No field on that dataclass has a default, so a new construction site cannot forget the flag and get a silently wrong `False` |
-| A cancelled card | **Stays on the digest, marked `cancelled`** | FR-55's removal is at the candidate stage and already shipped. Removing at read time would be a second removal, would break AD-10, and would make the digest flicker |
-| `status` as `str`, not `Literal` | **`str`** | `Event.Status` includes `superseded`, which the read cannot produce, so a `Literal` would be a narrower claim than the data model supports — and widening it later breaks the contract. `DigestCardOut`'s other vocabulary fields are `str` for the same reason |
-| The frontend | **Not touched** | `frontend-pulse-card-state` is the item that renders it, and it depends on this one. This item gives the API the facts |
+| Decision | Reasoning |
+|---|---|
+| **Should the strip be keyed on `seen_at` or `dismissed_at`?** | `dismissed_at`. The strip is a queue, and closing an item should empty it; being *shown* something is not the same as acting on it. And a `GET` that marks notices seen is the shape CSRF exists to stop |
+| **Should the banner report only undismissed notices?** | No — the **newest notice, whatever its dismissal state**. The banner is about *this* event, and the user navigated here on purpose. `dismissed_at` rides on the wire so the client can tell the two apart |
+| **Should the dismiss 404 or 200 for an already-dismissed notice?** | **200, with `changed: false`.** "Already closed" is a success, not an error — and `changed: false` is what makes the idempotent write honest: a client that redrew on `changed` would redraw a control that did not move |
+| **Should "not yours" and "no such notice" be different answers?** | No — the **same 404**, byte for byte. A 403 would confirm the record exists, and the endpoint could be used to probe for other users' notice ids |
+| **Should the mute be `PUT`/`DELETE` or one `POST` with a body flag?** | `PUT`/`DELETE`, with **no body at all**. A mute is a state with two values, and a body field could be confused with "leave it alone" |
+| **Should the dismiss be `DELETE`?** | No. The row survives — the cap and the never-repeat rule depend on it — and a `DELETE` that does not delete is a lie in the method |
+| **Should the limit have a default?** | No — **required and keyword-only**. A default leaves the unbounded read reachable, and "somebody forgot to pass a limit" is exactly the failure the bound exists to prevent |
+| **Should the API take a `?limit=` parameter?** | No. The bound is a product decision (FR-54's "one calm correction"), so it belongs in the server |
+| **Should `notice_state` go through `state_notices`?** | It would have been fine — there is no cycle. But it would hand `personalization` a **model instance**, which is the AD-2/AD-16 leak. The direct model read is right for the model-boundary reason |
+| **What breaks a `created_at` tie?** | `-id`. The primary key is a UUIDv7, which is time-ordered by construction, so of two notices raised in the same instant the later one has the larger id. A second timestamp would need a column, and a column is a migration |
+| **Should the query bound be one absolute number or two?** | Two, and **named**. The conflict read is gated on the save, so the two paths differ by exactly two — and the relative assertion survives the next change |
+| **Should `mark_seen` be called by the strip's read?** | No. It would make the strip's `GET` a write, and the strip's read is asserted to be **one query** |
+| **Should the router declare `401`/`403` when no sibling does?** | Yes — deliberately, and documented. The frontend must branch on "sign in" against "fetch a fresh token" |
 
 ## Deviations from Plan
 
-**One, and it was found in review.** The endpoint's OpenAPI `description` enumerated what a
-card carries and was silent about the two new fields. The description is the document the
-frontend client is generated from, so an omission there is an omission in the *contract* — a
-client author reading the contract, not the source, would not learn that a card can say an
-event is cancelled, nor that both fields are `null` for a personal event. The description now
-states both fields, that they are read at request time, and the two reasons they are `null`.
+Four, all forced by the code review, all recorded in the review report:
 
-Nothing else changed from the plan.
+1. **The plan's stated reason for the module's shape was false.** The import cycle it
+   claimed does not exist. The docstring now names the reason that does hold — the model
+   boundary — and says plainly that there is no cycle to avoid.
+2. **`state_notices.latest_notice_for_event` was deleted.** It had no production caller
+   once the combined read arrived, and its query was duplicated verbatim in
+   `notice_state`. The rule moved to the module that actually reads it, and the strip's
+   read now uses the **same ordering**, with a **tiebreaker** the plan had not thought
+   about.
+3. **The query bound was wrong on the path nobody tested.** The plan widened `4 → 6` by
+   adding two to the number it had, without asking which path that number described. The
+   saved path is **8**. The bounds are now named constants and the saved path is asserted
+   relatively.
+4. **`config/health.py` was outside the discovery.** It is a router, mounted at `/health`,
+   and the shape rule missed it. The surface count goes 18 → 19.
 
 ## Dependencies Added
 
-None. No new package, no new library, no new service, no new model field.
+None. No new package, no new service, no new model, no migration.
 
 ## How to Verify
 
-1. **The item's own tests**
+```bash
+cd backend
 
-   ```bash
-   cd backend && uv run pytest tests/personalization/test_digest_api.py tests/api/test_catalog_read_service.py -q
-   ```
+# The four endpoints' contract.
+uv run pytest tests/delivery/test_notices_api.py -q
+# 38 passed
 
-   Expected: `67 passed`.
+# The combined read.
+uv run pytest tests/delivery/test_notice_state.py -q
+# 13 passed
 
-2. **The whole backend suite**
+# The Detail Screen's two new facts.
+uv run pytest tests/personalization/test_event_detail_api.py -q
+# 65 passed
 
-   ```bash
-   cd backend && uv run pytest tests/ -q
-   ```
+# The architecture guards — the discovery, the counts, AD-11.
+uv run pytest tests/architecture/ -q
+# 859 passed
 
-   Expected: `5440 passed, 16 failed` — the 16 are pre-existing date-expired fixtures,
-   reproduced identically on stashed code. They belong to `timeline-and-conflicts` and block CI
-   on any branch.
+# The contract, the linters, and the migration check.
+uv run lint-imports
+# Contracts: 19 kept, 0 broken.
+uv run ruff check .
+# All checks passed!
+uv run ruff format --check .
+# 534 files already formatted
+uv run python manage.py makemigrations --check --dry-run
+# No changes detected
+```
 
-3. **The architecture contracts**
+The full suite is **5637 passed, 16 failed**. All 16 are pre-existing date-expired fixtures,
+verified against a clean `git worktree` at `HEAD` — see the test report.
 
-   ```bash
-   cd backend && uv run lint-imports && uv run ruff check . && uv run ruff format --check .
-   ```
+### The end-to-end path
 
-   Expected: `19 kept, 0 broken` · `All checks passed!` · `524 files already formatted`.
+```bash
+# Sign in and read the strip.
+GET /api/notices
+# → 200 {"items": [...]}   (at most NOTICE_STRIP_LIMIT items, newest first)
 
-4. **No migration was needed**
+# Close one.
+POST /api/notices/{notice_id}/dismiss
+# → 200 {"id": ..., "dismissed": true, "changed": true}
 
-   ```bash
-   cd backend && uv run python manage.py makemigrations --check --dry-run
-   ```
+# It has left the strip.
+GET /api/notices
+# → 200 {"items": [...]}   (that notice is gone)
 
-   Expected: `No changes detected` — the design's central claim, held.
+# Silence the event.
+PUT /api/notices/events/{event_id}/mute
+# → 200 {"event_id": ..., "muted": true, "changed": true}
 
-5. **The design's proof, by hand**
-
-   ```python
-   # backend/apps/personalization/services/digest_read.py, in _card_for_public
-   status="scheduled",   # was: public.status
-   ```
-
-   Expected: `4 failed`. The card now says "scheduled" for an event the catalog has cancelled
-   — which is exactly the failure this item exists to prevent.
-
-6. **The contract, by hand**
-
-   ```bash
-   cd /path/to/EventPulse24 && make client && git diff --stat frontend/lib/api
-   ```
-
-   Expected: `openapi.json` and `schema.ts` both change, and `schema.ts` gains
-   `status?: string | null` and `is_sold_out?: boolean | null` on `DigestCardOut`.
+# The Detail Screen now knows both facts, from one response.
+GET /api/events/{event_id}
+# → 200 {"personal": {..., "muted": true, "notice": {...}}}
+```
 
 ## Test Coverage
 
-- Tests added: **12** (9 in `test_digest_api.py`, 3 in `test_catalog_read_service.py`)
-- Mutations proven able to fail: **5**, each applied, run, and reverted
-- Status: **passing**
+**67 tests added.** The baseline at `HEAD` is **5438 passed, 16 failed** on a clean
+worktree — the same sixteen. **Zero new failures.**
+
+| Suite | Result |
+|---|---|
+| `tests/delivery/test_notices_api.py` (new) | **38 passed** |
+| `tests/delivery/test_notice_state.py` (new) | **13 passed** |
+| `tests/delivery/test_state_notices.py` | **48 passed** (44 pre-existing + 4 new) |
+| `tests/personalization/test_event_detail_api.py` | **65 passed** (53 pre-existing + 12 new) |
+| `tests/architecture/` | **859 passed** |
+| `tests/api/` + `tests/e2e/test_delivery_contract.py` | **10 passed** |
+| **Full backend suite** | **5637 passed, 16 failed** — all 16 pre-existing |
+
+### The mutations
+
+Eight, each applied to the source, the suite run, and the source restored.
+
+| # | Mutation | Caught by |
+|---|---|---|
+| 1 | The route is `"/"` instead of `""` | every strip test — a trailing-slash **301** |
+| 2 | `limit` is dropped from the slice | `test_the_strip_is_bounded` |
+| 3 | The slice keeps the **oldest** notices | `test_the_strip_keeps_the_newest_when_it_is_bounded` |
+| 4 | `notice_belongs_to_user` is not user-scoped | `test_dismissing_another_users_notice_is_a_404` |
+| 5 | The dismiss 404 is raised for an already-dismissed notice | `test_dismissing_an_already_dismissed_notice_is_a_success` |
+| 6 | `read_event_notice_state` is hoisted above the anonymous early return | `test_the_anonymous_path_still_never_queries_the_personal_schema` |
+| 7 | The read loops over the notices | `test_the_read_is_two_queries` |
+| 8 | The Detail reports only an **undismissed** notice | `test_the_detail_reports_a_dismissed_notice_too` |
+
+**Mutation 6 is the one that matters most.** `read_event_notice_state` is one line above the
+place it belongs, and moving it one line up would be invisible to every other test — the
+notice would still be reported, the mute would still be reported, and the response would be
+identical for a signed-in user. The **only** thing that would change is that an anonymous
+caller's request would touch the `personal` schema, which is the leak AD-12 forbids.
 
 ## Ready for Review
 
-- [x] All acceptance criteria met
-- [x] Tests passing
-- [x] No critical issues
-- [x] Documentation updated (the OpenAPI endpoint description)
-- [x] Developer notes captured
+The change is complete, verified, and reviewed.
 
-## Developer Notes
+- **67 new tests**, all passing; **zero new failures** against a clean-`HEAD` baseline.
+- **19 import contracts kept, 0 broken.** Ruff clean, formatted, and **no migration**.
+- The contract is **regenerated** and committed; `tests/api/test_contract.py` is green.
+- **The code review found three real defects and five coverage gaps — all fixed**, each
+  pinned by a test that was proven to fail against the defect.
+- The two ambiguities the acceptance criteria left open are **resolved and recorded**, and
+  the criteria themselves were **amended in place** with the reason.
 
-- **Do not move the status onto the composition.** It is read live because the composition is
-  append-only and because a frozen status is the whole bug. The test
-  `test_a_state_change_after_the_composition_is_reflected` writes the composition *before* the
-  cancellation and reads it *after* — it is the test that would catch the wrong design.
-- **The two `None` branches are load-bearing.** A personal card and a card whose catalog event
-  is gone both say `None`, not `"scheduled"`. A client cannot otherwise tell "no lifecycle
-  here" from "a live event". Mutations 3 and 4 pin each branch separately.
-- **`is_sold_out` was required, not defaulted**, on `PublicEvent`. Every other field on that
-  dataclass is required for the same reason: a new construction site should fail loudly rather
-  than produce a silently wrong `False`.
-- **`status` is `str`, not a `Literal`.** `Event.Status` contains `superseded`, which
-  `get_public_events` filters out — so a `Literal` over the three producible values would be a
-  narrower claim than the model supports, and widening it later would break the contract.
-- **A cancelled card stays on the digest.** That is not an oversight and not an FR-55
-  conflict. FR-55's removal is at the candidate stage and already shipped
-  (`digest_candidates.py:336`). This item marks what is already composed.
-- **The frontend does not render either field yet.** `frontend-pulse-card-state` is next, and
-  it depends on this item. The API now carries the facts; nothing displays them.
+### What this item does not do
 
----
-*Generated by specs.md - fabriqa.ai FIRE Flow Run run-eventpulse24-025*
+- **The strip and the banner are not rendered yet.** This item builds the API they read;
+  `frontend-digest-strip-and-detail-banner` renders them.
+- **The Pulse Card's state fields come from the catalog, not from a notice.** A notice is
+  about a *change*; a card field is about the event's *current* state. Two different facts,
+  and `detail-overlap-notice` has to say which one the Detail Screen shows when both exist.
+- **The mute is still not reachable from the mail.** The notice body links to the Detail
+  Screen; the mute lives there, and this item gives the Detail Screen the button's write.
