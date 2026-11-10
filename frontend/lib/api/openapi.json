@@ -990,6 +990,17 @@
             "title": "Event Kind",
             "type": "string"
           },
+          "is_sold_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Sold Out"
+          },
           "location": {
             "anyOf": [
               {
@@ -1049,6 +1060,17 @@
               }
             ],
             "title": "Start Time Utc"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "tags": {
             "default": [],
@@ -4303,7 +4325,7 @@
     },
     "/api/personal/digest": {
       "get": {
-        "description": "The user's Pulse Digest for their local day, as it was composed.\n\nThe response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.\n\nEach card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.\n\nThe times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.",
+        "description": "The user's Pulse Digest for their local day, as it was composed.\n\nThe response always says which state it is in: `composed` (there is a digest and it has cards), `empty` (there is a digest and it has none — nothing qualifying near you today), or `not_composed` (the digest has not been built yet). The last two are different facts and the client shows different things for them.\n\nEach card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.\n\nThe times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.\n\nA card also carries the event's current `status` (`scheduled`, `postponed` or `cancelled`) and whether it `is_sold_out`. These are read at request time, not stored on the composition, so an event that changed after the composition still says so. Both are `null` for a personal event — the user's own agenda row has no lifecycle and no tickets — and `null` for a card whose event the catalog no longer holds.",
         "operationId": "apps_personalization_api_read_digest_endpoint",
         "parameters": [],
         "responses": {

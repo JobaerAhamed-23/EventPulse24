@@ -156,6 +156,32 @@ class DigestCard:
     #: card could only build `/events/{event_id}` — the *personal* URL — and a friend
     #: who opened it would meet a sign-in wall instead of the event.
     public_slug: str | None
+    #: The event's **lifecycle status** — `scheduled`, `postponed` or `cancelled` — or
+    #: `None` when there is no catalog status to report.
+    #:
+    #: **A live fact, read at request time** (FR-53), exactly like `tz_review_pending`
+    #: and `conflict` above. It is deliberately *not* on the composition: the composition
+    #: is append-only (`append_only_mutable = frozenset()`) and AD-10 says it explains
+    #: *why* the event was chosen, not *what* the event currently is. A status stored
+    #: there would be frozen at composition time, and an event cancelled at noon would
+    #: keep showing as live until tomorrow's digest.
+    #:
+    #: **`None` has two honest reasons**, and neither is a gap. The card is a
+    #: **personal** event — the user's own agenda row, which no source can cancel — or
+    #: the catalog no longer holds the event (unpublished or superseded), in which case
+    #: the card already carries `catalog_event_missing=True`. "Not applicable" and
+    #: "scheduled" are different facts, so a personal card is not defaulted to
+    #: `"scheduled"`: that would claim the catalog had an opinion about a row it has
+    #: never seen.
+    status: str | None
+    #: Whether the event is **sold out** (FR-53), or `None` when there is no catalog to
+    #: have an opinion — the same two reasons `status` has.
+    #:
+    #: **Separate from the status, not part of it.** An event can be `scheduled` and
+    #: sold out at the same time, and collapsing the two into one "state" enum would
+    #: make the card unable to say both. The backend's existing vocabulary is kept
+    #: unchanged: `Event.Status` for the lifecycle, a separate flag for the tickets.
+    is_sold_out: bool | None
 
 
 @dataclass(frozen=True)
@@ -360,6 +386,11 @@ def _card_for_public(
             catalog_event_missing=True,
             conflict=conflict,
             public_slug=None,
+            # **No catalog, no opinion.** The event is gone from the catalog, so there
+            # is no status and no sold-out flag to report. This is the same shape as
+            # the missing title above: the card says what it can, and marks the rest.
+            status=None,
+            is_sold_out=None,
         )
     return DigestCard(
         event_id=row.event_id,
@@ -383,6 +414,22 @@ def _card_for_public(
         # `get_public_events`, which returns published, non-superseded events only —
         # so reaching this branch at all means the public page exists.
         public_slug=public.slug,
+        # **The catalog's current state, handed over as it stands.** `public` was
+        # already joined to this card — the read did not go to the catalog for this,
+        # it read one batched map and passed the row through. The status is a *live*
+        # fact: an event cancelled after the composition still says `cancelled` here,
+        # rather than showing as live until tomorrow's digest.
+        #
+        # **A cancelled card stays on the digest.** FR-55's removal happens at the
+        # *candidate* stage — `digest_candidates` drops a save the catalog says is
+        # cancelled, before it can become a candidate, so a newly cancelled event is
+        # never composed at all. What is left here is a card composed *before* the
+        # cancellation, and removing it here would be a second, different removal
+        # than FR-55's — and would break AD-10's rule that digest rows are served as
+        # stored. The card tells the truth; tomorrow's composition will not contain
+        # the event at all.
+        status=public.status,
+        is_sold_out=public.is_sold_out,
     )
 
 
@@ -426,6 +473,10 @@ def _card_for_personal(
             catalog_event_missing=True,
             conflict=conflict,
             public_slug=None,
+            # **A personal event has no lifecycle and no ticket state.** It is the
+            # user's own agenda row; no source can postpone or sell it out.
+            status=None,
+            is_sold_out=None,
         )
     return DigestCard(
         event_id=row.event_id,
@@ -446,6 +497,12 @@ def _card_for_personal(
         catalog_event_missing=False,
         conflict=conflict,
         public_slug=None,
+        # **Not applicable, not "fine".** A personal event is not cancelled and is not
+        # sold out, but saying `status="scheduled"` would claim the catalog had an
+        # opinion about a row it has never seen. `None` says "there is no lifecycle
+        # here", and the client can tell that apart from a live event.
+        status=None,
+        is_sold_out=None,
     )
 
 

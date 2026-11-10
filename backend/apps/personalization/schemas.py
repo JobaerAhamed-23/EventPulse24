@@ -662,6 +662,30 @@ class DigestCardOut(Schema):
     #: `/events/{event_id}` — the *personal* URL — and a friend who opened it would meet
     #: a sign-in wall instead of the event.
     public_slug: str | None = None
+    #: The event's **lifecycle status** — `scheduled`, `postponed` or `cancelled` — or
+    #: `None` (FR-53).
+    #:
+    #: **A live fact, read at request time**, exactly like `tz_review_pending` and
+    #: `conflict` above — not a snapshot of the composition. An event cancelled after
+    #: the composition says `cancelled` here, rather than showing as live until
+    #: tomorrow's digest.
+    #:
+    #: **`None` covers two honest facts,** and neither is a gap: the card is a
+    #: **personal** event (the user's own agenda row — no source can cancel it), or the
+    #: catalog no longer holds the event publicly (unpublished or superseded), in which
+    #: case `catalog_event_missing` is already `True`. A personal card is not defaulted
+    #: to `"scheduled"`: that would claim the catalog had an opinion about a row it has
+    #: never seen.
+    status: str | None = None
+    #: Whether the event is **sold out** (FR-53), or `None` for the same two reasons
+    #: `status` has.
+    #:
+    #: **Separate from the status, not part of it.** An event can be `scheduled` and sold
+    #: out at the same time, so the two are not collapsed into one "state" enum. The
+    #: backend's existing vocabulary is unchanged — `Event.Status` for the lifecycle, a
+    #: separate flag for the tickets — and the Detail Screen's own facts already carry
+    #: both in this shape.
+    is_sold_out: bool | None = None
 
 
 class DigestOut(Schema):

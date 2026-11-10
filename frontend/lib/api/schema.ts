@@ -459,6 +459,8 @@ export interface paths {
          *     Each card carries the event's name, time and place, up to three Why-this Tag keys, the Confidence Pulse bucket (1-5) and the Source Badge variant. The bucket is sent rather than the raw score: the bucket the user saw this morning is a persisted fact about their day, and a client that re-bucketed it could flicker.
          *
          *     The times are instants plus an IANA timezone; converting them for display is the client's job. `catalog_event_missing` marks a card whose event the catalog no longer holds — the explanation is still there, because a composition is a fact about the day.
+         *
+         *     A card also carries the event's current `status` (`scheduled`, `postponed` or `cancelled`) and whether it `is_sold_out`. These are read at request time, not stored on the composition, so an event that changed after the composition still says so. Both are `null` for a personal event — the user's own agenda row has no lifecycle and no tickets — and `null` for a card whose event the catalog no longer holds.
          */
         get: operations["apps_personalization_api_read_digest_endpoint"];
         put?: never;
@@ -1550,6 +1552,8 @@ export interface components {
             event_id: string;
             /** Event Kind */
             event_kind: string;
+            /** Is Sold Out */
+            is_sold_out?: boolean | null;
             /** Location */
             location?: string | null;
             /** Public Slug */
@@ -1562,6 +1566,8 @@ export interface components {
             start_time_tz?: string | null;
             /** Start Time Utc */
             start_time_utc?: string | null;
+            /** Status */
+            status?: string | null;
             /**
              * Tags
              * @default []

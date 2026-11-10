@@ -492,7 +492,13 @@ def list_saved(request, filters: SavedEventListQuery = EVENT_LIST_QUERY):
         "The times are instants plus an IANA timezone; converting them for display is "
         "the client's job. `catalog_event_missing` marks a card whose event the "
         "catalog no longer holds — the explanation is still there, because a "
-        "composition is a fact about the day."
+        "composition is a fact about the day.\n\n"
+        "A card also carries the event's current `status` (`scheduled`, `postponed` or "
+        "`cancelled`) and whether it `is_sold_out`. These are read at request time, not "
+        "stored on the composition, so an event that changed after the composition "
+        "still says so. Both are `null` for a personal event — the user's own agenda "
+        "row has no lifecycle and no tickets — and `null` for a card whose event the "
+        "catalog no longer holds."
     ),
 )
 def read_digest_endpoint(request):
@@ -524,6 +530,12 @@ def read_digest_endpoint(request):
                 catalog_event_missing=card.catalog_event_missing,
                 conflict=card.conflict,
                 public_slug=card.public_slug,
+                # **The event's live state**, so the Pulse Card can say an event is
+                # cancelled or sold out (FR-53). Read at request time, not stored on
+                # the composition — and `None` for a personal card, which has no
+                # lifecycle to report.
+                status=card.status,
+                is_sold_out=card.is_sold_out,
             )
             for card in digest.cards
         ],

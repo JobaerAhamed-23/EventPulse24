@@ -253,3 +253,40 @@ def test_public_event_carries_no_raw_source_payload():
 
     assert not hasattr(found, "description")
     assert not hasattr(found, "payload")
+
+
+def test_a_sold_out_event_is_listed_with_the_flag():
+    """**The sold-out flag is on the public read, not only on the Detail Screen's read.**
+
+    `PublicEventDetail` has always carried it. The digest's Pulse Card needs the same
+    fact about the same event, and it joins the catalog through *this* read — so the
+    flag has to travel here too. Without it the card could not say an event is sold
+    out (FR-53), which is the whole point of the field.
+    """
+    EventFactory(start_time_utc=NOW + HOUR, is_sold_out=True)
+
+    items, total = list_public_events(now=NOW)
+
+    assert total == 1
+    assert items[0].is_sold_out is True
+
+
+def test_an_event_that_is_not_sold_out_says_so():
+    """The flag is a fact, not an absence. `False` and "we don't know" are different,
+    and a card that had to guess could show a sold-out badge on a live event."""
+    EventFactory(start_time_utc=NOW + HOUR)
+
+    items, _ = list_public_events(now=NOW)
+
+    assert items[0].is_sold_out is False
+
+
+def test_the_status_and_the_sold_out_flag_are_separate_facts():
+    """**An event can be `scheduled` and sold out at the same time.** Collapsing the two
+    into one "state" would make a card unable to say both — so they travel apart."""
+    EventFactory(start_time_utc=NOW + HOUR, status=Event.Status.SCHEDULED, is_sold_out=True)
+
+    items, _ = list_public_events(now=NOW)
+
+    assert items[0].status == "scheduled"
+    assert items[0].is_sold_out is True
