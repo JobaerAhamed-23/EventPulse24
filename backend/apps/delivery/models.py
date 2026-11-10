@@ -332,8 +332,14 @@ class ScheduledSend(UUIDv7Model):
     # it is written by value, and it does not depend on the event still existing.
     #
     # **Null for a row whose pre-shift instant is not a slot.** A `state_notice` has no
-    # slot and no Quiet-Hours arithmetic, so it has no `slot_at` — and the rewrite skips
-    # it, which is what it did before this column existed.
+    # slot: its send time is not an offset from the event's start, it is *now* — the moment
+    # propagation ran. Quiet Hours still apply to it (`shift_to_sendable` takes any aware
+    # instant; nothing in it is slot-specific), so the null here is about the slot alone.
+    #
+    # The rewrite skips such a row, and the reason is stronger than "nothing to shift": a
+    # state notice's pre-shift instant is the change itself, which is in the past and never
+    # moves, so a later preference change has nothing to recompute. Re-timing it against a
+    # new window would move a message whose moment has already passed.
     slot_at = models.DateTimeField(null=True, blank=True)
     # **Already shifted for Quiet Hours** (AD-7): this is the true send time, computed at
     # minting. The sweep must never re-check it — a send deferred twice is a send that never
@@ -416,6 +422,148 @@ class ScheduledSend(UUIDv7Model):
         # The key and the status — never the recipient, which is not stored here anyway, and
         # never anything that would make this line PII (AD-13).
         return f"{self.kind} {self.status} due {self.due_at.isoformat()}"
+
+
+class StateChangeNotice(UUIDv7Model):
+    """One calm correction, raised once, for one user and one catalog state change (FR-54).
+
+    **The notice is the record; the email is one of its two deliveries.** FR-54 asks for
+    "in-app **+** email", and the in-app half outlives the send: the digest strip is still
+    dismissible after the mail has gone, and is still the only surface left when a mute or
+    the daily cap stops the mail entirely. A `SCHEDULED_SEND` cannot be this row — it is the
+    send ledger, swept continuously on `(due_at, status)`, and its vocabulary is `pending`
+    / `sent` / `cancelled` / `failed`, which has no way to say *seen*. Hanging `event_id`,
+    `change_kind`, `seen_at` and `dismissed_at` off it would also widen the hottest table in
+    the schema for columns one of its five kinds would use.
+
+    **"Never repeats" is about retries, not about second events.** FR-54 says both "one-time
+    per event; never repeats" and "at most one per event per day" — and taken literally the
+    first makes the second meaningless, since "per day" presumes there can be a second day.
+    Its own four consequence bullets expect distinct notices for cancel, move, relocate and
+    sold-out. So uniqueness here is per **state change**, which is exactly what AD-7's send
+    key already says (`user_id · state_notice · state_change_id`), and the repeat being
+    forbidden is a propagation retried after a partial run. The unique constraint below is
+    that rule, held by the database rather than by whichever service remembers to check.
+
+    **The daily cap is a separate rule and lives in the write path**, not in the key. It
+    cannot be in the key: re-keying on `(event, local_date)` would make a cancellation at
+    14:00 collide with a sold-out minted at 09:00 and be dropped as a duplicate — losing the
+    one message FR-54 most requires. And it is not protecting against a rare burst.
+    `ingestion.event_writes` appends **one `EVENT_STATE_CHANGE` per kind** in a single poll,
+    so a source update that moves the time *and* marks it sold out already produces two
+    notices seconds apart. `services.state_notices` resolves them with
+    `domain.lifecycle.PRECEDENCE`, the ordering the tree already has.
+
+    **`local_date` is stored, not recomputed.** The cap is "per event per day", and a day is
+    the user's own — so it has to be the local date at the moment the notice was raised. A
+    date recomputed at read time would make the cap depend on when it was asked, and would
+    move under a user who changes zone. `DigestPreference` stores a local date for the same
+    reason. The accepted cost is that a zone change can allow or suppress one extra notice
+    around it.
+
+    **`change_kind` is `domain.lifecycle.ChangeKind`'s vocabulary, carried through.** Not a
+    second enum: the kind is decided by `classify_change` and the screens already follow the
+    rule that the vocabulary is the backend's. A copy here would be free to drift from the
+    one that does the deciding.
+
+    **A catalog id by value, with no FK** (AD-3): `event_id` and `state_change_id` both name
+    rows in the `catalog` schema, which this table may not relate to. The same shape
+    `SAVED_EVENT` uses.
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The **catalog** Event's id, by value. No FK: this schema may not relate to `catalog`.
+    event_id = models.UUIDField()
+    # The `EVENT_STATE_CHANGE` this notice was raised for, by value. What makes the notice
+    # unique, and what AD-7's send key is minted from.
+    state_change_id = models.UUIDField()
+    # A `domain.lifecycle.ChangeKind` value. Not re-declared here: see the class docstring.
+    change_kind = models.CharField(max_length=20)
+    # The version the change carried. AD-17's gate compares against it, so a retried or
+    # out-of-order propagation can neither double-raise nor let an older change win.
+    event_version = models.PositiveIntegerField()
+    # The user's local date when this was raised — what the one-per-day cap is keyed on.
+    local_date = models.DateField()
+    # **Put in front of the user.** Set when the Detail banner or the digest strip renders
+    # it. This is what makes a notice stop being *new*; it is not an act by the user.
+    seen_at = models.DateTimeField(null=True, blank=True)
+    # **Closed by the user.** An act, which is why it is not the same column as `seen_at`:
+    # a user who opens the Detail screen has seen the notice and dismissed nothing, and
+    # treating that as a dismissal would empty a strip they never looked at.
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # "Never repeats" (FR-54), held here rather than in a service. One notice per
+            # user per state change; a retried propagation adds nothing.
+            models.UniqueConstraint(
+                fields=["user_id", "state_change_id"], name="state_notice_change_uq"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(event_version__gte=1), name="state_notice_version_positive_ck"
+            ),
+        ]
+        indexes = [
+            # The one-per-day cap's lookup, and the digest strip's read: both are "this
+            # user, this day".
+            models.Index(fields=["user_id", "local_date"], name="state_notice_user_date_idx"),
+            # The Detail banner: "this user, this event".
+            models.Index(fields=["user_id", "event_id"], name="state_notice_user_event_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The kind and the event — never a title or an address (AD-13).
+        return f"{self.change_kind} notice for {self.event_id}"
+
+
+class EventNoticeMute(UUIDv7Model):
+    """One user silencing FR-54's notices for one event (FR-55).
+
+    **Its own table, although FR-11's per-event reminder opt-out lives on `REMINDER_PLAN`.**
+    That precedent looks like it should transfer and does not, for two reasons: a saved
+    public event usually has **no plan at all** — `save_event` does not attach one, which is
+    why `save_plan_slots` needs its attach branch — and an unsave now *deletes* the plan, so
+    a mute stored there would vanish with the save and silently un-mute on a re-save. A
+    preference that disappears when the user changes their mind about something else is not
+    a preference.
+
+    Not on `NOTIFICATION_PREFERENCE` either: that is one row per user, and this is a
+    per-event fact. Its own docstring already draws that line — the Pulse Ping's opt-out is
+    per user and lives there; a per-event scope lives beside the event.
+
+    **There is no global off switch**, deliberately (decided at capture, 2026-11-04).
+    FR-54's notices are the mechanism that keeps reminders *correct*: a user who silenced
+    them globally would be opting into wrong reminders without being told that is what they
+    were doing. A per-event mute is a choice about one event the user is looking at.
+
+    **A mute silences the correction, not the event.** Reminders still fire and the event
+    still places in the digest; only the "this changed" message stops. And a **terminal**
+    change — cancelled or superseded — is raised anyway (`services.state_notices`): a mute
+    means "stop telling me about tweaks to this event", and reading it as "do not tell me it
+    is off" would turn a preference into a trap, with FR-55 having already removed the event
+    from the digest so that no second channel catches it.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    user_id = models.UUIDField()
+    # The **catalog** Event's id, by value. No FK across the AD-3 wall.
+    event_id = models.UUIDField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            # Muting twice is the same mute. The command is idempotent on top of this.
+            models.UniqueConstraint(fields=["user_id", "event_id"], name="event_notice_mute_uq"),
+        ]
+
+    def __str__(self) -> str:
+        return f"notices muted for {self.event_id}"
 
 
 class DeliveryAuditEntry(AuditEntry):

@@ -238,3 +238,168 @@ this file is what covers the `unsave_event` change this item makes.
 `tests/e2e/test_timeline_and_conflict_proof.py` — **8 failures**, same defect class, same
 one-line fix. Left alone per the approved plan; it belongs to `timeline-and-conflicts` and
 still blocks CI on any branch.
+
+---
+
+## Work Item: state-change-notice-model
+
+### Test Results
+
+| Suite | Result |
+|---|---|
+| `tests/delivery/test_state_notices.py` | **44 passed** (new file) |
+| `tests/delivery/test_notice_mutes.py` | **14 passed** (new file) |
+| `lint-imports` | **19 contracts kept, 0 broken** |
+| `ruff check` / `ruff format` | clean |
+| `manage.py check` | no issues |
+| `makemigrations --check` | no changes detected — model and migration agree |
+| `tests/architecture/` | **839 passed** |
+| **Full backend suite** | **5395 passed, 8 failed** — all 8 pre-existing e2e |
+
+**58 tests added**, plus one rewritten (see below).
+
+### Tests proven able to fail
+
+Twenty-two mutations, each applied, run, and reverted. **All twenty-two caught** — nineteen
+on the first pass, the other three after the correction N9 forced.
+
+| Mutation | Caught by |
+|---|---|
+| N1 cap uses `<` instead of `<=` | `test_an_equally_important_change_the_same_day_raises_nothing` |
+| N2 cap never suppresses | `test_a_less_important_change_the_same_day_raises_nothing` |
+| N3 version gate `>` instead of `>=` | `test_the_same_version_again_raises_nothing` |
+| N4 mute ignored entirely | `test_a_muted_event_raises_nothing` |
+| N5 mute also silences terminal changes | `test_a_terminal_change_reaches_a_muted_event` |
+| N6 terminal changes capped like any other | `test_a_terminal_change_overrides_the_days_cap` |
+| N7 `postponed` counts as terminal | `test_postponed_is_not_terminal` |
+| N8 superseded notice's email left pending | `test_replacing_cancels_the_superseded_email` |
+| N9a a duplicate crashes instead of answering | `test_the_callers_transaction_survives_a_refused_duplicate` |
+| N9b catch moved inside the transaction | `test_a_refused_duplicate_does_not_leave_the_caps_deletions_behind` |
+| N10 local date read in UTC | `test_the_day_is_the_users_day_not_the_servers` |
+| N11 unknown kind ranks most important | `test_an_unknown_change_kind_outranks_nothing_and_does_not_raise` |
+| N12 email on the bulk stream | `test_the_email_is_transactional_with_no_unsubscribe_url` |
+| N13 Quiet Hours not applied | `test_quiet_hours_defer_the_notice` |
+| N14 lead margin removed | `test_a_notice_is_not_deferred_past_the_point_of_being_useful` |
+| N15 unmute reports a change it did not make | `test_unmuting_something_never_muted_reports_no_change` |
+| N16 `muted_event_ids` ignores the user | `test_muted_event_ids_is_scoped_to_the_user` |
+| N17 dismiss ignores the user | `test_dismissing_another_users_notice_does_nothing` |
+| N18 `mark_seen` overwrites an earlier sighting | `test_seen_records_the_first_sighting_not_the_last` |
+| N19 the strip ignores dismissal | `test_dismissing_removes_it_from_the_strip` |
+| N20 the banner respects dismissal | `test_a_dismissed_notice_still_shows_on_its_own_event` |
+
+### Acceptance Criteria Validation
+
+| Criterion | Status | Note |
+|---|---|---|
+| A notice entity in `personal`, `delivery`-owned, recording event, user, kind, version, seen | met | `StateChangeNotice`; "seen" is **two** columns — see corrections |
+| One notice per event per user, never repeated; design states what a *different* kind does | met | Uniqueness is per **state change** (D2), held by `state_notice_change_uq`; a different kind is the cap's business, not this rule's |
+| At most one notice per event per day, enforced in the write path and tested at the boundary | met | `PRECEDENCE`-resolved; `<=` boundary tested in both directions |
+| The email is on the transactional stream, explicitly | met | `ScheduledSend.stream` has no default (AD-20); asserted, and N12 proves the assertion bites |
+| No RFC 8058 unsubscribe URL, and none implied | met | `mint_state_notice` sets none; `render_state_notice` already returns `unsubscribe_url=None` |
+| Quiet Hours apply with one exception; both branches tested, including an event starting inside the window | met | Margin is `REMINDER_SLOT_OFFSET["1hr"]`, reused not invented (D5) |
+| A per-event mute, settable and clearable; reminders and digest untouched | met | `EventNoticeMute`; `test_a_mute_does_not_touch_the_events_reminders` |
+| No global off switch, recorded as a decision | met | Recorded in `EventNoticeMute`'s docstring and `mutes.py`'s |
+| Raised by propagation, not by the sweep | met by construction | `raise_state_notice` is published and uncalled until `propagation-consumer` |
+| Tests: cap boundary; muted event whose reminders still fire; both sides of the Quiet-Hours exception; a repeated propagation raising exactly one | met | |
+
+**One AC is met differently than written**: "a muted event raises no notice and sends no
+email" holds for every change *except* a terminal one (D7), which was approved at Checkpoint 1
+and is tested from both sides.
+
+### Corrections made during execution
+
+**1. A guard that could never run.** `raise_state_notice` had a second step checking whether a
+notice for this `state_change_id` already existed. Mutation N9 survived, which exposed it as
+unreachable: step 1 refuses anything whose `event_version` is at or above the stored one, and
+a notice records the version of the change it came from — so a retry is always caught earlier.
+
+It was also pretending to a job it could not do. Two workers propagating one change for one
+user both pass a `SELECT`, because neither has committed. Only the unique constraint is
+atomic. The guard was removed; the insert now meets the constraint and its refusal is the
+answer.
+
+**2. A bug in that fix, caught by the follow-up mutation.** The `IntegrityError` was first
+caught by a savepoint around the insert alone. N9b showed what that costs: the cap runs
+*before* the insert and **deletes** the day's less important notices, cancelling their emails.
+With a savepoint around only the insert, the surrounding block still commits — so a refused
+duplicate would leave the user having lost a notice that was already raised and already due
+to send, in exchange for one that was never created. The catch moved outside the transaction
+so the whole block rolls back together.
+
+**3. A hand-built send key, caught while writing it.** `_supersede` originally filtered on
+`f"{user_id}:state_notice:{change_id}"` — a second spelling of AD-7's key. It would have
+cancelled nothing the day `send_keys` changed, silently, because a filter matching no rows
+raises nothing. It calls `state_notice_key` now.
+
+**4. `_zone_for` published rather than copied.** The cap needs the user's zone to date a
+notice. Two private copies of that fallback already existed (`scheduled_sends`,
+`reminder_plan_read`); a third would have been a third place for it to drift. Renamed to
+`zone_for` and exported; two call sites.
+
+**5. Two Quiet-Hours comments corrected (D5a).** `models.py` and `scheduled_sends.py` both
+said a `state_notice` has *"no slot and no Quiet-Hours arithmetic"*. The first half is right
+and the second is not — `shift_to_sendable` takes any aware instant, and nothing in it is
+slot-specific. This is the sentence that made the capture decision look like a contradiction
+with the shipped code. Both now say what is actually true: no *slot*, and the rewrite skips
+the row because the unshifted instant is the change itself, which is in the past and never
+moves.
+
+### Four failures the targeted runs could not have caught
+
+The per-file runs were green; the full suite was not. All four were in
+`tests/architecture/` or were tree-wide guards, which is exactly the class a targeted run
+cannot see.
+
+**1. AD-7 broken, and the rule was right.** `state_notices._supersede` wrote `SCHEDULED_SEND`
+directly. The detector is deliberately coarse — importing the model attributes *every* write
+in the module to it, on the reasoning that "a module that does not import the model cannot be
+writing it". The fix is what AD-7 wants anyway: the cancellation moved to the schedule's owner
+as `scheduled_sends.cancel_state_notice_sends`, and `state_notices` no longer imports
+`ScheduledSend` at all. One module decides which notices lose to a more important change;
+another owns what is due.
+
+**2. Two unowned tables.** `TABLE_OWNERS` did not claim `delivery_statechangenotice` or
+`delivery_eventnoticemute`. Both registered, with the reasoning recorded: the mute is set from
+`personalization`'s Detail screen, but the preference is about a *delivery*, so it lives beside
+the notice it silences.
+
+**3. A guard that had done its job.** `test_the_state_notice_is_not_minted_by_the_delivery_app`
+existed because the template was written an intent ahead of its trigger. This item fills that
+gap, so the test was rewritten as its inverse —
+`test_the_state_notice_is_minted_in_exactly_one_place` — keeping the invariant that actually
+mattered (one minting path, AD-7) now that the feature exists. Deleting it would have dropped
+a real guard along with the obsolete one.
+
+**4. Two stale docstrings.** `email_templates` claimed "Rendered but not minted — FR-53/54 is
+the next intent's work" in two places and in its module table. Corrected, and
+`render_state_notice` now records that its subject is still `Update: {title}` rather than
+FR-54's four verbatim ones — so item 7 inherits a note instead of a surprise.
+
+### Investigations that settled the two open questions
+
+**Quiet Hours — the decision was right, the docstring was wrong.** See correction 5. No
+behaviour was in conflict; one comment overreached.
+
+**FR-54's cap cannot live in the send key, and it is not an edge case.**
+`ingestion/services/event_writes.py:245` appends **one `EVENT_STATE_CHANGE` per kind** inside
+a single poll, versions `v+1..v+k`. A source update that moves an event's time *and* marks it
+sold out already produces two notices seconds apart — so the cap is the common case for any
+multi-field change, not a rare burst. Re-keying on `(event, local_date)` would make a
+cancellation collide with a sold-out minted earlier the same day and be dropped as a
+duplicate. The key stays AD-7's; the cap is a mint-time rule resolved by `PRECEDENCE`.
+
+### Amendments raised
+
+- **PRD (FR-54):** "The notification is one-time per event; never repeats" contradicts its own
+  testable bullet "at most one per event per day", which presumes repeats, and its four
+  consequence bullets, which expect distinct notices. Should read "one-time per state change".
+- **PRD (FR-54), D7:** a terminal change overriding the cap and the mute exceeds the literal
+  wording. Deliberate, bounded at two emails per event per day, approved at Checkpoint 1.
+
+### Carried forward
+
+- **FR-54's four subjects are verbatim and `EventPulse24: `-prefixed**; `render_state_notice`
+  currently produces `Update: {title}`. Item 7 (`notice-composition-and-email`) is an edit,
+  not a fresh template pass.
+- **FR-54 names no subject for `postponed`, `reinstated` or `superseded`**, which `ChangeKind`
+  has. Item 7 needs three more written, or three kinds mapped onto the existing four.

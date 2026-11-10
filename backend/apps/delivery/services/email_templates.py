@@ -19,7 +19,7 @@ turns facts into words.
 |---|---|---|---|
 | reminder | transactional | **that event's reminders** | yes |
 | digest | **bulk** | **the Pulse Ping** | yes |
-| state notice | transactional | — | **no** — FR-53/54 is the next intent |
+| state notice | transactional | — | yes — `scheduled_sends.mint_state_notice` |
 
 **The state-change notice is rendered but never minted, and that is deliberate.** The work
 item says to write it now because it costs little and turns the next intent into an API and a
@@ -142,8 +142,8 @@ class DigestFacts:
 class StateNoticeFacts:
     """What a state-change notice quotes.
 
-    **Rendered but not minted** — FR-53/54 is the next intent's work. See the module
-    docstring.
+    Minted by `scheduled_sends.mint_state_notice` and raised by
+    `state_notices.raise_state_notice` (FR-54).
     """
 
     title: str | None
@@ -244,9 +244,12 @@ def render_digest(facts: DigestFacts, *, to: str) -> EmailMessage:
 def render_state_notice(facts: StateNoticeFacts, *, to: str) -> EmailMessage:
     """Render a state-change notice.
 
-    **Rendered but not minted.** FR-53/54 is the next intent's work — this body exists so
-    that intent is an API and a trigger rather than a fresh template pass. See the module
-    docstring, so this is not mistaken for dead code.
+    **The subject is not yet FR-54's.** FR-54 names four verbatim subjects, each prefixed
+    `EventPulse24: ` — "was cancelled", "was moved to [new date]", "moved to [new
+    location]", "is sold out" — and this still produces `Update: {title}`. It also names no
+    subject for `postponed`, `reinstated` or `superseded`, which `ChangeKind` has.
+    `notice-composition-and-email` is where both are settled; recorded here so the gap is
+    not mistaken for a decision.
 
     **No unsubscribe URL.** A transactional message carries none (AD-20), and a state
     notice is not a thing a user subscribes to.

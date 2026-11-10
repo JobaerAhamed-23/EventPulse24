@@ -454,22 +454,37 @@ def test_the_state_notice_says_what_changed_and_what_it_was():
     assert "Friday 14 November, 18:00" in message.text_body
 
 
-def test_the_state_notice_is_not_minted_by_the_delivery_app():
-    """**Rendered but not minted** — FR-53/54 is the next intent's work.
+def test_the_state_notice_is_minted_in_exactly_one_place():
+    """The inverse of the guard this replaces, and the same invariant underneath.
 
-    The body exists so that intent is an API and a trigger rather than a fresh template
-    pass, and this test says so: nothing outside the model that declares the kind may
-    mint a `state_notice` send yet.
+    Until `state-change-notice-model`, nothing was allowed to mint a `state_notice` at
+    all: the template was written ahead of its trigger, and a test said so to keep the
+    gap from being mistaken for dead code. That gap is now filled, so the guard is
+    rewritten rather than deleted — what it was really protecting is that there is **one**
+    minting path, and that survives the feature existing.
+
+    AD-7 names `scheduled_sends` the schedule's single writer. A second module naming the
+    kind is a second place a notice could be scheduled from, and the two would drift —
+    which is precisely what `tests/architecture/test_schedule_writes.py` guards for every
+    kind. This test keeps the list of files for *this* kind down to the two that have a
+    reason to name it.
     """
     from pathlib import Path
 
     backend = Path(__file__).resolve().parents[2]
-    # The declaration itself is allowed in exactly one file — the model that declares it.
-    declaration = backend / "apps" / "delivery" / "models.py"
-    offenders = [
-        str(path.relative_to(backend))
+    #: The model declares the kind; the minting service is AD-7's single writer of it.
+    allowed = {
+        Path("apps/delivery/models.py"),
+        Path("apps/delivery/services/scheduled_sends.py"),
+    }
+    namers = {
+        path.relative_to(backend)
         for path in (backend / "apps").rglob("*.py")
-        if path != declaration and "STATE_NOTICE" in path.read_text()
-    ]
+        if "STATE_NOTICE" in path.read_text()
+    }
 
-    assert offenders == [], f"A state notice must not be minted yet: {offenders}"
+    assert namers == allowed, (
+        "A `state_notice` send is minted in exactly one place (AD-7). "
+        f"Unexpected: {sorted(str(p) for p in namers - allowed)}; "
+        f"missing: {sorted(str(p) for p in allowed - namers)}"
+    )
