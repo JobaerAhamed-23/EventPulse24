@@ -115,10 +115,9 @@ def raise_state_notice(
 ) -> bool:
     """Raise one FR-54 notice for one user and one catalog state change. True if it did.
 
-    **Not wired to `propagate_state_change` yet** — that consumer is the next work item
-    (`propagation-consumer`). This is published and uncalled on purpose, the same shape
-    `scheduled_sends.apply_lifecycle_change` already uses, so it reads as deliberate rather
-    than as dead code.
+    **Called by `worker.propagation`**, the AD-17 consumer: the notice is raised last, after
+    the snapshot and the sends have both been made true, because it describes a state both
+    halves have made real.
 
     Returns `False` for every suppression — already raised, muted, capped, or an older
     version — so the caller can count what it actually did without inferring it.

@@ -5,7 +5,9 @@ re-enqueues the ones nobody has propagated.
 the Celery app `config/__init__` loads. `_send` is the single seam; tests replace it.
 """
 
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from celery import current_app
@@ -16,6 +18,70 @@ from shared.constants import OUTBOX_RECONCILE_AFTER, OUTBOX_RECONCILE_BATCH
 from shared.db import CATALOG
 
 PROPAGATE_TASK = "worker.tasks.propagate_state_change"
+
+
+@dataclass(frozen=True)
+class StateChangeFacts:
+    """One `EVENT_STATE_CHANGE` as plain data.
+
+    Deliberately not the model, matching `catalog_read.PublicEvent`: the consumer of this
+    outbox is `worker`, which may not import `apps.ingestion.models` (AD-2), and a caller
+    holding the model could write it — `ingestion` is the sole writer of `catalog` (AD-4).
+
+    `before` and `after` carry **only the facts this kind changed** (`event_writes._kind_facts`),
+    so `after` has `start_utc` for a `time_moved` and nothing of the sort for a `sold_out`.
+    The propagation reads the new time from here rather than from the live Event, because a
+    poll appends one change per kind and the live Event already holds the *last* kind's
+    facts — pairing this change's version with those times would be wrong whenever more than
+    one change is in flight.
+    """
+
+    id: UUID
+    event_id: UUID
+    kind: str
+    event_version: int
+    before: dict[str, Any]
+    after: dict[str, Any]
+    occurred_at: datetime
+    propagated_at: datetime | None
+
+
+def get_state_change(state_change_id: UUID) -> StateChangeFacts | None:
+    """One state change as plain data, or None when there is no such row.
+
+    None rather than an exception: a task holding an id for a row that no longer exists has
+    nothing to do, and that is not an error worth waking anyone for.
+    """
+    row = EventStateChange.objects.using(CATALOG).filter(pk=state_change_id).first()
+    if row is None:
+        return None
+    return StateChangeFacts(
+        id=row.id,
+        event_id=row.event_id,
+        kind=row.kind,
+        event_version=row.event_version,
+        before=dict(row.before),
+        after=dict(row.after),
+        occurred_at=row.occurred_at,
+        propagated_at=row.propagated_at,
+    )
+
+
+def count_unpropagated_since(*, cutoff: datetime) -> int:
+    """How many state changes have been unpropagated since before `cutoff` (AD-17).
+
+    **Published for the worker's alarm, because `EventStateChange` is append-only.** There is
+    no attempts counter to bound a poisoned change with — `append_only_mutable` is
+    `{"propagated_at"}` and the trigger binds every role — so the bound is on *silence*: a
+    change nobody can propagate is surfaced rather than timed out. Setting `propagated_at`
+    to stop the churn would claim a propagation that never happened and strand that user on
+    the old state forever.
+    """
+    return (
+        EventStateChange.objects.using(CATALOG)
+        .filter(propagated_at__isnull=True, occurred_at__lt=cutoff)
+        .count()
+    )
 
 
 def _send(task_name: str, args: list[str]) -> None:

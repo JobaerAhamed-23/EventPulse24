@@ -937,6 +937,60 @@ LIFECYCLE_SEND_BEHAVIOUR = {
 }
 
 
+class LifecyclePersonalBehaviour(StrEnum):
+    """What an event state change does to a user's **saved event** (AD-17, AD-21)."""
+
+    #: Re-stamp the snapshot's time and version, and re-judge its conflict pairs.
+    RESTAMP = "restamp"
+    #: The event is not happening: bump the version and close the pairs.
+    CANCEL = "cancel"
+    #: Live again: bump the version. The pairs a cancellation closed stay closed (AD-21 D24).
+    REINSTATE = "reinstate"
+    #: Nothing the snapshot stores changed.
+    NONE = "none"
+
+
+# AD-17's "what each change does", mapped for `personalization`. Keyed by
+# `EventStateChange.Kind` values, by value, for the same reason its `delivery` sibling is:
+# `shared` is below `apps` and cannot import the enum.
+#
+# **It is deliberately not the same shape as `LIFECYCLE_SEND_BEHAVIOUR`.** `SAVED_EVENT`
+# stores a start, an end and a version; `SCHEDULED_SEND` stores a due time computed from
+# them. So `sold_out` and `detail_changed` — which `delivery` must still act on, because a
+# held send needs its version re-stamped to be released — change *nothing* the snapshot
+# holds. `event_writes._kind_facts` does not even record a time for those kinds.
+#
+# Calling the snapshot updater for them would bump the version and then re-run
+# `reconcile_pairs_for_side` and `detect_conflicts` for an overlap that cannot have moved.
+# Letting the snapshot's version lag behind the catalog's is safe because every gate in
+# this tree is `>` and not `==`: a snapshot at v1 that skipped a `sold_out` at v2 still
+# accepts a `time_moved` at v3.
+#
+# **Every kind is mapped explicitly and there is no default**, so a new kind added in
+# `ingestion` fails a test rather than silently doing nothing to anyone's calendar.
+LIFECYCLE_PERSONAL_BEHAVIOUR = {
+    "time_moved": LifecyclePersonalBehaviour.RESTAMP,
+    "postponed": LifecyclePersonalBehaviour.RESTAMP,
+    "reinstated": LifecyclePersonalBehaviour.REINSTATE,
+    "cancelled": LifecyclePersonalBehaviour.CANCEL,
+    "superseded": LifecyclePersonalBehaviour.CANCEL,
+    "sold_out": LifecyclePersonalBehaviour.NONE,
+    "detail_changed": LifecyclePersonalBehaviour.NONE,
+}
+
+# AD-17: how long a state change may sit unpropagated before it is reported as stuck.
+#
+# **An alarm, not a timeout.** `EventStateChange` is append-only — `propagated_at` is its one
+# mutable column — so there is no attempts counter to retire a poisoned change with, and
+# marking it propagated to stop the churn would claim a propagation that never happened and
+# leave that user on the old state forever. What is bounded here is how long the failure can
+# stay quiet.
+#
+# Comfortably longer than `OUTBOX_RECONCILE_AFTER`, which re-offers an unpropagated change
+# after 5 minutes: a change outliving 30 minutes is failing rather than merely waiting.
+PROPAGATION_ALARM_AFTER = timedelta(minutes=30)
+
+
 # Schema.org's vocabulary for the public event page's structured data (FR-26, AD-12).
 #
 # These strings are Schema.org's, not ours, and they live here so they exist exactly once

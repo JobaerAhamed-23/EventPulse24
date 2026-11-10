@@ -21,10 +21,11 @@ turns facts into words.
 | digest | **bulk** | **the Pulse Ping** | yes |
 | state notice | transactional | — | yes — `scheduled_sends.mint_state_notice` |
 
-**The state-change notice is rendered but never minted, and that is deliberate.** The work
-item says to write it now because it costs little and turns the next intent into an API and a
-trigger rather than a fresh template pass. It is **not dead code**, and this docstring is the
-place that says so — the next implementer should not "clean it up".
+**The state-change notice is rendered *and* minted.** `scheduled_sends.mint_state_notice`
+mints it and `state_notices.raise_state_notice` raises it, which is what
+`worker.propagation` calls — the AD-17 consumer. Its subject is still `Update: {title}`;
+FR-54's four verbatim subjects belong to the notice-composition item, which is an edit to
+this table rather than a fresh template pass.
 
 ---
 

@@ -48,10 +48,14 @@ duplicate sends with no error. Four names, four behaviours. `reschedule_pending_
 **no code path that creates a row** — a structural test asserts that, so "a settings change
 duplicated my reminders" is unreachable rather than merely discouraged.
 
-**`propagate_state_change` is deliberately not wired to this module yet.** AD-17 sets
-`propagated_at` only once *every* owner has applied a change, and the `personalization` half —
-the `SAVED_EVENT` snapshot and the conflict re-evaluation — belongs to the FR-53/54 intent.
-`apply_lifecycle_change` is built, published and tested here, ready for that intent to call.
+**`apply_lifecycle_change` is the `delivery` half of AD-17's propagation.** `worker.propagation`
+calls it, after the `personalization` half has run, because that order is the only survivable
+one: a crash between the halves leaves sends carrying an old version, and the sweep's guard
+*holds* those rows rather than sending them — whereas the reverse order would leave a user's
+reminders re-minted for a new time while their Timeline still showed the old one.
+
+It writes only `delivery` rows, and it is version-gated like every other published service
+here: a change whose version is not newer than what the row already holds changes nothing.
 (Decided with the user 2026-10-31; design doc D8.)
 """
 
