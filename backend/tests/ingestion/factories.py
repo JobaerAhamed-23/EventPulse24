@@ -18,6 +18,7 @@ from apps.ingestion.models import (
     EventStateChange,
     ExtractedRecord,
     IngestionAuditEntry,
+    ReviewItem,
     Source,
     TosReview,
     Venue,
@@ -143,6 +144,17 @@ class EventStateChangeFactory(CatalogFactory):
     after = {"title": "Renamed"}
     actor_kind = "system"
     actor_label = "ingest_pipeline"
+
+
+class ReviewItemFactory(CatalogFactory):
+    """An open `in_review` item on its own Event. Tests that need a report or a source item
+    pass `reason`, the target and (for a report) `due_at` and a tally explicitly."""
+
+    class Meta:
+        model = ReviewItem
+
+    reason = ReviewItem.Reason.IN_REVIEW
+    event = factory.SubFactory(EventFactory)
 
 
 class IngestionAuditEntryFactory(CatalogFactory):

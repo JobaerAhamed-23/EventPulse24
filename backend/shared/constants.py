@@ -22,6 +22,10 @@ TZ_INFERENCE_CONFIDENCE_DIGEST = Decimal("0.70")
 # gate) it publishes with `tz_review_pending` set.
 TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH = Decimal("0.90")
 
+# FR-57: a user-reported ReviewItem is due this long after its *first* report (review-queue-model
+# D8). The other reasons carry no per-item deadline: "reviewed at least daily" is a team cadence.
+REVIEW_SLA_USER_REPORTED = timedelta(hours=24)
+
 # FR-60 tz-inference scores and DST caps (domain/timezones.py). Tuning anchors, not truths (AD-8):
 # re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
 TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim

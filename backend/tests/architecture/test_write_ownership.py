@@ -91,6 +91,10 @@ TABLE_OWNERS = {
     # written only by `services/revalidation.py`. The frontend owns no table at all; it
     # receives the signal and rebuilds from the catalog's own public read.
     "ingestion_revalidationrequest": "ingestion",
+    # AD-16: `ingestion` owns the FR-57 review queue (AD-14: `editorial` owns nothing and
+    # acts through ingestion commands). Written only by `services/review_queue.py` and the
+    # editorial resolution commands.
+    "ingestion_reviewitem": "ingestion",
     # AD-16: `delivery` owns the reminder plan. It is here because the check covers
     # every app that owns tables, not only the three this intent added to — a table
     # with no owner is a table nobody is responsible for, and the map is only

@@ -12,9 +12,12 @@ the feed:
 * `config/local_feeds.fixtures.json` — recorded fixtures for the fake fetch adapter, so CI
   never touches the network.
 
-The `editorial` group holds exactly the twelve ingestion permissions the editorial role needs:
-add/change/view on Source, Venue and TosReview, and view on Event, EventStateChange and
-IngestionAuditEntry. Delete is deliberately absent: sources are paused, never deleted (FR-13).
+The `editorial` group holds exactly the fourteen ingestion permissions the editorial role needs:
+add/change/view on Source, Venue and TosReview; view on Event, EventStateChange and
+IngestionAuditEntry; and change/view on ReviewItem, the FR-57 queue. Delete is deliberately
+absent: sources are paused, never deleted (FR-13), and a review item is never deleted either.
+There is no `add_reviewitem`: items are raised by commands, never typed in by hand
+(review-queue-model D9).
 """
 
 import json
@@ -53,6 +56,7 @@ EDITORIAL_GRANTS: dict[str, tuple[str, ...]] = {
     "event": ("view",),
     "eventstatechange": ("view",),
     "ingestionauditentry": ("view",),
+    "reviewitem": ("change", "view"),
 }
 
 _DURATION_UNITS = {"D": 86400.0, "H": 3600.0, "M": 60.0, "S": 1.0}
@@ -160,7 +164,7 @@ class Command(BaseCommand):
         return user
 
     def _editorial_group(self) -> Group:
-        """The `editorial` group, holding exactly the twelve granted permissions."""
+        """The `editorial` group, holding exactly the fourteen granted permissions."""
         group = Group.objects.using(PERSONAL).filter(name=GROUP_NAME).first()
         if group is None:
             group = Group.objects.using(PERSONAL).create(name=GROUP_NAME)

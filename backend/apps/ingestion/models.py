@@ -610,3 +610,192 @@ class RevalidationRequest(UUIDv7Model):
                 name="revalidation_open_idx",
             ),
         ]
+
+
+class ReviewItem(UUIDv7Model):
+    """One entry in the FR-57 editorial review queue (design: review-queue-model D1-D12).
+
+    **A target is an Event or a Source, never both (D1).** `user_reported` and `in_review` are
+    about an Event; `source_reliability` (FR-16 escalation) is about a Source. Both are
+    `catalog` rows, so the references are real foreign keys (AD-3 only forbids relations
+    across the schema wall).
+
+    **At most one open item per (target, reason) (D2).** A second raise bumps the open row's
+    tallies and `last_raised_at` (`services.review_queue.raise_review_item`); a raise after
+    the item closed opens a new row, so a verdict is history and is never re-opened.
+
+    **No user identity (D4, AD-3).** A report reaches this row as a category tally only. The
+    reporter lives in `personal.EventReport`; even the audit row for a report-raised item is
+    written as a system actor.
+
+    **A resolved row is immutable, and a row is never deleted (D7)**: the
+    `catalog.guard_review_item` trigger in migration 0008 holds both, and fixes `FIXED_FIELDS`
+    on an open row too. Delete is allowed only inside a retention purge.
+    """
+
+    class Reason(models.TextChoices):
+        USER_REPORTED = "user_reported"  # FR-59: raised by an EventReport; 24h SLA
+        IN_REVIEW = "in_review"  # the event is quarantined (publication_status = in_review)
+        SOURCE_RELIABILITY = "source_reliability"  # FR-16 escalation; targets a Source
+
+    class Status(models.TextChoices):
+        OPEN = "open"
+        RESOLVED = "resolved"
+
+    class Resolution(models.TextChoices):
+        APPROVED = "approved"  # event items, by an editor
+        EDITED = "edited"  # event items, by an editor
+        REJECTED = "rejected"  # event items, by an editor
+        DISMISSED = "dismissed"  # source items, by an editor: no action on the source
+        WITHDRAWN = "withdrawn"  # either, by the system: the target left review another way
+
+    class ReportCategory(models.TextChoices):
+        """FR-59's four categories, the one vocabulary `EventReport` also uses (D3)."""
+
+        WRONG_DATE_TIME = "wrong_date_time"
+        WRONG_VENUE = "wrong_venue"
+        DOES_NOT_EXIST = "does_not_exist"
+        DUPLICATE = "duplicate"
+
+    # The column each category's tally lives in (D3). `report_count` is their sum.
+    REPORT_FIELDS: ClassVar[dict[str, str]] = {
+        ReportCategory.WRONG_DATE_TIME: "reports_wrong_date_time",
+        ReportCategory.WRONG_VENUE: "reports_wrong_venue",
+        ReportCategory.DOES_NOT_EXIST: "reports_does_not_exist",
+        ReportCategory.DUPLICATE: "reports_duplicate",
+    }
+    # Fixed for the row's whole life, open or not (D7). The trigger names the same columns;
+    # tests/ingestion/test_review_item_model.py compares the two.
+    FIXED_FIELDS: ClassVar[tuple[str, ...]] = ("reason", "event", "source", "raised_at")
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    reason = models.CharField(max_length=24, choices=Reason.choices)
+    event = models.ForeignKey(
+        Event, on_delete=models.PROTECT, null=True, blank=True, related_name="review_items"
+    )
+    source = models.ForeignKey(
+        Source, on_delete=models.PROTECT, null=True, blank=True, related_name="review_items"
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    resolution = models.CharField(max_length=16, choices=Resolution.choices, blank=True, default="")
+
+    reports_wrong_date_time = models.PositiveIntegerField(default=0)
+    reports_wrong_venue = models.PositiveIntegerField(default=0)
+    reports_does_not_exist = models.PositiveIntegerField(default=0)
+    reports_duplicate = models.PositiveIntegerField(default=0)
+
+    raised_at = models.DateTimeField(default=timezone.now)
+    last_raised_at = models.DateTimeField(default=timezone.now)
+    # FR-57's 24h SLA, from the first report; only `user_reported` has one (D8).
+    due_at = models.DateTimeField(null=True, blank=True)
+
+    # Who resolved it, by value (`shared.actor.Actor` rules, D5). Empty while open.
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by_kind = models.CharField(max_length=16, blank=True, default="")
+    resolved_by_id = models.UUIDField(null=True, blank=True)
+    resolved_by_label = models.CharField(max_length=64, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def report_count(self) -> int:
+        return sum(getattr(self, column) for column in self.REPORT_FIELDS.values())
+
+    class Meta:
+        constraints = [
+            # D1: the reason decides the target, and exactly one target is set.
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        reason__in=["user_reported", "in_review"],
+                        event__isnull=False,
+                        source__isnull=True,
+                    )
+                    | Q(reason="source_reliability", source__isnull=False, event__isnull=True)
+                ),
+                name="review_item_target_ck",
+            ),
+            # D2: one open item per (target, reason). NULLs are distinct, so each constraint
+            # only bites its own kind of target.
+            models.UniqueConstraint(
+                fields=["event", "reason"],
+                condition=Q(status="open"),
+                name="review_item_open_event_reason_uq",
+            ),
+            models.UniqueConstraint(
+                fields=["source", "reason"],
+                condition=Q(status="open"),
+                name="review_item_open_source_reason_uq",
+            ),
+            # D3: tallies belong to user reports only.
+            models.CheckConstraint(
+                condition=Q(reason="user_reported")
+                | Q(
+                    reports_wrong_date_time=0,
+                    reports_wrong_venue=0,
+                    reports_does_not_exist=0,
+                    reports_duplicate=0,
+                ),
+                name="review_item_tallies_ck",
+            ),
+            # D8: the SLA exists exactly when the reason is a user report.
+            models.CheckConstraint(
+                condition=Q(reason="user_reported", due_at__isnull=False)
+                | (~Q(reason="user_reported") & Q(due_at__isnull=True)),
+                name="review_item_due_ck",
+            ),
+            # D6: (a) open carries no resolution; (b)-(d) resolved carries all of it, the
+            # resolver follows the Actor rules, an editor's verdict fits the target, and only
+            # `withdrawn` may be recorded by the system.
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status="open",
+                        resolution="",
+                        resolved_at__isnull=True,
+                        resolved_by_kind="",
+                        resolved_by_id__isnull=True,
+                        resolved_by_label="",
+                    )
+                    | Q(
+                        status="resolved",
+                        resolution__in=["approved", "edited", "rejected"],
+                        event__isnull=False,
+                        resolved_at__isnull=False,
+                        resolved_by_kind="user",
+                        resolved_by_id__isnull=False,
+                        resolved_by_label="",
+                    )
+                    | Q(
+                        status="resolved",
+                        resolution="dismissed",
+                        source__isnull=False,
+                        resolved_at__isnull=False,
+                        resolved_by_kind="user",
+                        resolved_by_id__isnull=False,
+                        resolved_by_label="",
+                    )
+                    | (
+                        Q(
+                            status="resolved",
+                            resolution="withdrawn",
+                            resolved_at__isnull=False,
+                            resolved_by_kind="system",
+                            resolved_by_id__isnull=True,
+                        )
+                        & ~Q(resolved_by_label="")
+                    )
+                ),
+                name="review_item_resolution_ck",
+            ),
+        ]
+        indexes = [
+            # D12: the queue's access path — open items, deadline first, then oldest.
+            models.Index(
+                fields=["due_at", "raised_at"],
+                condition=Q(status="open"),
+                name="review_item_open_idx",
+            ),
+        ]

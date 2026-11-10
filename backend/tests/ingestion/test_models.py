@@ -337,10 +337,10 @@ def test_audit_entry_user_actor_allowed():
 INGESTION_MODELS = list(apps.get_app_config("ingestion").get_models())
 
 
-def test_ingestion_has_the_ten_designed_models():
+def test_ingestion_has_the_eleven_designed_models():
     # The seven from catalog-data-model-design.md, plus EventFit (AD-10, FR-26), City
-    # (FR-27, city-canonicalization-design.md) and RevalidationRequest (FR-26, FR-27,
-    # revalidation-signal-design.md).
+    # (FR-27, city-canonicalization-design.md), RevalidationRequest (FR-26, FR-27,
+    # revalidation-signal-design.md) and ReviewItem (FR-57, review-queue-model-design.md).
     assert {m.__name__ for m in INGESTION_MODELS} == {
         "Source",
         "TosReview",
@@ -352,6 +352,7 @@ def test_ingestion_has_the_ten_designed_models():
         "EventStateChange",
         "IngestionAuditEntry",
         "RevalidationRequest",
+        "ReviewItem",
     }
 
 
@@ -381,6 +382,7 @@ def test_ingestion_retention_categories():
         "EventStateChange": RetentionCategory.SOURCE_REGISTRY,
         "IngestionAuditEntry": RetentionCategory.AUDIT_LOG,
         "RevalidationRequest": RetentionCategory.SOURCE_REGISTRY,
+        "ReviewItem": RetentionCategory.SOURCE_REGISTRY,
     }
 
 
