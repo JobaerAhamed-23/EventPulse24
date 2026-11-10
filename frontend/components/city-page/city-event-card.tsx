@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { components } from "@/lib/api/schema";
 import { cardTime } from "@/lib/detail-time";
 import { EVENT_FIT_MAX, clampEventFit } from "@/lib/event-fit";
+import { SOLD_OUT_LINE } from "@/lib/event-state";
 import { EVENT_FIT_TOOLTIP, eventFitLabel, tagLabel } from "@/lib/preview-labels";
 
 /**
@@ -122,7 +123,7 @@ export function CityEventCard({ event }: CityEventCardProps) {
 
       {event.is_sold_out ? (
         <p className="[font:var(--type-scale-body-sm)] text-ink-secondary" data-city-sold-out>
-          Sold out — tickets no longer available.
+          {SOLD_OUT_LINE}
         </p>
       ) : null}
     </article>

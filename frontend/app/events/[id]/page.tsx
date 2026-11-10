@@ -16,6 +16,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { factorLine } from "@/lib/detail-labels";
 import { browserTimeZone, detailTimes } from "@/lib/detail-time";
 import { readEventDetail } from "@/lib/event-detail-read";
+import { SOLD_OUT_LINE, statusLineFor } from "@/lib/event-state";
 import { isDetailEvent } from "@/lib/event-identifier";
 import { readPublicEvent } from "@/lib/public-event-read";
 import { getSession } from "@/lib/session";
@@ -347,6 +348,24 @@ async function DetailBranch(id: string) {
 
   const times = detailTimes(event.start_time_utc, event.start_time_tz, browserTimeZone());
 
+  /**
+   * **The event's lifecycle line, if it has one.**
+   *
+   * **The same table the public page reads.** `statusLineFor` is the shared copy, and
+   * the public page and the Detail screen asking it the same question is what keeps
+   * the two surfaces saying the same thing about the same event.
+   *
+   * **It is `null` for `scheduled`, for `null`, and for a status this system has never
+   * heard of** (ASSUMPTION-9) — a screen that rendered an unknown status as "unknown"
+   * would be inventing a claim about the world.
+   *
+   * **It takes precedence over the sold-out line**, and the precedence is not
+   * arbitrary: a line reading "Sold out — tickets no longer available" on an event
+   * that has been cancelled invites the reader to wait for tickets for an event that
+   * is not happening. The event that is not happening is the bigger fact.
+   */
+  const stateLine = statusLineFor(event.status);
+
   const content = (
     <article className="mx-auto w-full max-w-(--layout-container-reading)">
       {/* The way back (the mockup's "← Today"): the digest for a signed-in reader, the
@@ -398,13 +417,32 @@ async function DetailBranch(id: string) {
         must too; offering it in one place and not the other would be the inconsistency
         the AC names. So the row *narrows*: sold out → the notice plus Share; otherwise
         → Save, Share, Reminder.
+
+        **A cancelled or postponed event gets its own line, from the same shared
+        table.** The Detail screen is a surface with room for a sentence, so it says
+        the thing in words — and it says the *same* words the public page says, because
+        both read `lib/event-state.ts`. A Detail screen that said "Cancelled" where
+        the public page said "Cancelled — this event is not happening" would be two
+        vocabularies for one fact, which is the drift the shared table exists to stop.
+
+        **The lifecycle state wins over the sold-out flag here, for the same reason it
+        wins on the card**: a badge — or a line — reading "Sold out" on an event that
+        has been cancelled would invite the reader to wait for tickets for an event
+        that is not happening.
       */}
-      {event.is_sold_out ? (
+      {stateLine ? (
+        <p
+          className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
+          data-detail-state
+        >
+          {stateLine}
+        </p>
+      ) : event.is_sold_out ? (
         <p
           className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
           data-detail-sold-out
         >
-          Sold out — tickets no longer available.
+          {SOLD_OUT_LINE}
         </p>
       ) : null}
 

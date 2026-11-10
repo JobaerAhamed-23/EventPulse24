@@ -781,6 +781,72 @@ describe("the share's wiring", () => {
   });
 });
 
+/* ── the lifecycle states ─────────────────────────────────────────────────────── */
+
+describe("the lifecycle states", () => {
+  it("says so, calmly, in one line, for a cancelled event", async () => {
+    // **The Detail screen has room for a sentence, so it says the thing in words** —
+    // and it says the *same* words the public page says, because both read
+    // `lib/event-state.ts`. A Detail screen that said "Cancelled" where the public
+    // page said "Cancelled — this event is not happening" would be two vocabularies
+    // for one fact.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ status: "cancelled" }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("Cancelled — this event is not happening.")).toBeInTheDocument();
+  });
+
+  it("says so for a postponed event too", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ status: "postponed" }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByText("Postponed — this event is not happening at the time shown."),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing at all for a status it has no word for", async () => {
+    // ASSUMPTION-9: a status this system has never heard of is a fact the frontend
+    // cannot put into words, and rendering one as "unknown" would be inventing a
+    // claim about the world.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts({ status: "rescheduled_for_tuesday" }), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(document.querySelector("[data-detail-state]")).toBeNull();
+    expect(document.body.textContent ?? "").not.toContain("unknown");
+  });
+
+  it("prefers the lifecycle line over the sold-out line", async () => {
+    // **A line reading "Sold out — tickets no longer available" on an event that has
+    // been cancelled invites the reader to wait for tickets for an event that is not
+    // happening.** The event that is not happening is the bigger fact.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: {
+        event: facts({ status: "cancelled", is_sold_out: true }),
+        personal: personal(),
+      },
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("Cancelled — this event is not happening.")).toBeInTheDocument();
+    expect(screen.queryByText("Sold out — tickets no longer available.")).toBeNull();
+  });
+});
+
 /* ── the time ─────────────────────────────────────────────────────────────────── */
 
 describe("the time", () => {

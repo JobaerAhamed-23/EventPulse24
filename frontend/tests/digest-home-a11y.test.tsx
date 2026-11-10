@@ -159,6 +159,59 @@ describe("the Pulse Digest home's axe-core gate", () => {
     );
   });
 
+  /**
+   * **The state treatment, audited.**
+   *
+   * **A new element on the surface is a new document.** The gate audits the composed
+   * digest, but a composed digest of ordinary cards is a different document from a
+   * composed digest of sold-out and cancelled ones — and the difference is exactly the
+   * badge, which is a pill with a border, a fill and a coloured glyph.
+   *
+   * **The cancelled card is the one that matters most here**, because it is the card
+   * with a *removed* control: a control that was there and is now gone changes the
+   * document's landmark and heading structure, and an axe rule that fires on "this
+   * region has no content" would only fire on the cancelled card.
+   */
+  it("has zero serious or critical violations with a state badge on the cards", async () => {
+    readDigest.mockResolvedValue({
+      kind: "composed",
+      digest: {
+        ...COMPOSED,
+        cards: [
+          card({ is_sold_out: true }),
+          card({ status: "cancelled", event_id: "33333333-3333-3333-3333-333333333333" }),
+          card({ status: "postponed", event_id: "44444444-4444-4444-4444-444444444444" }),
+        ],
+      },
+    });
+
+    render(await HomePage(props()));
+
+    const violations = await audit();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
+      [],
+    );
+  });
+
+  it("has zero serious or critical violations with a sold-out card that is also in conflict", async () => {
+    // The card the work item names: two indicators in the same region, and the badge's
+    // amber and the conflict indicator's amber are the same hex.
+    readDigest.mockResolvedValue({
+      kind: "composed",
+      digest: {
+        ...COMPOSED,
+        cards: [card({ is_sold_out: true, conflict: true })],
+      },
+    });
+
+    render(await HomePage(props()));
+
+    const violations = await audit();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
+      [],
+    );
+  });
+
   it("audits a document with the shell's landmarks in place", async () => {
     // A gate that passed because the page rendered nothing would pass forever. The
     // audit is only meaningful if it ran over the real surface, so this asserts the

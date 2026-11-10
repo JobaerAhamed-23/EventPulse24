@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { cardTime } from "@/lib/detail-time";
+import { SOLD_OUT_LINE, statusLineFor } from "@/lib/event-state";
 import type { PublicEventPageOut } from "@/lib/public-event-read";
 
 /**
@@ -194,7 +195,7 @@ export function PublicEventPage({ page }: { page: PublicEventPageOut }) {
               className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
               data-public-sold-out
             >
-              Sold out — tickets no longer available.
+              {SOLD_OUT_LINE}
             </p>
           ) : null}
 
@@ -288,15 +289,12 @@ export function PublicEventPage({ page }: { page: PublicEventPageOut }) {
  * **An unrecognised status shows nothing.** A status this system has never heard of is
  * a fact the frontend cannot put into words, and a page that rendered one as
  * "unknown" would be inventing a claim about the world (ASSUMPTION-9).
+ *
+ * **The table itself now lives in `lib/event-state.ts`.** It used to sit here, and the
+ * Pulse Card needed the same two sentences — so the words moved to a module every
+ * surface can read, and this page imports them. One table, one sentence, one place to
+ * change it.
  */
-const STATUS_LINES: Record<string, string> = {
-  postponed: "Postponed — this event is not happening at the time shown.",
-  cancelled: "Cancelled — this event is not happening.",
-};
-
-function statusLineFor(status: string): string | null {
-  return STATUS_LINES[status] ?? null;
-}
 
 /**
  * The payload's Schema.org object, as a JSON-LD block's text.
