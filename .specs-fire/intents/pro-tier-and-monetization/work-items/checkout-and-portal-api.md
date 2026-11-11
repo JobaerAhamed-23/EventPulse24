@@ -4,10 +4,12 @@ title: A way to actually pay — checkout, portal, and the fake-billing dead end
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - billing-adapter-and-webhooks
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T09:39:49.370Z
 ---
 
 # Work Item: A way to actually pay — checkout, portal, and the fake-billing dead end

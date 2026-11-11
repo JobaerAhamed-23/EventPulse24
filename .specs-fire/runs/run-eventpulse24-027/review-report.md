@@ -236,3 +236,565 @@ Fixed at the user's explicit instruction, having first been reported rather than
 **5 findings: all 5 fixed.** One of them (the registry constructor) would have failed the
 first time anything used the adapter through its port, and no test written for this item
 would have caught it.
+
+---
+
+# Code Review Report
+
+**Run**: run-eventpulse24-027
+**Intent**: pro-tier-and-monetization
+**Work item**: `checkout-and-portal-api`
+**Reviewed**: 2026-11-11
+**Files Reviewed**: 15
+
+---
+
+## Summary
+
+| Category | Auto-Fixed | Applied | Skipped |
+|----------|------------|---------|---------|
+| Code Quality | 2 | 0 | 0 |
+| Security | 1 | 0 | 0 |
+| Architecture | 0 | 0 | 0 |
+| Testing | 1 | 0 | 0 |
+| **Total** | **4** | **0** | **0** |
+
+**Tests Status**: Passing — backend `16 failed, 6312 passed` (the pre-existing 16); frontend `1826 passed`.
+
+---
+
+## Files Reviewed
+
+**Created**
+
+- `backend/apps/identity/billing_api.py` (new) — the two endpoints
+- `backend/apps/identity/services/billing.py` (new) — the service layer
+- `backend/tests/identity/test_checkout_portal_api.py` (new) — 24 contract tests
+- `frontend/app/dev/fake-billing/fake-billing-panel.tsx` (new) — the shared harness
+- `frontend/app/dev/fake-billing/checkout/page.tsx` (new) — the fake checkout page
+- `frontend/app/dev/fake-billing/checkout/page.test.tsx` (new) — 10 tests
+- `frontend/app/dev/fake-billing/portal/page.tsx` (new) — the fake portal page
+- `frontend/app/dev/fake-billing/portal/page.test.tsx` (new) — 6 tests
+
+**Modified**
+
+- `backend/apps/identity/schemas.py` — `CheckoutIn`, `CheckoutOut`, `PortalOut`
+- `backend/apps/identity/services/__init__.py` — the two service exports
+- `backend/config/api.py` — the `/billing` router mount
+- `backend/config/env.py` — the three configured paths
+- `backend/config/settings.py` — the three settings
+- `backend/domain/errors.py` — `AlreadySubscribedError`, `NoSubscriptionError`
+- `backend/tests/architecture/test_no_direct_writes.py` — the surface-file count
+- `backend/tests/architecture/test_digest_composition_separation.py` — the request-module list
+- `frontend/lib/api/openapi.json`, `frontend/lib/api/schema.ts` — regenerated
+
+---
+
+## Auto-Fixed Issues
+
+### 1. [Code Quality] Import block was un-sorted
+
+- **File**: `backend/apps/identity/services/billing.py:35`
+- **Description**: `from ports import registry` sat after `from ports.billing import …`. Ruff's
+  `I001` caught it; the fix is a reorder, which has no runtime effect.
+- **Diff**:
+
+```diff
+ from domain.errors import AlreadySubscribedError, NoSubscriptionError
++from ports import registry
+ from ports.billing import BillingCustomer, ProPlan
+-from ports import registry
+ from shared.db import PERSONAL
+```
+
+### 2. [Code Quality] An off-scale spacing utility
+
+- **File**: `frontend/app/dev/fake-billing/fake-billing-panel.tsx:102,109,115`
+- **Description**: `w-28` is not a step in the DESIGN.md spacing scale, and the scale test
+  (`frontend/tests/spacing-scale.test.ts`) fails on it. An off-scale step generates no CSS at
+  all — no warning, just a definition list whose labels have no width. `w-20` is on the
+  scale and is the right weight for the label column.
+- **Diff**:
+
+```diff
+-          <dt className="w-28 text-ink-muted …
++          <dt className="w-20 text-ink-muted …
+```
+
+### 3. [Security] The dev page honoured a `next` on any host — an open redirect
+
+- **File**: `frontend/app/dev/fake-billing/fake-billing-panel.tsx` (the `localTarget` helper)
+- **Description**: **This is the finding worth reading.** The page read `next` from the
+  query string and used it as the `href` of the "Complete checkout" link. A query string is
+  attacker-controllable by anyone who can hand a developer a link, so `?next=https://
+  attacker.example` produced a link that sends the user off-site.
+
+  This is the same open-redirect the backend refuses to allow — and the backend's refusal is
+  one of this item's acceptance criteria. Leaving the dev page as the one place in the
+  codebase where a redirect target *is* taken from a request would have been a hole in the
+  rule the rest of the item is built on. The app's own posture agrees: every other redirect
+  in this codebase is a hardcoded path, never a URL.
+
+  The fix mirrors the backend's rule. A `next` that names a path on this origin is honoured;
+  a same-origin absolute URL is reduced to its path (the backend's own success URL is
+  absolute, and the point is *where it points*, not *how it is spelled*); anything else is
+  refused outright and no link is rendered.
+
+  The panel already had a "No return URL on this session" branch for an absent `next`, so a
+  refused target reuses it — the page says plainly that there is nowhere to return to rather
+  than rendering a link that goes somewhere unexpected.
+
+- **Diff**:
+
+```diff
++function localTarget(next: string | undefined): string | undefined {
++  if (!next) return undefined;
++  if (next.startsWith("/")) return next;
++  try {
++    const url = new URL(next);
++    const here = window.location.origin;
++    return url.origin === here ? `${url.pathname}${url.search}${url.hash}` : undefined;
++  } catch {
++    return undefined;
++  }
++}
++
+ export function FakeCheckoutPanel({ session, plan, next }: FakeCheckoutParams) {
+-  const success = next ?? "";
++  const success = localTarget(next) ?? "";
+```
+
+Three tests were added or changed with it: the portal's return-URL test now asserts the
+*path* rather than the whole URL, the checkout page gained a test that a target on another
+site renders **no link at all**, and another that the same-origin success URL keeps its query
+string.
+
+### 4. [Testing] Two docstrings promised something the code did not do
+
+- **File**: `backend/domain/errors.py:283`, `backend/apps/identity/billing_api.py:31`
+- **Description**: `NoSubscriptionError`'s docstring said *"The message points at the pricing
+  page instead"*, and the API module's said the portal refusal was *"409, pointing at the
+  pricing page"*. Neither pointed anywhere: the error carries no `details`, and the message
+  is a fixed string. The work item only asks for *"a clear refusal, not a Stripe error"* —
+  which is what the code does.
+
+  The docstrings were corrected to describe the behaviour, rather than the behaviour being
+  changed to match the docstrings. Adding a pricing path to the error would be a new
+  decision about what the frontend does next, and that decision belongs to
+  `frontend-account-and-billing-settings`, which builds the surface these errors point at.
+- **Diff**:
+
+```diff
+-    state is what refuses it. The message points at the pricing page instead, because the
+-    only sensible next step for someone with no subscription is to start one.
++    state is what refuses it. The message says plainly that there is no subscription to
++    manage, because the only sensible next step for someone with no subscription is to start
++    one — and the frontend decides where that step leads.
+```
+
+---
+
+## Reviewed and found correct — no change
+
+**The `CheckoutIn` schema carries exactly one field.** The generated `openapi.json` confirms
+`properties: {plan}` and `required: ["plan"]` — no `success_url`, no `cancel_url`, no
+`return_url`. The absence is the security property, and it is now structural rather than a
+convention: a URL field could not be added without changing the published contract.
+
+**The two refusals are decided before the provider is called.** `_live_subscription` is
+consulted before `create_checkout` or `create_portal_session`, and the test that swaps the
+billing port for one that raises on any call asserts the call list is empty. This also
+keeps the portal refusal from leaking the account's state: a provider error about a
+customer that does not exist would confirm more than a plain 409 does.
+
+**The service imports no provider vocabulary.** `apps/identity/services/billing.py` imports
+`ports.billing` and nothing else — no SDK, no provider error strings — and the
+`stripe-sdk` import contract is kept. The `import-linter` run confirms all 19 contracts.
+
+**The endpoint modules are under AD-5.** `apps/identity/billing_api.py` is a surface file
+and makes no direct ORM write; the architecture suite covers it alongside every other
+endpoint now that it is named in both lists.
+
+**The dev pages are a harness, not a design surface.** They live under `/dev/`, are
+`notFound()` in a production build, and carry a visible "Development stand-in" banner. They
+are reached only through URLs the fake adapter mints, so a real Stripe deployment never
+points a user at them.
+
+**The service looks the billing port up at call time.** `registry.get_billing_port()` rather
+than a module-level `from … import`. This is what makes the port boundary substitutable in
+a test — and the test that substitutes it is what caught the mistake when the import was
+bound at import time.
+
+---
+
+## Skipped
+
+Nothing. Every finding was either mechanical (auto-fixed) or a security correctness fix
+whose own tests were written with it.
+
+---
+
+## One note for the next item
+
+`frontend/app/settings/billing` **does not exist yet.** The backend's success, cancel and
+portal-return paths all point at it, and the 409's `portal_path` points at it too — that is
+the route `frontend-account-and-billing-settings` will build, and it depends on this item.
+Until it exists, the dev checkout's "Complete" link and its "Cancel" link both 404 locally.
+That is a real gap in the *local* walkability of the paid path, so it is worth naming here
+rather than discovering it mid-item.
+
+---
+
+# Code Review: The caps learn who is Pro — the save gate, and the provider cap that caps everyone
+
+**Work item**: `free-tier-caps-read-entitlement`
+**Intent**: `pro-tier-and-monetization`
+**Date**: 2026-11-11
+
+## Scope
+
+| File | Action |
+|---|---|
+| `apps/personalization/services/save_cap.py` | created — the gate |
+| `apps/personalization/services/saved_events.py` | modified — idempotence, then the gate, then the write |
+| `apps/personalization/services/calendar_connections.py` | modified — `_provider_cap`, tier-chosen |
+| `apps/personalization/schemas.py` | modified — `SaveCapOut`, `CalendarCapOut`, `SaveConflictOut` |
+| `apps/personalization/api.py` | modified — the two 409 response maps |
+| `domain/errors.py` | modified — `SaveCapReached` |
+| `shared/constants.py` | modified — the save limit and window; the stale comment resolved |
+| `adapters/throttle/memory.py` | modified — **the window rule, fixed** |
+| `tests/personalization/test_save_cap.py` | created — 16 tests |
+| `tests/personalization/test_calendar_provider_cap.py` | created — 13 tests |
+| `tests/adapters/test_throttle.py` | created — 9 tests, **written by this review** |
+| `frontend/components/detail/detail-actions.tsx` | modified — the narrowing |
+| `frontend/lib/api/openapi.json`, `schema.ts` | regenerated |
+
+## Findings
+
+### 1. The in-memory throttle adapter contradicted its own port contract — FIXED
+
+**Severity: latent defect, and it was live.** `ThrottlePort.check` states the rule in one
+sentence: *"The window is fixed: the count resets `window_seconds` after the first attempt in
+it."* The Redis adapter implements exactly that — `EXPIRE` is set only when `count == 1`, so
+the window slides from the *first* attempt.
+
+The in-memory adapter implemented a **sliding** window instead:
+
+```python
+cutoff = moment - window_seconds
+attempts = [t for t in self._attempts.get(key, ()) if t > cutoff]
+```
+
+It dropped every attempt older than the window *on each call*, so the window effectively slid
+from the **last** attempt. Two consequences:
+
+- **A refusal extended the user's wait.** Under a sliding window, the refused attempt is
+  itself a recent attempt, so it pushed the expiry out — a user who was refused kept being
+  refused for longer each time they tried.
+- **A client could hold a bucket open forever** by attempting just often enough to keep the
+  count alive.
+
+This is the exact defect class a test double must not have: the fake answered a
+*differently-shaped question* than the real adapter, so a test written against the fake
+would have pinned behaviour production does not have.
+
+**Fix:** the adapter now anchors the window at the first attempt, exactly as the port says
+and as the Redis adapter does.
+
+### 2. Neither throttle adapter had a test of its own — FIXED
+
+**Severity: test gap, and the reason the defect above survived.** `InMemoryThrottleAdapter`
+was only ever reached indirectly, through app-level tests that stub the port out.
+`RedisThrottleAdapter` — **the adapter production actually runs** — had no test at all.
+
+So the port's one stated rule was implemented twice and pinned by neither.
+
+**Fix:** `tests/adapters/test_throttle.py` was written by this review. It pins:
+
+- the window rule on the in-memory adapter, at the boundary;
+- **the parity** — the same calls against both adapters, asserting they answer identically.
+
+The Redis adapter is exercised against an in-memory stand-in for Redis that **deletes expired
+keys**, because that is what real Redis does and it is precisely the behaviour the window
+rule depends on. A stand-in that kept an expired key would have made the parity test test
+the stand-in rather than the adapter.
+
+**The tests are load-bearing, and this was checked rather than assumed.** Reverting the
+adapter to its old sliding implementation and re-running the file:
+
+```
+FAILED test_the_window_closes_on_the_first_attempt_plus_the_window
+FAILED test_a_refused_attempt_does_not_move_the_anchor
+FAILED test_the_window_does_not_slide_from_the_last_attempt
+FAILED test_the_two_adapters_agree_about_every_call
+FAILED test_the_two_adapters_agree_on_the_window_opening_again
+5 failed, 4 passed
+```
+
+The adapter was then restored and the file passes 9/9.
+
+### 3. The two adapters' parity was verified independently of the test — CONFIRMED
+
+**Severity: verification.** The parity claim in finding 2 rests on the stand-in being
+faithful, so it was checked by hand first, over a walk that crosses the window boundary:
+
+```
+     t |       mem |     redis | match
+     0 |      True |      True | OK
+    10 |     False |     False | OK
+    50 |     False |     False | OK
+    99 |     False |     False | OK
+   100 |      True |      True | OK
+   101 |     False |     False | OK
+   150 |     False |     False | OK
+   199 |     False |     False | OK
+   200 |      True |      True | OK
+   201 |     False |     False | OK
+
+mismatches: 0
+```
+
+The two adapters agree on the decision at every point, **including the exact boundary**.
+
+An earlier run of the same walk reported mismatches at t=100 and t=200. Those were an
+artifact of the stand-in, not of the adapters: the first version of the stub kept expired
+keys, so it believed a closed window was still open. Real Redis deletes the key. The stub
+was corrected, and the parity re-verified. The mismatch was worth chasing rather than
+writing off, because "the two adapters disagree" is exactly the failure this review exists
+to prevent.
+
+### 4. The frontend reached into `details` without narrowing — FIXED
+
+**Severity: latent type error, caught by the contract change.** `detail-actions.tsx` read
+`response.error?.details?.conflicts?.[0]` on any 409. With two refusal shapes behind one
+status code, `details` is no longer one shape, and `tsc` rejected the access.
+
+**Fix:** the client narrows on `code` — the field the server set — before reading
+`details.conflicts`. This is the narrowing the discriminated union was designed for, and
+the frontend's behaviour is unchanged: a save-cap refusal was never a clash, and it was
+already on the failure path.
+
+## Reviewed and found correct — no change
+
+**The two refusal payloads have exactly two fields.** `SaveCapDetails` and
+`CalendarCapDetails` are both `{cap, upgrade_hint}` and nothing else. The schemas make a
+modal-shaped field **inexpressible** rather than merely absent from the prose, and the tests
+pin the key set exactly — so a future edit that grows a `modal` fails the suite rather than
+shipping.
+
+**The discriminated union produces a real `oneOf` in the OpenAPI.** Verified directly against
+the generated document, not assumed:
+
+```json
+"409": { "content": { "application/json": {
+  "discriminator": { "mapping": { "save_cap_reached": "#/components/schemas/SaveCapOut",
+                                  "scheduling_conflict": "#/components/schemas/SchedulingConflictOut" },
+                     "propertyName": "code" },
+  "oneOf": [ {"$ref": "#/components/schemas/SchedulingConflictOut"},
+             {"$ref": "#/components/schemas/SaveCapOut"} ] } } }
+```
+
+The discriminator is the error's own `code`, which is exactly the field the frontend
+branches on. A generated client reads `details.cap` on one branch and `details.conflicts` on
+the other, without guessing.
+
+**The gate sits after the idempotence lookup, and that position is forced.** An existing
+test (`test_a_save_is_idempotent_and_one_row`) asserts 201 then 200 with one row. So the
+order — idempotence, then gate, then write — is not a preference: a repeat save is the same
+row returned again, and gating it would spend an allowance on a save that did not happen.
+
+**The refusal writes nothing.** The gate raises inside the transaction, before any row
+exists. The test pins both halves: no `SavedEvent` row, and no audit entry either — an
+audit row saying "we refused to save" would be a record of a save that never happened.
+
+**The throttle key namespaces are disjoint.** The four throttle users build four distinct
+key shapes — `auth:` (identity), `preview:` (catalog), `event_report:` (personalization),
+`save:` (personalization) — and the Redis adapter prefixes all of them with `throttle:`.
+Two features cannot collide. The `save:` prefix was checked against the auth keys
+specifically, because both live in the same Redis instance.
+
+**Neither cap reimplements "is Pro".** Both call `is_pro(user_id=...)`, the single published
+read from `subscription-model-and-entitlement`. The `_provider_cap` helper is one `if` on
+that bool; the gate is another. There is no second mapping of status to tier anywhere, so
+the two cannot disagree about what Pro means.
+
+**The lapse is a transition, not a second row.** `Subscription` allows at most one live row
+per user, so a lapse updates the existing row to `CANCELED`. Both test files do this the
+same way, and both document why adding a `CANCELED` row beside the `ACTIVE` one would leave
+the user still Pro.
+
+**A Pro user spends no throttle slot at all.** The gate returns early rather than being
+made with a limit of infinity, so a Pro user's saves leave no trace in the counter. The test
+pins this by recording every `check()` call and asserting the list is empty.
+
+**The downgrade does not delete anything.** The provider cap is enforced at the *connect*
+step, so a lapse closes the door behind the user and leaves their existing connections
+alone. The test asserts two connections survive a lapse. What happens to over-cap data on a
+downgrade is an open question in the brief, and this item does not quietly answer it.
+
+**The import contracts still hold.** `lint-imports`: **19 kept, 0 broken**. `apps.identity`
+does not import `apps.personalization.models`; `save_cap.py` reaches entitlement through
+`apps.identity.services`, the published seam.
+
+## Skipped
+
+Nothing. Every finding was either a correctness fix with its own tests, or a test gap
+closed by tests written for it.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `pytest tests/adapters/test_throttle.py` | 9 passed |
+| `pytest tests/personalization/ tests/adapters/ tests/identity/ tests/api/` | **2126 passed** |
+| `pytest` (full backend) | 16 failed, **6358 passed** — the 16 are **identical to the verified baseline** |
+| `ruff check` / `ruff format --check` | All checks passed / 9 files already formatted |
+| `lint-imports` | 19 contracts kept, 0 broken |
+| `pytest tests/api/test_contract.py` | 1 passed |
+| `pnpm vitest run` | **1826 passed (109 files)** |
+| `pnpm lint` / `pnpm typecheck` | clean |
+
+The 16 backend failures are the pre-existing baseline failures, confirmed earlier in this
+run by stashing every change and re-running the whole suite into a comparison file that
+contained exactly those 16 names. **No existing test was broken by this item.**
+
+## One note for the next item
+
+**The inline upgrade prompt is still not rendered.** A save-cap refusal and a calendar-cap
+refusal both reach the frontend as a 409 with `cap` and `upgrade_hint`, and the frontend
+does the right thing with them today — a save-cap refusal falls through to the generic
+failure path, and a calendar refusal likewise. But *rendering the calm inline prompt with
+the quiet "Upgrade" link* is `frontend-upgrade-prompts`'s work, and that item is `pending`.
+
+Until it lands, the product has a gate with no visible prompt behind it. The **backend** half
+is complete and the contract is published; the frontend half is a separate item, and this
+one should not grow into it.
+
+---
+
+# Item 5 — `frontend-pricing-page`: code review
+
+**Scope:** the pricing screen, its route, the entitlement read it needs, and the sign-in
+round trip it depends on. Reviewed after the tests passed, against the plan and against
+FR-48.
+
+**Verdict: approve with one real defect.** The defect was in the *plan*, not only in the
+code, and it was found by checking an assumption rather than by reading the code carefully.
+It has been fixed and the fix is tested.
+
+## The HIGH finding: `next` was a dead end
+
+> The pricing page's "Sign in to buy" link carries `/signin?next=%2Fpricing`, but
+> `/signin` has no `searchParams` and `SigninForm` does `router.replace("/")`. The
+> parameter is ignored at the destination.
+
+**Why it is HIGH.** The criterion is *"a signed-out visitor … is routed to sign-in on
+choosing a plan."* The page did route them to sign-in. But the sign-in page did not route
+them **back** — so a visitor who chose a plan, was asked to sign in, signed in, and landed
+on the home page had silently lost their intent. The link looked right and the code was
+right; the *destination* was wrong, and the plan was what said otherwise.
+
+**How it was found.** The plan's own file list said "the sign-in route takes a `next`
+parameter — let me verify that." The verification was never done, and the implementation
+inherited the assumption. This is the failure mode the plan's checklist exists to prevent,
+and it is the reason the assumption was tested rather than accepted.
+
+**The fix.** `frontend/lib/return-path.ts`:
+
+```ts
+export function returnPath(next: string | null | undefined): string {
+  if (typeof next !== "string") return DEFAULT_RETURN_PATH;
+  const candidate = next.trim();
+  if (candidate === "") return DEFAULT_RETURN_PATH;
+  if (!candidate.startsWith("/")) return DEFAULT_RETURN_PATH;
+  if (candidate.startsWith("//")) return DEFAULT_RETURN_PATH;
+  if (candidate.includes("\\")) return DEFAULT_RETURN_PATH;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(candidate)) return DEFAULT_RETURN_PATH;
+  return candidate;
+}
+```
+
+**A redirect target read from a query parameter is an open redirect**, so the guard is not
+optional decoration — it is the reason the feature is safe. `/signin` now takes
+`searchParams`, passes the *guarded* destination to `SigninForm`, and `SigninForm` replaces
+to it after a successful sign-in. Nine tests pin the guard.
+
+**A note in the review's favour and against it.** The `/signin` route's own test file
+already contained "refuses to redirect to somewhere off this site" — and it had been
+passing, against a route that could not redirect anywhere at all. **The test was passing for
+the wrong reason.** It passes for the right reason now. That is worth recording: a green
+test in an area nobody had built yet is not evidence.
+
+## The MEDIUM findings, all fixed
+
+**1. An unavailable session was folded into "signed out."** The route returned the
+`signed-out` state for both `anonymous` and `unavailable`, so a signed-in visitor whose
+session read failed was told "Sign in to buy" — which `lib/session.ts` calls "a lie about
+who they are", in a button. Now `unavailable` renders the tiers with the checkout button
+and **no** sign-in link; the checkout itself says what is true.
+
+**2. The no-upsell test was a blacklist.** Eleven banned phrases is a tripwire, not the
+rule. It is now an **allowlist**: the Pro card's prose is FR-48's sentence and nothing else.
+The blacklist was kept alongside it, because a countdown or a scarcity badge arrives in a
+string rather than a sentence. See the test report for the mutation that proves the
+allowlist bites.
+
+**3. No `<main>` landmark.** The route rendered its content into a `<div>`. Now it has a
+`<main>`, as `/preview` does.
+
+## The gaps the review found, now closed
+
+**No axe gate.** Every public surface in this project carries one; the pricing page is a
+new public surface and had none. `frontend/tests/pricing-a11y.test.tsx` audits all three
+visitor states, over `document.body`, and includes a "can fail" mutation test.
+
+**The state label was counted as marketing copy.** The first allowlist failed on
+"You're on Free" — which is a *state*, not a sales pitch. Rather than widen the allowlist
+to include any sentence that sounds like a label, the taglines are now marked
+`data-tagline`, and the test says "every paragraph is either the tagline or a state
+label". The rule stayed strict; the classification got precise.
+
+## What the review did not find
+
+**The entitlement read is correct and minimal.** It returns one bool, it is implemented
+over the one published `is_pro`, and it is tested to call no provider, write no row and
+write no audit entry. The page and the caps cannot disagree about what Pro means, because
+there is only one definition.
+
+**The two inference paths were rejected for the right reasons.** Showing a Pro user a buy
+button that 409s, and minting a provider session as a side effect of reading the page, are
+both worse than one extra endpoint.
+
+**The copy discipline holds.** The mockup's Phase 2 features, "priority support from
+Brooklyn" and share-links are all absent; the feature lists are FR-48's. "Save 18%" is
+arithmetic, not persuasion: $49 against $4.99 × 12 is an 18.2% discount.
+
+## Skipped
+
+Nothing. Every finding was fixed, or was a test gap closed by a test written for it.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `pnpm vitest run` (full frontend) | **1885 passed** (114 files) — no failures |
+| `pytest` (full backend) | 16 failed, **6369 passed** — the pre-existing 16 exactly |
+| `pytest tests/identity/test_billing_subscription_api.py` | 11 passed |
+| `pnpm typecheck` | clean |
+| `pnpm lint` | clean |
+| `pnpm format:check` | clean |
+| `tests/spacing-scale.test.ts` | passes — `py-0.5` / `px-2.5` removed, `px-2` used |
+
+The backend delta against item 4's baseline is **+11 passed, 0 failed**, and the 11 are
+exactly the new subscription-read tests. The 16 failures are the same 16 — save-race,
+timeline/conflict, reminder-plan, personal-events, url-feed — none of which touch billing.
+
+## One note for the next item
+
+**The pricing page and the account page will both need to read the entitlement.** This
+item's read lives in `frontend/app/pricing/page.tsx`, inline, as a private `readTier`. When
+`frontend-account-and-billing-settings` needs the same answer, that helper should move to
+`frontend/lib/` — where this repo's other reads live (`lib/session.ts`, `lib/city-page-read.ts`,
+`lib/url-feed-read.ts`) — rather than being written a second time. **This item does not do
+that move**, because nothing else needs it yet, and a shared helper with one caller is not a
+shared helper.

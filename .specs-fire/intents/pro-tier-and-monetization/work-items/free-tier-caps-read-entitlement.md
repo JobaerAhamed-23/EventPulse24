@@ -1,12 +1,16 @@
 ---
 id: free-tier-caps-read-entitlement
-title: The caps learn who is Pro — the save gate, and the provider cap that caps everyone
+title: The caps learn who is Pro — the save gate, and the provider cap that caps
+  everyone
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [subscription-model-and-entitlement]
+status: completed
+depends_on:
+  - subscription-model-and-entitlement
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T11:00:33.769Z
 ---
 
 # Work Item: The caps learn who is Pro — the save gate, and the provider cap that caps everyone
@@ -30,36 +34,36 @@ intent and belongs here when it lands."*
 
 **The save gate (FR-49)**
 
-- [ ] A Free user's **second save inside a 24-hour window** is refused with a calm inline
+- [x] A Free user's **second save inside a 24-hour window** is refused with a calm inline
       upgrade prompt.
-- [ ] The cap is declared through **`ThrottlePort.check(key, limit, window_seconds)`**, as
+- [x] The cap is declared through **`ThrottlePort.check(key, limit, window_seconds)`**, as
       `EventReport` already does with `EVENT_REPORT_DAILY_LIMIT` /
       `EVENT_REPORT_WINDOW_SECONDS`. It is not hand-rolled, and it does not count rows.
-- [ ] Both the limit and the window live in `shared/constants.py`, named for what they gate.
-- [ ] **A Pro user saves 10+ events in one day with no soft wall**, per FR-49's own testable
+- [x] Both the limit and the window live in `shared/constants.py`, named for what they gate.
+- [x] **A Pro user saves 10+ events in one day with no soft wall**, per FR-49's own testable
       consequence.
-- [ ] The refusal payload matches the shipped `CalendarProviderCapReached` shape exactly: an
+- [x] The refusal payload matches the shipped `CalendarProviderCapReached` shape exactly: an
       `upgrade_hint` sentence and **no modal-shaped field** — no `modal`, no `title`, no
       `actions`, no `dismissable`. `calendar_connections.py:413-418` is the reference, and
       its reasoning (EXPERIENCE.md §3 and §4) applies unchanged.
-- [ ] **A refused save changes nothing.** No partial `SavedEvent`, no throttle consumed by a
+- [x] **A refused save changes nothing.** No partial `SavedEvent`, no throttle consumed by a
       save that did not happen.
 
 **The provider cap (FR-50)**
 
-- [ ] The cap becomes entitlement-chosen: **1 for Free, 3 for Pro**. A Pro user connects a
+- [x] The cap becomes entitlement-chosen: **1 for Free, 3 for Pro**. A Pro user connects a
       second and third provider; a Free user still cannot connect a second.
-- [ ] The comment at `shared/constants.py:469` is **resolved and removed**, not left stale.
-- [ ] The existing reuse path at `calendar_connections.py:403-408`, which decrements the
+- [x] The comment at `shared/constants.py:469` is **resolved and removed**, not left stale.
+- [x] The existing reuse path at `calendar_connections.py:403-408`, which decrements the
       occupying count when a row is being reused, still behaves correctly under the raised
       cap.
 
 **Both**
 
-- [ ] Each cap reads entitlement through the **single read** from
+- [x] Each cap reads entitlement through the **single read** from
       `subscription-model-and-entitlement`, by value across the wall (AD-3). Neither
       reimplements "is Pro".
-- [ ] Tests cover, for each cap: a Free user at the limit refused; the same user, once Pro,
+- [x] Tests cover, for each cap: a Free user at the limit refused; the same user, once Pro,
       allowed; a Pro user who lapses back to Free refused again; and the exact refusal
       payload shape.
 

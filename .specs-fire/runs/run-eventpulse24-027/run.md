@@ -19,31 +19,31 @@ work_items:
   - id: checkout-and-portal-api
     intent: pro-tier-and-monetization
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: free-tier-caps-read-entitlement
     intent: pro-tier-and-monetization
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: frontend-pricing-page
     intent: pro-tier-and-monetization
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: frontend-upgrade-prompts
     intent: pro-tier-and-monetization
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: per-day-quiet-hours-domain-and-model
     intent: pro-tier-and-monetization
     mode: validate
@@ -107,7 +107,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: checkout-and-portal-api
+current_item: frontend-upgrade-prompts
 status: in_progress
 started: 2026-11-11T07:05:42.898Z
 completed: null
@@ -121,10 +121,10 @@ wide (15 work items)
 ## Work Items
 1. **subscription-model-and-entitlement** (validate) — completed
 2. **billing-adapter-and-webhooks** (validate) — completed
-3. **checkout-and-portal-api** (confirm) — in_progress
-4. **free-tier-caps-read-entitlement** (confirm) — pending
-5. **frontend-pricing-page** (confirm) — pending
-6. **frontend-upgrade-prompts** (confirm) — pending
+3. **checkout-and-portal-api** (confirm) — completed
+4. **free-tier-caps-read-entitlement** (confirm) — completed
+5. **frontend-pricing-page** (confirm) — completed
+6. **frontend-upgrade-prompts** (confirm) — in_progress
 7. **per-day-quiet-hours-domain-and-model** (validate) — pending
 8. **quiet-hours-pro-api** (confirm) — pending
 9. **frontend-pro-quiet-hours** (confirm) — pending
@@ -137,7 +137,7 @@ wide (15 work items)
 
 
 ## Current Item
-checkout-and-portal-api (confirm)
+frontend-upgrade-prompts (confirm)
 
 ## Files Created
 (none yet)

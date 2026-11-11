@@ -4,8 +4,10 @@ title: The prompt at the cap — calm, inline, and finally going somewhere
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [checkout-and-portal-api, free-tier-caps-read-entitlement]
+status: in_progress
+depends_on:
+  - checkout-and-portal-api
+  - free-tier-caps-read-entitlement
 created: 2026-11-11
 ---
 
