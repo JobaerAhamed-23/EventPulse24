@@ -798,3 +798,71 @@ item's read lives in `frontend/app/pricing/page.tsx`, inline, as a private `read
 `lib/url-feed-read.ts`) — rather than being written a second time. **This item does not do
 that move**, because nothing else needs it yet, and a shared helper with one caller is not a
 shared helper.
+
+---
+
+## Work Item: `frontend-upgrade-prompts`
+
+All seven acceptance criteria met. Three things are worth a reader's attention: one copy
+regression this item introduces and deliberately does not fix, one deliberate change to an
+existing surface's behaviour, and one guard that was decorative until it was probed.
+
+### 1. The calendar cap's sentence got worse, and the fix belongs in the backend
+
+Acceptance criterion 4 is unambiguous: *"The prompt renders from the server's
+`upgrade_hint` … It does not hard-code the sentence."* So it does. The consequence:
+
+| Surface | Before this item | After |
+|---|---|---|
+| Save cap | *(no prompt existed)* | "You saved one event today. Save more with Pro." |
+| Calendar cap | "You've connected the calendars your plan allows." | **"Save more with Pro."** |
+
+The calendar prompt used to render the refusal's `message`, which states the fact. It now
+renders `upgrade_hint`, which is `"Save more with Pro."` — a nudge with no stated cause.
+After a failed connect, that reads as a non-sequitur.
+
+**Not fixed here, on purpose.** Three ways to fix it were available and all three were
+wrong for this item:
+
+- *Render `message` + `upgrade_hint`.* Correct for the calendar, redundant for the save cap
+  ("You've used your free save for today." followed by "You saved one event today…").
+- *Branch on the code and pick the field.* The frontend would then be choosing the copy,
+  which is the thing criterion 4 forbids.
+- *Write a better sentence in the component.* Hard-coding, same criterion.
+
+**The fix is one string in `backend/apps/personalization/services/calendar_connections.py:449`**,
+making the calendar hint a complete sentence the way the save hint already is. It was not
+made here because `EXPERIENCE.md` §3 has an approved sentence for the save-cap prompt and
+**none for the calendar cap**, and inventing approved copy is not this item's call. Flagged
+for the Planner as a one-line copy item.
+
+This is a visible regression on a live surface and is reported as one, not buried.
+
+### 2. The onboarding cap block changed from `role="alert"` to `role="status"`
+
+`alert` is assertive — it interrupts a screen reader mid-sentence. Hitting a tier ceiling
+is information, not an emergency, and this item's whole posture is that a cap must not
+interrupt. Making it `alert` on one surface and `status` on the other would also mean two
+spellings of a UI the acceptance criteria say must have one.
+
+A deliberate change to shipped behaviour, pinned by a test that asserts `role="alert"` is
+now absent.
+
+### 3. `CAP_CODES` was decorative
+
+Found by mutation, not by reading: deleting the code check broke **nothing** in 79 tests,
+because the only non-cap 409 under test carried no cap-shaped fields and was rejected by
+the field checks anyway. Written up in the test report; fixed by the test that makes it
+load-bearing.
+
+### What this item does not deliver, and why
+
+- **The mockup's expanded panel** (`pro-upgrade-cta-desktop.html`) has `role="dialog"` and
+  its own copy. The backend payload, FR-48's criterion and the work item all say inline.
+  **The payload wins**; the mockup is the authority on feel, not on mechanism. Recorded as
+  a deliberate divergence, with its "Not now" dismissal and muted-footer state.
+- **Browse's disabled Save state** (`EXPERIENCE.md` §4) is a different surface's component
+  and Browse is not in this intent. The prompt here is the *refusal* path.
+- **`readApiError` was not widened.** It is used in nine places; `readCapDetails` is a
+  sibling that reads the same body for a different question, so the other nine are
+  untouched.

@@ -883,3 +883,52 @@ portal-return paths and the 409's `portal_path` all point at it.
 **The upgrade prompts are not here.** A Free visitor who hits a cap is told the cap, not
 offered the upgrade; `frontend-upgrade-prompts` — still `pending` — is what writes that
 copy.
+
+---
+
+## Work Item: `frontend-upgrade-prompts`
+
+**28 new tests. Frontend 1913 passed / 116 files, from a 1885 / 114 baseline. No backend
+change, so no backend run and no `make client`: this item adds no endpoint and touches no
+schema.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `frontend/lib/cap-details.test.ts` | 11 | Both cap payloads; the six not-a-cap shapes; the hint read verbatim; no modal-shaped field is ever read |
+| `frontend/components/upgrade/upgrade-prompt.test.tsx` | 9 | The sentence verbatim; `/pricing`; no dialog/overlay/focus theft; `role="status"` not `alert`; no dismissal; no tier prop |
+| `frontend/components/detail/detail-actions.test.tsx` | +7 | The save cap renders the prompt; **not retried**; not a failure; not a modal; a Pro user sees nothing; the scheduling conflict still opens the sheet |
+| `frontend/components/onboarding/calendar-step.test.tsx` | +2 | The calendar cap renders the **same** component from the server's `upgrade_hint` |
+
+### Mutation testing: four guards probed, one found untested
+
+Every assertion in this item is about an *absence* — no modal, no retry, no dismissal — and
+an absence is the easiest kind of test to write green and useless. So each guard was broken
+on purpose to see whether anything noticed.
+
+| Mutation | Result |
+|---|---|
+| `role="status"` → `role="alert"` | **3 failed** — caught |
+| `UPGRADE_HREF` `/pricing` → `/` | **3 failed** — caught |
+| `readCapDetails` accepts any `code` | **79 passed** — **not caught** |
+| The Detail Screen's cap branch removed | **5 failed** — caught |
+
+**The third is the finding.** `CAP_CODES` exists so the client narrows on the fact the
+server stated rather than on which fields a payload happens to carry. But the only non-cap
+409 in the tests was `scheduling_conflict`, whose `details` has no `cap` and no
+`upgrade_hint` — so the field checks below already rejected it, and deleting the code check
+changed nothing anywhere in the suite. The guard was decorative.
+
+Fixed by adding the case that makes it load-bearing: a `scheduling_conflict` payload that
+*does* carry `{cap, upgrade_hint}`. Re-run with the mutation: **1 failed**. Restored: green.
+
+### A test-authoring trap worth recording
+
+`await screen.findByRole("status")` on the onboarding surface **resolves on the wrong
+element**. The `connecting` phase replaces the whole step with `SyncState`, which is itself
+a `role="status"`, so the query matched that and returned before the refusal had been
+handled — the assertion then failed against the text "Connecting…". `findBy*` waits for the
+*query* to match, not for the assertion to pass.
+
+Both calendar-step assertions now wait on the hint's **text** and check its enclosing role,
+which waits for the right thing. Any later test of a transient status region on this surface
+has the same trap.

@@ -1,11 +1,13 @@
 ---
 id: per-day-quiet-hours-domain-and-model
-title: Seven windows instead of one — reshaping quiet hours without breaking Free users
+title: Seven windows instead of one — reshaping quiet hours without breaking
+  Free users
 intent: pro-tier-and-monetization
 complexity: high
 mode: validate
-status: pending
-depends_on: [subscription-model-and-entitlement]
+status: in_progress
+depends_on:
+  - subscription-model-and-entitlement
 created: 2026-11-11
 ---
 

@@ -4,11 +4,13 @@ title: The prompt at the cap — calm, inline, and finally going somewhere
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - checkout-and-portal-api
   - free-tier-caps-read-entitlement
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T12:47:25.637Z
 ---
 
 # Work Item: The prompt at the cap — calm, inline, and finally going somewhere
