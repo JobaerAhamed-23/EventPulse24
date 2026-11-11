@@ -31,7 +31,7 @@ from datetime import time
 from uuid import UUID
 
 from apps.delivery.services.notification_preferences import get_preference
-from domain.quiet_hours import QuietHours
+from domain.quiet_hours import QuietHours, WeeklyQuietHours
 from shared.constants import DEFAULT_DIGEST_DELIVERY_TIME, DEFAULT_DIGEST_TIMEZONE
 
 
@@ -53,6 +53,12 @@ class NotificationSettingsView:
 
     user_id: UUID
     quiet_hours: QuietHours | None
+    #: The per-weekday windows as **stored** — always readable, whatever the user's tier.
+    quiet_hours_overrides: dict[int, QuietHours]
+    #: What the delivery path will actually use. For a Free or lapsed account this is the
+    #: base window on all seven days, whatever `quiet_hours_overrides` holds. Reporting
+    #: only the stored overrides would show a lapsed user seven windows not in force.
+    effective_quiet_hours: WeeklyQuietHours
     default_reminder_slots: tuple[str, ...]
     delivery_time: time
     timezone: str
@@ -98,6 +104,8 @@ def read_notification_settings(*, user_id: UUID) -> NotificationSettingsView:
     return NotificationSettingsView(
         user_id=user_id,
         quiet_hours=preference.quiet_hours,
+        quiet_hours_overrides=preference.quiet_hours_overrides,
+        effective_quiet_hours=preference.effective_quiet_hours,
         default_reminder_slots=tuple(preference.default_reminder_slots),
         delivery_time=delivery_time,
         timezone=zone,

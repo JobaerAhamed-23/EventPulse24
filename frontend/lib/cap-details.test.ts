@@ -16,6 +16,13 @@ const CALENDAR_CAP = {
   details: { cap: 1, upgrade_hint: "Save more with Pro." },
 };
 
+/** Per-weekday quiet hours, refused for a Free account (FR-51). */
+const QUIET_HOURS_CAP = {
+  code: "quiet_hours_pro_required",
+  message: "Setting a different window for each day is part of Pro.",
+  details: { cap: 1, upgrade_hint: "Set a different window for each day with Pro." },
+};
+
 describe("readCapDetails", () => {
   it("reads the save cap", () => {
     expect(readCapDetails(SAVE_CAP)).toEqual({
@@ -26,6 +33,13 @@ describe("readCapDetails", () => {
 
   it("reads the calendar cap, which is the same shape from a different endpoint", () => {
     expect(readCapDetails(CALENDAR_CAP)).toEqual({ cap: 1, upgradeHint: "Save more with Pro." });
+  });
+
+  it("reads the per-weekday quiet-hours cap, a third endpoint with the same shape", () => {
+    expect(readCapDetails(QUIET_HOURS_CAP)).toEqual({
+      cap: 1,
+      upgradeHint: "Set a different window for each day with Pro.",
+    });
   });
 
   it("reads the hint verbatim, whatever the backend changes it to", () => {

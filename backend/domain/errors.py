@@ -222,6 +222,31 @@ class SaveCapReached(ConflictError):
     default_message = "You've used your free save for today."
 
 
+class QuietHoursProRequired(ConflictError):
+    """Per-weekday quiet hours are a Pro feature, and this account is not Pro (FR-51).
+
+    **A conflict, not a 403.** The request is well-formed and the windows are perfectly
+    storable; it is the *state of the account* that refuses them. A 403 would say "you may
+    not do this", and the remedy here is not a permission grant — it is an upgrade. That is
+    the same reasoning that made `SaveCapReached` and `CalendarProviderCapReached` 409s, and
+    this carries their payload for the same reason.
+
+    **`details` carries `{"cap", "upgrade_hint"}`** — the cap being the one window a Free
+    account gets — so the inline upgrade prompt built for the save cap renders this with no
+    new component and no new copy path. As there, the payload carries **no modal-shaped
+    field**: no `modal`, no `title`, no `actions`, no `dismissable`. A paywall that
+    interrupts is the thing this product's posture is against.
+
+    **It refuses the write, never the read.** A lapsed Pro user's seven windows are their
+    own data and are never deleted, so they can always be read back; what a lapse removes is
+    their effect and the ability to change them. The read reports both the stored overrides
+    and the effective week, so nobody is shown seven windows that are not in force.
+    """
+
+    code = "quiet_hours_pro_required"
+    default_message = "Setting a different window for each day is part of Pro."
+
+
 class CalendarConnectionNotFoundError(NotFoundError):
     """The calendar connection does not exist, or is not the caller's (FR-50).
 

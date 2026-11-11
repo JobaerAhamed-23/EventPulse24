@@ -2071,6 +2071,22 @@ export interface components {
             timezone: string;
         };
         /**
+         * EffectiveQuietHoursOut
+         * @description One weekday of the schedule the delivery path will actually use (FR-51).
+         *
+         *     **Read-only, and derived.** It is the base window with a Pro account's overrides laid
+         *     over it; for a Free or lapsed account it is the base window on all seven days whatever
+         *     `quiet_hours_overrides` holds. It exists so a lapsed user is never shown seven windows
+         *     that are not in force — the one honest answer to "when will I actually be quiet".
+         *
+         *     `quiet_hours` is `null` on a day with no quiet hours at all.
+         */
+        EffectiveQuietHoursOut: {
+            quiet_hours: components["schemas"]["QuietHoursOut"] | null;
+            /** Weekday */
+            weekday: number;
+        };
+        /**
          * ErrorOut
          * @description `{code, message, details?}`. Validation errors use `details = {"errors": [ErrorItem]}`.
          */
@@ -2543,6 +2559,11 @@ export interface components {
             digest?: components["schemas"]["DigestScheduleIn"] | null;
             /** @description The Quiet Hours window, as two local wall clocks. **Omit this field to leave the window alone; send `null` to turn quiet hours off.** A full-day window (the same clock twice) is refused. */
             quiet_hours?: components["schemas"]["QuietHoursIn"] | null;
+            /**
+             * Quiet Hours Overrides
+             * @description A quiet-hours window per weekday — **a Pro feature**. Omit this field to leave your per-day windows alone; send `[]` to remove them all and go back to one window for the whole week. The list **replaces** your weekdays rather than merging into them, and the whole week is applied in one transaction. A Free account sending a non-empty list is refused with an upgrade hint.
+             */
+            quiet_hours_overrides?: components["schemas"]["QuietHoursOverrideIn"][] | null;
         };
         /**
          * NotificationSettingsOut
@@ -2556,7 +2577,11 @@ export interface components {
             /** Default Reminder Slots */
             default_reminder_slots: string[];
             digest: components["schemas"]["DigestScheduleOut"];
+            /** Effective Quiet Hours */
+            effective_quiet_hours: components["schemas"]["EffectiveQuietHoursOut"][];
             quiet_hours: components["schemas"]["QuietHoursOut"] | null;
+            /** Quiet Hours Overrides */
+            quiet_hours_overrides: components["schemas"]["QuietHoursOverrideOut"][];
         };
         /**
          * OnboardingStateOut
@@ -2954,6 +2979,59 @@ export interface components {
              * Format: time
              */
             start: string;
+        };
+        /**
+         * QuietHoursOverrideIn
+         * @description One weekday's quiet-hours window to save (FR-51).
+         *
+         *     `weekday` is Monday 0 through Sunday 6. A full-day window (`start == end`) is refused
+         *     here exactly as it is for the base window, and **the whole list is validated before any
+         *     of it is written**, so a bad seventh window does not leave six applied.
+         */
+        QuietHoursOverrideIn: {
+            /**
+             * End
+             * Format: time
+             * @description When quiet hours end, as a local wall clock.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             * @description When quiet hours begin that day, as a local wall clock.
+             */
+            start: string;
+            /**
+             * Weekday
+             * @description Monday 0 through Sunday 6.
+             */
+            weekday: number;
+        };
+        /**
+         * QuietHoursOverrideOut
+         * @description One weekday's quiet-hours window, as stored (FR-51).
+         *
+         *     `weekday` is **Monday 0 through Sunday 6** — `date.weekday()`, the same numbering the
+         *     domain and the table use, because a second numbering is a conversion waiting to be got
+         *     wrong.
+         *
+         *     **These are the windows the user stored, not necessarily the ones in force.** A lapsed
+         *     Pro account still has its seven here, because they are the user's own data and are never
+         *     deleted. What is actually applied is `effective_quiet_hours`.
+         */
+        QuietHoursOverrideOut: {
+            /**
+             * End
+             * Format: time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             */
+            start: string;
+            /** Weekday */
+            weekday: number;
         };
         /**
          * ReminderPlanIn
@@ -5347,6 +5425,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationSettingsOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Unprocessable Content */

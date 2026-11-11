@@ -20,7 +20,7 @@ key because they write the *same row*. This writes a different table in a differ
 sharing their key would serialise unrelated writes for no benefit.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import blake2b
@@ -74,6 +74,10 @@ class NotificationSettings:
 
     user_id: UUID
     quiet_hours: QuietHours | None
+    #: The per-weekday windows as **stored**, whatever the user's tier. A lapsed Pro user's
+    #: windows are their own data and are always readable; what a lapse removes is their
+    #: effect, which is `effective_quiet_hours`' business.
+    quiet_hours_overrides: dict[int, QuietHours]
     effective_quiet_hours: WeeklyQuietHours
     default_reminder_slots: tuple[str, ...]
 
@@ -93,13 +97,24 @@ def _lock_user(user_id: UUID) -> None:
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", [_user_lock_key(user_id)])
 
 
-def _effective_week(user_id: UUID, base: QuietHours | None) -> WeeklyQuietHours:
+def _stored_overrides(user_id: UUID) -> dict[int, QuietHours]:
+    """This user's per-weekday windows as stored, by weekday. One query."""
+    return {
+        row.weekday: QuietHours(start=row.start, end=row.end)
+        for row in QuietHoursOverride.objects.using(PERSONAL)
+        .filter(user_id=user_id)
+        .order_by("weekday")
+    }
+
+
+def _effective_week(
+    user_id: UUID, base: QuietHours | None, overrides: dict[int, QuietHours]
+) -> WeeklyQuietHours:
     """The base window on every weekday, with a Pro user's overrides laid over it (FR-51).
 
-    **The override query comes first, and the entitlement read only happens if it finds
-    something.** A user who has never been Pro has no override rows, so this costs one
-    query and never touches `Subscription` at all — which is the common case and the one
-    the delivery batch runs on.
+    **The entitlement read only happens if there are overrides to apply.** A user who has
+    never been Pro has none, so this never touches `Subscription` at all — which is the
+    common case and the one the delivery batch runs on.
 
     **A lapsed Pro user keeps their rows and loses their effect.** The brief forbids
     deleting them, so the rows stay exactly where they were and this read simply stops
@@ -108,15 +123,12 @@ def _effective_week(user_id: UUID, base: QuietHours | None) -> WeeklyQuietHours:
     for, and it is here rather than in a docstring somewhere because this is the only place
     that decides it.
     """
-    overrides = list(
-        QuietHoursOverride.objects.using(PERSONAL).filter(user_id=user_id).order_by("weekday")
-    )
     if not overrides or not is_pro(user_id=user_id):
         return WeeklyQuietHours.every_day(base)
 
     windows: list[QuietHours | None] = [base] * DAYS_IN_WEEK
-    for override in overrides:
-        windows[override.weekday] = QuietHours(start=override.start, end=override.end)
+    for weekday, window in overrides.items():
+        windows[weekday] = window
     return WeeklyQuietHours(windows=tuple(windows))
 
 
@@ -124,10 +136,12 @@ def _to_settings(row: NotificationPreference) -> NotificationSettings:
     window = None
     if row.quiet_hours_start is not None and row.quiet_hours_end is not None:
         window = QuietHours(start=row.quiet_hours_start, end=row.quiet_hours_end)
+    overrides = _stored_overrides(row.user_id)
     return NotificationSettings(
         user_id=row.user_id,
         quiet_hours=window,
-        effective_quiet_hours=_effective_week(row.user_id, window),
+        quiet_hours_overrides=overrides,
+        effective_quiet_hours=_effective_week(row.user_id, window, overrides),
         default_reminder_slots=tuple(row.default_reminder_slots),
     )
 
@@ -263,6 +277,81 @@ def set_quiet_hours_override(
         return _to_settings(row)
 
 
+def replace_quiet_hours_overrides(
+    *,
+    user_id: UUID,
+    overrides: Mapping[int, QuietHours],
+    actor: Actor,
+    now: datetime,
+) -> NotificationSettings:
+    """Replace this user's whole set of per-weekday windows in one go (FR-51).
+
+    **The week is applied atomically, and the transaction is what guarantees that.** A list
+    whose seventh window is `start == end` must leave the first six unwritten, not applied;
+    the raise unwinds the surrounding `transaction.atomic`, so nothing lands. Mutation
+    testing confirms this is the transaction's doing: moving the validation *inside* the
+    write loop keeps every atomicity test green.
+
+    The validation still runs first, for a smaller reason that is worth stating so nobody
+    "simplifies" it back: a request that is going to fail should not first take this user's
+    advisory lock and serialise their other settings writes behind it.
+
+    **It is a replace, not a merge.** A weekday absent from `overrides` has its row removed,
+    because that is how a day says "the base window applies here". A merge would make it
+    impossible to go back to six overrides without a second call, and "set my week" is the
+    operation the settings screen actually performs.
+
+    **It does not check entitlement**, deliberately — the same choice
+    `set_quiet_hours_override` made and for the same reason. The rows are the user's data;
+    the subscription governs their *effect*, which `_effective_week` decides, and their
+    writability, which the API decides where the user is. A command that refused on tier
+    would have to be re-run after an upgrade to restore what the user already said.
+
+    Raises:
+        InvalidQuietHoursWindowError: any window's start equals its end.
+        ValueError: any weekday is not 0..6.
+    """
+    for weekday, window in overrides.items():
+        if not 0 <= weekday < DAYS_IN_WEEK:
+            raise ValueError(f"weekday must be 0..{DAYS_IN_WEEK - 1}, got {weekday}")
+        if window.disabled:
+            raise InvalidQuietHoursWindowError(
+                details={
+                    "weekday": weekday,
+                    "quiet_hours_start": str(window.start),
+                    "quiet_hours_end": str(window.end),
+                }
+            )
+
+    with transaction.atomic(using=PERSONAL):
+        _lock_user(user_id)
+        row = _get_or_create_row(user_id)
+        QuietHoursOverride.objects.using(PERSONAL).filter(user_id=user_id).exclude(
+            weekday__in=list(overrides)
+        ).delete()
+        for weekday, window in sorted(overrides.items()):
+            QuietHoursOverride.objects.using(PERSONAL).update_or_create(
+                user_id=user_id,
+                weekday=weekday,
+                defaults={"start": window.start, "end": window.end},
+            )
+        write_audit(
+            actor=actor,
+            action="notification_preference.quiet_hours_overrides_replaced",
+            target_type="notification_preference",
+            target_id=row.id,
+            details={
+                "weekdays": sorted(overrides),
+                "windows": {
+                    str(weekday): [str(window.start), str(window.end)]
+                    for weekday, window in sorted(overrides.items())
+                },
+                "at": now.isoformat(),
+            },
+        )
+        return _to_settings(row)
+
+
 def clear_quiet_hours_override(
     *,
     user_id: UUID,
@@ -368,6 +457,7 @@ __all__ = [
     "get_preference",
     "set_default_reminder_slots",
     "clear_quiet_hours_override",
+    "replace_quiet_hours_overrides",
     "set_quiet_hours",
     "set_quiet_hours_override",
 ]

@@ -1159,8 +1159,8 @@ runs:
           intent: pro-tier-and-monetization
           mode: confirm
           status: in_progress
-          current_phase: plan
-          checkpoint_state: none
+          current_phase: execute
+          checkpoint_state: approved
           current_checkpoint: plan
         - id: frontend-pro-quiet-hours
           intent: pro-tier-and-monetization

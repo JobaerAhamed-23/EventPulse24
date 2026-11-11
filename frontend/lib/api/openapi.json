@@ -1481,6 +1481,31 @@
         "title": "DigestScheduleOut",
         "type": "object"
       },
+      "EffectiveQuietHoursOut": {
+        "description": "One weekday of the schedule the delivery path will actually use (FR-51).\n\n**Read-only, and derived.** It is the base window with a Pro account's overrides laid\nover it; for a Free or lapsed account it is the base window on all seven days whatever\n`quiet_hours_overrides` holds. It exists so a lapsed user is never shown seven windows\nthat are not in force — the one honest answer to \"when will I actually be quiet\".\n\n`quiet_hours` is `null` on a day with no quiet hours at all.",
+        "properties": {
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHoursOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weekday",
+          "quiet_hours"
+        ],
+        "title": "EffectiveQuietHoursOut",
+        "type": "object"
+      },
       "ErrorOut": {
         "description": "`{code, message, details?}`. Validation errors use `details = {\"errors\": [ErrorItem]}`.",
         "properties": {
@@ -2181,6 +2206,21 @@
               }
             ],
             "description": "The Quiet Hours window, as two local wall clocks. **Omit this field to leave the window alone; send `null` to turn quiet hours off.** A full-day window (the same clock twice) is refused."
+          },
+          "quiet_hours_overrides": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuietHoursOverrideIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A quiet-hours window per weekday — **a Pro feature**. Omit this field to leave your per-day windows alone; send `[]` to remove them all and go back to one window for the whole week. The list **replaces** your weekdays rather than merging into them, and the whole week is applied in one transaction. A Free account sending a non-empty list is refused with an upgrade hint.",
+            "title": "Quiet Hours Overrides"
           }
         },
         "title": "NotificationSettingsIn",
@@ -2199,6 +2239,13 @@
           "digest": {
             "$ref": "#/components/schemas/DigestScheduleOut"
           },
+          "effective_quiet_hours": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveQuietHoursOut"
+            },
+            "title": "Effective Quiet Hours",
+            "type": "array"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -2208,10 +2255,19 @@
                 "type": "null"
               }
             ]
+          },
+          "quiet_hours_overrides": {
+            "items": {
+              "$ref": "#/components/schemas/QuietHoursOverrideOut"
+            },
+            "title": "Quiet Hours Overrides",
+            "type": "array"
           }
         },
         "required": [
           "quiet_hours",
+          "quiet_hours_overrides",
+          "effective_quiet_hours",
           "default_reminder_slots",
           "digest"
         ],
@@ -2964,6 +3020,63 @@
           "end"
         ],
         "title": "QuietHoursOut",
+        "type": "object"
+      },
+      "QuietHoursOverrideIn": {
+        "description": "One weekday's quiet-hours window to save (FR-51).\n\n`weekday` is Monday 0 through Sunday 6. A full-day window (`start == end`) is refused\nhere exactly as it is for the base window, and **the whole list is validated before any\nof it is written**, so a bad seventh window does not leave six applied.",
+        "properties": {
+          "end": {
+            "description": "When quiet hours end, as a local wall clock.",
+            "format": "time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "When quiet hours begin that day, as a local wall clock.",
+            "format": "time",
+            "title": "Start",
+            "type": "string"
+          },
+          "weekday": {
+            "description": "Monday 0 through Sunday 6.",
+            "maximum": 6,
+            "minimum": 0,
+            "title": "Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weekday",
+          "start",
+          "end"
+        ],
+        "title": "QuietHoursOverrideIn",
+        "type": "object"
+      },
+      "QuietHoursOverrideOut": {
+        "description": "One weekday's quiet-hours window, as stored (FR-51).\n\n`weekday` is **Monday 0 through Sunday 6** — `date.weekday()`, the same numbering the\ndomain and the table use, because a second numbering is a conversion waiting to be got\nwrong.\n\n**These are the windows the user stored, not necessarily the ones in force.** A lapsed\nPro account still has its seven here, because they are the user's own data and are never\ndeleted. What is actually applied is `effective_quiet_hours`.",
+        "properties": {
+          "end": {
+            "format": "time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "time",
+            "title": "Start",
+            "type": "string"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weekday",
+          "start",
+          "end"
+        ],
+        "title": "QuietHoursOverrideOut",
         "type": "object"
       },
       "ReminderPlanIn": {
@@ -6217,6 +6330,16 @@
               }
             },
             "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {

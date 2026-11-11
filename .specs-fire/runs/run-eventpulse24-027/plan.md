@@ -1088,3 +1088,101 @@ answer. The proof moved into `MAX_DEFERRALS`' docstring and into a brute-force t
 3. **A lapse moves a Pro user's delivery times.** Correct, but it is the only delivery-time
    change in this intent caused by a billing event. Item 8's API should report the
    *effective* schedule rather than the stored one.
+
+---
+
+# Work Item: `quiet-hours-pro-api` — seven windows over the wire
+
+## Implementation Plan
+
+### Approach
+
+The work item names the real risk: **shape drift** — two parallel spellings of quiet hours
+that slowly disagree. So there is no second endpoint and no second schema for "the weekly
+version". There is one `PUT /api/settings/notifications`, and the weekly case is **three
+fields on the body it already has**, mirroring the storage exactly:
+
+| Field | Direction | Meaning |
+|---|---|---|
+| `quiet_hours` | read + write | **Unchanged.** The base window: "this window, every day". |
+| `quiet_hours_overrides` | read + write | A list of `{weekday, start, end}`, at most seven. Pro only to write. |
+| `effective_quiet_hours` | **read only** | Seven entries: what the delivery path will actually use. |
+
+These are not two spellings of one thing. `quiet_hours` is still the only way to say "my
+window"; an override says "…except on Thursdays". That is the same relationship the tables
+have, which is why they cannot drift apart — one is derived from the other two and is
+read-only.
+
+**`effective_quiet_hours` is why a lapsed Pro user is not lied to.** It is the carried risk
+from `per-day-quiet-hours-domain-and-model`'s review: a lapse silently returns a user to
+their base window. With both fields on the response, a lapsed user sees their seven stored
+overrides *and* sees that the effective week is their base window every day. Reporting only
+the stored overrides would show seven windows that are not in force.
+
+**Overrides go into `SettingsPatch`, not a new endpoint, and that is load-bearing.**
+`apply_settings_patch` already wraps every settings write plus
+`reschedule_pending_for_user` in one `transaction.atomic(using=PERSONAL)`. Putting the
+overrides inside it buys three things at once: the whole week is applied in one transaction
+(the acceptance criterion's "the server never observes a partially-updated week"), the
+pending sends are re-timed from the new windows, and a weekday change behaves exactly like a
+base-window change rather than being a second kind of settings write.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/tests/delivery/test_quiet_hours_pro_api.py` | The endpoint: both shapes, the refusals, the lapse, atomicity |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/domain/errors.py` | `QuietHoursProRequired(ConflictError)` — `code = "quiet_hours_pro_required"`, `details = {cap, upgrade_hint}` |
+| `backend/apps/delivery/services/notification_preferences.py` | `replace_quiet_hours_overrides` — validate every window, then apply the whole set |
+| `backend/apps/delivery/services/preferences.py` | `SettingsPatch.quiet_hours_overrides` + `clear_quiet_hours_overrides`; applied inside the existing transaction |
+| `backend/apps/delivery/services/preferences_read.py` | The view carries the stored overrides and the effective week |
+| `backend/apps/delivery/schemas.py` | `QuietHoursOverrideIn/Out`, `EffectiveQuietHoursOut`, the three fields |
+| `backend/apps/delivery/preferences_api.py` | Read the new fields from the patch; refuse a non-Pro write |
+| `backend/shared/constants.py` | The upgrade sentence for this refusal |
+| `frontend/lib/cap-details.ts` | `quiet_hours_pro_required` joins `CAP_CODES` |
+| `frontend/lib/api/openapi.json`, `schema.ts` | Regenerated — **`make client` in this item** |
+
+### The rules this item fixes
+
+1. **A Free user writing overrides is refused**, with `{cap, upgrade_hint}` — the same calm
+   inline shape as the save cap and the calendar cap, so the prompt built in
+   `frontend-upgrade-prompts` renders it with no new component. `CAP_CODES` gains the code;
+   that is the whole frontend change here, and the surface is item 9's.
+2. **A lapsed Pro user can read, and cannot write.** Reading is what the acceptance
+   criterion requires and what `effective_quiet_hours` makes honest. Writing is refused for
+   the same reason a Free user's is — they are not Pro — and this is not a second answer to
+   `per-day-quiet-hours-domain-and-model`'s rule but the same one: **the rows are the
+   user's and are never deleted; the subscription governs their effect.** The *command*
+   stays tier-agnostic, as that item deliberately made it; the paywall is at the API, where
+   the user is.
+3. **`start == end` is refused on every window, not just the first.** The whole list is
+   validated before anything is written, so a bad seventh window does not leave six applied.
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| The Free shape | `GET`/`PUT` with one window is byte-identical to today; the new fields are additive |
+| The Pro shape | Seven windows set in one `PUT`; read back; `effective_quiet_hours` reflects them |
+| Atomicity | A list whose last window is `start == end` writes **none** of them |
+| The refusal | A Free user's override write is 409 with `{cap, upgrade_hint}` and no modal field; nothing written |
+| The lapse | Overrides still readable; `effective_quiet_hours` is the base window; a write is refused |
+| Re-timing | Changing a weekday window re-times pending sends, as a base-window change does |
+| Validation | A weekday outside 0..6; two overrides for one weekday |
+| Contract | The regenerated client is in sync — **verified by the full suite**, since `test_contract.py` passes in isolation |
+
+### Risks flagged early
+
+1. **This item adds fields to a shared endpoint.** `NotificationSettingsOut` is read by the
+   existing settings screen; the fields are additive and optional, and the Free-shape test
+   asserts the old response is unchanged.
+2. **`make client` must run in this item.** Item 2's regression — a stale `schema.ts`
+   failing only when the contract test runs beside its siblings — is the reason it is in the
+   plan rather than left to CI.
+3. **The refusal's `code` is new.** Until `CAP_CODES` learns it, the shared upgrade prompt
+   would silently fall back to the generic error line. Changed in the same item.

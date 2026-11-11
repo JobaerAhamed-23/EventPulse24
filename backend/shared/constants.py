@@ -509,6 +509,14 @@ CALENDAR_CLAIM_TTL = timedelta(minutes=15)
 #
 # The window is 24 hours, measured from the *first* save in it. A refused save cannot move
 # that anchor, so being refused costs the user no time they would not have lost anyway.
+#: The one quiet-hours window a Free account gets. Pro gets one per weekday (FR-51).
+FREE_TIER_QUIET_HOURS_WINDOWS = 1
+
+#: The upgrade sentence for a Free account trying to set a window per weekday. One calm
+#: sentence, matching the save cap's and the calendar cap's: the word "Pro" is what the
+#: quiet "Upgrade" link beside it points at.
+QUIET_HOURS_PRO_UPGRADE_HINT = "Set a different window for each day with Pro."
+
 FREE_TIER_SAVE_DAILY_LIMIT = 1
 FREE_TIER_SAVE_WINDOW_SECONDS = 24 * 60 * 60
 

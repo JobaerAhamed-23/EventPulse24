@@ -46,6 +46,7 @@ the *digest's content*, not its schedule, and they are not what this endpoint is
 pass them.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, time
 from uuid import UUID
@@ -53,6 +54,7 @@ from uuid import UUID
 from django.db import transaction
 
 from apps.delivery.services.notification_preferences import (
+    replace_quiet_hours_overrides,
     set_default_reminder_slots,
     set_quiet_hours,
 )
@@ -78,6 +80,11 @@ class SettingsPatch:
 
     quiet_hours: QuietHours | None = None
     clear_quiet_hours: bool = False
+    #: The per-weekday windows to store, or `None` to leave them alone. An **empty mapping
+    #: is not `None`**: it means "remove every override", which is how a user goes back to
+    #: one window for the whole week. The API tells the two apart by field presence, as it
+    #: does for `quiet_hours`.
+    quiet_hours_overrides: Mapping[int, QuietHours] | None = None
     default_reminder_slots: tuple[str, ...] | None = None
     delivery_time: time | None = None
     timezone: str | None = None
@@ -86,6 +93,11 @@ class SettingsPatch:
     def touches_quiet_hours(self) -> bool:
         """Whether this patch mentions the window at all."""
         return self.clear_quiet_hours or self.quiet_hours is not None
+
+    @property
+    def touches_quiet_hours_overrides(self) -> bool:
+        """Whether this patch mentions the per-weekday windows at all."""
+        return self.quiet_hours_overrides is not None
 
     @property
     def touches_digest_schedule(self) -> bool:
@@ -138,6 +150,17 @@ def apply_settings_patch(
             set_quiet_hours(
                 user_id=user_id,
                 window=None if patch.clear_quiet_hours else patch.quiet_hours,
+                actor=actor,
+                now=now,
+            )
+
+        if patch.touches_quiet_hours_overrides:
+            # Inside the same transaction as the base window and the rewrite below, so a
+            # week is never half-applied and the pending sends are re-timed from the
+            # windows the user just set.
+            replace_quiet_hours_overrides(
+                user_id=user_id,
+                overrides=patch.quiet_hours_overrides,
                 actor=actor,
                 now=now,
             )

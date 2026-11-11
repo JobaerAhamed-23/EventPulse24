@@ -934,3 +934,74 @@ nothing to do with the claim.
 
 `apps.delivery → apps.identity.services` is permitted: only `apps.identity.models` is
 protected, and `save_cap.py` already does it. All 19 import contracts stay kept.
+
+---
+
+## Work Item: `quiet-hours-pro-api`
+
+All six acceptance criteria met. Two things a reviewer should look at: the shape chosen
+against the item's stated risk, and a second docstring that credited the wrong line.
+
+### 1. One representation, not two — which is what the item asked for
+
+The work item named the risk as **shape drift**: "two parallel spellings of quiet hours in
+the API, one legacy and one weekly, that slowly disagree." So there is no second endpoint
+and no weekly variant of `NotificationSettingsOut`. Three fields on the body that already
+exists:
+
+| Field | Direction | Meaning |
+|---|---|---|
+| `quiet_hours` | read + write | **Unchanged.** "This window, every day." |
+| `quiet_hours_overrides` | read + write | `{weekday, start, end}`, at most seven. Pro to write. |
+| `effective_quiet_hours` | **read only** | Seven entries: what the scheduler will apply. |
+
+These cannot drift because the third is **derived from the other two and cannot be
+written**. It is not a parallel spelling; it is the answer to a different question — "when
+will I actually be quiet" — which nothing else on the response could answer.
+
+### 2. `effective_quiet_hours` is the carried risk from item 7, closed
+
+`per-day-quiet-hours-domain-and-model`'s review flagged that a lapse silently returns a Pro
+user to their base window, and asked that this item report the effective schedule rather
+than the stored one. It reports **both**, which is better than either: a lapsed account sees
+its seven stored windows *and* sees that the effective week is the base window every day.
+Reporting only the stored ones would show seven windows not in force; reporting only the
+effective ones would look as though the lapse had deleted their data.
+
+### 3. The paywall is at the API, and that is a deliberate split
+
+`replace_quiet_hours_overrides` is tier-agnostic, as `set_quiet_hours_override` was. The
+refusal lives in `preferences_api._refuse_weekday_windows_without_pro`. This is not two
+answers to item 7's rule but the same one: **the rows are the user's data and the
+subscription governs their effect, not their existence.** A command that refused on tier
+would have to be re-run after an upgrade to restore what the user already said.
+
+Two consequences worth stating because neither is obvious:
+
+- **Clearing is never refused.** `[]` removes every override and returns the account to one
+  window for the week — the Free shape. Refusing someone the ability to go back to what
+  their plan includes would be absurd, and it is also exactly what a lapsed account needs
+  to tidy up.
+- **A lapsed account is refused a write and keeps its read**, which is what the acceptance
+  criterion required.
+
+### 4. A second docstring credited the wrong line
+
+Mutation testing again. `replace_quiet_hours_overrides` validated the whole week before
+opening the transaction, and said that was what kept the server from seeing a
+partially-updated week. **It is not** — moving the validation inside the write loop keeps
+every atomicity test green, because the raise unwinds `transaction.atomic`.
+
+The validation still runs first, for a real but much smaller reason now stated in the
+docstring: a request that will fail should not first take the user's advisory lock and
+serialise their other settings writes behind it. This is the second time in two items that
+a mutation found a comment claiming more than its line does, which is worth noting as a
+pattern rather than twice as an incident.
+
+### 5. The refusal reuses the prompt rather than growing a second one
+
+`QuietHoursProRequired` carries `{cap, upgrade_hint}` and no modal-shaped field — the same
+payload as `SaveCapReached` and `CalendarProviderCapReached`. The whole frontend change is
+`quiet_hours_pro_required` joining `CAP_CODES`; the inline prompt built in
+`frontend-upgrade-prompts` renders it with no new component and no new copy path. The
+surface that shows it is item 9's.
