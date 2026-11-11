@@ -299,12 +299,15 @@ describe("connecting", () => {
 });
 
 describe("the refusals", () => {
-  it("shows the Free cap inline, with an upgrade link and no dialog", async () => {
+  it("shows the Free cap through the shared prompt, in the server's own words", async () => {
+    // **The same component the save cap renders.** There is one spelling of this UI,
+    // and the assertions below are the shared component's contract, not this file's.
     POST.mockResolvedValue({
       data: undefined,
       error: {
         code: "calendar_cap_reached",
         message: "You've connected the calendars your plan allows.",
+        details: { cap: 1, upgrade_hint: "Save more with Pro." },
       },
     });
     render(<CalendarStep />);
@@ -313,12 +316,37 @@ describe("the refusals", () => {
     typeAddress();
     connect();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "You've connected the calendars your plan allows.",
-    );
-    expect(screen.getByRole("link", { name: "Upgrade" })).toBeInTheDocument();
+    // `upgrade_hint`, not `message`: the server owns the upgrade copy, so changing it
+    // backend-side needs no change here.
+    //
+    // Waited on by its text, not by its role: the `connecting` phase renders its own
+    // `role="status"` line, so a role query would resolve on that one first.
+    const prompt = await screen.findByText("Save more with Pro.");
+    expect(prompt.closest("[role='status']")).not.toBeNull();
+    expect(screen.queryByText("You've connected the calendars your plan allows.")).toBeNull();
+    expect(screen.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/pricing");
     // The API's payload carries no modal semantics, and this surface invents none.
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("renders a reworded cap hint without a frontend change", async () => {
+    POST.mockResolvedValue({
+      data: undefined,
+      error: {
+        code: "calendar_cap_reached",
+        message: "You've connected the calendars your plan allows.",
+        details: { cap: 3, upgrade_hint: "Three calendars is the free plan. Pro has more." },
+      },
+    });
+    render(<CalendarStep />);
+
+    chooseGoogle();
+    typeAddress();
+    connect();
+
+    expect(await screen.findByText("Three calendars is the free plan. Pro has more."))
+      .toBeInTheDocument();
   });
 
   it("shows a refused address on the field, in the API's words", async () => {
