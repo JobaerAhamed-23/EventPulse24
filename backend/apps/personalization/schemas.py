@@ -18,7 +18,7 @@ no field the client has no use for.
 """
 
 from datetime import date, datetime, time
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from ninja import Field, Schema
@@ -409,9 +409,97 @@ class SchedulingConflictOut(ErrorOut):
 
     The message and code come from `domain.errors.SchedulingConflictError`; the API layer
     builds the body, so the two stay in step through this schema.
+
+    **`code` is a literal, not a bare string**, so this shape can sit in a discriminated
+    union with the save-cap refusal the same endpoint can answer. See `SaveConflictOut`.
     """
 
+    code: Literal["scheduling_conflict"]
     details: SchedulingConflictDetails | None = None
+
+
+class CalendarCapDetails(Schema):
+    """The `details` of a calendar-cap refusal: the cap, and one upgrade sentence.
+
+    **Exactly two fields, and nothing else** — the same shape as `SaveCapDetails`, and
+    for the same reason. No `modal`, no `title`, no `actions`, no `dismissable`: the
+    refusal is an *inline* prompt with a quiet "Upgrade" link, not a modal
+    (EXPERIENCE.md §3, the Free-tier cap prompt). A cap that interrupts with a modal is a
+    cap that trains people to dismiss prompts.
+
+    The two tier caps — one on connected calendars, one on saves — therefore speak **one**
+    language to the frontend: a number and a sentence. The frontend renders one prompt
+    component for both.
+    """
+
+    cap: int
+    upgrade_hint: str
+
+
+class CalendarCapOut(ErrorOut):
+    """The 409 a refused calendar connection answers with (FR-50).
+
+    **A conflict, not a bad request.** The address the user pasted is perfectly good — it
+    is the *state of the account* that refuses it, because the account already holds as
+    many calendars as its plan allows. The request was well-formed and conflicts with the
+    account, which is what a 409 means.
+
+    This is the only 409 the connect route can answer, so it needs no union — unlike the
+    save route, which refuses for two different reasons.
+    """
+
+    code: Literal["calendar_cap_reached"]
+    details: CalendarCapDetails | None = None
+
+
+class SaveCapDetails(Schema):
+    """The `details` of a save-cap refusal: the cap, and one upgrade sentence.
+
+    **Exactly two fields, and nothing else.** No `modal`, no `title`, no `actions`, no
+    `dismissable` — the refusal is an *inline* prompt with a quiet "Upgrade" link, not a
+    modal (EXPERIENCE.md §3, the Free-tier cap prompt). A cap that interrupts with a modal
+    is a cap that trains people to dismiss prompts. The schema makes the modal-shaped
+    field inexpressible rather than merely absent from the prose.
+
+    This is the same shape `CalendarProviderCapReached` carries (`calendar_connections.py`),
+    so the two tier caps speak one language to the frontend.
+    """
+
+    cap: int
+    upgrade_hint: str
+
+
+class SaveCapOut(ErrorOut):
+    """The 409 a refused save answers with (FR-49).
+
+    **A conflict, not a rate limit.** The request was well-formed and the event is
+    perfectly saveable; the *state of the account* refuses it, because the account has
+    already spent its allowance. The remedy is not to wait — it is to upgrade — so this is
+    a 409 and not a 429.
+
+    **`code` is a literal, not a bare string**, so this shape can sit in a discriminated
+    union with the scheduling conflict the same endpoint can answer. See `SaveConflictOut`.
+    """
+
+    code: Literal["save_cap_reached"]
+    details: SaveCapDetails | None = None
+
+
+#: The 409 of the save endpoint, as a **discriminated union on `code`**.
+#:
+#: One endpoint, two refusals, two payloads: a clashing save answers with the conflict
+#: and its three actions (FR-58), and a capped save answers with the cap and one upgrade
+#: sentence (FR-49). A route may declare only one schema per status code, so the two
+#: shapes are joined here rather than by widening either of them into a mush.
+#:
+#: The discriminator is the error's own `code` — `scheduling_conflict` or
+#: `save_cap_reached` — which is exactly the field the frontend branches on. A client
+#: generated from this document can read `details.cap` and `details.upgrade_hint` on the
+#: one branch, and `details.conflicts` on the other, without guessing.
+SaveConflictOut = Annotated[
+    SchedulingConflictOut | SaveCapOut,
+    Field(discriminator="code"),
+]
 
 
 class SavedEventOut(Schema):

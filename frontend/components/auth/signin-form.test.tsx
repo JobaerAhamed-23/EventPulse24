@@ -203,4 +203,18 @@ describe("SigninForm", () => {
     expect(pressed).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
   });
+
+  it("lands on where the visitor was going, rather than the home", async () => {
+    // A visitor who chose a plan and was asked to sign in comes back to the pricing page
+    // with their intent intact.
+    POST.mockResolvedValue({ data: { status: "signed_in" }, error: undefined });
+    render(<SigninForm next="/pricing" />);
+
+    fillIn();
+    submit();
+
+    await vi.waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/pricing");
+    });
+  });
 });

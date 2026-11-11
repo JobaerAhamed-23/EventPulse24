@@ -2,6 +2,7 @@
 
 from apps.identity.services.audit import write_audit
 from apps.identity.services.authenticate import authenticate
+from apps.identity.services.billing import open_portal, read_entitlement, start_checkout
 from apps.identity.services.entitlement import is_pro
 from apps.identity.services.password_reset import (
     hash_token,
@@ -26,6 +27,8 @@ __all__ = [
     "hash_token",
     "is_pro",
     "is_throttled",
+    "open_portal",
+    "read_entitlement",
     "record_subscription_changed",
     "record_subscription_ended",
     "record_subscription_started",
@@ -33,5 +36,6 @@ __all__ = [
     "reset_password",
     "sign_out",
     "sign_up",
+    "start_checkout",
     "write_audit",
 ]

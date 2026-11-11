@@ -186,8 +186,17 @@ export function DetailActions({
       const response = await api.POST("/api/personal/saved-events/{catalog_event_id}", {
         params: { path: { catalog_event_id: eventId } },
       });
+      // **The 409 is one of two refusals, and the `code` says which.**
+      //
+      // `scheduling_conflict` carries the pair and the three actions; `save_cap_reached`
+      // carries the cap and an upgrade sentence (FR-49). They share a status code and
+      // nothing else, so the client narrows on `code` — the field the server set — rather
+      // than reaching for a field that only one of them has.
+      const error = response.error;
       const clash =
-        response.response.status === 409 ? response.error?.details?.conflicts?.[0] : undefined;
+        response.response.status === 409 && error?.code === "scheduling_conflict"
+          ? error.details?.conflicts?.[0]
+          : undefined;
       // The save is idempotent, so a 2xx means it is saved now. A refusal is shown
       // calmly rather than swallowed — a button that silently fails is the thing this
       // screen is careful about.

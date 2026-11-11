@@ -29,6 +29,7 @@ from ninja import Query, Router, Status
 from apps.identity.api_auth import current_user
 from apps.ingestion.services.catalog_read import EventNotFoundError, get_public_event
 from apps.personalization.schemas import (
+    CalendarCapOut,
     CalendarConnectIn,
     CalendarConnectionListOut,
     CalendarConnectionOut,
@@ -53,6 +54,7 @@ from apps.personalization.schemas import (
     PersonalEventListQuery,
     PersonalEventOut,
     PersonalEventPatchIn,
+    SaveConflictOut,
     SavedEventListOut,
     SavedEventListQuery,
     SavedEventOut,
@@ -356,7 +358,7 @@ def read_timeline(request, filters: TimelineQuery = EVENT_LIST_QUERY):
 
 @router.post(
     "/saved-events/{catalog_event_id}",
-    response={200: SavedEventOut, 201: SavedEventOut, 409: SchedulingConflictOut},
+    response={200: SavedEventOut, 201: SavedEventOut, 409: SaveConflictOut},
     summary="Save a public event",
     description=(
         "Saves a public catalog event onto the signed-in user's own calendar. The save is "
@@ -367,7 +369,12 @@ def read_timeline(request, filters: TimelineQuery = EVENT_LIST_QUERY):
         "conflict and the three actions. **The third action is `skip_public`** — because "
         "the side the user just added is a *save*, the destructive choice releases the "
         "save rather than deleting a record. The conflict names both sides with their "
-        "kinds, so the client has everything it needs to post the resolution."
+        "kinds, so the client has everything it needs to post the resolution.\n\n"
+        "**A Free account may save one event per day (FR-49).** A second save inside that "
+        "window is refused with a 409 carrying `cap` and one calm `upgrade_hint` — an "
+        "inline prompt, not a modal. A Pro account has no such cap. The two 409s are told "
+        "apart by `code`: `scheduling_conflict` for a clash, `save_cap_reached` for the "
+        "cap."
     ),
 )
 def save_public_event(request, catalog_event_id: UUID):
@@ -754,14 +761,19 @@ def list_calendars(request):
 
 @router.post(
     "/calendars",
-    response={201: CalendarConnectionOut, 409: ErrorOut, 422: ErrorOut},
+    response={201: CalendarConnectionOut, 409: CalendarCapOut, 422: ErrorOut},
     summary="Connect a calendar",
     description=(
         "Connects a calendar by its secret ICS/webcal address. The address is stored "
         "encrypted and is never returned. The first sync is **enqueued, not run inline** "
         "— the response comes back immediately with the connection's status, and the "
         "import lands a moment later. A Free account may hold one calendar; a second "
-        "connection is refused with a calm upgrade prompt."
+        "connection is refused with a calm upgrade prompt.\n\n"
+        "**The cap is chosen by tier (FR-50): one for Free, three for Pro.** A Pro "
+        "account may connect a second and a third; a fourth is refused. The refusal is a "
+        "409 carrying `cap` and one calm `upgrade_hint` — an inline prompt, not a modal. "
+        "A Pro account that lapses keeps the connections it already has: the cap is "
+        "enforced when connecting, not by deleting what the user already owns."
     ),
 )
 def post_calendar(request, body: CalendarConnectIn):

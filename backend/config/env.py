@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     stripe_price_monthly: str = ""
     stripe_price_yearly: str = ""
 
+    # FR-48: the paths the checkout success and cancel URLs point at, and the path the
+    # customer portal returns to. These are **configuration, not request input**, and they
+    # are the whole reason the endpoints cannot be turned into an open redirect: the URLs
+    # handed to the provider are built from `frontend_base_url` plus one of these paths.
+    #
+    # They are configurable rather than hardcoded for the same reason `frontend_base_url`
+    # is: the frontend's routes can move without a backend change, and a deployment can
+    # point the flow at a different host. What stays fixed is the rule — **the client never
+    # supplies any part of these URLs**.
+    billing_success_path: str = "/settings/billing?checkout=complete"
+    billing_cancel_path: str = "/settings/billing?checkout=cancelled"
+    billing_portal_return_path: str = "/settings/billing"
+
     # How long the backend waits for the frontend's revalidation route handler to answer.
     revalidation_timeout_seconds: PositiveFloat = 5.0
 

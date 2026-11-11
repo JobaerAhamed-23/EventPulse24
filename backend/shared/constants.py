@@ -466,10 +466,16 @@ AUTH_THROTTLE_RESET_ACCOUNT = 3
 # closes; nothing else may hold an interval of its own.
 CALENDAR_POLL_INTERVAL = timedelta(hours=1)
 
-# FR-50: "Free tier: 1 connected provider. Pro tier: up to 3". Every user is Free in this
-# intent (there is no SUBSCRIPTION entity yet), so the cap is 1. The Pro cap of 3 is a
-# later intent and belongs here when it lands.
+# FR-50: "Free tier: 1 connected provider. Pro tier: up to 3". **The cap is chosen by
+# entitlement**, so the two tiers are one rule with two values rather than two rules — and
+# the choice is made by the one published read (`is_pro`), never by a second mapping of
+# "who is Pro" that could disagree with it.
+#
+# A Pro user who lapses keeps their existing connections. Nothing here deletes anything on
+# downgrade: the cap is enforced at the *connect* step, so a lapse closes the door behind
+# the user rather than removing what they already have.
 FREE_TIER_CALENDAR_PROVIDER_CAP = 1
+PRO_TIER_CALENDAR_PROVIDER_CAP = 3
 
 # AD-7 scheduling: at most this many calendar connections are claimed per dispatcher run.
 # The same shape as SCHEDULE_BATCH, and deliberately a separate constant — the two
@@ -485,6 +491,26 @@ CALENDAR_SYNC_BATCH = 100
 # comfortably longer than a fetch's worst case and comfortably shorter than the 1-hour
 # poll interval, so a lost claim is recovered well before the next scheduled poll.
 CALENDAR_CLAIM_TTL = timedelta(minutes=15)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Saved events (FR-49)
+#
+# Stdlib only, like the sections above.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# FR-49: "Free tier: 1 Pulse Card saved per 24-hour period", and the second save attempt
+# in that window shows a calm upgrade prompt. **The gate, not a rate limit** — the remedy is
+# to upgrade, not to retry, which is why the refusal is a 409 and not a 429.
+#
+# The count is the throttle port's, exactly as `EVENT_REPORT_DAILY_LIMIT` is: a fixed-window
+# counter that the port owns, so a test can pin the window boundary without sleeping and
+# without Redis. It is never a count of rows — a row count would make the cap depend on
+# data the user can delete, and would give the gate a second source of truth.
+#
+# The window is 24 hours, measured from the *first* save in it. A refused save cannot move
+# that anchor, so being refused costs the user no time they would not have lost anyway.
+FREE_TIER_SAVE_DAILY_LIMIT = 1
+FREE_TIER_SAVE_WINDOW_SECONDS = 24 * 60 * 60
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Onboarding (FR-1)

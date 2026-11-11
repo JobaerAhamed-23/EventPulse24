@@ -53,6 +53,7 @@ REQUEST_MODULES = (
     "apps/delivery/preferences_api.py",
     "apps/editorial/api.py",
     "apps/identity/api.py",
+    "apps/identity/billing_api.py",
     "apps/identity/webhooks_api.py",
     "apps/ingestion/api.py",
     "apps/personalization/api.py",

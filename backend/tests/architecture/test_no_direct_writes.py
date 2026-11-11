@@ -28,8 +28,12 @@ def test_surface_files_include_every_app_admin_and_api():
     # state, so AD-5 applies to it exactly as it does to a browser-facing endpoint — the
     # caller being a payment provider changes nothing about who may write.
     assert "apps/identity/webhooks_api.py" in names
-    # 6 admins + 6 api.py + 6 *_api.py + config/api.py + config/health.py = 20
-    assert len(names) == 20
+    # FR-48: the checkout and portal endpoints are a surface file like any other. They
+    # grant nothing, but they call `create_checkout` and `create_portal_session` — and
+    # being in the surface list is what keeps them under AD-5 like every other endpoint.
+    assert "apps/identity/billing_api.py" in names
+    # 6 admins + 6 api.py + 7 *_api.py + config/api.py + config/health.py = 21
+    assert len(names) == 21
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

@@ -46,6 +46,7 @@ from apps.personalization.services.conflicts import (
     reconcile_pairs_for_side,
     record_detected_conflicts,
 )
+from apps.personalization.services.save_cap import check_save_allowed
 from domain.errors import NotFoundError
 from shared.actor import Actor
 from shared.constants import SAVERS_PAGE
@@ -117,6 +118,13 @@ def save_event(
     snapshot is stale and the caller requests re-propagation.
 
     Saving the same event twice is idempotent: one row, not two.
+
+    **The Free-tier save cap (FR-49) is enforced here, and its position is the design.**
+    The order is: the idempotence check, then the gate, then the write. A repeat save of an
+    already-saved event is the same row returned again — nothing new is saved, so nothing is
+    spent on it, and it is not gated. A *new* save is what the cap is about, and it is
+    refused before anything is written: no partial `SavedEvent`, no audit row, no conflict
+    pair. See `save_cap.py` for why the refusal cannot cost the user any time.
     """
     with transaction.atomic(using=PERSONAL):
         # The first read, inside the transaction: the version the snapshot is stamped with.
@@ -128,16 +136,31 @@ def save_event(
         # event that is not public at all — unpublished, in review, superseded — is not
         # found here either, and the save is refused with a 404.
         current = get_public_event(event_id=event_id, now=now)
-        saved, created = SavedEvent.objects.using(PERSONAL).update_or_create(
-            user_id=user_id,
-            event_id=event_id,
-            defaults={
-                "start_utc": current.start_time_utc,
-                "end_utc": current.end_time_utc,
-                "event_version": current.event_version,
-                "saved_at": now,
-            },
+
+        # The idempotence lookup, before the gate. A save that already exists is not a new
+        # save: it is the same row, returned again (a 200 rather than a 201), and it spends
+        # nothing. The gate is about how many saves a user *makes*, and a user who re-saves
+        # an event they already saved has made none.
+        existing = (
+            SavedEvent.objects.using(PERSONAL).filter(user_id=user_id, event_id=event_id).first()
         )
+        if existing is not None:
+            saved = existing
+            created = False
+        else:
+            # The gate, before the write. It refuses here — inside the transaction, before
+            # any row exists — so a refused save changes nothing at all.
+            check_save_allowed(user_id=user_id)
+            saved, created = SavedEvent.objects.using(PERSONAL).update_or_create(
+                user_id=user_id,
+                event_id=event_id,
+                defaults={
+                    "start_utc": current.start_time_utc,
+                    "end_utc": current.end_time_utc,
+                    "event_version": current.event_version,
+                    "saved_at": now,
+                },
+            )
         candidate = Candidate(
             kind=ConflictPair.SideKind.SAVED_EVENT,
             id=saved.id,

@@ -146,6 +146,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Pro checkout
+         * @description Mints a checkout session for the chosen plan and returns the URL to send the user to.
+         *
+         *     **The body carries the plan and nothing else.** The success and cancel URLs are built from this deployment's configuration, so a client cannot name them.
+         *
+         *     **Paying does not make you Pro yet.** The provider's webhook is what records the subscription; this endpoint writes nothing. If the webhook has not landed, the user is still on the free tier — which is why the response carries no entitlement field.
+         *
+         *     **A user who already has a live subscription is refused** with 409, and the response points at the portal: that is where an existing subscription is managed. Starting a second checkout would create a second subscription to notice and cancel.
+         */
+        post: operations["apps_identity_billing_api_post_checkout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open the customer portal
+         * @description Opens the provider's customer portal for the signed-in user, where they manage their plan, their card and their cancellation, and returns the URL to send them to.
+         *
+         *     **The provider is called with the stored customer reference.** No reference is taken from the request, so a caller cannot open another account's portal by naming one.
+         *
+         *     **A user with no subscription is refused** with 409 — there is no customer to open a portal against, and the answer says so plainly rather than letting the provider explain a customer that does not exist.
+         */
+        post: operations["apps_identity_billing_api_post_portal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the caller's entitlement
+         * @description Reads whether the signed-in user is entitled to Pro, and returns a single boolean.
+         *
+         *     **This is the only read on the billing surface.** The other two endpoints are actions — they mint a checkout session and they mint a portal session — so neither can answer 'may this person buy a plan?' without a side effect. This one is read-only: no provider is called, no session is minted and nothing is written.
+         *
+         *     **The user comes from the session.** There is no id in the request and none in the response, so a caller cannot ask about somebody else's subscription.
+         *
+         *     **It carries a bool and nothing else.** No plan, no renewal date, no status: the answer to this question is one bit, and the fuller record belongs to the account-and-billing surface.
+         *
+         *     **`past_due` reads as Pro.** A payment that failed leaves the person entitled while they fix it, and the portal is where they fix it.
+         */
+        get: operations["apps_identity_billing_api_get_subscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/cities/by-slug/{slug}": {
         parameters: {
             query?: never;
@@ -453,6 +531,8 @@ export interface paths {
         /**
          * Connect a calendar
          * @description Connects a calendar by its secret ICS/webcal address. The address is stored encrypted and is never returned. The first sync is **enqueued, not run inline** — the response comes back immediately with the connection's status, and the import lands a moment later. A Free account may hold one calendar; a second connection is refused with a calm upgrade prompt.
+         *
+         *     **The cap is chosen by tier (FR-50): one for Free, three for Pro.** A Pro account may connect a second and a third; a fourth is refused. The refusal is a 409 carrying `cap` and one calm `upgrade_hint` — an inline prompt, not a modal. A Pro account that lapses keeps the connections it already has: the cap is enforced when connecting, not by deleting what the user already owns.
          */
         post: operations["apps_personalization_api_post_calendar"];
         delete?: never;
@@ -837,6 +917,8 @@ export interface paths {
          * @description Saves a public catalog event onto the signed-in user's own calendar. The save is idempotent: saving an event that is already saved returns the existing record. The times in the response are the snapshot taken at save time; `stale` says whether the catalog has moved past it, in which case re-propagation has been requested.
          *
          *     If the save clashes with a personal event, the response is 409 carrying the conflict and the three actions. **The third action is `skip_public`** — because the side the user just added is a *save*, the destructive choice releases the save rather than deleting a record. The conflict names both sides with their kinds, so the client has everything it needs to post the resolution.
+         *
+         *     **A Free account may save one event per day (FR-49).** A second save inside that window is refused with a 409 carrying `cap` and one calm `upgrade_hint` — an inline prompt, not a modal. A Pro account has no such cap. The two 409s are told apart by `code`: `scheduling_conflict` for a clash, `save_cap_reached` for the cap.
          */
         post: operations["apps_personalization_api_save_public_event"];
         /**
@@ -1018,6 +1100,48 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * CalendarCapDetails
+         * @description The `details` of a calendar-cap refusal: the cap, and one upgrade sentence.
+         *
+         *     **Exactly two fields, and nothing else** — the same shape as `SaveCapDetails`, and
+         *     for the same reason. No `modal`, no `title`, no `actions`, no `dismissable`: the
+         *     refusal is an *inline* prompt with a quiet "Upgrade" link, not a modal
+         *     (EXPERIENCE.md §3, the Free-tier cap prompt). A cap that interrupts with a modal is a
+         *     cap that trains people to dismiss prompts.
+         *
+         *     The two tier caps — one on connected calendars, one on saves — therefore speak **one**
+         *     language to the frontend: a number and a sentence. The frontend renders one prompt
+         *     component for both.
+         */
+        CalendarCapDetails: {
+            /** Cap */
+            cap: number;
+            /** Upgrade Hint */
+            upgrade_hint: string;
+        };
+        /**
+         * CalendarCapOut
+         * @description The 409 a refused calendar connection answers with (FR-50).
+         *
+         *     **A conflict, not a bad request.** The address the user pasted is perfectly good — it
+         *     is the *state of the account* that refuses it, because the account already holds as
+         *     many calendars as its plan allows. The request was well-formed and conflicts with the
+         *     account, which is what a 409 means.
+         *
+         *     This is the only 409 the connect route can answer, so it needs no union — unlike the
+         *     save route, which refuses for two different reasons.
+         */
+        CalendarCapOut: {
+            /**
+             * Code
+             * @constant
+             */
+            code: "calendar_cap_reached";
+            details?: components["schemas"]["CalendarCapDetails"] | null;
+            /** Message */
+            message: string;
+        };
+        /**
          * CalendarConnectIn
          * @description A provider and the secret address to connect.
          *
@@ -1100,6 +1224,36 @@ export interface components {
              * @default
              */
             display_label: string;
+        };
+        /**
+         * CheckoutIn
+         * @description The checkout request: which plan to buy.
+         *
+         *     **The plan is the only field.** There is deliberately no `success_url`, no
+         *     `cancel_url` and no `return_url`, and that absence is the security property rather
+         *     than an oversight: the URLs handed to the provider are built from configuration, so a
+         *     client cannot name one. Taking the redirect target from the request is the classic
+         *     open-redirect in a checkout flow — a crafted target sends a paying user (and the
+         *     session id in the query string) to somebody else's site.
+         *
+         *     The plan is an enum, so an unknown one is a 422 at the edge rather than a provider
+         *     error later.
+         */
+        CheckoutIn: {
+            plan: components["schemas"]["ProPlan"];
+        };
+        /**
+         * CheckoutOut
+         * @description The checkout answer: the URL to send the user to.
+         *
+         *     **It carries no entitlement, and asking for one here would be a lie.** The user is not
+         *     Pro when this response is written; they are Pro when the provider's webhook lands,
+         *     which may be later or never. So there is no `is_pro` field, no status and no plan
+         *     echo: the answer is a URL and nothing else.
+         */
+        CheckoutOut: {
+            /** Url */
+            url: string;
         };
         /**
          * CityPageEventOut
@@ -2609,6 +2763,17 @@ export interface components {
             start_time_utc?: string | null;
         };
         /**
+         * PortalOut
+         * @description The portal answer: the URL to send the user to.
+         *
+         *     Same shape as the checkout answer and for the same reason — the URL is the whole
+         *     answer, and nothing about the subscription rides along with it.
+         */
+        PortalOut: {
+            /** Url */
+            url: string;
+        };
+        /**
          * PreviewCardOut
          * @description One card in the Pulse Preview.
          */
@@ -2667,6 +2832,11 @@ export interface components {
             /** Items */
             items: components["schemas"]["PreviewCardOut"][];
         };
+        /**
+         * ProPlan
+         * @enum {string}
+         */
+        ProPlan: "monthly" | "yearly";
         /**
          * PublicEventPageOut
          * @description One public event's page facts.
@@ -2857,6 +3027,47 @@ export interface components {
             slot: string;
         };
         /**
+         * SaveCapDetails
+         * @description The `details` of a save-cap refusal: the cap, and one upgrade sentence.
+         *
+         *     **Exactly two fields, and nothing else.** No `modal`, no `title`, no `actions`, no
+         *     `dismissable` — the refusal is an *inline* prompt with a quiet "Upgrade" link, not a
+         *     modal (EXPERIENCE.md §3, the Free-tier cap prompt). A cap that interrupts with a modal
+         *     is a cap that trains people to dismiss prompts. The schema makes the modal-shaped
+         *     field inexpressible rather than merely absent from the prose.
+         *
+         *     This is the same shape `CalendarProviderCapReached` carries (`calendar_connections.py`),
+         *     so the two tier caps speak one language to the frontend.
+         */
+        SaveCapDetails: {
+            /** Cap */
+            cap: number;
+            /** Upgrade Hint */
+            upgrade_hint: string;
+        };
+        /**
+         * SaveCapOut
+         * @description The 409 a refused save answers with (FR-49).
+         *
+         *     **A conflict, not a rate limit.** The request was well-formed and the event is
+         *     perfectly saveable; the *state of the account* refuses it, because the account has
+         *     already spent its allowance. The remedy is not to wait — it is to upgrade — so this is
+         *     a 409 and not a 429.
+         *
+         *     **`code` is a literal, not a bare string**, so this shape can sit in a discriminated
+         *     union with the scheduling conflict the same endpoint can answer. See `SaveConflictOut`.
+         */
+        SaveCapOut: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "save_cap_reached";
+            details?: components["schemas"]["SaveCapDetails"] | null;
+            /** Message */
+            message: string;
+        };
+        /**
          * SavedEventListOut
          * @description The user's saved events, and how many were left out.
          *
@@ -2966,10 +3177,16 @@ export interface components {
          *
          *     The message and code come from `domain.errors.SchedulingConflictError`; the API layer
          *     builds the body, so the two stay in step through this schema.
+         *
+         *     **`code` is a literal, not a bare string**, so this shape can sit in a discriminated
+         *     union with the save-cap refusal the same endpoint can answer. See `SaveConflictOut`.
          */
         SchedulingConflictOut: {
-            /** Code */
-            code: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "scheduling_conflict";
             details?: components["schemas"]["SchedulingConflictDetails"] | null;
             /** Message */
             message: string;
@@ -3050,6 +3267,24 @@ export interface components {
              * @default accepted
              */
             status: string;
+        };
+        /**
+         * SubscriptionOut
+         * @description The caller's entitlement: one bool and nothing else.
+         *
+         *     **The minimum, on purpose.** This answers exactly one question — *may this person buy
+         *     a plan?* — and the answer is a bool. There is no plan name, no renewal date and no
+         *     status here, because the fuller subscription record belongs to the account-and-billing
+         *     surface, which needs a wider read and builds it there. A field here would be a field
+         *     two callers could disagree about.
+         *
+         *     **It is a read of the caller's own entitlement.** There is no user id in the request
+         *     and none in the response: the user comes from the session, so a caller cannot ask
+         *     about somebody else.
+         */
+        SubscriptionOut: {
+            /** Is Pro */
+            is_pro: boolean;
         };
         /**
          * TimelineBlockOut
@@ -3578,6 +3813,151 @@ export interface operations {
             };
         };
     };
+    apps_identity_billing_api_post_checkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_billing_api_post_portal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_billing_api_get_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_catalog_api_get_city: {
         parameters: {
             query?: {
@@ -4078,7 +4458,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorOut"];
+                    "application/json": components["schemas"]["CalendarCapOut"];
                 };
             };
             /** @description Unprocessable Content */
@@ -4742,7 +5122,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SchedulingConflictOut"];
+                    "application/json": components["schemas"]["SchedulingConflictOut"] | components["schemas"]["SaveCapOut"];
                 };
             };
         };
