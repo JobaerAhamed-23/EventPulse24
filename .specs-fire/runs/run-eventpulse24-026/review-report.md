@@ -1117,3 +1117,123 @@ re-run: still **24/24 caught**.
    This item writes no backend file.
 5. **FR-16's two PRD amendments** and **ADR-0024** remain owed, carried from the
    reliability items.
+
+---
+
+## Work Item: e2e-proof-and-contract-tests
+
+**Reviewer:** `/code-review medium` over the three new files (the only code in the diff;
+everything else is `.specs-fire/` planning documents).
+
+**Eight findings, all eight verified against the implementation before being accepted, all
+eight applied.** Two of them were defects in tests that *passed* — the worst kind, because
+a green test that asserts nothing is indistinguishable from a green test that works.
+
+### 1. HIGH — the probe harness could print a false green
+
+`mutation_probe_trust_loop_e2e.py` read **any** non-zero pytest exit as "the bug was
+caught". The contract suite shells out to `pnpm`, `openapi-typescript` and `lint-imports`
+and `pytest.fail`s when they are missing — so on a machine with no Node, every probe would
+exit non-zero for a reason unrelated to its planted bug and the script would print
+*"All 10 trust-loop probes were caught by the suite"* and return 0.
+
+**A false green on exactly the acceptance criterion the script exists to satisfy.** The
+`-x` added in this file (not present in the sibling it was modelled on) made it worse: the
+first environmental failure short-circuited the whole run.
+
+**Applied:** a `baseline()` run of the unmutated suite before any mutation, aborting with
+exit 2 if it is not green, and `-x` removed.
+
+### 2. MEDIUM — the sync test could corrupt the tracked `schema.ts`
+
+`assert result.returncode == 0` sat **outside** the `try/finally` that restores the file,
+and the generator had already been pointed at `--output lib/api/schema.ts`. A generator
+that writes a partial file and then exits non-zero would leave the developer's tracked
+`frontend/lib/api/schema.ts` clobbered — by the test whose docstring promises it *"leaves
+the tree exactly as it found it"*.
+
+**Applied:** restore first, assert afterwards. (The sibling `test_state_change_contract.py`
+has the same ordering; it is pre-existing and was not touched by this item.)
+
+### 3. MEDIUM — the AD-14 "writes nothing through the ORM" test asserted nothing
+
+It scanned for the literal strings `.objects.create(`, `.objects.update(`, `.save(` and
+`.bulk_create(`. **This codebase writes `Model.objects.using(CATALOG).create(...)`** — the
+intervening `.using()` means not one of those four patterns matches anywhere in `apps/`.
+Verified: `grep -c '\.objects\.create(' apps/` returns **0**, against 10 for the real
+idiom. Adding a `create(...)` to `apps/editorial/services/review_queue.py` — the exact
+second write path the test is named for — would have passed it.
+
+**Applied:** delegated to `checkers.direct_write_calls`, the architecture suite's own AST
+checker, which parses the call and cannot be side-stepped by a chained method.
+
+### 4. MEDIUM — the import wall missed the obvious evasion
+
+The AST check read `node.module` only, so `from apps.ingestion.models import ReviewItem`
+was caught and `from apps.ingestion import models` was not — which is the form someone
+reaches for *after* being told the dotted path is forbidden.
+
+**Applied:** each alias is checked as `f"{module}.{alias.name}"` too.
+
+### 5. MEDIUM — the ranking delta was pinned to a rounding coincidence
+
+`healthy - collapsed == Decimal("0.10")`. The true gap is `0.25 × (0.50 − 0.13) = 0.0925`,
+and each total is quantized **independently** in `domain/ranking.py` with the default
+`ROUND_HALF_EVEN` — unlike `domain/reliability.py`, which passes `ROUND_HALF_UP`
+explicitly. So the stored gap is 0.09 or 0.10 depending on the fractional part of the terms
+the two events *share*. Changing `RANKING_WEIGHT_RECENCY`, which has nothing to do with
+reliability, would have failed this test with a message blaming a dropped reliability term.
+
+**Applied:** both totals pinned (`0.48` and `0.38`) instead of their difference. A changed
+weight now moves both numbers and names itself; a dropped reliability term still collapses
+them onto each other. **Not** widened to a `>=` bound — that would have been the
+or-fallback this run's standard forbids.
+
+### 6. LOW — the FR-29 gap scan could not see the root router
+
+It globbed `apps/**/*api*.py`, missing `config/api.py` and `config/health.py`, which
+`checkers.api_modules` appends by name — and the root router is exactly where a dashboard
+route would be registered.
+
+**Applied:** `checkers.api_modules()`. **`api_modules`, not `surface_files`**: the latter
+includes every app's `admin.py`, and the admin is *where the metrics are supposed to live*.
+The first attempt at this fix used `surface_files` and failed correctly, which is how the
+distinction got made explicit in the test.
+
+### 7. LOW — the offline check missed every idiomatic import
+
+`"import httpx" not in source` misses `from httpx import AsyncClient` and
+`import httpx as http`.
+
+**Applied:** the imports are parsed and compared by module name, with `aiohttp` and
+`http.client` added to the forbidden set.
+
+### 8. LOW — the contract count could mask a deleted contract
+
+`^id = "..."` over the whole `pyproject.toml` counts any tool section's `id` key. One added
+elsewhere and one contract removed would leave the count at 19 and the wall one shorter.
+
+**Applied:** the `[[tool.importlinter.contracts]]` blocks are isolated before counting.
+
+### What the review did not find
+
+No finding against the **proof's** journeys — the chain, the escalation, the refusals — or
+against the defect the proof reports. The reviewer independently confirmed the `0.13` score
+pin (`_mean` uses `ROUND_HALF_UP`), that every probe pattern matches exactly once, and that
+probe 8 is genuinely caught (`has_module_permission` returns `True`, so loosening
+`has_view_permission` really does turn the 403 into a 200).
+
+### Gates after the fixes
+
+| Gate | Result |
+| --- | --- |
+| `tests/e2e/test_trust_loop_proof.py` | ✅ 10 passed |
+| `tests/e2e/test_trust_loop_contract.py` | ✅ 21 passed |
+| `mutation_probe_trust_loop_e2e.py` | ✅ **baseline green, 10/10 caught** |
+| `ruff check` + `ruff format` | ✅ clean |
+| `lint-imports` | ✅ 19 kept, 0 broken |
+
+**The probe output got better as well as safer.** With `-x` removed, the counts show how
+*wide* each bug's blast radius is: the dismissal-sign probe and the ticketing probe each
+fail **three** tests, not one. A probe that trips three independent assertions is stronger
+evidence than one that trips the first and stops.

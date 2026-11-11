@@ -1174,3 +1174,111 @@ React's `open` state stays `true`. This item is the `Sheet`'s fourth caller and 
 the behaviour; it does not introduce it. It is also **untestable here** — jsdom does not
 implement `dialog.close()` (verified: `dialog.close is not a function`). The fix belongs
 in `Sheet`, where it would serve all four call sites at once.
+
+---
+
+## Work Item: e2e-proof-and-contract-tests
+
+**The proof — a report, a verdict, a score, a ranking**
+
+### What was built
+
+Three files, **no production code touched**. The item's job was to measure, and `git diff`
+on `apps/`, `domain/`, `worker/` and `frontend/` is empty.
+
+| File | Lines | What it holds |
+| --- | --- | --- |
+| `backend/tests/e2e/test_trust_loop_proof.py` | 869 | 10 tests — the chain, the score→ranking, the stranded path, the three refusals |
+| `backend/tests/e2e/test_trust_loop_contract.py` | 481 | 21 tests — the endpoint contract, the architecture invariants, the seven gaps |
+| `backend/tests/e2e/mutation_probe_trust_loop_e2e.py` | 306 | 10 probes, one per AC clause |
+
+### Test Results
+
+| Suite | Result |
+| --- | --- |
+| `tests/e2e/test_trust_loop_proof.py` | ✅ **10 passed** |
+| `tests/e2e/test_trust_loop_contract.py` | ✅ **21 passed** |
+| `mutation_probe_trust_loop_e2e.py` | ✅ **10 probes, 10 caught** |
+| `ruff check` + `ruff format` | ✅ clean |
+| `lint-imports` | ✅ **19 kept, 0 broken** |
+| Whole backend suite | ✅ **6189 passed, 16 failed** — baseline was **6158 passed, 16 failed**. +31 passed is exactly this item's 31 tests, and the two failure sets are **identical** (`diff` of the two `FAILED` lists is empty). **No regressions.** |
+
+### Acceptance Criteria Validation
+
+| AC | Result |
+| --- | --- |
+| The chain: report → item → still in digest → editor rejects → leaves digest, URL, sitemap → saved users handled → observation count rises | ✅ `TestTheLoopCloses::test_the_whole_chain`, one journey, driven through the API and the admin |
+| The score moves the ranking: 30 rejects, escalation, source not paused, lower rank | ✅ two tests; the ordering **and** the 0.10 stored gap are both asserted |
+| The stranded-event path: in_review → queue item → approved → **appears in the digest** | ⚠️ **partially met — defect found.** Ticketed ✅, approved ✅, public ✅, in the sitemap ✅, **in the digest ❌** |
+| The negative paths: non-editor refused, sixth report refused, stale resolve refused | ✅ `TestTheRefusals`, three tests |
+| Contract tests cover every new endpoint against the regenerated `schema.ts`; known gaps listed | ✅ one endpoint, both shapes, regeneration proved a no-op; **seven** gaps as assertions |
+| Every e2e assertion shown able to fail | ✅ 10 probes caught, plus explicit negative controls in the proof itself |
+
+### The defect this item found
+
+**An editorially released event still cannot reach a Pulse Digest.**
+
+`list_public_candidates` gates the digest pool on `tz_inference_confidence >= 0.70`, and
+**no editorial command moves that column**. All three paths were probed before this was
+written down:
+
+| Path | `publication_status` | `tz_inference_confidence` | Digest candidate? |
+| --- | --- | --- | --- |
+| `approve_review_item` | `published` | **0.60** unchanged | **No** |
+| `edit_and_publish`, correcting `start_time_tz` | `published` | **0.60** unchanged | **No** |
+| Re-ingest after the *source* fixes its feed | `published` | 1.00 | Yes |
+
+`_incoming_for` carries the old confidence through deliberately — *"an edit changes exactly
+what the editor named and nothing else — including the gates, which stay where the pipeline
+put them."* So the only thing that frees a stranded event is the source correcting itself,
+which is the situation the editor exists to work around.
+
+The intent's founding problem — *"events can already get stuck, with no exit"* — is **closed
+for the public catalog and still open for the digest**.
+
+**Handled as:** reported, pinned, deferred (user's call, 2026-11-11). Two tests assert the
+defect as it actually behaves and will fail the day it is fixed, which is how whoever fixes
+it is told where to come. A seventh gap test names the reason. The brief's
+"Found during the proof" section carries it forward as a work item, because choosing which
+of the four confidences an editor's verdict may move is a design question, not a patch to
+smuggle into the item that was meant to be measuring.
+
+### Notes on how the proof was made able to fail
+
+- **Exactly 30 rejects, not a comfortable 40.** With α = β = 5, `5/40 = 0.125` sits below
+  the 0.30 escalation line at exactly the 30-observation minimum, so both halves of
+  `should_escalate` are satisfied and neither is satisfied by accident. Probe 5 — the
+  `>=` → `>` off-by-one on the minimum — is caught **because** the number is exactly 30.
+- **One probe was widened rather than the proof weakened.** The staleness-token probe was
+  not caught when it mutated only `edit_and_publish`'s call site: the form's `clean()`
+  checks the same thing first, on purpose. That is depth in the implementation, not a hole
+  in the proof, so the probe was widened to both call sites — the bug it claims to be.
+- **One probe was replaced rather than pointed at a friendlier suite.** The `and` in
+  `should_escalate` cannot be distinguished by any e2e: `RELIABILITY_NEW_SOURCE_FLOOR`
+  (0.32) makes `score < 0.30` unreachable below the minimum N, so the second half is
+  belt-and-braces. `tests/domain/test_reliability.py` is where that lives. The probe was
+  changed to one this suite can honestly catch.
+- **The wall clock is pinned.** The report endpoint and the admin call `timezone.now()`
+  themselves — an HTTP request has no test's clock to borrow — so without the pin an event
+  two days after a frozen 2026 `NOW` is an event in the past and the endpoint answers 404.
+- **The gap tests are assertions, not prose**, so a closed gap fails CI rather than leaving
+  a stale paragraph behind.
+
+### The 16 standing failures, named rather than waved at
+
+The run has carried 16 failures since before this item. They were recorded as a baseline
+*before* a line of this item was written, and the two `FAILED` lists were diffed at the end:
+identical. **None of them is on the trust-loop path**, and none is touched by this item:
+
+| Suite | Count | Nature |
+| --- | --- | --- |
+| `tests/e2e/test_timeline_and_conflict_proof.py` | 9 | timeline/conflict pairs |
+| `tests/e2e/test_save_race.py` | 4 | save-vs-postponement race |
+| `tests/e2e/test_personal_events_and_saved_catalog.py` | 1 | personal event + save flow |
+| `tests/delivery/test_reminder_plan_api.py` | 1 | reminder plan move |
+| `tests/ingestion/test_url_feed_read.py` | 1 | a city's `lastmod`; **date-rotted** — the assertion compares a pinned 2026-11-06 against the wall clock, which has since passed it |
+
+The last one is worth a word because this item also reads `list_url_feed`: it is the
+**city** entry's `lastmod`, not the event entry's, and the proof asserts on event paths
+being present or absent — a different column and a different rule. The failure is a test
+that pins a date against `now()`, not a defect in the feed.

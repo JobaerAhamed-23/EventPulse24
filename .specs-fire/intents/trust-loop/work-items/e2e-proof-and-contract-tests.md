@@ -4,13 +4,15 @@ title: The proof — a report, a verdict, a score, a ranking
 intent: trust-loop
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - review-intake-and-backfill
   - editorial-admin-queue
   - ranking-consumes-reliability
   - frontend-report-control
 created: 2026-11-10
+run_id: run-eventpulse24-026
+completed_at: 2026-11-11T06:03:02.089Z
 ---
 
 # Work Item: The proof — a report, a verdict, a score, a ranking

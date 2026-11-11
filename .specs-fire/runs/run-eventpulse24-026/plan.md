@@ -1493,3 +1493,167 @@ backend, and `app/events/[id]/page.tsx` (the flag inherits the `personal` gate).
 
 **No backend change. No migration. No new endpoint.**
 
+
+---
+
+# Work Item 11 — `e2e-proof-and-contract-tests`
+
+**The proof — a report, a verdict, a score, a ranking** · mode `confirm` · intent `trust-loop`
+
+## What this item is
+
+The ten items before it each proved their own piece against its own seam. This one proves
+the **claim the intent was captured on**: that FR-59, FR-57 and FR-16 are *one loop*, and
+that the loop closes. It is the same shape every earlier intent closed with — a proof file
+and a contract file in `tests/e2e/`, plus a mutation probe that shows the proof can fail.
+
+**Nothing in `apps/`, `domain/`, `worker/` or `frontend/` changes.** If the proof finds a
+defect, that is a finding for the run log and a decision for the user, not a silent fix
+smuggled into the item that was supposed to be measuring.
+
+## The approach
+
+### 1. The chain (`TestTheLoopCloses`)
+
+One journey, one source, one event, one user, one editor — driven through the **real**
+write paths, never the ORM:
+
+| Step | Driven through |
+| --- | --- |
+| A signed-in user reports a published event | `POST /api/personal/event-reports` via the Django test client, signed in |
+| A `user_reported` `ReviewItem` appears, with no user identity | `ReviewItem` row read in `catalog`; asserted that no column and no rendered admin page carries the reporter |
+| The event is still in the digest | `compose_digest` → `read_digest`, the card is there |
+| An editor rejects it through the admin | `client.post(changelist, {"action": "reject_items", ...})` as a **group member, `is_superuser=False`** |
+| The event leaves the digest, the public URL and the sitemap | `list_public_events`, `get_public_event_by_slug`, `list_url_feed` |
+| Saved users are handled as `event-rejection-state` decided | reminders cancelled, no email out of `sweep_due_sends`, the `SavedEvent` row untouched |
+| The source's observation count rises | `SourceObservation` rows for the source, `kind="rejected"` |
+
+The outbox is drained the way the worker's reconciler does (`reconcile_outbox` +
+`propagation.propagate`), as `test_rejection_proof.py` already does.
+
+### 2. The score moves the ranking (`TestTheScoreMovesTheRanking`)
+
+**30 rejects, because 30 is the number the arithmetic demands.** With α = β = 5, a source
+with `p` approvals and `n` rejects scores `(5 + p) / (10 + p + n)`. Thirty rejects and no
+approvals gives `5 / 40 = 0.125` — below `RELIABILITY_ESCALATION_SCORE` (0.30) and at
+exactly `RELIABILITY_MIN_OBSERVATIONS` (30), so both halves of `should_escalate` are
+satisfied and neither is satisfied by accident. Each reject is a separate event and a
+separate `ReviewItem`, because `source_observation_item_uq` permits one observation per
+item.
+
+Then `recompute_due(now=...)` — the job the worker tick calls, not `recompute_source`
+directly — and:
+
+- a `source_reliability` `ReviewItem` is open for that source;
+- the source is **not** paused: `status == "active"`, cadence and every other column
+  unchanged (asserted as a whole-row comparison, not field by field);
+- a fresh event from the collapsed source ranks **below** an otherwise-identical event
+  from a healthy source, through `compose_digest` — same title shape, same start, same
+  city, same chips, same venue city, differing only in their `Source`.
+
+The ranking delta is asserted as a number too (`0.25 × (0.50 − 0.125) ≈ 0.09`), so the
+test fails if the term is silently dropped from the expression rather than merely
+reordered.
+
+### 3. The stranded-event path (`TestTheStrandedEventGetsOut`)
+
+The path the intent exists for, through the **real confidence gate** rather than a
+monkeypatched gate table: a venue registered in `US/Pacific`, a VEVENT carrying
+`TZID=America/New_York` for that venue — the A3 conflict, `tz_inference_confidence = 0.60`
+— ingested through `ingest_source`. That lands `publication_status = in_review`,
+`sync_review_item` raises the `in_review` item inside the write's transaction, the editor
+approves through the admin, and the event appears in the digest.
+
+### 4. The negative paths (`TestTheRefusals`)
+
+- **A non-editor is refused by the admin.** A staff user with no review permission gets
+  302/403 from the changelist and the change page, and posting the reject action writes
+  **no** `ReviewItem` resolution and **no** audit row.
+- **A sixth report in a day is refused.** Five `POST`s to five distinct events answer 201;
+  the sixth answers **429** with `retry_after_seconds`, and no sixth `EventReport` exists.
+- **A stale-version resolve is refused.** The admin edit form posted with
+  `expected_event_version` one behind answers 200 with the refusal on the form, the event
+  is unchanged and the item is still open.
+
+### 5. The contract file
+
+`tests/e2e/test_trust_loop_contract.py`, in the shape of `test_state_change_contract.py`:
+
+- `POST /api/personal/event-reports` is in the committed `openapi.json`, with exactly that
+  verb.
+- `EventReportIn` / `EventReportOut` are in `components.schemas`; the four categories are
+  **enumerated** in the document; `EventReportIn` carries **no free-text property** and
+  `EventReportOut` carries **no report id and no tally**.
+- `schema.ts` carries the operation id the frontend calls.
+- **Regenerating changes nothing** — `openapi-typescript` is re-run and the file restored,
+  the same measurement the earlier contract file makes.
+- The architecture invariants, for *this* intent's seams: `editorial` owns no model and
+  imports no `apps.ingestion.models`; `apps/ingestion/admin.py` never calls `obj.save()`;
+  the report path writes no `catalog` row from `personalization`; `lint-imports` passes
+  and the contract count is still pinned; nothing on the trust-loop path imports a network
+  client.
+
+### 6. The known gaps, as a test and not as prose
+
+The AC asks that the intent's known gaps be *listed*. A list in a docstring rots silently,
+so each gap is a **named assertion that the gap is still a gap** — and will fail, loudly
+and on purpose, on the day it is closed:
+
+| Gap | The assertion |
+| --- | --- |
+| FR-25 dismissals are a seam, not an input | `OBSERVATION_SIGNS["dismissed"] == 0` and no dismissal term in `domain/reliability.py` |
+| FR-14's LLM path | structured ingestion still writes `EXTRACTION_CONFIDENCE_STRUCTURED == 1.00`, so the extraction gate is unreachable |
+| Free-text reports | no free-text property in `EventReportIn`, and four categories exactly |
+| The FR-29 dashboard | the queue metrics exist only in the admin: no route serves `QueueSummary` |
+| Merging duplicates | `duplicate` is a report category, and the admin offers no merge action |
+| The PRD amendments owed | ADR-0025 and `RANKING_WEIGHTS_AMENDMENT` are the recorded place; the files exist and name the amendment |
+
+### 7. The mutation probes
+
+`tests/e2e/mutation_probe_trust_loop_e2e.py`, in the harness style of
+`mutation_probe_contract_e2e.py`: one real, parsing, plausible bug per claim, each naming
+the suite that must catch it. Planned probes, one per AC clause:
+
+1. The report hides the event (`report_event` sets `publication_status`).
+2. The `ReviewItem` raise is skipped for a reported event.
+3. `reject_event` leaves the event in the sitemap (`url_feed` drops the status filter).
+4. The reject records no `SourceObservation`.
+5. `should_escalate` uses `or` instead of `and` on the min-N — escalation fires early.
+6. The ranking drops the `source_reliability` term.
+7. `sync_review_item` skips `in_review` events (the stranded path never gets a ticket).
+8. `may_review` accepts `view_reviewitem` (the non-editor gets in).
+9. The report throttle is checked after the idempotence shortcut (the sixth slips past).
+10. The edit form ignores `expected_event_version` (the stale resolve lands).
+
+A probe that is **not caught** is a finding reported to the user, not a test quietly
+deleted.
+
+## Files to Create
+
+| File | Purpose |
+| --- | --- |
+| `backend/tests/e2e/test_trust_loop_proof.py` | The four journeys above |
+| `backend/tests/e2e/test_trust_loop_contract.py` | The endpoint contract, the architecture invariants, the known gaps |
+| `backend/tests/e2e/mutation_probe_trust_loop_e2e.py` | The ten probes |
+
+## Files to Modify
+
+**None expected.** If a probe or a journey finds a real defect, it is reported before
+anything is changed.
+
+## Tests
+
+- `uv run --directory backend pytest tests/e2e/test_trust_loop_proof.py tests/e2e/test_trust_loop_contract.py`
+- `uv run --directory backend python tests/e2e/mutation_probe_trust_loop_e2e.py`
+- The whole backend suite, against the recorded baseline (the run's standing failures are
+  counted before this item starts, so a new failure is distinguishable from an old one).
+- `make lint-backend`
+
+## Gates
+
+| Gate | Requirement |
+| --- | --- |
+| The new suites | all green |
+| The whole backend suite | no failure that is not in the recorded baseline |
+| Mutation probes | every probe caught, or reported as a finding |
+| `ruff` + `lint-imports` | clean |

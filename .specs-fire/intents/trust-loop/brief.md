@@ -1,8 +1,9 @@
 ---
 id: trust-loop
 title: Trust Loop — User Reports, Editorial Review Queue & Source Reliability
-status: in_progress
+status: completed
 created: 2026-11-10
+completed_at: 2026-11-11T06:03:02.125Z
 ---
 
 # Intent: Trust Loop — User Reports, Editorial Review Queue & Source Reliability
@@ -93,5 +94,22 @@ It is the only open MVP gap with no external blocker. FR-14's LLM path needs a r
 - **What counts as an "upheld" report** for FR-16. It might be a report on an event the editor then rejected or edited, or a report whose category the editor confirms.
 - **Where the score is stored.** It could be a field on `Source`, or a `SourceReliabilityScore` history table (a PRD Glossary term, per the Spine's naming row), which the week-over-week spike check needs anyway.
 - **The PUBLISH_FLAGGED (`tz_review_pending`) events.** They are published and digest-eligible but flagged. Should they also get a low-priority `ReviewItem`, or stay out of the queue?
+
+**Found during the proof (2026-11-11), deferred to a new work item:**
+
+- **An editorially released event still cannot reach a Pulse Digest.** An editor can take a
+  timezone-quarantined event out of `in_review`, and it becomes public — listed, reachable at
+  its URL, in the sitemap. It is still absent from every digest, because
+  `list_public_candidates` gates the pool on `tz_inference_confidence >= 0.70` and **no
+  editorial command moves that column**: `approve_review_item` flips only
+  `publication_status`, and `edit_and_publish` carries the old confidence through by design
+  (`_incoming_for`: *"the gates stay where the pipeline put them"*), so even an editor
+  correcting `start_time_tz` leaves it at 0.60. The only thing that lifts it is the pipeline
+  seeing a clean resolution on a later poll — which needs the **source** to fix its own feed,
+  the very situation the editor exists to work around. All three paths were probed. The
+  behaviour is pinned by `tests/e2e/test_trust_loop_proof.py`
+  (`TestTheStrandedEventGetsOut`), which asserts the defect and will fail when it is fixed.
+  **Deciding which of the four confidences an editor's verdict may move is a design
+  question**, which is why it is a work item and not a patch inside the proof.
 
 **Carried forward, unresolved:** OQ-5 (the real source list and its ToS reviews), the beachhead city, the 40-source / 15-per-city launch floor (FR-13), the AD-17/AD-21 reinstated-conflict defect, and the matching PRD/Spine amendments named in `event-state-sync`.

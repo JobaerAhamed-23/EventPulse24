@@ -880,7 +880,7 @@ intents:
     completed_at: 2026-11-10T13:48:08.507Z
   - id: trust-loop
     title: Trust Loop — User Reports, Editorial Review Queue & Source Reliability
-    status: in_progress
+    status: completed
     created: 2026-11-10
     work_items:
       - id: review-queue-model
@@ -889,21 +889,21 @@ intents:
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-10T14:37:21.224Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: event-rejection-state
         status: completed
         complexity: high
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-10T16:16:27.034Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: reliability-score-domain
         status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-10T16:34:25.842Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: review-intake-and-backfill
         status: completed
         complexity: medium
@@ -911,7 +911,7 @@ intents:
         depends_on:
           - review-queue-model
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-10T16:48:34.353Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: event-report-api
         status: completed
         complexity: medium
@@ -919,7 +919,7 @@ intents:
         depends_on:
           - review-queue-model
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-10T17:10:12.757Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: editorial-review-commands
         status: completed
         complexity: medium
@@ -928,7 +928,7 @@ intents:
           - review-queue-model
           - event-rejection-state
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-10T17:33:03.909Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: editorial-admin-queue
         status: completed
         complexity: medium
@@ -936,7 +936,7 @@ intents:
         depends_on:
           - editorial-review-commands
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-11T00:58:25.007Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: reliability-recompute-and-escalation
         status: completed
         complexity: high
@@ -946,7 +946,7 @@ intents:
           - event-report-api
           - reliability-score-domain
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-11T01:32:45.867Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: ranking-consumes-reliability
         status: completed
         complexity: high
@@ -954,7 +954,7 @@ intents:
         depends_on:
           - reliability-recompute-and-escalation
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-11T02:03:00.169Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: frontend-report-control
         status: completed
         complexity: medium
@@ -962,9 +962,9 @@ intents:
         depends_on:
           - event-report-api
         run_id: run-eventpulse24-026
-        completed_at: 2026-11-11T04:58:33.651Z
+        completed_at: 2026-11-11T06:03:02.089Z
       - id: e2e-proof-and-contract-tests
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
@@ -972,100 +972,11 @@ intents:
           - editorial-admin-queue
           - ranking-consumes-reliability
           - frontend-report-control
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+    completed_at: 2026-11-11T06:03:02.089Z
 runs:
-  active:
-    - id: run-eventpulse24-026
-      scope: wide
-      work_items:
-        - id: review-queue-model
-          intent: trust-loop
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-10T14:37:21.224Z
-        - id: event-rejection-state
-          intent: trust-loop
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-10T16:16:27.034Z
-        - id: reliability-score-domain
-          intent: trust-loop
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-10T16:34:25.842Z
-        - id: review-intake-and-backfill
-          intent: trust-loop
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-10T16:48:34.353Z
-        - id: event-report-api
-          intent: trust-loop
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-10T17:10:12.757Z
-        - id: editorial-review-commands
-          intent: trust-loop
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-10T17:33:03.909Z
-        - id: editorial-admin-queue
-          intent: trust-loop
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T00:58:25.007Z
-        - id: reliability-recompute-and-escalation
-          intent: trust-loop
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T01:32:45.867Z
-        - id: ranking-consumes-reliability
-          intent: trust-loop
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T02:03:00.169Z
-        - id: frontend-report-control
-          intent: trust-loop
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T04:58:33.651Z
-        - id: e2e-proof-and-contract-tests
-          intent: trust-loop
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-      current_item: e2e-proof-and-contract-tests
-      started: 2026-11-10T14:08:55.031Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -1474,3 +1385,41 @@ runs:
           mode: confirm
       started: 2026-11-04T13:11:36.097Z
       completed: 2026-11-10T13:48:55.208Z
+    - id: run-eventpulse24-026
+      scope: wide
+      work_items:
+        - id: review-queue-model
+          intent: trust-loop
+          mode: validate
+        - id: event-rejection-state
+          intent: trust-loop
+          mode: validate
+        - id: reliability-score-domain
+          intent: trust-loop
+          mode: confirm
+        - id: review-intake-and-backfill
+          intent: trust-loop
+          mode: confirm
+        - id: event-report-api
+          intent: trust-loop
+          mode: confirm
+        - id: editorial-review-commands
+          intent: trust-loop
+          mode: confirm
+        - id: editorial-admin-queue
+          intent: trust-loop
+          mode: confirm
+        - id: reliability-recompute-and-escalation
+          intent: trust-loop
+          mode: validate
+        - id: ranking-consumes-reliability
+          intent: trust-loop
+          mode: validate
+        - id: frontend-report-control
+          intent: trust-loop
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: trust-loop
+          mode: confirm
+      started: 2026-11-10T14:08:55.031Z
+      completed: 2026-11-11T06:03:02.089Z

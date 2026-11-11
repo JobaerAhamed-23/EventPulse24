@@ -1326,3 +1326,131 @@ item.
   gates cover it"; the **axe half** is honoured (a Vitest + axe-core case in
   `tests/event-detail-a11y.test.tsx`, auditing `document.body` with the modal open), and
   the **Playwright half is reported as a gap**.
+
+---
+
+## Work Item 11: The proof
+
+**`e2e-proof-and-contract-tests` — a report, a verdict, a score, a ranking**
+
+### What this item was for
+
+The ten items before it each proved their own piece against its own seam. This one asks the
+question the intent was captured on: **are FR-59, FR-57 and FR-16 actually one loop, or
+three features that happen to compile together?**
+
+It is a measuring item. **No production code was changed** — `git diff` over `apps/`,
+`domain/`, `worker/` and `frontend/` is empty, and that was the deal made at the plan
+checkpoint: if the proof finds something, it reports it rather than quietly patching it
+inside the item that was supposed to be measuring.
+
+### What was built
+
+| File | Lines | Holds |
+| --- | --- | --- |
+| `backend/tests/e2e/test_trust_loop_proof.py` | ~900 | 10 tests: the chain, the score→ranking, the stranded path, three refusals |
+| `backend/tests/e2e/test_trust_loop_contract.py` | ~500 | 21 tests: the endpoint contract, the architecture invariants, seven gaps |
+| `backend/tests/e2e/mutation_probe_trust_loop_e2e.py` | ~340 | 10 probes behind a green-baseline gate |
+
+### The decisions
+
+**D1 — every step goes through the surface a real actor touches.** The user reports through
+`POST /api/personal/event-reports`, signed in and with a CSRF token. The editor gives
+verdicts through the Django admin as a **group member with `is_superuser=False`** — AD-14
+says the group is the surface, and "it works for a superuser" proves nothing about a group
+grant. The stranded event reaches `in_review` through the **real** confidence gate.
+
+**D2 — the stranded event is quarantined by the resolver, not by a monkeypatch.** The
+existing intake tests patch `_PUBLICATION[Gate.PUBLISH]` to force `IN_REVIEW`; a patched
+gate proves the patch. This proof registers a venue in `US/Pacific` and feeds a VEVENT
+carrying `TZID=America/New_York` — FR-60's A3 conflict, `TZ_SCORE_CONFLICT = 0.60`, below
+the 0.70 digest gate. The event is stranded because the resolver stranded it.
+
+**D3 — exactly 30 rejects, not a comfortable 40.** With α = β = 5, `5/40 = 0.125` sits below
+the 0.30 escalation line at *exactly* the 30-observation minimum, so both halves of
+`should_escalate` are satisfied and neither is satisfied by accident. This is what lets
+probe 5 — the `>=` → `>` off-by-one — be caught at all.
+
+**D4 — the wall clock is pinned.** The report endpoint and the admin call `timezone.now()`
+themselves; an HTTP request has no test's clock to borrow. Without the pin, an event two
+days after a frozen 2026 `NOW` is an event in the past and the endpoint answers 404.
+
+**D5 — the known gaps are assertions, not prose.** A docstring list rots silently. Each of
+the seven gaps is a test that will fail on the day it is closed, so closing one forces the
+list to be updated rather than letting it become a lie.
+
+**D6 — negative controls everywhere.** A healthy source beside the collapsed one; a control
+event beside the rejected one; a clean re-ingest beside the barred event. Each "it is gone"
+is paired with "and this one is not", so a reject that emptied the catalog would fail
+rather than pass.
+
+### The defect this item found
+
+**An editorially released event still cannot reach a Pulse Digest.**
+
+`list_public_candidates` gates the digest pool on `tz_inference_confidence >= 0.70`, and no
+editorial command moves that column. Three paths probed:
+
+| Path | Status | tz confidence | Digest? |
+| --- | --- | --- | --- |
+| `approve_review_item` | `published` | **0.60** | **No** |
+| `edit_and_publish`, zone corrected | `published` | **0.60** | **No** |
+| Re-ingest after the source fixes its feed | `published` | 1.00 | Yes |
+
+`_incoming_for` carries the old confidence deliberately: *"the gates stay where the pipeline
+put them."* So the only thing that frees a stranded event is the **source** correcting
+itself — the situation the editor exists to work around.
+
+The intent's founding problem is **closed for the public catalog and still open for the
+digest**. Reported at the time; the user chose to pin and defer. Two tests assert the
+behaviour as it actually is and will fail when it is fixed, a seventh gap test names the
+cause, and the brief carries it forward as a work item — because deciding which of the four
+confidences an editor's verdict may move is a design question, not a patch.
+
+### Deviations from the plan
+
+| Planned | Actual | Why |
+| --- | --- | --- |
+| Stranded test asserts "appears in the digest" | Asserts public/URL/sitemap, and **not** in the digest, plus two tests pinning why | The AC's claim is false; the defect was reported and deferred by decision |
+| Six known gaps | **Seven** | The proof found one the brief did not name |
+| Probe 5 = `and` → `or` in `should_escalate` | Off-by-one on the minimum N | The `and`'s first half is unreachable below min-N (the 0.32 floor), so no e2e can distinguish it. Changed to one this suite can honestly catch, rather than pointed at a suite that would flatter it |
+| Probe 10 mutates one call site | Mutates **both** | One call site was not caught — the form's `clean()` checks first, on purpose. Depth in the implementation, so the probe was widened to the bug it claims to be |
+
+### Verification
+
+```bash
+# the stack
+systemctl --user start docker-desktop && make up
+
+# the two suites
+uv run --directory backend pytest tests/e2e/test_trust_loop_proof.py \
+                                  tests/e2e/test_trust_loop_contract.py
+
+# every assertion proved able to fail (baseline-gated)
+uv run --directory backend python tests/e2e/mutation_probe_trust_loop_e2e.py
+
+# the regression gate
+make test-backend   # 6189 passed, 16 failed — identical set to the recorded baseline
+make lint-backend
+```
+
+### Developer notes
+
+- **Do not run pytest while another full suite is running.** Both want `test_eventpulse24`
+  and the second one dies with `DuplicateDatabase` / `ObjectInUse`. Those errors are
+  contention, not failures.
+- **The 16 standing failures are pre-existing and unrelated** — timeline/conflicts, the
+  save race, a reminder plan, and one date-rotted `url_feed` city `lastmod` assertion. They
+  were recorded as a baseline *before* this item started and diffed at the end: identical.
+- **The in-memory throttle adapter has no shared state.** `get_adapter` constructs a new
+  instance per call, so the fake's counter resets on every request and the cap cannot be
+  observed without pinning one instance. In production the adapter is Redis-backed, where
+  the state lives outside the instance — so this is a property of the fake, not a bug.
+- **`checkers.direct_write_calls`, never a string scan**, for "does this module write?".
+  This codebase writes `Model.objects.using(CATALOG).create(...)`; a scan for
+  `.objects.create(` matches **nothing** in the entire tree. Code review caught exactly that
+  mistake in this item's first draft.
+
+### New dependencies
+
+**None.**

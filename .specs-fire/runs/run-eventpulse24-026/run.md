@@ -75,14 +75,14 @@ work_items:
   - id: e2e-proof-and-contract-tests
     intent: trust-loop
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
-current_item: e2e-proof-and-contract-tests
-status: in_progress
+current_item: null
+status: completed
 started: 2026-11-10T14:08:55.031Z
-completed: null
+completed: 2026-11-11T06:03:02.089Z
 ---
 
 # Run: run-eventpulse24-026
@@ -101,17 +101,29 @@ wide (11 work items)
 8. **reliability-recompute-and-escalation** (validate) — completed
 9. **ranking-consumes-reliability** (validate) — completed
 10. **frontend-report-control** (confirm) — completed
-11. **e2e-proof-and-contract-tests** (confirm) — in_progress
+11. **e2e-proof-and-contract-tests** (confirm) — completed
 
 
 ## Current Item
-e2e-proof-and-contract-tests (confirm)
+(all completed)
 
 ## Files Created
-(none yet)
+- `backend/tests/e2e/test_trust_loop_proof.py`: The trust loop proved end to end: the chain, the score moving the ranking, the stranded-event path, the three refusals
+- `backend/tests/e2e/test_trust_loop_contract.py`: The report endpoint contract, the architecture invariants for this intent seams, and the seven known gaps as assertions
+- `backend/tests/e2e/mutation_probe_trust_loop_e2e.py`: Ten mutation probes with a green-baseline gate, one per acceptance criterion clause
 
 ## Files Modified
-(none yet)
+- `.specs-fire/intents/trust-loop/brief.md`: Recorded the defect found by the proof as carried-forward work
 
 ## Decisions
-(none yet)
+(none)
+
+
+## Summary
+
+- Work items completed: 11
+- Files created: 3
+- Files modified: 1
+- Tests added: 31
+- Coverage: 0%
+- Completed: 2026-11-11T06:03:02.089Z
