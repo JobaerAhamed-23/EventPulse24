@@ -1,4 +1,5 @@
-"""The `identity` module's models (AD-16): the account, its reset tokens, and its audit log.
+"""The `identity` module's models (AD-16): the account, its reset tokens, its subscription
+and its audit log.
 
 `identity` owns `USER` and the auth flows. Everything here lives in the `personal` schema
 (AD-3), so nothing here relates to a catalog table.
@@ -14,6 +15,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.identity.managers import UserManager
+from ports.billing import ProPlan
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -127,6 +129,102 @@ class PasswordResetToken(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"reset token for {self.user_id}"
+
+
+class SubscriptionStatus(models.TextChoices):
+    """The four states a subscription can be in (FR-48).
+
+    Deliberately four, not Stripe's nine. Stripe's vocabulary is its own
+    (`incomplete`, `trialing`, `unpaid`, `paused` …) and most of it describes situations this
+    product does not sell into: there is no trial, there is no pause, and a subscription that
+    never completed checkout is simply one that does not exist here. The adapter's job is to
+    map Stripe's set onto this one; this is the set the product reasons about.
+
+    **`PAST_DUE` is distinct from `CANCELED` because a user must be able to see it.** It is
+    the only state in which a person has a problem they can still fix, and the account screen
+    has to say so rather than rendering them as plain Free.
+    """
+
+    ACTIVE = "active", "Active"
+    PAST_DUE = "past_due", "Past due"
+    CANCELED = "canceled", "Canceled"
+    EXPIRED = "expired", "Expired"
+
+
+#: The statuses that occupy a user's one live subscription slot. A user may accumulate any
+#: number of `CANCELED` or `EXPIRED` rows — that is the history `BILLING_RECORDS` retains for
+#: seven years — but only ever one row in this set, enforced by a partial unique constraint.
+LIVE_SUBSCRIPTION_STATUSES = (SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE)
+
+
+class Subscription(UUIDv7Model):
+    """One user's Pro subscription (FR-48, Glossary: Subscription).
+
+    `identity` owns this table because `identity/__init__.py` has always said so — *"Accounts
+    and billing state. Owns User and Subscription"* — and because billing state is account
+    state: the same app that can tell you an account exists should be the one that tells you
+    what it is entitled to.
+
+    **It lives in the `PERSONAL` alias, alongside `User`.** `settings.DATABASE_ROUTING` places
+    `identity`, `personalization` and `delivery` in the same alias, so a caller asking about
+    entitlement is not crossing the AD-3 wall — that wall runs between `catalog` and
+    `personal`. What stops a caller reaching in is AD-2's `models-identity` contract: *"only
+    `apps.identity` imports `apps.identity.models` (others call its services)"*. The published
+    read is `services/entitlement.is_pro`.
+
+    **`user_id` is a plain UUID, not a `ForeignKey`.** The row is written by webhook-driven
+    commands that know a Stripe reference and a user id, never a `User` instance, and a
+    relation would invite a caller to join its way to the account from here.
+
+    **There is no delete path.** A lapse is a transition to `CANCELED`; an ended term is
+    `EXPIRED`. `BILLING_RECORDS` retains these rows for seven years for tax and legal
+    reasons, which would be meaningless against a table anything could delete.
+
+    **`last_event_at` is the ordering guard.** Stripe retries, replays and reorders its
+    webhooks; a naive writer lets a stale `customer.subscription.updated` overwrite a newer
+    `customer.subscription.deleted` and silently restores entitlement to someone who
+    cancelled. The guard lives here, on the row, rather than in the webhook handler, so every
+    writer inherits it — the handler, an admin action, a future reconciliation job. This is
+    the same reasoning `SavedEvent.event_version` records for AD-17 propagation.
+    """
+
+    retention_category = RetentionCategory.BILLING_RECORDS
+
+    user_id = models.UUIDField()
+    plan = models.CharField(max_length=16, choices=[(p.value, p.value) for p in ProPlan])
+    status = models.CharField(
+        max_length=16, choices=SubscriptionStatus.choices, default=SubscriptionStatus.ACTIVE
+    )
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    # The Stripe customer, stored rather than looked up: `create_portal_session(customer_ref=)`
+    # needs it, and a round-trip to Stripe to open a settings screen would be absurd.
+    stripe_customer_ref = models.CharField(max_length=255)
+    stripe_subscription_ref = models.CharField(max_length=255, null=True, blank=True)
+    # The external event timestamp last applied to this row. See the class docstring.
+    last_event_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # At most one live subscription per user. History is allowed: a user who
+            # subscribes, cancels and subscribes again holds one live row and any number of
+            # terminal ones.
+            models.UniqueConstraint(
+                fields=["user_id"],
+                condition=models.Q(status__in=LIVE_SUBSCRIPTION_STATUSES),
+                name="subscription_one_live_per_user_uq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="subscription_user_idx"),
+            # The webhook receiver finds a row by what Stripe sends it, which is the
+            # subscription reference and not a user id.
+            models.Index(fields=["stripe_subscription_ref"], name="subscription_ref_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"subscription {self.status}"
 
 
 class IdentityAuditEntry(AuditEntry):

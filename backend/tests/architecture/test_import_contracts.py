@@ -87,6 +87,22 @@ VIOLATIONS = {
         {"apps/catalog/_planted.py": "import apps.ingestion.models\n"},
         {"models-ingestion"},
     ),
+    # FR-48 entitlement: `personalization` and `delivery` ask "is this user Pro?" on the save
+    # path and the delivery path. The answer lives on `identity`'s `Subscription`, and the
+    # read they are given is `services/entitlement.is_pro` — a bool, not a row.
+    #
+    # This is deliberately *not* an AD-3 concern. `settings.DATABASE_ROUTING` puts `identity`,
+    # `personalization` and `delivery` in the same `PERSONAL` alias, so no schema wall is
+    # crossed. What keeps the seam honest is AD-2's protected-models contract, and this is the
+    # test that proves the machine is actually holding it.
+    "personalization reaches identity's Subscription directly": (
+        {"apps/personalization/_planted.py": "from apps.identity.models import Subscription\n"},
+        {"models-identity"},
+    ),
+    "delivery reaches identity's Subscription directly": (
+        {"apps/delivery/_planted.py": "from apps.identity.models import Subscription\n"},
+        {"models-identity"},
+    ),
     # AD-2's `delivery` half, and the one this intent's eleven items are most likely to
     # break. `delivery` owns `ScheduledSend` and `ReminderPlan`, and every other app
     # reaches them through `delivery`'s **services** — so another app importing
@@ -204,6 +220,11 @@ ALLOWED = {
     "app reaches another app's models through its services": {
         "apps/ingestion/services/_planted.py": "import apps.ingestion.models\n",
         "apps/catalog/_planted.py": "import apps.ingestion.services._planted\n",
+    },
+    # The sanctioned other half of the pair above: the entitlement read is published as a
+    # service, so importing it breaks nothing.
+    "personalization reads entitlement through identity's services": {
+        "apps/personalization/_planted.py": "from apps.identity.services import is_pro\n"
     },
     "llm adapter imports its SDK": {"adapters/llm/_planted.py": "import anthropic\n"},
     "billing adapter imports stripe": {"adapters/billing/_planted.py": "import stripe\n"},

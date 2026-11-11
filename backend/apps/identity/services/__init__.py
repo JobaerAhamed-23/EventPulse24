@@ -2,6 +2,7 @@
 
 from apps.identity.services.audit import write_audit
 from apps.identity.services.authenticate import authenticate
+from apps.identity.services.entitlement import is_pro
 from apps.identity.services.password_reset import (
     hash_token,
     request_password_reset,
@@ -10,6 +11,11 @@ from apps.identity.services.password_reset import (
 from apps.identity.services.recipients import get_recipient_address
 from apps.identity.services.session import end_other_sessions, sign_out
 from apps.identity.services.sign_up import SignUpOutcome, sign_up
+from apps.identity.services.subscriptions import (
+    record_subscription_changed,
+    record_subscription_ended,
+    record_subscription_started,
+)
 from apps.identity.services.throttle import is_throttled
 
 __all__ = [
@@ -18,7 +24,11 @@ __all__ = [
     "end_other_sessions",
     "get_recipient_address",
     "hash_token",
+    "is_pro",
     "is_throttled",
+    "record_subscription_changed",
+    "record_subscription_ended",
+    "record_subscription_started",
     "request_password_reset",
     "reset_password",
     "sign_out",

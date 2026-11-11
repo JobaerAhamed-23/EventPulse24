@@ -7,7 +7,14 @@ import factory.random
 from django.utils import timezone
 from factory.django import DjangoModelFactory
 
-from apps.identity.models import IdentityAuditEntry, PasswordResetToken, User
+from apps.identity.models import (
+    IdentityAuditEntry,
+    PasswordResetToken,
+    Subscription,
+    SubscriptionStatus,
+    User,
+)
+from ports.billing import ProPlan
 from shared.db import PERSONAL
 from shared.ids import uuid7
 
@@ -84,3 +91,22 @@ class IdentityAuditEntryFactory(PersonalFactory):
     target_type = "User"
     target_id = factory.LazyFunction(uuid7)
     details = {}
+
+
+class SubscriptionFactory(PersonalFactory):
+    """One subscription row, `active` by default.
+
+    `user_id` is a plain UUID because the model holds one: the row is written by commands
+    that know an id and a Stripe reference, never a `User` instance.
+    """
+
+    class Meta:
+        model = Subscription
+
+    user_id = factory.LazyFunction(uuid7)
+    plan = ProPlan.MONTHLY.value
+    status = SubscriptionStatus.ACTIVE
+    current_period_end = None
+    stripe_customer_ref = factory.Sequence(lambda n: f"cus_test{n}")
+    stripe_subscription_ref = factory.Sequence(lambda n: f"sub_test{n}")
+    last_event_at = None
