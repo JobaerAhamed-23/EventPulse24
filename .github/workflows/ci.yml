@@ -28,6 +28,18 @@ env:
   DATABASE_URL_PERSONAL: postgresql://ep_personal:ep_personal_ci@127.0.0.1:5432/eventpulse24
   REDIS_URL: redis://127.0.0.1:6379/0
   ADAPTER_MODE: fake
+  # AD-18: required by `config.env` with no default and no fallback, so Django cannot boot
+  # without it. A valid `<key_id>.<base64url-32-bytes>` whose bytes are not a real key.
+  CALENDAR_CREDENTIAL_KEY: k1.ZXZlbnRwdWxzZTI0LWxvY2FsLWNyZWRrZXktMzJieXQ
+  # FR-26, FR-27: required with no default, for the same reason.
+  REVALIDATION_SECRET: ci-only-not-a-real-revalidation-secret
+  # FR-48 billing. Test-mode placeholders: the key prefixes are real shapes so the adapter's
+  # own validation is exercised, but neither value is a credential. `config.env` requires
+  # both with no default, so Django cannot boot without them.
+  STRIPE_API_KEY: sk_test_ci-only-not-a-real-key
+  STRIPE_WEBHOOK_SECRET: whsec_ci-only-not-a-real-secret
+  STRIPE_PRICE_MONTHLY: price_ci_monthly
+  STRIPE_PRICE_YEARLY: price_ci_yearly
   NEXT_TELEMETRY_DISABLED: "1"
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 

@@ -993,6 +993,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/webhooks/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Billing Event
+         * @description Verify, translate and apply one inbound billing event.
+         */
+        post: operations["apps_identity_webhooks_api_receive_billing_event"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3238,6 +3258,17 @@ export interface components {
             page_size: number;
         };
         /**
+         * WebhookAck
+         * @description What the provider gets back. A slug naming the outcome, and nothing else.
+         *
+         *     No subscription id, no user id, no plan: a webhook response is read by a provider and by
+         *     whoever can replay a delivery, and it has no reason to carry anything about the account.
+         */
+        WebhookAck: {
+            /** Status */
+            status: string;
+        };
+        /**
          * WhyThisOut
          * @description The persisted why-this breakdown (FR-24, AD-10).
          *
@@ -4940,6 +4971,35 @@ export interface operations {
             };
             /** @description Unprocessable Content */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_webhooks_api_receive_billing_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAck"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

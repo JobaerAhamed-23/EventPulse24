@@ -24,6 +24,9 @@ def make_env(**overrides) -> Settings:
         # The revalidation shared secret (FR-26, FR-27): required, with no default and no
         # fallback — a deployment that boots without it cannot authenticate a signal.
         "revalidation_secret": "test-revalidation-secret",
+        # FR-48 billing: required, with no default and no fallback, for the same reason.
+        "stripe_api_key": "sk_test_not-a-real-key",
+        "stripe_webhook_secret": "whsec_not-a-real-secret",
         **URLS,
         **overrides,
     }

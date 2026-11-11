@@ -3489,6 +3489,20 @@
         "title": "UrlFeedQuery",
         "type": "object"
       },
+      "WebhookAck": {
+        "description": "What the provider gets back. A slug naming the outcome, and nothing else.\n\nNo subscription id, no user id, no plan: a webhook response is read by a provider and by\nwhoever can replay a delivery, and it has no reason to carry anything about the account.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "WebhookAck",
+        "type": "object"
+      },
       "WhyThisOut": {
         "description": "The persisted why-this breakdown (FR-24, AD-10).\n\n**This is a persisted fact, not a computation.** The tags, the bucket and the badge\nare the `DigestComposition` row's own values, read back from the most recent\ncomposition for that `(user, event)` pair. AD-10 says an explanation \"is never\ngenerated at view time\", and this is where that either holds or is quietly broken.\n\n**The bucket, not the score.** FR-22's raw `relevance_score` is an internal number;\nthe screen shows 1–5 dots. Sending the score would invite the frontend to re-bucket\nit — the \"recomputed at render\" failure wearing a different hat.\n\n**The tags are the persisted keys, in the persisted order.** The client owns the\nlabels; the server states the facts.\n\n**The Source Badge is the variant key, or `None`.** A personal event has no source,\nso it has no badge; `None` here means \"there is no source\", not \"unknown\".",
         "properties": {
@@ -5872,6 +5886,39 @@
         "summary": "Save the signed-in user's notification settings",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/webhooks/billing": {
+      "post": {
+        "description": "Verify, translate and apply one inbound billing event.",
+        "operationId": "apps_identity_webhooks_api_receive_billing_event",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookAck"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "summary": "Receive Billing Event",
+        "tags": [
+          "billing-webhooks"
         ]
       }
     }

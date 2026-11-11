@@ -57,6 +57,20 @@ class Settings(BaseSettings):
     # fails later, when an event changes.
     revalidation_secret: str
 
+    # FR-48 billing. Required, with no default and no fallback, for the same reason as
+    # `revalidation_secret` above: a missing key must abort the boot rather than leave an
+    # app that looks healthy and fails the first time someone tries to pay.
+    #
+    # The webhook secret is **separate from the API key on purpose**. The API key authorises
+    # calls out to Stripe; the webhook secret verifies calls in. One leaking does not give an
+    # attacker the other's power, and Stripe rotates them independently.
+    stripe_api_key: str
+    stripe_webhook_secret: str
+    # The provider's price identifiers, one per plan. Not secrets, but configuration: they
+    # differ between test mode and live mode, so they cannot be literals in the adapter.
+    stripe_price_monthly: str = ""
+    stripe_price_yearly: str = ""
+
     # How long the backend waits for the frontend's revalidation route handler to answer.
     revalidation_timeout_seconds: PositiveFloat = 5.0
 
