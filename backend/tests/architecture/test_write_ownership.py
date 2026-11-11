@@ -63,6 +63,10 @@ TABLE_OWNERS = {
     "personalization_conflictpair": "personalization",
     "personalization_interest": "personalization",
     "personalization_calendarconnection": "personalization",
+    # AD-16: `personalization` owns FR-59's report, because a report is attributable to a
+    # user and so belongs in `personal`. Its ReviewItem is `ingestion`'s and carries no user
+    # identity (AD-3). Written only by `services/event_reports.py`.
+    "personalization_eventreport": "personalization",
     "personalization_onboardingprogress": "personalization",
     "personalization_digestpreference": "personalization",
     # AD-16: `personalization` owns `PULSE_DIGEST` and `DIGEST_COMPOSITION` — the
@@ -91,6 +95,18 @@ TABLE_OWNERS = {
     # written only by `services/revalidation.py`. The frontend owns no table at all; it
     # receives the signal and rebuilds from the catalog's own public read.
     "ingestion_revalidationrequest": "ingestion",
+    # AD-16: `ingestion` owns the FR-57 review queue (AD-14: `editorial` owns nothing and
+    # acts through ingestion commands). Written only by `services/review_queue.py` and the
+    # editorial resolution commands.
+    "ingestion_reviewitem": "ingestion",
+    # AD-16: `ingestion` owns FR-16's observation rows too. Written only by the editorial
+    # resolution commands, which are `ingestion` services because AD-14 gives `editorial`
+    # no privileged write path.
+    "ingestion_sourceobservation": "ingestion",
+    # AD-16: `ingestion` owns FR-16's reliability history too. The score is a standing fact
+    # about a source, not user data, so it sits on the catalog side of the AD-3 wall — and
+    # it is written only by the ingestion recompute service.
+    "ingestion_sourcereliabilityscore": "ingestion",
     # AD-16: `delivery` owns the reminder plan. It is here because the check covers
     # every app that owns tables, not only the three this intent added to — a table
     # with no owner is a table nobody is responsible for, and the map is only

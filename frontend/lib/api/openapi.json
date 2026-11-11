@@ -1787,6 +1787,57 @@
         "title": "EventPage",
         "type": "object"
       },
+      "EventReportIn": {
+        "description": "The body of a report: which event, and which of the four things is wrong (FR-59).\n\n**There is no free-text field, and that is a product decision rather than a gap.** FR-57\nand FR-59 both put free text in Phase 2. Four fixed categories mean there is nothing for\na user to type into, so there is nothing to moderate, nothing to leak into an editor's\nscreen, and nothing that needs its own retention rule.",
+        "properties": {
+          "category": {
+            "enum": [
+              "wrong_date_time",
+              "wrong_venue",
+              "does_not_exist",
+              "duplicate"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "category"
+        ],
+        "title": "EventReportIn",
+        "type": "object"
+      },
+      "EventReportOut": {
+        "description": "What the client needs for the toast, and deliberately nothing else.\n\n**No report id, no tally, no queue state.** A client that could read the tally could\ncount other people's reports on an event, which is a fact about other users and not\nabout this one. FR-59 asks only that the user sees \"Thanks — we'll review this.\"\n\n`category` is echoed so an optimistic UI can confirm what it sent without keeping it.",
+        "properties": {
+          "category": {
+            "enum": [
+              "wrong_date_time",
+              "wrong_venue",
+              "does_not_exist",
+              "duplicate"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "reported": {
+            "default": true,
+            "title": "Reported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category"
+        ],
+        "title": "EventReportOut",
+        "type": "object"
+      },
       "HealthDetails": {
         "properties": {
           "components": {
@@ -4762,6 +4813,69 @@
           }
         },
         "summary": "The signed-in user's Pulse Digest for today",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
+    "/api/personal/event-reports": {
+      "post": {
+        "description": "Records one report against a public event (FR-59). The body names the event and exactly one of four categories; there is no free-text field.\n\n**A report never changes what anyone can see.** The event stays in the digest and on its public page until an editor decides. One person cannot pull a listing.\n\nFive reports per user per day; the sixth answers 429 with the wait. Reporting the same event for the same reason twice is accepted and counted once — the editor's tally counts people, not taps.\n\nAn event that does not exist, or that is not publicly visible, answers 404 — the same refusal the event detail read gives, so this endpoint cannot be used to find out whether a hidden event exists.",
+        "operationId": "apps_personalization_api_report_event_endpoint",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventReportOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Report a catalog event as wrong",
         "tags": [
           "personal"
         ]

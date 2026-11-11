@@ -22,6 +22,164 @@ TZ_INFERENCE_CONFIDENCE_DIGEST = Decimal("0.70")
 # gate) it publishes with `tz_review_pending` set.
 TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH = Decimal("0.90")
 
+# FR-57: a user-reported ReviewItem is due this long after its *first* report (review-queue-model
+# D8). The other reasons carry no per-item deadline: "reviewed at least daily" is a team cadence.
+REVIEW_SLA_USER_REPORTED = timedelta(hours=24)
+
+# FR-57: which kind of review item an editor should reach for first.
+#
+# **`ReviewItem` has no priority column, and this is why.** `review-queue-model` did not add
+# one and `review-intake-and-backfill` D1 explicitly declined to: a low-priority item would
+# need a migration, and the volume of published-but-flagged events is unknown and potentially
+# large — it would dilute the queue-size and oldest-item metrics the admin exists to show.
+#
+# So priority is *derived from the reason*, which is the one thing every item already carries.
+# The order is what an editor's day actually looks like:
+#
+# 1. `user_reported` — a person says something is wrong, and FR-59's 24h SLA is running.
+# 2. `source_reliability` — FR-16's escalation: this source keeps being wrong.
+# 3. `in_review` — the confidence gate caught it, and nobody has complained yet.
+#
+# **Keyed by value, not by the model's enum.** `shared` sits below `apps`, so it cannot import
+# `apps.ingestion.models`; this is the same shape as `LIFECYCLE_SEND_BEHAVIOUR` and
+# `REPORT_CATEGORIES` above, for the same reason.
+REVIEW_PRIORITY = {
+    "user_reported": 0,
+    "source_reliability": 1,
+    "in_review": 2,
+}
+
+# FR-59: the four report categories, and the one place they are written down.
+#
+# **Three enums must agree and none of them can import the others.** `ReviewItem.ReportCategory`
+# lives in `catalog`, `EventReport.Category` in `personal`, and `shared` is below `apps` so it
+# can hold neither. This is the same shape as `LIFECYCLE_SEND_BEHAVIOUR`, keyed by value for
+# the same reason, and `tests/shared/test_constants.py` asserts all three stay in step.
+#
+# **No free text, ever** (FR-57 and FR-59 both put it in Phase 2). A report is one of four
+# values; there is no field for a user to type into, so there is nothing to moderate.
+REPORT_CATEGORIES = ("wrong_date_time", "wrong_venue", "does_not_exist", "duplicate")
+
+# FR-59: five reports per user per day, through the throttle port (PRD 11.2), never hand-rolled.
+# The sixth answers 429 and the UI renders it calmly; one person cannot pull an event, and a
+# troll cannot manufacture a queue.
+EVENT_REPORT_DAILY_LIMIT = 5
+EVENT_REPORT_WINDOW_SECONDS = 24 * 60 * 60
+
+# How often the reconciler re-offers a report whose ReviewItem was never raised. The same
+# cadence as `OUTBOX_RECONCILE_EVERY_MINUTES`, and for the same reason: both are a second
+# attempt at one cross-boundary hop, not a retry loop.
+EVENT_REPORT_RECONCILE_EVERY_MINUTES = 5
+
+# ── FR-16: the Source Reliability Score (domain/reliability.py) ──────────────────────────────
+#
+# **The fourth confidence, and never conflated with the other three.** `extraction_confidence`
+# is how sure we are we read the page correctly, `tz_inference_confidence` how sure we are of
+# the timezone, the Confidence Pulse is what the user is shown. This one is how well a *Source*
+# has behaved over time. They are four different questions and they share no constant.
+#
+# The beta-binomial prior. α = β = 5 means a new Source starts at the prior mean 0.50 and a
+# single bad event cannot crater it: one negative gives (5+0)/(10+1) = 0.45, not 0.00.
+RELIABILITY_PRIOR_ALPHA = 5
+RELIABILITY_PRIOR_BETA = 5
+
+# FR-16's min-N. Below this the score still *moves*, but it cannot fall below the floor below.
+#
+# **This resolves a contradiction in FR-16, and the resolution is a reading of its own numbers.**
+# The PRD says a Source "needs at least 30 observations before its score moves" *and* that one
+# under 30 "cannot have its score drop below 0.32". Read literally the first makes the second
+# unreachable — a frozen score never approaches any floor. The arithmetic says which was meant:
+# the all-negative posterior runs 0.50, 0.45, 0.42, 0.38, 0.36, 0.33 (n=5), 0.31 (n=6), so
+# **0.32 is the posterior after five or six straight failures** — not the floor at n=29, which
+# is 0.13. So the floor is a deliberate statement: until there are 30 observations, never judge
+# a Source worse than about five strikes. The score moves; the clamp holds the bottom.
+#
+# Escalation requires n >= 30 anyway, so the clamp can never suppress one.
+# PRD amendment owed: "before its score moves" -> "before its score moves freely".
+RELIABILITY_MIN_OBSERVATIONS = 30
+RELIABILITY_NEW_SOURCE_FLOOR = Decimal("0.32")
+
+# FR-16: below this, with at least RELIABILITY_MIN_OBSERVATIONS, a Source is escalated to the
+# editorial queue. **Escalation, never removal** — a low score lowers ranking and raises a
+# ReviewItem; it never pauses or hides the Source.
+RELIABILITY_ESCALATION_SCORE = Decimal("0.30")
+
+# FR-16's spike detection, as a ratio of **week-over-week negative rates** — not of scores.
+#
+# **A ratio of scores cannot fire, which is why this measures something else.** Under 30
+# observations the floor above pins the score between 0.50 and 0.32, a ratio of at most 1.56.
+# At or above 30, any score low enough to be a third of its predecessor is already below
+# RELIABILITY_ESCALATION_SCORE, so escalation has already fired. And a cumulative posterior is
+# sticky: a Source at 0.80 needs ~100 all-negative events in one week to reach even 2.96x.
+#
+# So `is_spike` compares the *rate of bad events*, each week's rate smoothed with the **same**
+# prior above. That costs no further constant and suppresses small samples for free: a week of
+# two events with one bad is (5+1)/(10+2) = 0.50 against (5+0)/(10+2) = 0.42, a ratio of 1.2.
+# PRD amendment owed: "3x week-over-week drop in reliability score" -> "3x week-over-week rise
+# in the smoothed rate of negative observations".
+RELIABILITY_SPIKE_MULTIPLIER = Decimal("3")
+
+# FR-16: what each editorial verdict is worth to the score. **The counting rule, written down
+# once** (design: reliability-recompute-and-escalation D14).
+#
+# **Keyed by value, not by the model's enum.** `shared` sits below `apps`, so it cannot import
+# `apps.ingestion.models`; this is the same shape as `REVIEW_PRIORITY` and `REPORT_CATEGORIES`
+# above, for the same reason. The recorder and the recompute job both read this table, so two
+# implementations of the same sign cannot exist.
+#
+# **`approved` is +1.** FR-16 positive: the listing was right.
+#
+# **`rejected` is -1.** FR-16 negative: the listing was wrong.
+#
+# **`edited` is -1** (design D4). **The source was wrong.** A source that gets every event's
+# time wrong must not score like one whose times are right. FR-16's own brakes — the floor
+# and the min-N — are the protection.
+#
+# **`dismissed` is 0** — FR-25's **named, unimplemented** input (design D5, D6). A dismissal
+# is "I looked at this source and found no fault", not a check of any of its events, so it is
+# neither evidence for nor against. The *dismissal rate* is not computed and no term
+# anywhere stands in for it.
+#
+# **Zero is not the same as absent.** A dismissal is recorded as a fact (an editor looked) and
+# contributes nothing to the counts. An absent input would not be recorded at all.
+OBSERVATION_SIGNS = {
+    "approved": 1,
+    "rejected": -1,
+    "edited": -1,
+    "dismissed": 0,
+}
+
+# FR-16: the score is recomputed **at least weekly**, and the spike rule compares this week
+# with last week, so the period is a calendar week.
+#
+# **A weekly cadence is not a minute-modulo rule.** The worker's tick dispatches on
+# `minute % 5` and `minute % 15`; there is no `minute % 10080`. So the tick asks the job to
+# look on every tick and the job decides who is due — the same shape as `schedule_digests`,
+# which also runs on every tick because "due" is a per-source comparison. The period boundary
+# is the **ISO Monday 00:00 UTC**, so a week's observations are unambiguous.
+#
+# `RELIABILITY_PERIOD_DAYS` is the length of the period the score is computed over: a week.
+# The service derives the period's boundaries from it rather than hard-coding 7 twice.
+RELIABILITY_PERIOD_DAYS = 7
+
+# FR-16: how long the weekly recompute's claim on a source survives.
+#
+# **A claim has to outlive the transaction that took it.** The claim is written to
+# `Source.reliability_claimed_at` rather than held as a row lock, because the recompute runs
+# in its own transaction — a `FOR UPDATE SKIP LOCKED` that releases with its transaction
+# prevents nothing (design D10).
+#
+# **A claim older than this is a lost job.** The source is claimed again rather than being
+# skipped for the rest of the week, which is the same rule the scheduler's ingest claim uses.
+RELIABILITY_CLAIM_TTL = timedelta(hours=1)
+
+# FR-16: how many sources one recompute batch claims at a time.
+#
+# **The claim holds a lock on every row it takes**, so an unbounded claim would hold every due
+# source's lock for the length of the batch. The batch is bounded for the same reason
+# `SCHEDULE_BATCH` is: one slow source must not hold up every other tick's work.
+RELIABILITY_BATCH_SIZE = 100
+
 # FR-60 tz-inference scores and DST caps (domain/timezones.py). Tuning anchors, not truths (AD-8):
 # re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
 TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim
@@ -611,12 +769,13 @@ EVENT_FIT_TAG_ORDER = (
 #                     + 0.20 × recency_fit
 #                     + 0.15 × novelty_vs_exploration
 #
-# and locks those weights. **Two of the four components have no input in this codebase**:
+# and locks those weights. **One of the four components has no input in this codebase**:
 #
-#   * `source_reliability` — FR-16 is unbuilt; `Source` has no score field. It is not
-#     "not implemented yet": the number does not exist and cannot be computed.
 #   * `novelty_vs_exploration` — needs the Preference Graph (FR-25, deferred) *and* an
 #     event category, and `Event` has no category field.
+#
+# `source_reliability` **used to** be missing too. FR-16's score now lives on `Source`
+# (`reliability_score`), written by the weekly recompute, and the ranking reads it.
 #
 # A term multiplied by a constant is an **inert weight**: the published formula would stay
 # arithmetically checkable and still produce a different number from the one on the card,
@@ -624,51 +783,70 @@ EVENT_FIT_TAG_ORDER = (
 # `domain/event_fit.py` set this precedent when it refused to invent a "Free" tag — "they
 # are added to Event Fit's rule set then, not faked now."
 #
-# So the omitted terms are **absent from the expression**, and the surviving weights are
+# So the omitted term is **absent from the expression**, and the surviving weights are
 # redistributed so they still sum to 1.0. The docstring of `domain/ranking.py` states the
 # reduction, names every omitted input, and names the FR that will supply it.
 #
-# The weights below are the **reduced** ones. `RANKING_WEIGHT_SUM` is pinned to 1 by a test,
-# so the score still occupies [0, 1] and FR-22's bucket boundaries mean what they say.
+# **FR-22's own words: "The Architecture spec describes the *implementation* of the formula
+# but does not redefine the weights."** The weights below are that implementation. They are
+# **not** FR-22's published MVP weights — those are 0.40 / 0.25 / 0.20 / 0.15 — and
+# changing them is not a change to those. The substitution of each published term for the
+# term the product can actually compute is recorded in the ADR named below.
 
-# The reduced formula's four surviving inputs.
+# The formula the product computes.
 #
 #   relevance_score = RANKING_WEIGHT_INTEREST × interest_overlap
 #                   + RANKING_WEIGHT_RECENCY  × recency
 #                   + RANKING_WEIGHT_CITY     × city_match
 #                   + RANKING_WEIGHT_CONFIDENCE × confidence
+#                   + RANKING_WEIGHT_RELIABILITY × source_reliability
 #
-# **Interest overlap is 0.45**, not FR-22's published 0.40 for `preference_graph_match`.
-# The chips are the Preference Graph's only surviving trace, so they inherit the
-# preference term's *rank* — the largest — while the slack from the two absent terms is
-# spread across the survivors.
+# **Interest overlap is 0.35.** FR-22 publishes 0.40 for `preference_graph_match`; the
+# chips are the Preference Graph's only surviving trace, so they stand in for it. The 0.05
+# shortfall is the slack from `novelty_vs_exploration` (0.15), which has no input at all.
 #
-# **Recency is 0.25**, up from FR-22's 0.20 for `recency_fit`: it is the term that
-# survives most directly, the event's start time against the user's day.
+# **Source reliability is 0.25 — FR-22's published weight for `source_reliability`, exact.**
+# This is the term FR-16 built, and it enters at the weight the PRD always gave it.
 #
-# **City match is 0.20**, and it is **additive**, not a multiplier. FR-5 multiplies by a
+# **Recency is 0.20**, FR-22's published weight for `recency_fit`, exact. It stood at 0.25
+# while it was carrying two absent terms' slack; now that it stands for one thing again it
+# is back at the PRD's number.
+#
+# **City match is 0.10**, and it is **additive**, not a multiplier. FR-5 multiplies by a
 # `geographic_distance_factor`, which zeroes out every event outside the user's city — but
 # city membership is decided by the *candidate read*, not by the score. Once the read has
 # filtered to the user's city, multiplying by a city factor would multiply by a constant,
 # which is exactly the inert weight this section exists to avoid.
 #
-# **Confidence is 0.10**, the smallest share. FR-22 says the Confidence Pulse measures the
-# AI's certainty about relevance "not just trust in the source"; extraction confidence is
-# the one measure of "how well do we know this event's facts" that exists, and it is the
-# same number the eligibility gates use.
-RANKING_WEIGHT_INTEREST = Decimal("0.45")
-RANKING_WEIGHT_RECENCY = Decimal("0.25")
-RANKING_WEIGHT_CITY = Decimal("0.20")
+# **Confidence is 0.10.** FR-22 says the Confidence Pulse measures the AI's certainty about
+# relevance "not just trust in the source"; extraction confidence is the one measure of "how
+# well do we know this event's facts" that exists, and it is the same number the
+# eligibility gates use.
+RANKING_WEIGHT_INTEREST = Decimal("0.35")
+RANKING_WEIGHT_RECENCY = Decimal("0.20")
+RANKING_WEIGHT_CITY = Decimal("0.10")
 RANKING_WEIGHT_CONFIDENCE = Decimal("0.10")
+RANKING_WEIGHT_RELIABILITY = Decimal("0.25")
 
-# The four weights must sum to exactly 1, so the score stays in [0, 1] and the bucket
+# The five weights must sum to exactly 1, so the score stays in [0, 1] and the bucket
 # boundaries keep their meaning. Pinned by `tests/shared/test_constants.py`.
 RANKING_WEIGHT_SUM = (
     RANKING_WEIGHT_INTEREST
     + RANKING_WEIGHT_RECENCY
     + RANKING_WEIGHT_CITY
     + RANKING_WEIGHT_CONFIDENCE
+    + RANKING_WEIGHT_RELIABILITY
 )
+
+# **The amendment that authorises the weights above** (FR-22's amendment policy: "Any
+# change to the weights is a PRD amendment requiring explicit product leadership sign-off",
+# and "Amendments are tracked in `docs/adr/`").
+#
+# **A string in a constant is not an amendment.** A test reads the ADR this names and
+# checks that it lists the weights it claims to authorise — so moving a weight and
+# updating this string in the same commit still fails, because the ADR's own table has to
+# move too, and the ADR is a document a human reads.
+RANKING_WEIGHTS_AMENDMENT = "ADR-0025"
 
 # The recency bands, in order: how soon the event starts, relative to `now`.
 #
@@ -988,6 +1166,21 @@ LIFECYCLE_SEND_BEHAVIOUR = {
     "superseded": LifecycleSendBehaviour.CANCEL,
     "sold_out": LifecycleSendBehaviour.KEEP,
     "detail_changed": LifecycleSendBehaviour.KEEP,
+    # An editor rejected the listing (FR-57). The event may well still be happening — a
+    # duplicate or a wrong-venue reject says nothing about the real world — but *we* are no
+    # longer willing to stand behind it, and a reminder is us standing behind it. So the
+    # pending rows are cancelled and nothing is minted.
+    #
+    # **This is the entire reason the reject writes a state change at all.**
+    # `publication_status` is not a lifecycle field, so hiding the Event bumps no version
+    # and reaches nobody; without this row the saver keeps getting "your event is in 3
+    # hours" for an event editorial deleted. The outbox is also the *only* fan-out across
+    # the schema wall — `cancel_sends_for_targets` is per-user and cannot address savers.
+    "delisted": LifecycleSendBehaviour.CANCEL,
+    # The reversal re-mints: they saved it, it is back, and their ReminderPlan was never
+    # deleted. `mint_for_plan` already declines a slot whose instant has passed, so a
+    # long-rejected event reinstated after its start mints nothing.
+    "relisted": LifecycleSendBehaviour.REMINT,
 }
 
 
@@ -1030,6 +1223,24 @@ LIFECYCLE_PERSONAL_BEHAVIOUR = {
     "superseded": LifecyclePersonalBehaviour.CANCEL,
     "sold_out": LifecyclePersonalBehaviour.NONE,
     "detail_changed": LifecyclePersonalBehaviour.NONE,
+    # **Deliberately NONE, and this is the one entry whose reason is not about the snapshot.**
+    #
+    # `cancel_saved_event` would be the obvious choice — it is what `cancelled` and
+    # `superseded` use — and it would close the user's conflict pairs as
+    # `cleared_by_state_change`. The problem is that AD-21 D24 makes a closed pair
+    # **immutable** (`guard_conflict_pair`) and `conflict_pair_pair_uq` forbids a
+    # replacement row. A reject is reversible by an editor; a closed pair is not. So an
+    # editor who rejected an event and then reinstated it would restore a real clash that
+    # `/conflicts` could never mention again — the open AD-17/AD-21 defect, walked into
+    # deliberately. Leaving the pair open costs nothing: a side whose catalog event is not
+    # published already renders `available: false` ("event no longer available"), the same
+    # path superseded and unpublished events take.
+    #
+    # **The sends still cancel.** `worker.propagation._apply_sends` takes the version from
+    # the *change* (`replace(target, version=change.event_version)`), never from the
+    # snapshot, so a NONE personal behaviour does not weaken the CANCEL above.
+    "delisted": LifecyclePersonalBehaviour.NONE,
+    "relisted": LifecyclePersonalBehaviour.NONE,
 }
 
 # AD-17: how long a state change may sit unpropagated before it is reported as stuck.

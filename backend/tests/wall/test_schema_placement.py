@@ -45,6 +45,15 @@ INGESTION_TABLES = {
     # pages must be rebuilt, and it is written in the same transaction as the change that
     # made them stale — so it belongs on the catalog side of the AD-3 wall.
     "ingestion_revalidationrequest",
+    # FR-57: the editorial review queue is a catalog table. It is about catalog rows (an
+    # Event or a Source) and carries no user identity (review-queue-model D4), so it sits on
+    # the catalog side of the AD-3 wall; the reporter stays in `personal.EventReport`.
+    "ingestion_reviewitem",
+    "ingestion_sourceobservation",
+    # FR-16: the reliability history is a catalog table. Each row is a week's score for a
+    # source — a standing fact about the catalog, carrying no user identity — so it sits on
+    # the catalog side of the AD-3 wall.
+    "ingestion_sourcereliabilityscore",
 }
 
 PERSONALIZATION_TABLES = {

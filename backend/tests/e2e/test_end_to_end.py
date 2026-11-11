@@ -46,6 +46,8 @@ EXPECTED_PERMISSIONS = {
     "ingestion.event": {"view"},
     "ingestion.eventstatechange": {"view"},
     "ingestion.ingestionauditentry": {"view"},
+    # FR-57's queue (review-queue-model D9): worked, never created or deleted by hand.
+    "ingestion.reviewitem": {"change", "view"},
 }
 
 # The codenames are `<action>_<model>` with the model in lower case, so `TosReview` becomes
@@ -201,7 +203,7 @@ def test_the_editorial_group_holds_exactly_the_granted_permissions():
     group = Group.objects.using(PERSONAL).get(name="editorial")
     granted = set(group.permissions.values_list("codename", flat=True))
     assert granted == EXPECTED_CODENAMES
-    assert len(granted) == 12
+    assert len(granted) == 14
 
 
 def test_the_operator_is_staff_and_not_a_superuser_and_uses_the_group():
@@ -216,6 +218,10 @@ def test_the_operator_is_staff_and_not_a_superuser_and_uses_the_group():
     assert operator.has_perm("ingestion.change_source") is True
     # Sources are paused, never deleted, so the group must not grant delete.
     assert operator.has_perm("ingestion.delete_source") is False
+    # The review queue is worked through commands: no hand-made items, no deleted ones.
+    assert operator.has_perm("ingestion.change_reviewitem") is True
+    assert operator.has_perm("ingestion.add_reviewitem") is False
+    assert operator.has_perm("ingestion.delete_reviewitem") is False
 
 
 def test_an_operator_who_became_a_superuser_is_demoted_on_the_next_run():

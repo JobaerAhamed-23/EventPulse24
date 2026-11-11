@@ -62,6 +62,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PersonalEventsPanel, type PersonalEventSeed } from "@/components/personal-events-panel";
 import { ConflictResolution, type Conflict } from "@/components/sheets/conflict-resolution";
 import { ShareControl } from "@/components/share/share-control";
+import { EventReportControl } from "@/components/detail/event-report-control";
 import type { components } from "@/lib/api/schema";
 import { api } from "@/lib/backend-client";
 import { onConflictOpen } from "@/lib/conflict-open";
@@ -432,6 +433,22 @@ export function DetailActions({
           stays the only one.
         */}
         <ShareControl slug={slug} title={eventName} origin={shareOrigin} />
+
+        {/*
+          **The report flag — FR-59's "Report this event".**
+
+          **It is the quietest thing on the row**, after the two buttons that matter: Save
+          is the filled terracotta primary and Share is the bordered secondary, so the
+          flag is muted ink with an underline — FR-59's "Not a primary button", stated as
+          the absence of the tokens the other two have.
+
+          **It is here, and not in the page, because the row is already gated.** The whole
+          row lives inside `{personal ? … : null}` on the page, so the flag is **hidden
+          for a signed-out reader** — inherited from the same `if` that hides Save, so the
+          two cannot drift apart. A flag that led to a sign-in wall would be a control
+          that does nothing, plus three taps.
+        */}
+        <EventReportControl eventId={eventId} eventName={eventName} />
 
         {failed ? (
           <p className="text-ink-muted [font:var(--type-scale-body-sm)]">

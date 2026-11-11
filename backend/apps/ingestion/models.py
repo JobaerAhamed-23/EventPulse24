@@ -11,6 +11,7 @@ from typing import ClassVar
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db.models import F, Q
+from django.db.models.expressions import RawSQL
 from django.utils import timezone
 
 from shared.constants import (
@@ -106,6 +107,35 @@ class Source(UUIDv7Model):
     # Set when the scheduler enqueues a run, cleared when the run's job ends: a claimed source is
     # never enqueued twice. A claim older than INGEST_CLAIM_TTL is a lost job.
     ingest_claimed_at = models.DateTimeField(null=True, blank=True)
+    # FR-16's Source Reliability Score, denormalised onto the source (design
+    # reliability-recompute-and-escalation D1).
+    #
+    # **The field answers "what is this source's score right now?"; the history answers "what
+    # was it last week?"** A field cannot answer the second — that is the spike rule's question
+    # — so the field is not a substitute for `SourceReliabilityScore`, it is the cheap half.
+    #
+    # **Null until the first recompute, and it means "not yet computed", not "bad".** A source
+    # with no score reads as the 0.50 prior through the read service; the column is only ever
+    # written by the recompute job, in the same transaction as the row it computed, so the two
+    # cannot disagree.
+    #
+    # **Never a reason to pause.** FR-16 is explicit: escalation, never removal. Nothing in
+    # that item writes `status`, `ingestion_cadence` or any other column of this row, and a
+    # test asserts the row is unchanged after an escalation.
+    reliability_score = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    reliability_scored_at = models.DateTimeField(null=True, blank=True)
+    # FR-16: the weekly recompute's claim marker, on the same shape as `ingest_claimed_at`.
+    # Set when the recompute job claims the source, cleared when it finishes.
+    #
+    # **The claim has to be persisted to be a claim.** A `SELECT ... FOR UPDATE SKIP LOCKED`
+    # that releases its lock with its transaction prevents nothing: the recompute runs in its
+    # own transaction, so two overlapping ticks both get the same source. The marker is what
+    # makes the claim outlive the transaction that took it — the same reason the scheduler's
+    # claim is a column and not a lock (design D10).
+    #
+    # **A claim older than RELIABILITY_CLAIM_TTL is a lost job**, and the source is claimed
+    # again rather than being skipped forever.
+    reliability_claimed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -257,6 +287,17 @@ class Event(UUIDv7Model):
     class PublicationStatus(models.TextChoices):
         PUBLISHED = "published"
         IN_REVIEW = "in_review"  # not digest-eligible, not publicly listed (AD-6, AD-8)
+        # An editor's FR-57 verdict: this listing is bad. Never a delete (`editorial_state`).
+        #
+        # **This is not `Event.Status`.** `Status` is what the *source* claims about whether
+        # the event happens; `rejected` is what *we* claim about the listing. A duplicate
+        # listing's underlying event still happens, so `status = cancelled` would be false.
+        #
+        # Every public read filters `publication_status == PUBLISHED` by equality, so a
+        # rejected Event is absent from all of them with no read change. Invisibility is
+        # only half of a reject, though: see `EventStateChange.Kind.DELISTED` for the half
+        # that reaches the people who saved it.
+        REJECTED = "rejected"
 
     class Status(models.TextChoices):
         SCHEDULED = "scheduled"
@@ -498,6 +539,18 @@ class EventStateChange(AppendOnlyModel, ActorColumns, UUIDv7Model):
         SOLD_OUT = "sold_out"
         DETAIL_CHANGED = "detail_changed"
         SUPERSEDED = "superseded"
+        # An editor rejected the listing, and this is the half of that verdict which
+        # travels. `publication_status = rejected` hides the Event; it bumps no version and
+        # writes no row, so on its own it would leave every saver's reminders firing for an
+        # event editorial has ruled bad. This kind rides the AD-17 outbox to cancel them.
+        #
+        # **Named for the consequence, not the verdict.** `rejected` is already taken twice
+        # over — `domain.confidence.Gate.REJECT` means "never becomes an Event", and
+        # `ReviewItem.resolution` has `withdrawn` for a system close. Three words for "no"
+        # that mean three different things would be unreadable, so the outbox carries what
+        # happened to the listing rather than what the editor clicked.
+        DELISTED = "delisted"
+        RELISTED = "relisted"  # an editor reversed a rejection; ingestion never can
 
     retention_category = RetentionCategory.SOURCE_REGISTRY
     append_only_mutable = frozenset({"propagated_at"})
@@ -528,6 +581,157 @@ class EventStateChange(AppendOnlyModel, ActorColumns, UUIDv7Model):
                 name="state_change_unpropagated_idx",
             ),
         ]
+
+
+class SourceObservation(AppendOnlyModel, ActorColumns, UUIDv7Model):
+    """One editorial verdict, recorded against the Source whose event it was about (FR-16).
+
+    **The input side of the Source Reliability Score, stored as a fact and never as a score.**
+    `domain/reliability.py` holds the arithmetic and takes plain counts; this is the table
+    those counts come from. Keeping them apart is what lets the score be recomputed from
+    scratch at any time, and what makes a week-over-week comparison possible at all.
+
+    **Why a table rather than the audit log.** Every command here writes an
+    `IngestionAuditEntry` too, and the counts could in principle be scraped from it — but
+    they would have to be read out of a JSON column, and the audit log's retention is 24
+    months (AD-15) while a Source's reliability is meant to be a standing fact about it.
+
+    **`edited` is its own kind, and its sign is decided** (design
+    `reliability-recompute-and-escalation` D4): an edit is **negative**, because the source's
+    facts were wrong and an editor had to change them. `dismissed` is **neutral** (D5) — an
+    editor looked at a `source_reliability` item and found no fault in the source, which is
+    not a check of any of its events. The signs themselves live once, in
+    `shared.constants.OBSERVATION_SIGNS`, and both the recorder and the recompute job read
+    that table, so there is one counting rule and not two.
+
+    **One verdict is one observation, however many reports it carried** (D8). The
+    `source_observation_item_uq` constraint is what makes that true — an event's reports all
+    live on one `user_reported` item, so a verdict on that event can only ever close one item
+    and therefore record one observation. `report_count` keeps the *fact* of the five without
+    multiplying the *weight* of the verdict.
+
+    Append-only: a verdict is history the moment it is recorded.
+    """
+
+    class Kind(models.TextChoices):
+        APPROVED = "approved"  # FR-16 positive
+        REJECTED = "rejected"  # FR-16 negative
+        EDITED = "edited"  # FR-16 negative: the source's facts were wrong (design D4)
+        DISMISSED = "dismissed"  # FR-25's named input; neutral (design D5, D6)
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    source = models.ForeignKey(Source, on_delete=models.PROTECT, related_name="observations")
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    # The event the verdict was about. Null for a `source_reliability` item, which is about
+    # the Source itself and names no event.
+    event = models.ForeignKey(
+        "Event", on_delete=models.PROTECT, null=True, blank=True, related_name="observations"
+    )
+    review_item = models.ForeignKey(
+        "ReviewItem", on_delete=models.PROTECT, related_name="observations"
+    )
+    # How many user reports the verdict's item carried when it was closed (design D8).
+    #
+    # **A count, never a list.** The reports themselves live in `personal.EventReport` and are
+    # purged with the account; the tally on the `ReviewItem` is the only cross-wall-safe record
+    # of them, and this column freezes it at the moment of the verdict.
+    #
+    # **It does not multiply the observation.** One verdict counts as one negative however many
+    # reports it answered — the sign is read once from `OBSERVATION_SIGNS`, and the count is
+    # carried as a fact beside it.
+    report_count = models.PositiveIntegerField(default=0)
+    occurred_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        base_manager_name = "objects"
+        constraints = [
+            # One observation per resolution. A verdict is recorded once; a second row for the
+            # same item would double-count the source.
+            models.UniqueConstraint(fields=["review_item"], name="source_observation_item_uq"),
+            actor_check("source_observation_actor_ck"),
+        ]
+        indexes = [
+            # The recompute's query: one source's observations, newest first, for the
+            # posterior and the week-over-week rate.
+            models.Index(fields=["source", "-occurred_at"], name="source_observation_src_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source_id}: {self.kind}"
+
+
+class SourceReliabilityScore(AppendOnlyModel, UUIDv7Model):
+    """One computation of FR-16's score for one source, for one week (design D2).
+
+    **The output side of the score, stored as a conclusion and never as a fact.**
+    `SourceObservation` records what happened; this records what was concluded from it. Keeping
+    the two apart is what lets the score be recomputed from scratch at any time, and what makes
+    a week-over-week comparison possible at all — a single field on `Source` cannot answer
+    "what was it last week?".
+
+    **One row per (source, period), and the period is the key.** `period_start` is the ISO
+    Monday 00:00 UTC of the week the row computes, and the unique constraint on
+    `(source, period_start)` **is** the idempotence guarantee: a re-run within the same period
+    collides and **updates** the row rather than inserting a second one. A score that is a
+    week stale is a score that is wrong, so the re-run refreshes rather than skips.
+
+    **Append-only, with one exception, and the exception is narrow.** A computed row is
+    history the moment it is computed — that is what makes it comparable week to week. The one
+    thing that may change is the *same period's* conclusion: `score`, `positives`, `negatives`
+    and `computed_at`, and nothing else. The `catalog.guard_reliability_score` trigger
+    enforces exactly that: the source and the period are fixed, and the rest may be rewritten
+    only within the period the row already names.
+
+    **The score is `domain/reliability.py`'s output, never a second implementation.** The
+    arithmetic lives there; this table stores what it returned.
+    """
+
+    #: The columns a same-period refresh may rewrite. The trigger names the same set; a test
+    #: compares the two, so the Python guard and the database guard cannot drift.
+    append_only_mutable = frozenset({"score", "positives", "negatives", "computed_at"})
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    source = models.ForeignKey(Source, on_delete=models.PROTECT, related_name="reliability_scores")
+    # The Monday 00:00 UTC of the week this row computes. A `DateField`, not a datetime: a
+    # week is a calendar date, and `date_trunc('week', ...)` is a date.
+    period_start = models.DateField()
+    # The score FR-16 asks for: the posterior, floored at 0.32 until 30 observations.
+    score = models.DecimalField(max_digits=4, decimal_places=2)
+    # The counts the score was computed from, so a row can be checked without re-reading the
+    # observations — and so the weekly rates can be derived from the same history.
+    positives = models.PositiveIntegerField(default=0)
+    negatives = models.PositiveIntegerField(default=0)
+    computed_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        base_manager_name = "objects"
+        constraints = [
+            # The idempotence guarantee, enforced by Postgres rather than by good manners.
+            models.UniqueConstraint(
+                fields=["source", "period_start"], name="source_reliability_score_period_uq"
+            ),
+            models.CheckConstraint(
+                condition=Q(score__gte=0, score__lte=1), name="source_reliability_score_range_ck"
+            ),
+            # It is a week, not a moment. `date_trunc('week', ...)` is Postgres's own
+            # ISO-week-to-Monday truncation, so the database and the service agree on where
+            # a week starts without either of them hard-coding an offset.
+            models.CheckConstraint(
+                condition=Q(period_start=RawSQL("date_trunc('week', period_start)", [])),
+                name="source_reliability_score_week_ck",
+            ),
+        ]
+        indexes = [
+            # The recompute's predecessor lookup: one source's rows, newest first.
+            models.Index(fields=["source", "-period_start"], name="reliability_score_period_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source_id}: {self.score} ({self.period_start})"
 
 
 class IngestionAuditEntry(AuditEntry):
@@ -608,5 +812,194 @@ class RevalidationRequest(UUIDv7Model):
                 fields=["requested_at"],
                 condition=Q(state="open"),
                 name="revalidation_open_idx",
+            ),
+        ]
+
+
+class ReviewItem(UUIDv7Model):
+    """One entry in the FR-57 editorial review queue (design: review-queue-model D1-D12).
+
+    **A target is an Event or a Source, never both (D1).** `user_reported` and `in_review` are
+    about an Event; `source_reliability` (FR-16 escalation) is about a Source. Both are
+    `catalog` rows, so the references are real foreign keys (AD-3 only forbids relations
+    across the schema wall).
+
+    **At most one open item per (target, reason) (D2).** A second raise bumps the open row's
+    tallies and `last_raised_at` (`services.review_queue.raise_review_item`); a raise after
+    the item closed opens a new row, so a verdict is history and is never re-opened.
+
+    **No user identity (D4, AD-3).** A report reaches this row as a category tally only. The
+    reporter lives in `personal.EventReport`; even the audit row for a report-raised item is
+    written as a system actor.
+
+    **A resolved row is immutable, and a row is never deleted (D7)**: the
+    `catalog.guard_review_item` trigger in migration 0008 holds both, and fixes `FIXED_FIELDS`
+    on an open row too. Delete is allowed only inside a retention purge.
+    """
+
+    class Reason(models.TextChoices):
+        USER_REPORTED = "user_reported"  # FR-59: raised by an EventReport; 24h SLA
+        IN_REVIEW = "in_review"  # the event is quarantined (publication_status = in_review)
+        SOURCE_RELIABILITY = "source_reliability"  # FR-16 escalation; targets a Source
+
+    class Status(models.TextChoices):
+        OPEN = "open"
+        RESOLVED = "resolved"
+
+    class Resolution(models.TextChoices):
+        APPROVED = "approved"  # event items, by an editor
+        EDITED = "edited"  # event items, by an editor
+        REJECTED = "rejected"  # event items, by an editor
+        DISMISSED = "dismissed"  # source items, by an editor: no action on the source
+        WITHDRAWN = "withdrawn"  # either, by the system: the target left review another way
+
+    class ReportCategory(models.TextChoices):
+        """FR-59's four categories, the one vocabulary `EventReport` also uses (D3)."""
+
+        WRONG_DATE_TIME = "wrong_date_time"
+        WRONG_VENUE = "wrong_venue"
+        DOES_NOT_EXIST = "does_not_exist"
+        DUPLICATE = "duplicate"
+
+    # The column each category's tally lives in (D3). `report_count` is their sum.
+    REPORT_FIELDS: ClassVar[dict[str, str]] = {
+        ReportCategory.WRONG_DATE_TIME: "reports_wrong_date_time",
+        ReportCategory.WRONG_VENUE: "reports_wrong_venue",
+        ReportCategory.DOES_NOT_EXIST: "reports_does_not_exist",
+        ReportCategory.DUPLICATE: "reports_duplicate",
+    }
+    # Fixed for the row's whole life, open or not (D7). The trigger names the same columns;
+    # tests/ingestion/test_review_item_model.py compares the two.
+    FIXED_FIELDS: ClassVar[tuple[str, ...]] = ("reason", "event", "source", "raised_at")
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    reason = models.CharField(max_length=24, choices=Reason.choices)
+    event = models.ForeignKey(
+        Event, on_delete=models.PROTECT, null=True, blank=True, related_name="review_items"
+    )
+    source = models.ForeignKey(
+        Source, on_delete=models.PROTECT, null=True, blank=True, related_name="review_items"
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    resolution = models.CharField(max_length=16, choices=Resolution.choices, blank=True, default="")
+
+    reports_wrong_date_time = models.PositiveIntegerField(default=0)
+    reports_wrong_venue = models.PositiveIntegerField(default=0)
+    reports_does_not_exist = models.PositiveIntegerField(default=0)
+    reports_duplicate = models.PositiveIntegerField(default=0)
+
+    raised_at = models.DateTimeField(default=timezone.now)
+    last_raised_at = models.DateTimeField(default=timezone.now)
+    # FR-57's 24h SLA, from the first report; only `user_reported` has one (D8).
+    due_at = models.DateTimeField(null=True, blank=True)
+
+    # Who resolved it, by value (`shared.actor.Actor` rules, D5). Empty while open.
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by_kind = models.CharField(max_length=16, blank=True, default="")
+    resolved_by_id = models.UUIDField(null=True, blank=True)
+    resolved_by_label = models.CharField(max_length=64, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def report_count(self) -> int:
+        return sum(getattr(self, column) for column in self.REPORT_FIELDS.values())
+
+    class Meta:
+        constraints = [
+            # D1: the reason decides the target, and exactly one target is set.
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        reason__in=["user_reported", "in_review"],
+                        event__isnull=False,
+                        source__isnull=True,
+                    )
+                    | Q(reason="source_reliability", source__isnull=False, event__isnull=True)
+                ),
+                name="review_item_target_ck",
+            ),
+            # D2: one open item per (target, reason). NULLs are distinct, so each constraint
+            # only bites its own kind of target.
+            models.UniqueConstraint(
+                fields=["event", "reason"],
+                condition=Q(status="open"),
+                name="review_item_open_event_reason_uq",
+            ),
+            models.UniqueConstraint(
+                fields=["source", "reason"],
+                condition=Q(status="open"),
+                name="review_item_open_source_reason_uq",
+            ),
+            # D3: tallies belong to user reports only.
+            models.CheckConstraint(
+                condition=Q(reason="user_reported")
+                | Q(
+                    reports_wrong_date_time=0,
+                    reports_wrong_venue=0,
+                    reports_does_not_exist=0,
+                    reports_duplicate=0,
+                ),
+                name="review_item_tallies_ck",
+            ),
+            # D8: the SLA exists exactly when the reason is a user report.
+            models.CheckConstraint(
+                condition=Q(reason="user_reported", due_at__isnull=False)
+                | (~Q(reason="user_reported") & Q(due_at__isnull=True)),
+                name="review_item_due_ck",
+            ),
+            # D6: (a) open carries no resolution; (b)-(d) resolved carries all of it, the
+            # resolver follows the Actor rules, an editor's verdict fits the target, and only
+            # `withdrawn` may be recorded by the system.
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status="open",
+                        resolution="",
+                        resolved_at__isnull=True,
+                        resolved_by_kind="",
+                        resolved_by_id__isnull=True,
+                        resolved_by_label="",
+                    )
+                    | Q(
+                        status="resolved",
+                        resolution__in=["approved", "edited", "rejected"],
+                        event__isnull=False,
+                        resolved_at__isnull=False,
+                        resolved_by_kind="user",
+                        resolved_by_id__isnull=False,
+                        resolved_by_label="",
+                    )
+                    | Q(
+                        status="resolved",
+                        resolution="dismissed",
+                        source__isnull=False,
+                        resolved_at__isnull=False,
+                        resolved_by_kind="user",
+                        resolved_by_id__isnull=False,
+                        resolved_by_label="",
+                    )
+                    | (
+                        Q(
+                            status="resolved",
+                            resolution="withdrawn",
+                            resolved_at__isnull=False,
+                            resolved_by_kind="system",
+                            resolved_by_id__isnull=True,
+                        )
+                        & ~Q(resolved_by_label="")
+                    )
+                ),
+                name="review_item_resolution_ck",
+            ),
+        ]
+        indexes = [
+            # D12: the queue's access path — open items, deadline first, then oldest.
+            models.Index(
+                fields=["due_at", "raised_at"],
+                condition=Q(status="open"),
+                name="review_item_open_idx",
             ),
         ]

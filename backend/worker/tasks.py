@@ -15,6 +15,7 @@ from apps.delivery.services.pulse_ping import mint_ping_send
 from apps.ingestion.event_fit.writes import refresh_stale_event_fits
 from apps.ingestion.services import outbox, revalidation, scheduling
 from apps.ingestion.services.ingest_source import ingest_source as run_ingest
+from apps.ingestion.services.reliability import recompute_due
 from apps.ingestion.services.source_registry import (
     CrawlNeedsTosReviewError,
     SourceNotFoundError,
@@ -22,6 +23,7 @@ from apps.ingestion.services.source_registry import (
 )
 from apps.personalization.services import calendar_sync, digest_scheduling
 from apps.personalization.services.digest_composition import compose_digest
+from apps.personalization.services.event_reports import reconcile_unraised_reports
 from ports.registry import get_calendar_port, get_email_port, get_revalidation_port
 from ports.revalidation import RevalidationOutcome, RevalidationRequest
 from shared.actor import Actor
@@ -77,11 +79,20 @@ def tick() -> None:
     **The sweep is enqueued, not run here.** It talks to a provider, and a provider call
     in the tick would put a network round-trip on the path of every 60-second tick — the
     exact coupling the tick's docstring says it exists to avoid.
+
+    **FR-16's reliability recompute runs on every tick too, for the same reason, and the
+    reason is sharper: a weekly cadence is not a minute-modulo rule.** There is no
+    `minute % 10080`. The period is the ISO week, so "due" is a per-source comparison
+    ("does this source have a row for this week?"), and the job makes it — the tick only
+    asks it to look, exactly as `schedule_digests` does. An empty batch is a no-op, and the
+    job's own claim is `FOR UPDATE SKIP LOCKED`, so two overlapping ticks cannot recompute
+    the same source at once.
     """
     _enqueue(schedule_sources)
     _enqueue(schedule_calendars)
     _enqueue(schedule_digests)
     _enqueue(sweep_due_sends)
+    _enqueue(recompute_reliability)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
         # Same cadence as the outbox reconciler, and for the same reason: propagation is what
@@ -91,6 +102,11 @@ def tick() -> None:
         # Same cadence again: a held send and a stuck change are two views of one failure,
         # and reading them together is what tells a responder which half is broken.
         _enqueue(report_stuck_propagation)
+        # FR-59's report outbox. Same cadence and the same shape as the two above: a report
+        # is written in `personal` and its ReviewItem raised in `catalog`, which AD-3 forbids
+        # doing in one transaction — so the second half needs a second attempt, not a retry
+        # loop. No new beat entry: the tick is the only one (AD-7).
+        _enqueue(reconcile_event_reports)
     if _now().minute % REVALIDATION_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_revalidation)
     if _now().minute % EVENT_FIT_REFRESH_EVERY_MINUTES == 0:
@@ -120,6 +136,40 @@ def refresh_event_fits() -> None:
         batch_size=EVENT_FIT_REFRESH_BATCH_SIZE,
     )
     logger.info("Event fits refreshed", extra={"job": "refresh_event_fits", "count": written})
+
+
+@shared_task(name="worker.tasks.recompute_reliability")
+def recompute_reliability() -> None:
+    """Recompute the FR-16 Source Reliability Score for every source that is due (FR-16).
+
+    **A weekly job, dispatched on every tick.** The period is the ISO week, so "due" is a
+    per-source comparison and the job makes it — a weekly cadence is not expressible as a
+    minute-modulo rule, so the tick asks and the job answers. An empty batch is a no-op, and
+    the tick costs one enqueue either way.
+
+    **The job is idempotent within a period.** A re-run in the same week refreshes the
+    period's row rather than writing a second one, and the unique constraint on
+    `(source, period_start)` is what enforces that — not this code's good manners.
+
+    **It escalates and never removes.** A source whose score is below 0.30 with enough
+    observations, or whose negative rate has spiked, gets a `source_reliability` review item
+    raised — and nothing else. FR-16 is explicit that there is no auto-removal, and the
+    service writes no other column of a source.
+
+    **A failure on one source does not lose the others.** Each source is recomputed in its
+    own transaction, and the batch catches per source — so one bad row cannot roll back the
+    whole batch, and cannot silently skip the sources after it either.
+    """
+    results = recompute_due(now=_now())
+    escalated = sum(1 for result in results if result.escalated)
+    logger.info(
+        "Reliability recomputed",
+        extra={
+            "job": "recompute_reliability",
+            "count": len(results),
+            "escalated": escalated,
+        },
+    )
 
 
 @shared_task(name="worker.tasks.schedule_sources")
@@ -566,3 +616,24 @@ def sweep_due_sends() -> None:
             "cancelled": counts.cancelled,
         },
     )
+
+
+@shared_task(name="worker.tasks.reconcile_event_reports")
+def reconcile_event_reports() -> None:
+    """Re-offer the FR-59 reports whose ReviewItem was never raised.
+
+    **The second half of the report outbox.** `report_event` writes the report in `personal`,
+    then raises the item in `catalog` outside that transaction, because AD-3 forbids one
+    spanning both. If the catalog write fails the report keeps `raised_at IS NULL`, the user
+    is still told "thanks" — truthfully, because this job is what makes it true — and the
+    editor gets the item on the next sweep.
+
+    Idempotent twice over: the query filters on `raised_at IS NULL`, and `raise_review_item`
+    refuses to stack a second open item for the same (target, reason).
+    """
+    raised = reconcile_unraised_reports(now=_now())
+    if raised:
+        logger.info(
+            "Event reports reconciled",
+            extra={"job": "reconcile_event_reports", "count": raised},
+        )

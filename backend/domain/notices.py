@@ -208,6 +208,26 @@ PRD_SUBJECT_KINDS = frozenset(
     }
 )
 
+#: The kinds that change a user's world but say nothing to them.
+#:
+#: **Keyed by value, not by `ChangeKind`, because these are not `ChangeKind` members.**
+#: `classify_change` derives its kinds from `EventFacts`, and `publication_status` is not
+#: one of them — a delisting is *written* by `apps.ingestion.services.editorial_state`, not
+#: inferred from a poll. `state_notices._as_kind` already degrades an unrecognised kind to
+#: "ordinary, outranks nothing", so the two live here as the strings the outbox carries.
+#:
+#: **Why silence is the right answer, and not an oversight.** FR-54 fixes four subjects
+#: verbatim and has no wording for a listing we pulled. `"was cancelled"` would be **false**
+#: for the two commonest reject reasons — a duplicate and a wrong venue say nothing about
+#: whether the event happens — and FR-54's own rule is that a notice must say "what changed
+#: and what it means for the user's reminders". Inventing "we removed this listing" would be
+#: new product copy no requirement ratifies. So the reminders are cancelled (the user is
+#: protected from a false reminder) and nothing is claimed about the world.
+#:
+#: The user still sees it: their saved card falls back to "event no longer available", the
+#: same path a superseded or unpublished event takes.
+UNNOTIFIED_KINDS: frozenset[str] = frozenset({"delisted", "relisted"})
+
 #: What the body says about the user's reminders, per kind.
 #:
 #: **Derived from `LIFECYCLE_SEND_BEHAVIOUR`** so the body cannot promise something the send
@@ -287,10 +307,16 @@ def is_notified(change_kind: str, *, before: dict | None = None, after: dict | N
     **`detail_changed` notifies only when it moved the venue.** See the module docstring for
     the reasoning, and for why the PRD's "moved to [new location]" subject depends on it.
 
+    **`delisted` and `relisted` never notify** — see `UNNOTIFIED_KINDS` for why silence is
+    the only answer that states nothing untrue. Checked first, so an editorial reject can
+    never consume the day's notice cap on its way to being refused.
+
     **Every other kind notifies**, whatever its facts. A cancellation is a cancellation
     whether the change also moved the date; the kinds are not refined the way
     `detail_changed` is.
     """
+    if change_kind in UNNOTIFIED_KINDS:
+        return False
     if change_kind != ChangeKind.DETAIL_CHANGED.value:
         return True
     return moved_venue(before=before or {}, after=after or {})
@@ -364,6 +390,7 @@ __all__ = [
     "PRD_SUBJECT_KINDS",
     "REMINDER_CONSEQUENCE",
     "SUBJECT_PREFIX",
+    "UNNOTIFIED_KINDS",
     "fold_title",
     "is_notified",
     "moved_venue",

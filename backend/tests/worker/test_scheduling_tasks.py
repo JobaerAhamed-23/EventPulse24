@@ -31,9 +31,11 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.report_held_sends",
                 "worker.tasks.report_stuck_propagation",
+                "worker.tasks.reconcile_event_reports",
                 "worker.tasks.reconcile_revalidation",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -45,9 +47,11 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.report_held_sends",
                 "worker.tasks.report_stuck_propagation",
+                "worker.tasks.reconcile_event_reports",
                 "worker.tasks.reconcile_revalidation",
             ],
         ),
@@ -58,9 +62,11 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.report_held_sends",
                 "worker.tasks.report_stuck_propagation",
+                "worker.tasks.reconcile_event_reports",
                 "worker.tasks.reconcile_revalidation",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -72,6 +78,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
             ],
         ),
         (
@@ -81,6 +88,7 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
             ],
         ),
         # Minute 30 is a multiple of 15 and of 5, so both the refresh and the reconciler run.
@@ -91,9 +99,11 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.report_held_sends",
                 "worker.tasks.report_stuck_propagation",
+                "worker.tasks.reconcile_event_reports",
                 "worker.tasks.reconcile_revalidation",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -107,9 +117,11 @@ def _at(monkeypatch, when: datetime) -> None:
                 "worker.tasks.schedule_calendars",
                 "worker.tasks.schedule_digests",
                 "worker.tasks.sweep_due_sends",
+                "worker.tasks.recompute_reliability",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.report_held_sends",
                 "worker.tasks.report_stuck_propagation",
+                "worker.tasks.reconcile_event_reports",
                 "worker.tasks.reconcile_revalidation",
                 "worker.tasks.refresh_event_fits",
             ],
@@ -131,6 +143,12 @@ def test_tick_enqueues_scheduling_every_time_and_the_reconciler_every_5_minutes(
     **The send sweep appears in every row too**, for the same kind of reason: a send's
     `due_at` is a *point in time*, not a minute-of-day, so a minute-modulo rule would be
     arbitrary. It runs on every beat; an empty batch is a no-op.
+
+    **And so does FR-16's reliability recompute, for the sharpest version of the reason: a
+    weekly cadence is not expressible as a minute-modulo rule.** There is no `minute %
+    10080`. The period is the ISO week, so "due" is a per-source comparison — "does this
+    source have a row for this week?" — and the job makes it, exactly as the digest
+    dispatcher makes its own comparison. The tick only asks it to look.
     """
     _at(monkeypatch, NOW.replace(minute=minute))
 

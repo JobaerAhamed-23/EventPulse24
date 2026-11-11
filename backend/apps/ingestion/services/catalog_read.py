@@ -38,6 +38,7 @@ from apps.ingestion.models import Event
 from apps.ingestion.services.chip_matching import chip_keys_for
 from apps.ingestion.services.source_badges import source_badge_for_type
 from domain.errors import NotFoundError
+from domain.reliability import reliability_score
 from domain.schema_org import project_schema_org_event
 from shared.constants import (
     DIGEST_STALE_TTL_MULTIPLIER,
@@ -264,6 +265,39 @@ class PublicEventCandidate:
     #: picked at onboarding; this is the event's half, and without it the largest term
     #: in the Relevance Pulse would be pinned to zero.
     chip_keys: tuple[str, ...] = ()
+    #: **FR-16: the source's reliability score**, as the catalog computed it, in [0, 1].
+    #:
+    #: **The prior when the source has never been scored.** A source the recompute has not
+    #: reached yet has no score, and 0.50 — FR-16's posterior mean with no observations —
+    #: is the honest value, not a missing one. The prior is asked of
+    #: `domain.reliability`, the same module the recompute uses, so the two can never
+    #: disagree about what "no observations yet" means.
+    #:
+    #: **The default is the prior, asked of the same module** — not a literal `0.50`. A
+    #: literal here would be a second copy of the prior's value, and it would drift the
+    #: moment FR-16's α/β were re-tuned: the helper below would ask the domain module and
+    #: this default would disagree with it, and the disagreement would be invisible until
+    #: a card's dots were wrong.
+    #:
+    #: **This costs no query.** The candidate read already joins the source
+    #: (`select_related("venue", "source")`), and the score is a column on that joined row.
+    #: The alternative — a second read for the sources' scores — would be a query per
+    #: candidate, which is the N+1 this field exists to avoid.
+    source_reliability: Decimal = reliability_score(0, 0)
+
+
+def _source_reliability(source) -> Decimal:
+    """The source's FR-16 score, or the prior when it has never been computed.
+
+    **The prior is asked of the domain module, not written here.** `reliability_score(0, 0)`
+    is 0.50 today, and if FR-16's prior is ever re-tuned this reads the new value instead of
+    disagreeing with it. It is the same rule `apps.ingestion.services.reliability.current_score`
+    follows, expressed here so the *read* carries a usable value rather than a null the
+    caller has to interpret.
+    """
+    if source.reliability_score is None:
+        return reliability_score(0, 0)
+    return source.reliability_score
 
 
 def _to_public_candidate(event: Event) -> PublicEventCandidate:
@@ -294,6 +328,7 @@ def _to_public_candidate(event: Event) -> PublicEventCandidate:
         tz_review_pending=event.tz_review_pending,
         last_seen_at=event.last_seen_at,
         chip_keys=chip_keys_for(title=event.title, description=event.description),
+        source_reliability=_source_reliability(source),
     )
 
 

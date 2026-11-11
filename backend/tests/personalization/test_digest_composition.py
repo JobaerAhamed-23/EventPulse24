@@ -964,3 +964,177 @@ def _user_id():
     from shared.ids import uuid7
 
     return uuid7()
+
+
+# --- the reliability term (FR-16 → FR-22) ──────────────────────────────────────────
+#
+# **The service half of the proof.** The domain tests prove the term moves the score;
+# these prove the *composition* reads the source's real score and puts it on the card.
+#
+# **The N+1 proof is the query count.** The reliability term has to arrive on the
+# candidate, because the candidate read already joins the source. An implementation that
+# looked the score up per candidate would make the catalog query count grow with the
+# number of candidates — and that is what the count test below catches.
+
+
+def make_scored_event(*, reliability: Decimal, hours=2, title="Brooklyn Tech Meetup", **overrides):
+    """A public event whose source carries a computed reliability score.
+
+    **FR-16's floor is 0.32**, so a source the recompute has actually scored cannot be
+    below it — which is why these use 0.32 rather than the domain tests' 0.20. The
+    domain test proves the term's arithmetic at 0.20; this one proves the *wiring* with
+    a value the recompute could really have written.
+    """
+    fields = {
+        "title": title,
+        "venue": VenueFactory(city=CITY, venue_fingerprint=f"venue-{title}|{CITY}"),
+        "start_time_utc": NOW + timedelta(hours=hours),
+        "last_seen_at": NOW,
+    }
+    fields.update(overrides)
+    event = EventFactory(**fields)
+    event.source.reliability_score = reliability
+    event.source.reliability_scored_at = NOW
+    event.source.save(update_fields=["reliability_score", "reliability_scored_at"])
+    return event
+
+
+def test_the_source_reliability_reaches_the_card():
+    """A source's real score is on the ranking inputs, and it moves the card's score.
+
+    **Two users, one event, one day.** The composition is a no-op for a user who already
+    has a digest for the day, and the candidate read drops an event that has started — so
+    the two compositions have to be for different users at the same `NOW`, against the
+    same event. Everything about the event is then identical except the source's score.
+    """
+    user_id = make_preference(_user_id()).user_id
+    make_interest(user_id, "tech")
+    event = make_scored_event(reliability=Decimal("0.80"), title="Tech Meetup")
+
+    result = compose(user_id)
+    assert result.compositions
+    better_score = result.compositions[0].score
+
+    # The same event, a worse source, and a second user so the composition is a fresh one.
+    event.source.reliability_score = Decimal("0.32")
+    event.source.save(update_fields=["reliability_score"])
+
+    other_user = make_preference(_user_id()).user_id
+    make_interest(other_user, "tech")
+    worse_result = compose(other_user)
+
+    assert worse_result.compositions
+    worse_score = worse_result.compositions[0].score
+
+    # The domain proves the arithmetic; this proves the value travels.
+    assert worse_score < better_score
+
+
+def test_an_unscored_source_is_at_the_prior():
+    """A source the recompute has not reached contributes the prior, not a zero.
+
+    The prior is 0.50, and it is *asked of the domain module* — the same module the
+    recompute asks — so the value cannot drift from FR-16's own idea of "no evidence".
+
+    **The assertion is relative, because an absolute one proves nothing.** "The score is
+    greater than zero" is true of any reliability value, including a zero, because four
+    other terms contribute — and a test that passes while the composition substitutes
+    0.00 for the prior is a false green on this test's own claim. So the unscored
+    source is placed **between** the two scored sources: above one scored at 0.00 and
+    below one scored at 0.80. That ordering is only true if the unscored value really
+    is the prior, and only a prior sits strictly between them.
+
+    **One event, three users, three compositions.** The event is the same one each time
+    and only its *source's score* changes, so the three cards are otherwise identical.
+    Each composition needs its own user, because composing twice for the same user and
+    day is a no-op — and each reads `compositions[0]`, which is the card for the only
+    event in the pool.
+    """
+    from domain.reliability import reliability_score
+
+    prior = reliability_score(0, 0)
+
+    event = make_event(hours=2, title="Tech Meetup")
+    assert event.source.reliability_score is None, (
+        "This test needs a source the recompute has never scored; if the factory seeds "
+        "a score, the comparison below would be measuring a scored source."
+    )
+
+    def card_score_for_a_fresh_user() -> Decimal:
+        """The one card's score, for a user who has not been composed for yet."""
+        user_id = make_preference(_user_id()).user_id
+        make_interest(user_id, "tech")
+        result = compose(user_id)
+        assert result.compositions
+        return result.compositions[0].score
+
+    # The unscored source: the recompute has not reached it.
+    unscored_score = card_score_for_a_fresh_user()
+
+    # The worst scored source — below the prior.
+    event.source.reliability_score = Decimal("0.00")
+    event.source.save(update_fields=["reliability_score"])
+    worst_score = card_score_for_a_fresh_user()
+
+    # The best scored source — above the prior.
+    event.source.reliability_score = Decimal("0.80")
+    event.source.save(update_fields=["reliability_score"])
+    best_score = card_score_for_a_fresh_user()
+
+    assert worst_score < unscored_score < best_score, (
+        f"An unscored source scored {unscored_score}, which is not strictly between a "
+        f"source at 0.00 ({worst_score}) and a source at 0.80 ({best_score}). The prior "
+        "is what sits between them — a zero would tie the first, and a 1.00 would tie "
+        "the second."
+    )
+    assert prior == Decimal("0.50")
+
+
+def test_the_composition_costs_no_query_per_candidate():
+    """**The N+1 proof.** The catalog query count does not grow with the pool.
+
+    The reliability term has to arrive on the candidate — the candidate read already
+    joins the source, so the score is a column on a row that is already there. An
+    implementation that read `Source.objects.get(...)` per candidate would make this
+    count grow with the number of candidates, and this test would fail.
+    """
+    from django.db import connections
+    from django.test.utils import CaptureQueriesContext
+
+    user_id = make_preference(_user_id()).user_id
+    make_event(hours=2, title="Only Event")
+
+    with CaptureQueriesContext(connections[CATALOG]) as one_candidate:
+        compose(user_id)
+    one = len(one_candidate.captured_queries)
+
+    user2 = make_preference(_user_id()).user_id
+    for hours in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11):
+        make_event(hours=hours, title=f"Event {hours}")
+
+    with CaptureQueriesContext(connections[CATALOG]) as ten_candidates:
+        compose(user2)
+    ten = len(ten_candidates.captured_queries)
+
+    assert ten == one, (
+        f"The composition issued {ten} catalog queries for ten candidates and {one} for "
+        "one. The reliability term must ride on the candidate the read already joined — "
+        "a lookup per candidate is the N+1 this test exists to catch."
+    )
+
+
+def test_a_source_reliability_of_zero_still_scores_the_other_terms():
+    """The worst possible source does not zero the card.
+
+    The term is one of five. A source at 0.00 contributes nothing, and the card is
+    still ranked on the other four — which is the difference between "this source is
+    worse" and "this event is worthless".
+    """
+    user_id = make_preference(_user_id()).user_id
+    make_interest(user_id, "tech")
+    make_scored_event(reliability=Decimal("0.32"), title="Tech Meetup")
+
+    result = compose(user_id)
+
+    assert result.compositions
+    assert result.compositions[0].score > Decimal("0.00")

@@ -27,6 +27,7 @@ from apps.ingestion.services.event_writes import (
     facts_of,
     supersede_event,
 )
+from apps.ingestion.services.review_intake import sync_review_item, withdraw_review_item
 from domain import dedup
 from domain.confidence import Gate, combine_gates, extraction_gate
 from domain.lifecycle import ChangeKind, EventStatus, classify_change
@@ -326,6 +327,9 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
         )
         _save_record(run, record, candidate, resolution="resolved", event_id=event.pk, **save)
         _write_fit(run, event.pk)  # a new event has a fit from the moment it exists
+        # An event born into review gets its ticket in the same transaction, or it is
+        # stored invisible with nobody told — the bug this item exists to close.
+        sync_review_item(event=event, actor=run.actor, now=run.now)
         return ["new", *_flags(incoming)]
 
     notes = {
@@ -347,6 +351,10 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
         )
         _save_record(run, record, candidate, event_id=new.pk, **resolved)
         _write_fit(run, new.pk)  # the replacement gets its own fit; the old one is retired
+        # The old event is terminal (AD-4), so any review of it is moot: its item is
+        # withdrawn. The replacement is judged on its own gates.
+        withdraw_review_item(event=event, now=run.now)
+        sync_review_item(event=new, actor=run.actor, now=run.now)
         return ["superseded", *_flags(incoming)]
     if change is not None and change.is_lifecycle:
         apply_lifecycle_change(
@@ -358,6 +366,11 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
         apply_silent_update(event=event, incoming=incoming, now=run.now)
         outcome = "silent_updated" if change is not None else "unchanged"
     _save_record(run, record, candidate, event_id=event.pk, **resolved)
+    # **The gates can move in either direction on an update**, so this both raises and
+    # withdraws: a re-poll with better timezone confidence publishes a quarantined event and
+    # closes its ticket (`apply_silent_update` is the gate path -- run-015 P1).
+    event.refresh_from_db(using=CATALOG)
+    sync_review_item(event=event, actor=run.actor, now=run.now)
     if outcome != "unchanged":
         # A lifecycle change moved the event, so its fit is recomputed against the new
         # facts. A silent update changed only the text and the gates — and the gates can

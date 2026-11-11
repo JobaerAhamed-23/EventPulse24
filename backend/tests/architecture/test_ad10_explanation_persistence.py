@@ -221,3 +221,160 @@ def test_the_two_read_paths_are_the_only_ones_that_serve_a_digest():
         "it would not be covered by this file's checks. Name it here, or make it not a "
         "read path."
     )
+
+
+#: The composition service — the only thing that writes a Relevance Pulse.
+COMPOSITION = "apps/personalization/services/digest_composition.py"
+
+
+def test_the_composition_never_rewrites_a_stored_explanation():
+    """**AD-10: a persisted explanation is history, and history is not rewritten.**
+
+    The ranking weights changed when FR-16's score entered the Relevance Pulse
+    (`ranking-consumes-reliability`). The stored `DigestComposition` rows carry the
+    scores and buckets computed under the *old* weights, and they are **left alone**.
+
+    **Why this check is on the source.** The rows cannot be recomputed under the old
+    formula even if someone wanted to: the *inputs* that produced them were never
+    persisted — only the resulting score was. So "recompute the stored rows" is not a
+    thing that can be done correctly, and a rewrite would be a rewrite under today's
+    formula, which would make a user's archive change under them.
+
+    **What this forbids.** A `UPDATE` or a `save()` on an existing composition row. The
+    service may `create` and `bulk_create` — a composition is a new set of rows for a
+    day — but it may not touch a row it did not write in this composition.
+    """
+    source = (BACKEND_DIR / COMPOSITION).read_text()
+
+    # The composition writes its rows with `bulk_create`. The other two write calls are
+    # the ones that would touch an existing row.
+    for write_call in (".update(", ".save(", ".update_or_create(", ".get_or_create("):
+        assert write_call not in source, (
+            f"{COMPOSITION} calls {write_call!r}. A persisted Relevance Pulse is history: "
+            "the rows were computed under the weights of their day and cannot be "
+            "recomputed (their inputs were never persisted). Rewriting them would change "
+            "a user's archive under them, and the rewrite would be under today's "
+            "formula — a score the user never saw computed (AD-10)."
+        )
+
+
+def test_the_hysteresis_rule_is_not_a_cross_composition_carrier():
+    """**`apply_hysteresis` compares within a composition, never across two.**
+
+    The no-flicker rule ("a change in `relevance_score` that does not cross a bucket
+    boundary MUST NOT change the displayed Confidence Pulse") is about a score moving
+    *within* a day. The composition always calls `apply_hysteresis` with
+    `previous_bucket=None` — it has no previous bucket, because "across days,
+    hysteresis resets" and **no persistent bucket is stored between days**.
+
+    **Why this matters for a weight change.** If the composition *did* carry a
+    previously persisted bucket forward, then changing the weights would move the raw
+    score by an amount the hysteresis band might absorb — so the same event would keep
+    its old dots under a new formula, and the card's dots would depend on which
+    formula wrote the row before it. Two formulas in production at once, with no way for
+    a reader to tell which produced which card.
+
+    So the rule is: **the composition reads no previous bucket.** The check is on the
+    call, because the guarantee is about what is passed, not about what the domain
+    function does with it.
+    """
+    tree = ast.parse((BACKEND_DIR / COMPOSITION).read_text(), filename=COMPOSITION)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name) or node.func.id != "apply_hysteresis":
+            continue
+
+        previous = {
+            keyword.arg: keyword.value
+            for keyword in node.keywords
+            if keyword.arg in ("previous_bucket", "previous_score")
+        }
+
+        for name, value in previous.items():
+            # `None` — literally the constant — is the only permitted value. A name
+            # would mean the composition carries a bucket forward.
+            assert isinstance(value, ast.Constant) and value.value is None, (
+                f"{COMPOSITION} passes {name}=something other than None to "
+                "apply_hysteresis(). A persisted bucket carried across compositions "
+                "would let a weight change be absorbed by the no-flicker band, so a "
+                "card's dots would depend on which formula wrote the previous row. The "
+                "hysteresis rule is within a composition (EXPERIENCE.md §4: 'across "
+                "days, hysteresis resets')."
+            )
+
+
+def test_the_ranking_consumes_the_reliability_score_and_never_writes_it():
+    """**The Relevance Pulse reads FR-16's score; it never produces one.**
+
+    The reliability term (FR-16 → FR-22) is a *consumer* of a number another app
+    owns: `Source.reliability_score` is written by FR-16's weekly recompute, in
+    `apps.ingestion.services.reliability`. The digest composition reads that score
+    through the candidate read and multiplies it into the Relevance Pulse.
+
+    **Why the consumer must not become a writer.** If the ranking could write the
+    score, the score's value would depend on whether a digest had been composed —
+    a source's reliability would mean one thing before a digest existed and another
+    after. And a recompute would race the composition's write, with the loser's value
+    surviving on no one's card. FR-16's score is a fact about a *Source*, computed
+    from editorial verdicts; it is not a function of who happened to open their digest.
+
+    **The check is on the assignment, not on the import.** `personalization` is
+    *supposed* to read the column — it carries the value on the candidate — so a
+    name-based check would be the wrong shape. What must not appear is an assignment
+    to the column, or a write of it.
+
+    **The check is on the AST, because a name match is not enough.** The composition
+    writes `source_reliability=reliability_score(0, 0)` — a *keyword argument* whose
+    value happens to be a function named `reliability_score`. A substring check on the
+    name would read that as a write of the column and fail on correct code, which is
+    the failure mode a name-based wall has by construction. So the check looks for
+    exactly two shapes: an **attribute assignment** (`source.reliability_score = ...`)
+    and a **write call on the column** (`...update(reliability_score=...)`,
+    `setattr(source, "reliability_score", ...)`).
+    """
+    package = BACKEND_DIR / "apps/personalization"
+    offenders: list[str] = []
+
+    #: The two columns FR-16's recompute owns.
+    COLUMNS = ("reliability_score", "reliability_scored_at")
+
+    for path in sorted(package.rglob("*.py")):
+        relative = str(path.relative_to(BACKEND_DIR))
+        if "migrations" in path.parts or path.name == "__init__.py":
+            continue
+
+        tree = ast.parse(path.read_text(), filename=str(path))
+
+        for node in ast.walk(tree):
+            # `source.reliability_score = ...`
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Attribute) and target.attr in COLUMNS:
+                        offenders.append(f"{relative}:{node.lineno} assigns to `{target.attr}`")
+
+            # `...update(reliability_score=...)` / `setattr(source, "reliability_score", ...)`
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == "setattr":
+                    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                        if node.args[1].value in COLUMNS:
+                            offenders.append(
+                                f"{relative}:{node.lineno} calls setattr on `{node.args[1].value}`"
+                            )
+                for keyword in node.keywords:
+                    if keyword.arg in COLUMNS:
+                        offenders.append(
+                            f"{relative}:{node.lineno} passes `{keyword.arg}=` to "
+                            f"{ast.unparse(node.func)}()"
+                        )
+
+    assert not offenders, (
+        "The ranking must consume FR-16's reliability score, never write it:\n"
+        + "\n".join(offenders)
+        + "\n\n`Source.reliability_score` belongs to FR-16's weekly recompute in "
+        "`apps.ingestion.services.reliability`. A write here would make a source's "
+        "reliability depend on whether a digest had been composed, and would race the "
+        "recompute that owns the column."
+    )

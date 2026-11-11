@@ -264,13 +264,18 @@ PROBES: list[Probe] = [
     # FR-22 says a weight change without a PRD amendment is a CI-level failure. The
     # pin is in `tests/shared/test_constants.py`, and the probe proves the pin is real:
     # move the constant, and the suite must fail.
+    #
+    # **The literal below is the current weight.** If the weight moves, this string has to
+    # move with it — a probe whose edit finds nothing to replace is a **false green**: the
+    # suite stays green, the probe passes, and it has proved nothing. That is the same
+    # failure mode probe 7 below calls out.
     Probe(
         description="a ranking weight moves",
         path=BACKEND / "shared/constants.py",
         edits=[
             (
-                'RANKING_WEIGHT_INTEREST = Decimal("0.45")\n',
-                'RANKING_WEIGHT_INTEREST = Decimal("0.50")\n',
+                'RANKING_WEIGHT_INTEREST = Decimal("0.35")\n',
+                'RANKING_WEIGHT_INTEREST = Decimal("0.40")\n',
             ),
         ],
         suite="backend",

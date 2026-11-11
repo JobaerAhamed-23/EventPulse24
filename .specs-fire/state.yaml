@@ -9,6 +9,9 @@ workspace:
   run_scope_preference: wide
   run_scope_history:
     - choice: wide
+      items_count: 11
+      timestamp: 2026-11-10T14:08:55Z
+    - choice: wide
       items_count: 12
       timestamp: 2026-11-04T13:11:36Z
     - choice: wide
@@ -875,6 +878,103 @@ intents:
         run_id: run-eventpulse24-025
         completed_at: 2026-11-10T13:48:55.208Z
     completed_at: 2026-11-10T13:48:08.507Z
+  - id: trust-loop
+    title: Trust Loop — User Reports, Editorial Review Queue & Source Reliability
+    status: completed
+    created: 2026-11-10
+    work_items:
+      - id: review-queue-model
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: event-rejection-state
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: reliability-score-domain
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: review-intake-and-backfill
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - review-queue-model
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: event-report-api
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - review-queue-model
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: editorial-review-commands
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - review-queue-model
+          - event-rejection-state
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: editorial-admin-queue
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - editorial-review-commands
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: reliability-recompute-and-escalation
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - editorial-review-commands
+          - event-report-api
+          - reliability-score-domain
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: ranking-consumes-reliability
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - reliability-recompute-and-escalation
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: frontend-report-control
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - event-report-api
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+      - id: e2e-proof-and-contract-tests
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - review-intake-and-backfill
+          - editorial-admin-queue
+          - ranking-consumes-reliability
+          - frontend-report-control
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T06:03:02.089Z
+    completed_at: 2026-11-11T06:03:02.089Z
 runs:
   active: []
   completed:
@@ -1285,3 +1385,41 @@ runs:
           mode: confirm
       started: 2026-11-04T13:11:36.097Z
       completed: 2026-11-10T13:48:55.208Z
+    - id: run-eventpulse24-026
+      scope: wide
+      work_items:
+        - id: review-queue-model
+          intent: trust-loop
+          mode: validate
+        - id: event-rejection-state
+          intent: trust-loop
+          mode: validate
+        - id: reliability-score-domain
+          intent: trust-loop
+          mode: confirm
+        - id: review-intake-and-backfill
+          intent: trust-loop
+          mode: confirm
+        - id: event-report-api
+          intent: trust-loop
+          mode: confirm
+        - id: editorial-review-commands
+          intent: trust-loop
+          mode: confirm
+        - id: editorial-admin-queue
+          intent: trust-loop
+          mode: confirm
+        - id: reliability-recompute-and-escalation
+          intent: trust-loop
+          mode: validate
+        - id: ranking-consumes-reliability
+          intent: trust-loop
+          mode: validate
+        - id: frontend-report-control
+          intent: trust-loop
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: trust-loop
+          mode: confirm
+      started: 2026-11-10T14:08:55.031Z
+      completed: 2026-11-11T06:03:02.089Z

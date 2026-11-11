@@ -59,6 +59,11 @@ vi.mock("next/navigation", () => ({
  * behaviour the page delegates to the row, so the stub reproduces it — and the page's
  * own contribution (the reminder link going, the row surviving) is asserted on the
  * stub's attributes.
+ *
+ * **The stub carries the report flag too**, because the real row does — and a stub that
+ * fell behind the real row would make this file's "the report link is gone" assertion
+ * true for the wrong reason. (The flag's own behaviour is asserted in
+ * `tests/event-detail-a11y.test.tsx`, which renders the **real** row.)
  */
 vi.mock("@/components/detail/detail-actions", () => ({
   DetailActions: (props: {
@@ -76,6 +81,7 @@ vi.mock("@/components/detail/detail-actions", () => ({
     >
       {props.soldOut ? null : <button type="button">Save to Pulse</button>}
       <button type="button">Share</button>
+      <button type="button">Report this event</button>
     </div>
   ),
 }));
@@ -1137,7 +1143,14 @@ describe("the mute control", () => {
 /* ── the absent sections ──────────────────────────────────────────────────────── */
 
 describe("the sections that do not ship", () => {
-  it("renders no reviews, no similar events and no report link", async () => {
+  it("renders no reviews, no similar events and no attended section", async () => {
+    // **The report link was in this list, and it has left it.** FR-59's control ships
+    // now: `components/detail/event-report-control.tsx`. The other three are still
+    // absent, and for the same reasons as before.
+    //
+    // **The flag's own presence is asserted in `tests/event-detail-a11y.test.tsx`**,
+    // which renders the **real** action row. This file stubs the row out — it tests
+    // the page's contribution to it — so it cannot see the flag at all.
     readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
 
     await renderPage();
@@ -1145,7 +1158,6 @@ describe("the sections that do not ship", () => {
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/review/i);
     expect(text).not.toMatch(/similar events/i);
-    expect(text).not.toMatch(/report this event/i);
     expect(text).not.toMatch(/attended/i);
   });
 });

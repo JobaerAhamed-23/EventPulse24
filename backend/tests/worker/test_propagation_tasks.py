@@ -131,12 +131,19 @@ def test_the_two_behaviour_maps_cover_the_same_kinds():
     assert set(LIFECYCLE_PERSONAL_BEHAVIOUR) == set(LIFECYCLE_SEND_BEHAVIOUR)
 
 
-def test_only_sold_out_and_detail_changed_skip_the_personal_side():
+def test_only_the_kinds_that_move_no_snapshot_fact_skip_the_personal_side():
     """The decision made executable.
 
-    `SAVED_EVENT` stores a start, an end and a version; these two kinds move none of them,
-    and `event_writes._kind_facts` does not even record a time for them. Any other kind
-    skipping the personal side would be a user's calendar left stale.
+    `SAVED_EVENT` stores a start, an end and a version. These four kinds move none of them:
+
+    - `sold_out` and `detail_changed` are **classified** from `EventFacts` and move nothing
+      the snapshot holds — `event_writes._kind_facts` does not even record a time for them.
+    - `delisted` and `relisted` are **written** by `editorial_state`, not classified at all.
+      An editor's reject changes who may *see* the event, never when it starts. The pairs a
+      cancellation would close are deliberately left open so an editor's reversal is
+      lossless (`LIFECYCLE_PERSONAL_BEHAVIOUR`, event-rejection-state D6).
+
+    Any other kind skipping the personal side would be a user's calendar left stale.
     """
     from shared.constants import LifecyclePersonalBehaviour
 
@@ -145,20 +152,51 @@ def test_only_sold_out_and_detail_changed_skip_the_personal_side():
         for kind, behaviour in LIFECYCLE_PERSONAL_BEHAVIOUR.items()
         if behaviour is LifecyclePersonalBehaviour.NONE
     }
-    assert skipped == {"sold_out", "detail_changed"}
+    assert skipped == {"sold_out", "detail_changed", "delisted", "relisted"}
 
 
-def test_the_kinds_that_skip_the_personal_side_still_keep_their_sends():
+def test_the_classified_kinds_that_skip_the_personal_side_still_keep_their_sends():
     """And the pairing is the point: `KEEP` is what releases a held row.
 
     If one of these ever mapped to CANCEL or REMINT on the delivery side while skipping
-    personalization, the snapshot and the sends would disagree about an event that moved.
+    personalization, the snapshot and the sends would disagree about **an event that
+    moved** — which is the invariant, stated in the original test's own words.
+
+    **Scoped to the classified kinds, and that scope is the whole content of the change.**
+    A kind `classify_change` produces came from comparing two `EventFacts`, so it *can*
+    have moved a time, and the pairing is the only thing standing between that and a stale
+    snapshot. A kind written directly by a command cannot have: see the test below, which
+    makes the exemption structural rather than a per-kind excuse.
     """
+    from domain.lifecycle import ChangeKind
     from shared.constants import LifecyclePersonalBehaviour, LifecycleSendBehaviour
 
+    classified = {kind.value for kind in ChangeKind}
     for kind, behaviour in LIFECYCLE_PERSONAL_BEHAVIOUR.items():
-        if behaviour is LifecyclePersonalBehaviour.NONE:
+        if behaviour is LifecyclePersonalBehaviour.NONE and kind in classified:
             assert LIFECYCLE_SEND_BEHAVIOUR[kind] is LifecycleSendBehaviour.KEEP
+
+
+def test_a_kind_that_skips_the_personal_side_and_moves_its_sends_is_never_classified():
+    """The narrow exemption above, pinned so it cannot widen by accident.
+
+    `delisted` skips the personal side *and* cancels sends, which the pairing forbids for
+    every classified kind. That is only sound because it is not derived from `EventFacts`:
+    there is no time it could have moved, so there is no snapshot to leave stale.
+
+    **If someone adds a `ChangeKind` and maps it NONE + CANCEL, this fails** — and it
+    should, because that kind *would* be a calendar left stale.
+    """
+    from domain.lifecycle import ChangeKind
+    from shared.constants import LifecyclePersonalBehaviour, LifecycleSendBehaviour
+
+    classified = {kind.value for kind in ChangeKind}
+    for kind, behaviour in LIFECYCLE_PERSONAL_BEHAVIOUR.items():
+        if (
+            behaviour is LifecyclePersonalBehaviour.NONE
+            and LIFECYCLE_SEND_BEHAVIOUR[kind] is not LifecycleSendBehaviour.KEEP
+        ):
+            assert kind not in classified, f"{kind} is classified and would strand a snapshot"
 
 
 def test_the_alarm_window_outlives_the_reconcilers():

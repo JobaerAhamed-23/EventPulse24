@@ -747,6 +747,18 @@ Where each component is normalized to [0.0, 1.0]. `preference_graph_match` uses 
 - A/B testing of weights on live users is forbidden. All weight experimentation happens in shadow composition (per `[ASSUMPTION-2]` and the shadow pipeline).
 - The Architecture spec describes the *implementation* of the formula but does not redefine the weights.
 
+**Amendment A-10 (2026-11-11):** The **MVP weights are unchanged** — `w1` 0.40 / `w2` 0.25 / `w3` 0.20 / `w4` 0.15 still stand as published above. What this amendment records is **which term the implementation evaluates for each published component**, so that the formula a user reads here and the formula the product runs are the same formula. The implemented expression is:
+
+```
+relevance_score = 0.35 × interest_overlap
+                + 0.20 × recency
+                + 0.10 × city_match
+                + 0.10 × confidence
+                + 0.25 × source_reliability
+```
+
+`source_reliability` now has an input — FR-16's per-Source reliability score — and enters at its published weight `w2` = 0.25, exactly. `recency_fit` is evaluated as `recency` at its published weight `w3` = 0.20, exactly. `preference_graph_match` is evaluated as `interest_overlap` (the user's FR-1 chip picks matched against the event's chips), the Preference Graph's only surviving trace while FR-25 is deferred, at 0.35 rather than 0.40; the 0.05 shortfall is the slack from `novelty_vs_exploration`. `novelty_vs_exploration` is **absent from the expression** — it needs FR-25's graph and an `Event` category field, and neither exists — and its 0.15 is carried by `city_match` (0.10, the venue's city band, standing in for FR-5's `geographic_distance_factor`, which `Venue` has no coordinates for) and `confidence` (0.10, the event's extraction confidence). No term is multiplied by a constant: a term pinned to a constant would leave this formula arithmetically checkable while producing a different number from the one on the card. FR-25 will replace `interest_overlap` with the real graph and supply `novelty_vs_exploration`. Full record, including why the reliability term is not inert at launch, in `docs/adr/ADR-0025.md`; the weights are pinned in `backend/tests/shared/test_constants.py`, which fails CI if a weight moves without this amendment moving with it.
+
 **Consequences (testable):**
 
 - A Pulse Card always shows a Confidence Pulse.
