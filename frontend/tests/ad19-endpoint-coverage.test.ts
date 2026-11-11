@@ -161,6 +161,18 @@ const NEW_ENDPOINTS = [
     operationId: "apps_personalization_api_save_public_event",
     caller: ["components/detail/detail-actions.tsx"],
   },
+  // ── The user report ───────────────────────────────────────────────────────────
+  {
+    path: "/api/personal/event-reports",
+    method: "post",
+    operationId: "apps_personalization_api_report_event_endpoint",
+    /**
+     * **The report write (FR-59).** Its body is `{event_id, category}`, and the
+     * category is the generated union — so a category the contract does not have is a
+     * type error at the call site rather than a request the server refuses.
+     */
+    caller: ["components/detail/event-report-control.tsx"],
+  },
   // ── The Reminder Plan ─────────────────────────────────────────────────────────
   {
     path: "/api/reminders/{target_kind}/{target_id}",

@@ -41,6 +41,8 @@ from apps.personalization.schemas import (
     DigestCardOut,
     DigestOut,
     DigestPreferenceIn,
+    EventReportIn,
+    EventReportOut,
     InterestChipOut,
     InterestChipsOut,
     InterestsIn,
@@ -68,6 +70,7 @@ from apps.personalization.services.calendar_connections import (
 from apps.personalization.services.conflict_list import list_conflict_pairs
 from apps.personalization.services.conflict_resolutions import resolve_conflict
 from apps.personalization.services.digest_read import read_digest
+from apps.personalization.services.event_reports import report_event
 from apps.personalization.services.onboarding import (
     advance_step,
     get_onboarding_state,
@@ -853,3 +856,37 @@ def delete_calendar(request, connection_id: UUID):
 
 
 __all__ = ["router"]
+
+
+@router.post(
+    "/event-reports",
+    response={201: EventReportOut, 404: ErrorOut, 422: ErrorOut, 429: ErrorOut},
+    summary="Report a catalog event as wrong",
+    description=(
+        "Records one report against a public event (FR-59). The body names the event and "
+        "exactly one of four categories; there is no free-text field.\n\n"
+        "**A report never changes what anyone can see.** The event stays in the digest and "
+        "on its public page until an editor decides. One person cannot pull a listing.\n\n"
+        "Five reports per user per day; the sixth answers 429 with the wait. Reporting the "
+        "same event for the same reason twice is accepted and counted once — the editor's "
+        "tally counts people, not taps.\n\n"
+        "An event that does not exist, or that is not publicly visible, answers 404 — the "
+        "same refusal the event detail read gives, so this endpoint cannot be used to find "
+        "out whether a hidden event exists."
+    ),
+)
+def report_event_endpoint(request, body: EventReportIn):
+    """Report one event. 404 for anything the caller could not already see."""
+    now = timezone.now()
+    # **The visibility check is the public read's own**, so "can I report it" and "can I see
+    # it" cannot drift apart. An in_review, rejected or superseded event is simply not found.
+    # `EventNotFoundError` and `ThrottledError` are both `DomainError`s that `config/errors.py`
+    # already maps to 404 and 429, so neither is caught here: one mapping, in one place.
+    get_public_event(event_id=body.event_id, now=now)
+    report_event(
+        user_id=request.user.pk,
+        event_id=body.event_id,
+        category=body.category,
+        now=now,
+    )
+    return Status(201, EventReportOut(category=body.category))

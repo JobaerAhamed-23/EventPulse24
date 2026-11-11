@@ -87,6 +87,7 @@ from domain.ranking import (
     score_slot_3,
     why_this_tags,
 )
+from domain.reliability import reliability_score
 from shared.actor import Actor
 from shared.constants import DEFAULT_DIGEST_TIMEZONE, RANKING_PERSONAL_EVENT_WINDOW
 from shared.db import PERSONAL
@@ -236,11 +237,16 @@ def _inputs_for_public(
     user_city: str,
     now: datetime,
 ) -> RankingInputs:
-    """The four ranking inputs for a public candidate.
+    """The five ranking inputs for a public candidate.
 
     **The confidence term is the extraction confidence** — how well the catalog knows
     this event's facts. It is the same number the candidate read used to admit the
     event, so the card's score and the card's eligibility come from one fact.
+
+    **The reliability term is the source's FR-16 score** (FR-22's `source_reliability`,
+    at its published weight of 0.25). It arrives on the candidate, because the candidate
+    read already joins the source — so the term costs **no extra query**, which is the
+    whole point of reading it there rather than in a second lookup.
 
     **The city band** compares the venue's city to the user's city. The user's
     **country is empty**: the `DigestPreference` holds a city and a zone and no
@@ -261,6 +267,7 @@ def _inputs_for_public(
             user_country="",
         ),
         confidence=candidate.extraction_confidence,
+        source_reliability=candidate.source_reliability,
     )
 
 
@@ -270,7 +277,7 @@ def _inputs_for_personal(
     user_chip_keys: tuple[str, ...],
     now: datetime,
 ) -> RankingInputs:
-    """The four ranking inputs for a personal event.
+    """The five ranking inputs for a personal event.
 
     **The interest term is `0.0`.** A personal event is not *matched to* the user's
     interests — it *is* theirs. It was not filed under a chip by a source; it is on
@@ -285,6 +292,12 @@ def _inputs_for_personal(
     **The confidence term is `1.0`.** The facts are the user's own; there is no
     extraction to be unsure of. The catalog's confidence gates gate what the *catalog*
     may rank; the user's own agenda is not the catalog's.
+
+    **The reliability term is the prior, `0.50`.** A personal event has **no source** —
+    it is on the user's own calendar, so there is no `Source` whose reliability could be
+    read, and nothing about it can be unreliable. The prior is FR-16's posterior mean
+    with no observations, asked of the same domain module the recompute asks, so the
+    value cannot drift from FR-16's own idea of "no evidence".
     """
     return RankingInputs(
         interest_overlap=interest_overlap(
@@ -294,6 +307,7 @@ def _inputs_for_personal(
         recency=recency_band(start_time_utc=candidate.start_utc, now=now),
         city_match=Decimal("0.00"),
         confidence=Decimal("1.00"),
+        source_reliability=reliability_score(0, 0),
     )
 
 

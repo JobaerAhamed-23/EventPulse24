@@ -4,10 +4,12 @@ title: Where an editor actually works — the review queue in Django admin
 intent: trust-loop
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - editorial-review-commands
 created: 2026-11-10
+run_id: run-eventpulse24-026
+completed_at: 2026-11-11T00:58:25.007Z
 ---
 
 # Work Item: Where an editor actually works — the review queue in Django admin

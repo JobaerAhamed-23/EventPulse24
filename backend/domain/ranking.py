@@ -21,27 +21,26 @@ relevance_score = 0.40 × preference_graph_match
                 + 0.15 × novelty_vs_exploration
 ```
 
-and locks those weights. **Two of the four components have no input in this codebase**:
+and locks those weights. **One of the four components has no input in this codebase**:
 
 | Published input | Status |
 | --- | --- |
-| `source_reliability` | Absent — FR-16 is unbuilt; `Source` has no score field. |
+| `source_reliability` | **Present** — FR-16's score, stored on `Source` and read here. |
 | `novelty_vs_exploration` | Absent — needs FR-25's graph *and* an event category. |
 | `preference_graph_match` | Reduced — the interest-chip overlap survives. |
 | `recency_fit` | **Survives** — start time and the user's day both exist. |
 
-The two absent terms have no `Source` score field and no `Event` category field to read
-from, and FR-16 and FR-25 are both unbuilt. The third is reduced rather than absent:
-what the user actually picked at onboarding is the interest chips — up to three of them
-(FR-1) — and that overlap is the computable part of `preference_graph_match`.
+The absent term has no `Event` category field to read from, and FR-25 is unbuilt. The
+third is reduced rather than absent: what the user actually picked at onboarding is the
+interest chips — up to three of them (FR-1) — and that overlap is the computable part of
+`preference_graph_match`.
 
 What will supply each absent term, so the reduction is legible as a debt and not as a
 choice:
 
-- `source_reliability` — **FR-16**, when it ships.
 - `novelty_vs_exploration` — **FR-25**, when it ships.
 - `preference_graph_match` — FR-25 replaces the interest chips with the real graph.
-So the omitted terms are **absent from the expression** rather than multiplied by a
+So the omitted term is **absent from the expression** rather than multiplied by a
 constant. A term pinned to a constant is an *inert weight*: the published formula would
 stay arithmetically checkable and still produce a different number from the one on the
 card, which is a worse trust failure than a reduced formula because it looks verifiable.
@@ -51,15 +50,60 @@ are added to Event Fit's rule set then, not faked now."
 What survives, and what each term means:
 
 ```
-relevance_score = 0.45 × interest_overlap
-                + 0.25 × recency
-                + 0.20 × city_match
+relevance_score = 0.35 × interest_overlap
+                + 0.20 × recency
+                + 0.10 × city_match
                 + 0.10 × confidence
+                + 0.25 × source_reliability
 ```
 
-A reader can compute any event's score by hand from these four inputs, which is FR-22's
+A reader can compute any event's score by hand from these five inputs, which is FR-22's
 actual promise — "a user reading the PRD can compute the Confidence Pulse for any Event
 given the inputs" — rather than its incidental one about four particular weights.
+
+**`source_reliability` is at FR-22's published weight, 0.25, and it is not an inert
+weight.** This is worth being explicit about, because at launch every source has fewer
+than 30 observations and therefore sits at or near the 0.50 prior — so the term's
+*current* value is nearly uniform across the corpus.
+
+It is not inert for three reasons, and the third is the decisive one:
+
+1. **It is read from a stored, computed, per-source number** — `Source.reliability_score`,
+   written by FR-16's weekly recompute, not a literal in this module.
+2. **The prior is a value, not a constant in the expression.** `0.50` is
+   `reliability_score(0, 0)` — the posterior mean of the beta-binomial prior — so if
+   FR-16's prior is ever re-tuned, this term moves with it. A weight pinned to a literal
+   cannot do that.
+3. **It is a per-candidate *variable*, not a term pinned to a constant.** An inert weight
+   is one that *cannot* distinguish two candidates — it cannot affect the ranking while
+   appearing in the published formula. This one distinguishes them the moment the corpus
+   differentiates: a source recomputed to `0.20` and one recomputed to `0.80` produce
+   scores that differ by exactly `0.25 × 0.60 = 0.15`, and the module's own tests pin
+   that. A term whose *distribution* happens to be narrow today is not a term that is
+   *pinned* to a constant.
+
+**Why the term is not gated on the minimum observation count.** The alternative — entering
+the term only for a source past 30 observations — was considered and rejected, for two
+reasons that both come back to FR-22's promise that the inputs are enough:
+
+- The formula's *shape* would depend on a fact the formula does not carry. A reader
+  given five inputs could not compute the score without also knowing the source's
+  observation count, and there would be two different formulas in the product at once —
+  which is the "arithmetically checkable but produces a different number" failure the
+  paragraph above names.
+- It would put a **cliff** in the ranking: a source crossing 30 observations would change
+  score with no change in the event, discontinuously. That is the no-flicker rule's
+  failure manufactured by the formula itself.
+
+So the term enters for every source, and the prior's contribution is exactly what a term
+with no opinion contributes — the same structure the personal-event path already uses for
+`city_match = 0.00` and `confidence = 1.00`.
+
+**FR-22's own words govern the relationship between the published formula and this one:**
+"The Architecture spec describes the *implementation* of the formula but does not redefine
+the weights." The weights above are that implementation, and the substitution of each
+published term for the term the product can compute is recorded in the ADR named by
+`RANKING_WEIGHTS_AMENDMENT`.
 
 **Cold-start only.** FR-5 gates all personalised weighting on "the signal threshold in the
 deferred ADR-0007", and **ADR-0007 does not exist**. This module therefore ships the
@@ -121,6 +165,7 @@ from shared.constants import (
     RANKING_WEIGHT_CONFIDENCE,
     RANKING_WEIGHT_INTEREST,
     RANKING_WEIGHT_RECENCY,
+    RANKING_WEIGHT_RELIABILITY,
 )
 
 UTC_ZONE = "UTC"
@@ -131,7 +176,7 @@ SCORE_PRECISION = Decimal("0.01")
 
 @dataclass(frozen=True)
 class RankingInputs:
-    """The four inputs the Relevance Pulse is built from, as plain data.
+    """The five inputs the Relevance Pulse is built from, as plain data.
 
     Frozen, because an input that could be mutated after it was scored is an input whose
     meaning has drifted from the score that used it.
@@ -150,12 +195,20 @@ class RankingInputs:
     computable and "nearby" is a band rather than a distance.
 
     `confidence` is the event's extraction confidence, already in [0, 1].
+
+    `source_reliability` is FR-16's per-source score, already in [0, 1]. **Required, not
+    defaulted** — every other field here is required too, "so that a new construction site
+    cannot forget one silently". A default of the 0.50 prior would let a construction
+    site forget the term and score every card as if its source were unscored, which is an
+    inert weight by construction. The caller resolves the prior (a source that has never
+    been recomputed) and passes the value in; this module never reads a database.
     """
 
     interest_overlap: Decimal
     recency: Decimal
     city_match: Decimal
     confidence: Decimal
+    source_reliability: Decimal
 
 
 def _zone(name: str) -> ZoneInfo:
@@ -261,12 +314,16 @@ def city_band(*, event_city: str, event_country: str, user_city: str, user_count
 
 
 def relevance_score(inputs: RankingInputs) -> Decimal:
-    """The Relevance Pulse: the reduced FR-22 formula, as a `Decimal` in [0, 1].
+    """The Relevance Pulse: the FR-22 formula, as a `Decimal` in [0, 1].
 
-    The four terms and their weights are named constants in `shared/constants.py`, beside
+    The five terms and their weights are named constants in `shared/constants.py`, beside
     the confidence gates — the same place AD-8 requires thresholds to live. A test pins
     them there, so a weight change without a PRD amendment fails CI, which is what FR-22
     requires ("the formula and weights are published in the PRD and immutable post-launch").
+
+    **The reliability term is the fifth one** (FR-16's per-source score, at FR-22's
+    published weight of 0.25). The module docstring says why it is not an inert weight,
+    and why it is not gated on the source's observation count.
 
     The result is clamped to [0, 1] before it is returned, so a caller never has to clamp
     before mapping it to a bucket.
@@ -276,6 +333,7 @@ def relevance_score(inputs: RankingInputs) -> Decimal:
         + RANKING_WEIGHT_RECENCY * inputs.recency
         + RANKING_WEIGHT_CITY * inputs.city_match
         + RANKING_WEIGHT_CONFIDENCE * inputs.confidence
+        + RANKING_WEIGHT_RELIABILITY * inputs.source_reliability
     )
     return _clamp(score.quantize(SCORE_PRECISION))
 
@@ -488,15 +546,21 @@ def score_slot_2(*, inputs: RankingInputs) -> Decimal:
     """Slot 2, "nearby" (FR-5, Amendment A-2): the standard score.
 
     FR-5 writes the slot-2 score as
-    `source_reliability × geographic_distance_factor × freshness_factor`, and **two of
-    those three terms have no input here**: `source_reliability` is FR-16 (unbuilt), and
-    `geographic_distance_factor` is a haversine over a city centroid that does not exist
-    because `Venue` has no coordinates.
+    `source_reliability × geographic_distance_factor × freshness_factor`.
 
-    The reduced formula scores the same three *surviving* signals — the city's band, the
-    event's freshness, and the user's own interest in it — as the additive terms it now
-    has. City membership itself is decided by the candidate read, which filters to the
-    user's city, so the band here is a genuine term rather than a constant.
+    **Two of those three terms now have an input, and one does not:**
+
+    - `source_reliability` — FR-16's score, stored on the `Source` and read by the
+      candidate read. It enters at FR-22's published weight of 0.25, so the slot's score
+      falls when the source's reliability falls.
+    - `freshness_factor` — the recency band, which is one of the additive terms the
+      standard score now has.
+    - `geographic_distance_factor` — **still has no input.** It is a haversine over a city
+      centroid that does not exist, because `Venue` has no coordinates. The city *band*
+      stands in for it, additively.
+
+    City membership itself is decided by the candidate read, which filters to the user's
+    city, so the band here is a genuine term rather than a constant.
     """
     return relevance_score(inputs)
 
@@ -526,12 +590,20 @@ def score_slot_3(*, inputs: RankingInputs) -> Decimal:
     events those signals would *not* have picked. The recency, city and confidence terms
     are left alone: the anti-popularity bias is about *popularity*, and recency is not
     popularity.
+
+    **The reliability term is not inverted, and that is deliberate.** FR-5 *multiplies by*
+    `source_reliability`: it is a quality gate, not a popularity term. The only thing
+    FR-5 inverts is `(1 − normalized_popularity)`. Inverting the reliability would invert
+    a quality signal — it would make Slot 3 structurally prefer the *least* reliable
+    sources — which is not what FR-5 says. So the reliability passes through unchanged,
+    and Slot 3 still ranks a better source above a worse one.
     """
     inverted = RankingInputs(
         interest_overlap=RANKING_SCORE_MAX - inputs.interest_overlap,
         recency=inputs.recency,
         city_match=inputs.city_match,
         confidence=inputs.confidence,
+        source_reliability=inputs.source_reliability,
     )
     return relevance_score(inverted)
 

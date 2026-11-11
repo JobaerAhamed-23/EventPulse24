@@ -70,8 +70,12 @@ class IncomingEvent:
             venue_id=self.venue_id,
         )
 
-    def columns(self) -> dict[str, object]:
-        """Every Event column the source decides, by column name."""
+    def columns(self, *, stored: Event | None = None) -> dict[str, object]:
+        """Every Event column the source decides, by column name.
+
+        `stored` is the Event this is about to overwrite, or None on an insert. It is
+        passed through to `gating()`, which needs it to leave an editor's reject alone.
+        """
         return {
             "title": self.title,
             "description": self.description,
@@ -86,17 +90,37 @@ class IncomingEvent:
             "status": self.status.value,
             "is_sold_out": self.is_sold_out,
             "series_id": self.series_id,
-            **self.gating(),
+            **self.gating(stored=stored),
         }
 
-    def gating(self) -> dict[str, object]:
-        # Follows every new resolution, silently (run-015 plan P1).
-        return {
+    def gating(self, *, stored: Event | None = None) -> dict[str, object]:
+        """The confidence and publication columns the gate decides.
+
+        Follows every new resolution, silently (run-015 plan P1) — **except that a
+        rejected Event's `publication_status` is frozen** (event-rejection-state D8).
+
+        **This is the re-entry hole, and without the freeze it is a live one.** The source
+        that produced a bad listing keeps sending it on every poll. `gating()` is applied
+        on every update, so the very next poll after an editor's reject would write
+        `published` straight back over it and the verdict would evaporate within the hour
+        — silently, because nothing about that write looks unusual.
+
+        Only the gate is frozen. The title, the times and the `ExtractedRecord` still
+        follow the source, so the evidence an editor reviews stays current, and a
+        reinstatement shows today's facts rather than the ones that got it rejected.
+
+        Reversing a reject is an editor's command alone (`editorial_state`). Ingestion
+        never does it.
+        """
+        values: dict[str, object] = {
             "tz_inference_confidence": self.tz_inference_confidence,
             "extraction_confidence": self.extraction_confidence,
             "publication_status": self.publication_status,
             "tz_review_pending": self.tz_review_pending,
         }
+        if stored is not None and stored.publication_status == Event.PublicationStatus.REJECTED:
+            del values["publication_status"]
+        return values
 
 
 def facts_of(event: Event) -> EventFacts:
@@ -245,7 +269,9 @@ def apply_lifecycle_change(
     for position, kind in enumerate(change.kinds, start=1):
         if position == 1:
             rows.update(
-                **incoming.columns(), last_seen_at=now, event_version=F("event_version") + 1
+                **incoming.columns(stored=event),
+                last_seen_at=now,
+                event_version=F("event_version") + 1,
             )
         else:
             rows.update(event_version=F("event_version") + 1)
@@ -290,7 +316,7 @@ def apply_silent_update(*, event: Event, incoming: IncomingEvent, now: datetime)
         canonical_url=incoming.canonical_url,
         title_fingerprint=incoming.title_fingerprint,
         last_seen_at=now,
-        **incoming.gating(),
+        **incoming.gating(stored=event),
     )
     # The request row is written in this transaction, so it commits with the change that
     # caused it; only the enqueue waits for the commit.
@@ -350,3 +376,55 @@ def supersede_event(
         previous_venue_id=old.venue_id,
     )
     return new, change
+
+
+def apply_publication_change(
+    *,
+    event: Event,
+    publication_status: str,
+    kind: str,
+    actor: Actor,
+    now: datetime,
+) -> EventStateChange:
+    """Move an Event's `publication_status` and record the change that travels with it.
+
+    **The low-level half of an editorial reject** (event-rejection-state D1, D2). The
+    command layer — guards, the actor rule, the audit entry — is
+    `apps.ingestion.services.editorial_state`. This lives here because `_record_change`
+    and `_request_revalidation` do, and `EventStateChange` keeps exactly one writer.
+
+    **The version bump is deliberate, and it is the whole point.** `publication_status` is
+    not in `Event.LIFECYCLE_FIELDS`, so the trigger does not *demand* a bump here — but
+    nor does it forbid one, and without it there is no version for a state change to carry
+    and no row for the AD-17 outbox. Hiding the Event would reach nobody, and every saver
+    would keep getting reminders for a listing editorial has ruled bad. The `0009`
+    trigger rule turns that "deliberate" into "required" at the `rejected` boundary, so a
+    future caller cannot quietly drop it.
+
+    Caller supplies the transaction: this runs inside `atomic(using=CATALOG)`, like every
+    other write in this module.
+    """
+    version = event.event_version + 1
+    before = {"publication_status": event.publication_status}
+    after = {"publication_status": publication_status}
+
+    Event.objects.using(CATALOG).filter(pk=event.pk).update(
+        publication_status=publication_status,
+        event_version=version,
+    )
+    change = _record_change(
+        event=event,
+        kind=kind,
+        version=version,
+        before=before,
+        after=after,
+        actor=actor,
+        now=now,
+    )
+    # The public pages still show the old state until they are rebuilt (FR-26): a rejected
+    # event's own URL must start 404ing and its city page must drop it. `is_public` is read
+    # from `publication_status`, so the request has to be made after the update above.
+    event.publication_status = publication_status
+    event.event_version = version
+    _request_revalidation(event=event, event_version=version, previous_venue_id=None)
+    return change

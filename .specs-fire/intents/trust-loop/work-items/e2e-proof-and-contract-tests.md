@@ -4,7 +4,7 @@ title: The proof — a report, a verdict, a score, a ranking
 intent: trust-loop
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - review-intake-and-backfill
   - editorial-admin-queue

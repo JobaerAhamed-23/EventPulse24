@@ -1,0 +1,64 @@
+{% extends "admin/change_list.html" %}
+
+{# The FR-57 queue summary: the three numbers FR-29's dashboard will read later.
+
+   The numbers arrive in the context already computed — `queue_summary` comes from
+   `services.review_queue_read`, not from this template. A template has no clock and no
+   query, and the dashboard reads the same three numbers later, so there is one
+   implementation and two readers. This file only lays them out. #}
+
+{% block content %}
+  {% if queue_summary %}
+    <div class="module" id="review-queue-summary">
+      <h2>Queue summary</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Open items</th>
+            <th scope="col">Oldest open item</th>
+            <th scope="col">SLA breaches</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-field="queue-size">{{ queue_summary.queue_size }}</td>
+            <td data-field="oldest-open-age">
+              {% with age=queue_summary.oldest_open_age_parts %}
+                {% if age %}
+                  {{ age.0 }}d {{ age.1 }}h {{ age.2 }}m
+                {% else %}
+                  —
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td data-field="sla-breaches">{{ queue_summary.sla_breaches }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if queue_counts %}
+    <div class="module" id="review-queue-counts">
+      <h2>Open items by reason</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Reason</th>
+            <th scope="col">Open</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reason, count in queue_counts.items %}
+            <tr>
+              <th scope="row" data-reason="{{ reason }}">{{ reason }}</th>
+              <td data-count="{{ count }}">{{ count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {{ block.super }}
+{% endblock %}

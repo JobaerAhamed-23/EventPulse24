@@ -47,6 +47,7 @@ from shared.constants import (
     RANKING_WEIGHT_CONFIDENCE,
     RANKING_WEIGHT_INTEREST,
     RANKING_WEIGHT_RECENCY,
+    RANKING_WEIGHT_RELIABILITY,
 )
 
 NEW_YORK = "America/New_York"
@@ -68,13 +69,15 @@ def ranking_inputs(
     recency: Decimal = Decimal("0"),
     city: Decimal = Decimal("0"),
     confidence: Decimal = Decimal("0"),
+    reliability: Decimal = Decimal("0"),
 ) -> RankingInputs:
-    """The four inputs, defaulted to zero so each test states only what it is about."""
+    """The five inputs, defaulted to zero so each test states only what it is about."""
     return RankingInputs(
         interest_overlap=interest,
         recency=recency,
         city_match=city,
         confidence=confidence,
+        source_reliability=reliability,
     )
 
 
@@ -411,6 +414,7 @@ def test_relevance_score_of_the_maximum_is_one():
             recency=RANKING_SCORE_MAX,
             city=RANKING_SCORE_MAX,
             confidence=RANKING_SCORE_MAX,
+            reliability=RANKING_SCORE_MAX,
         )
     ) == Decimal("1.00")
 
@@ -427,6 +431,7 @@ def test_relevance_score_is_the_weighted_sum():
             recency=Decimal("0.75"),
             city=Decimal("0.50"),
             confidence=Decimal("1.00"),
+            reliability=Decimal("0.80"),
         )
     )
     expected = (
@@ -434,6 +439,7 @@ def test_relevance_score_is_the_weighted_sum():
         + RANKING_WEIGHT_RECENCY * Decimal("0.75")
         + RANKING_WEIGHT_CITY * Decimal("0.50")
         + RANKING_WEIGHT_CONFIDENCE * Decimal("1.00")
+        + RANKING_WEIGHT_RELIABILITY * Decimal("0.80")
     ).quantize(Decimal("0.01"))
     assert score == expected
 
@@ -472,6 +478,7 @@ def test_slot_1_boost_is_clamped_at_one():
             recency=RANKING_SCORE_MAX,
             city=RANKING_SCORE_MAX,
             confidence=RANKING_SCORE_MAX,
+            reliability=RANKING_SCORE_MAX,
         ),
         is_personal_event=True,
     )
@@ -491,6 +498,175 @@ def test_slot_3_leaves_the_other_terms_alone():
     a = score_slot_3(inputs=ranking_inputs(interest=Decimal("0.50"), recency=Decimal("1.00")))
     b = score_slot_3(inputs=ranking_inputs(interest=Decimal("0.50"), recency=Decimal("0.00")))
     assert a > b
+
+
+# ── The reliability term (FR-16 → FR-22) ───────────────────────────────────────────
+#
+# **The proof this item exists for.** Two otherwise-identical events, one from a source
+# scored 0.20 and one from a source scored 0.80, and the better source's event must rank
+# above the worse one's. Every other input is held equal.
+#
+# **The mutation:** remove `RANKING_WEIGHT_RELIABILITY * inputs.source_reliability` from
+# `relevance_score` and every test in this section fails, because the two scores become
+# equal. That is what makes the term load-bearing rather than decorative.
+
+#: The two reliabilities the AC names. The 0.20 source is past FR-16's minimum N — the
+#: domain reads a `Decimal` and does not police the observation count, because that is
+#: the recompute's rule, not the ranking's.
+LOW_RELIABILITY = Decimal("0.20")
+HIGH_RELIABILITY = Decimal("0.80")
+
+#: The difference the term makes in the **raw** sum: `0.25 × (0.80 − 0.20) = 0.15`.
+#:
+#: **The observable difference is 0.16, and that is not a discrepancy.** The score is
+#: quantised to two decimals *after* the sum, so the two scores are each rounded from a
+#: raw value and the rounded values can differ from the raw difference by a hundredth.
+#: The exact-arithmetic check below is on the raw sum; the observable check is on the
+#: quantised scores. Both are pinned, because "the term is worth 0.15" and "the two cards
+#: are 0.16 apart" are both true and a reader checking either must find it.
+EXPECTED_RELIABILITY_DELTA = Decimal("0.15")
+EXPECTED_OBSERVED_DELTA = Decimal("0.16")
+
+
+def _low_and_high(**overrides):
+    """Two inputs that differ in nothing but the source's reliability."""
+    common = {
+        "interest": Decimal("0.50"),
+        "recency": Decimal("0.75"),
+        "city": Decimal("1.00"),
+        "confidence": Decimal("0.90"),
+    }
+    common.update(overrides)
+    low = ranking_inputs(**common, reliability=LOW_RELIABILITY)
+    high = ranking_inputs(**common, reliability=HIGH_RELIABILITY)
+    return low, high
+
+
+def test_the_reliability_term_moves_the_score():
+    """The score is not the same for two sources that are not equally reliable."""
+    low, high = _low_and_high()
+    assert relevance_score(inputs=high) > relevance_score(inputs=low)
+
+
+def test_the_reliability_term_moves_the_score_by_exactly_its_weight():
+    """The difference is exactly `weight × (0.80 − 0.20)` — a reader can compute it."""
+    low, high = _low_and_high()
+    difference = relevance_score(inputs=high) - relevance_score(inputs=low)
+    assert difference == EXPECTED_OBSERVED_DELTA
+    assert (
+        RANKING_WEIGHT_RELIABILITY * (HIGH_RELIABILITY - LOW_RELIABILITY)
+        == EXPECTED_RELIABILITY_DELTA
+    )
+
+
+def test_the_two_reliabilities_differ_by_the_term_and_nothing_else():
+    """**The proof, stated as an identity.** Hold every other input equal and the only
+    thing that can move the score is the reliability term.
+
+    The two scores are computed by hand from the same five inputs, and the difference
+    between them is the term's contribution and nothing else. **Remove the term from
+    `relevance_score` and the two scores become equal and this fails** — which is what
+    makes the term load-bearing rather than decorative.
+    """
+    low, high = _low_and_high()
+    expected_low = (
+        RANKING_WEIGHT_INTEREST * Decimal("0.50")
+        + RANKING_WEIGHT_RECENCY * Decimal("0.75")
+        + RANKING_WEIGHT_CITY * Decimal("1.00")
+        + RANKING_WEIGHT_CONFIDENCE * Decimal("0.90")
+        + RANKING_WEIGHT_RELIABILITY * LOW_RELIABILITY
+    ).quantize(Decimal("0.01"))
+    expected_high = (
+        RANKING_WEIGHT_INTEREST * Decimal("0.50")
+        + RANKING_WEIGHT_RECENCY * Decimal("0.75")
+        + RANKING_WEIGHT_CITY * Decimal("1.00")
+        + RANKING_WEIGHT_CONFIDENCE * Decimal("0.90")
+        + RANKING_WEIGHT_RELIABILITY * HIGH_RELIABILITY
+    ).quantize(Decimal("0.01"))
+
+    assert relevance_score(inputs=low) == expected_low
+    assert relevance_score(inputs=high) == expected_high
+    assert relevance_score(inputs=high) != relevance_score(inputs=low)
+
+
+def test_a_better_source_ranks_above_a_worse_one_in_slot_1():
+    """Slot 1 — "must-know" — uses the term."""
+    low, high = _low_and_high()
+    assert score_slot_1(inputs=high) > score_slot_1(inputs=low)
+
+
+def test_a_better_source_ranks_above_a_worse_one_in_slot_2():
+    """Slot 2 — "nearby" — uses the term.
+
+    FR-5 writes slot 2 as `source_reliability × geographic_distance_factor ×
+    freshness_factor`, and the reliability now has an input.
+    """
+    low, high = _low_and_high()
+    assert score_slot_2(inputs=high) > score_slot_2(inputs=low)
+
+
+def test_a_better_source_ranks_above_a_worse_one_in_slot_3():
+    """Slot 3 — "serendipity" — uses the term, **un-inverted**.
+
+    FR-5 *multiplies by* `source_reliability`: it is a quality gate, not a popularity
+    term. The only thing FR-5 inverts is `(1 − normalized_popularity)`. Inverting the
+    reliability would make Slot 3 structurally prefer the *least* reliable sources.
+    """
+    low, high = _low_and_high()
+    assert score_slot_3(inputs=high) > score_slot_3(inputs=low)
+
+
+def test_slot_3_does_not_invert_the_reliability():
+    """The reliability passes through slot 3 unchanged, so the gap is the same as slot 2's."""
+    low, high = _low_and_high()
+    slot_2_gap = score_slot_2(inputs=high) - score_slot_2(inputs=low)
+    slot_3_gap = score_slot_3(inputs=high) - score_slot_3(inputs=low)
+    assert slot_3_gap == slot_2_gap
+
+
+def test_the_reliability_term_is_at_fr22s_published_weight():
+    """FR-22 publishes `source_reliability` at 0.25, and this term is that number.
+
+    The one term FR-16 built enters at the weight the PRD always gave it — this is not a
+    substitute, so it does not carry a substitute's weight.
+    """
+    assert RANKING_WEIGHT_RELIABILITY == Decimal("0.25")
+
+
+def test_the_prior_contributes_like_any_term_with_no_opinion():
+    """A source the recompute has not reached yet is at the 0.50 prior.
+
+    The prior's contribution is `0.25 × 0.50 = 0.125` — the same for every unscored
+    source, and the same shape as `city_match = 0.00` for a personal event. **It is not
+    an inert weight**: it is a per-candidate *variable* whose value is the posterior mean
+    of FR-16's prior, and the term distinguishes two sources the moment their scores
+    differ.
+    """
+    prior = ranking_inputs(
+        interest=Decimal("0.00"),
+        recency=Decimal("0.00"),
+        city=Decimal("0.00"),
+        confidence=Decimal("0.00"),
+        reliability=Decimal("0.50"),
+    )
+    assert relevance_score(inputs=prior) == Decimal("0.12")  # 0.125, rounded half to even
+
+
+def test_the_reliability_input_is_required():
+    """A construction site cannot forget the term and silently get the prior.
+
+    `RankingInputs` has no default for `source_reliability` — every field is required, so
+    a new call site has to say what it thinks the source's reliability is. A default of
+    0.50 would make an un-updated call site score every card as if its source were
+    unscored: an inert weight by construction.
+    """
+    with pytest.raises(TypeError):
+        RankingInputs(  # type: ignore[call-arg]
+            interest_overlap=Decimal("0.00"),
+            recency=Decimal("0.00"),
+            city_match=Decimal("0.00"),
+            confidence=Decimal("0.00"),
+        )
 
 
 # ── The Why-this Tags ──────────────────────────────────────────────────────────────

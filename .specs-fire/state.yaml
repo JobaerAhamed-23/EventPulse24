@@ -891,62 +891,80 @@ intents:
         run_id: run-eventpulse24-026
         completed_at: 2026-11-10T14:37:21.224Z
       - id: event-rejection-state
-        status: in_progress
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-10T16:16:27.034Z
       - id: reliability-score-domain
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-10T16:34:25.842Z
       - id: review-intake-and-backfill
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - review-queue-model
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-10T16:48:34.353Z
       - id: event-report-api
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - review-queue-model
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-10T17:10:12.757Z
       - id: editorial-review-commands
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - review-queue-model
           - event-rejection-state
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-10T17:33:03.909Z
       - id: editorial-admin-queue
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - editorial-review-commands
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T00:58:25.007Z
       - id: reliability-recompute-and-escalation
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on:
           - editorial-review-commands
           - event-report-api
           - reliability-score-domain
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T01:32:45.867Z
       - id: ranking-consumes-reliability
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on:
           - reliability-recompute-and-escalation
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T02:03:00.169Z
       - id: frontend-report-control
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - event-report-api
+        run_id: run-eventpulse24-026
+        completed_at: 2026-11-11T04:58:33.651Z
       - id: e2e-proof-and-contract-tests
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -970,74 +988,83 @@ runs:
         - id: event-rejection-state
           intent: trust-loop
           mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T16:16:27.034Z
+        - id: reliability-score-domain
+          intent: trust-loop
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T16:34:25.842Z
+        - id: review-intake-and-backfill
+          intent: trust-loop
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T16:48:34.353Z
+        - id: event-report-api
+          intent: trust-loop
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T17:10:12.757Z
+        - id: editorial-review-commands
+          intent: trust-loop
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-10T17:33:03.909Z
+        - id: editorial-admin-queue
+          intent: trust-loop
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-11T00:58:25.007Z
+        - id: reliability-recompute-and-escalation
+          intent: trust-loop
+          mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-11T01:32:45.867Z
+        - id: ranking-consumes-reliability
+          intent: trust-loop
+          mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-11T02:03:00.169Z
+        - id: frontend-report-control
+          intent: trust-loop
+          mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-11T04:58:33.651Z
+        - id: e2e-proof-and-contract-tests
+          intent: trust-loop
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: reliability-score-domain
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: review-intake-and-backfill
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: event-report-api
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: editorial-review-commands
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: editorial-admin-queue
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: reliability-recompute-and-escalation
-          intent: trust-loop
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: ranking-consumes-reliability
-          intent: trust-loop
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: frontend-report-control
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: e2e-proof-and-contract-tests
-          intent: trust-loop
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: event-rejection-state
+      current_item: e2e-proof-and-contract-tests
       started: 2026-11-10T14:08:55.031Z
   completed:
     - id: run-eventpulse24-001

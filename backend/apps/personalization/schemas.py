@@ -1289,3 +1289,36 @@ __all__ = [
     "TimelineQuery",
     "WhyThisOut",
 ]
+
+
+#: FR-59's four report categories on the wire. A `Literal` rather than a free string, so the
+#: OpenAPI schema enumerates them and an invalid value is refused by the parser as a 422
+#: before any service sees it — the same way the conflict actions are typed.
+EventReportCategory = Literal["wrong_date_time", "wrong_venue", "does_not_exist", "duplicate"]
+
+
+class EventReportIn(Schema):
+    """The body of a report: which event, and which of the four things is wrong (FR-59).
+
+    **There is no free-text field, and that is a product decision rather than a gap.** FR-57
+    and FR-59 both put free text in Phase 2. Four fixed categories mean there is nothing for
+    a user to type into, so there is nothing to moderate, nothing to leak into an editor's
+    screen, and nothing that needs its own retention rule.
+    """
+
+    event_id: UUID
+    category: EventReportCategory
+
+
+class EventReportOut(Schema):
+    """What the client needs for the toast, and deliberately nothing else.
+
+    **No report id, no tally, no queue state.** A client that could read the tally could
+    count other people's reports on an event, which is a fact about other users and not
+    about this one. FR-59 asks only that the user sees "Thanks — we'll review this."
+
+    `category` is echoed so an optimistic UI can confirm what it sent without keeping it.
+    """
+
+    reported: bool = True
+    category: EventReportCategory

@@ -20,7 +20,7 @@ from django.utils import timezone
 from django.utils import timezone as django_timezone
 
 from apps.personalization.fields import EncryptedTextField
-from shared.constants import ONBOARDING_STEP_COUNT
+from shared.constants import ONBOARDING_STEP_COUNT, REPORT_CATEGORIES
 from shared.models import AppendOnlyModel, AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -1027,3 +1027,75 @@ class DigestComposition(AppendOnlyModel, UUIDv7Model):
         # `repr()` is safe for free — the same one-lever pattern `CalendarConnection`
         # uses to keep its credential out of `repr`.
         return f"{self.slot} digest composition, bucket {self.bucket}"
+
+
+class EventReport(UUIDv7Model):
+    """One user saying a catalog Event is wrong (FR-59, Amendment A-4).
+
+    **It lives here, and its ReviewItem lives in `catalog`, and that split is the point.**
+    A report is attributable to a person, so it belongs in `personal` under the retention
+    rules that let a user be forgotten. The editorial queue it feeds carries **no user
+    identity at all** (AD-3): `raise_user_report` passes the event id and the category and
+    nothing else, and raises as `Actor.system("event_report")` so the reporter's id cannot
+    reach a `catalog` audit row that every editor can read.
+
+    **The FR-16 signal survives a deletion.** What FR-16 counts is the anonymous per-category
+    tally on the `ReviewItem`, not these rows — so purging a user's reports with their account
+    does not erase the editorial evidence. That is AD-3's separation paying off.
+
+    **Unique on (user, event, category), because the tally has no decrement.**
+    `raise_review_item` bumps a tally with `F() + 1` and never subtracts, so a design where a
+    user could *change* their category would have to invent one. With all three in the key,
+    each tally counts **distinct reporters of that category** — which is what "4 people say
+    the date is wrong" has to mean — and one person can contribute at most 1 to each of the
+    four. A repeat of the same category is an idempotent no-op.
+
+    **`raised_at` is this model's outbox marker.** It is null until the ReviewItem exists.
+    The report is written first and the ticket raised afterwards, outside the transaction
+    (AD-3 forbids one spanning both schemas), so a failure leaves the row here and the
+    reconciler re-offers it. A lost ticket is recoverable from the report; a lost report
+    would not be recoverable from the ticket, which is why the order is this way round.
+
+    **No free-text field.** FR-59 puts it in Phase 2, so there is nothing here to moderate.
+    """
+
+    class Category(models.TextChoices):
+        """FR-59's four, the same vocabulary `ReviewItem.ReportCategory` holds (D3)."""
+
+        WRONG_DATE_TIME = "wrong_date_time"
+        WRONG_VENUE = "wrong_venue"
+        DOES_NOT_EXIST = "does_not_exist"
+        DUPLICATE = "duplicate"
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    user_id = models.UUIDField()
+    # The catalog Event's id, by value. No FK: this app may not relate to `catalog` (AD-3).
+    event_id = models.UUIDField()
+    category = models.CharField(max_length=24, choices=Category.choices)
+    created_at = models.DateTimeField(default=timezone.now)
+    #: When this report's ReviewItem was raised. Null means the reconciler still owes it.
+    raised_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "event_id", "category"], name="event_report_user_event_cat_uq"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(category__in=REPORT_CATEGORIES),
+                name="event_report_category_ck",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["event_id"], name="event_report_event_idx"),
+            # The reconciler's query: the unraised reports, oldest first.
+            models.Index(
+                fields=["created_at"],
+                condition=models.Q(raised_at__isnull=True),
+                name="event_report_unraised_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} reported {self.event_id}: {self.category}"

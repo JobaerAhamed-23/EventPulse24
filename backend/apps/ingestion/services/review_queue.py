@@ -8,6 +8,7 @@ Resolution (approve, edit, reject, dismiss, withdraw) belongs to the editorial c
 
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from django.db import IntegrityError, transaction
 from django.db.models import F
@@ -181,3 +182,39 @@ def _audit(actor: Actor, action: str, item: ReviewItem, category) -> None:
 def _constraint(exc: IntegrityError) -> str | None:
     diag = getattr(exc.__cause__, "diag", None)
     return getattr(diag, "constraint_name", None)
+
+
+def raise_user_report(
+    *,
+    event_id: UUID,
+    category: ReviewItem.ReportCategory | str,
+    now: datetime | None = None,
+) -> RaiseResult | None:
+    """Raise or bump the `user_reported` item for one Event, by id. `None` if it is gone.
+
+    **The published entry point for `personalization`, and the reason it exists is the wall.**
+    `raise_review_item` takes an `Event` **instance**, and the `models-ingestion` contract
+    lets only `apps.ingestion` import `apps.ingestion.models` — so no other app can call it.
+    Resolving the id here keeps that contract intact and keeps the caller free of catalog
+    models.
+
+    **The actor is fixed here, not passed in** (D4). A report is raised as
+    `Actor.system("event_report")` and never as the reporter: the audit row lives in `catalog`
+    and the editorial group can read it, so attributing the raise to the user would let any
+    editor read who reported what — the leak AD-3's ER note exists to prevent. Making it a
+    parameter would make that leak a one-line mistake.
+
+    Returns `None` when the Event no longer exists. The caller has already refused unknown and
+    non-public events at the edge; this is the narrow race where it was deleted in between,
+    and it is not an error — there is simply nothing left to review.
+    """
+    event = Event.objects.using(CATALOG).filter(pk=event_id).first()
+    if event is None:
+        return None
+    return raise_review_item(
+        event=event,
+        reason=ReviewItem.Reason.USER_REPORTED,
+        category=category,
+        actor=Actor.system("event_report"),
+        now=now,
+    )

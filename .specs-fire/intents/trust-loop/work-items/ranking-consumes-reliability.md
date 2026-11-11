@@ -4,10 +4,12 @@ title: Paying the ranking debt — source reliability enters the Relevance Pulse
 intent: trust-loop
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on:
   - reliability-recompute-and-escalation
 created: 2026-11-10
+run_id: run-eventpulse24-026
+completed_at: 2026-11-11T02:03:00.169Z
 ---
 
 # Work Item: Paying the ranking debt — source reliability enters the Relevance Pulse
@@ -20,18 +22,18 @@ The same module also argues against **inert weights**: "a term pinned to a const
 
 ## Acceptance Criteria
 
-- [ ] The design proposes the new weights and their justification against FR-22's published formula. It also states whether this needs a PRD amendment or is a step *toward* the published weights, which would make the reduced weights a temporary state the PRD already anticipates.
-- [ ] **The inert-at-launch problem is answered explicitly.** Options include:
+- [x] The design proposes the new weights and their justification against FR-22's published formula. It also states whether this needs a PRD amendment or is a step *toward* the published weights, which would make the reduced weights a temporary state the PRD already anticipates.
+- [x] **The inert-at-launch problem is answered explicitly.** Options include:
   - enter the term only for sources past the minimum N
   - enter it for everyone, with the prior as a neutral value, and say why that is not "inert" under the module's own definition
   - centre it, so that 0.50 contributes nothing relative to other sources
 
   The design chooses one, and the module docstring is updated to match.
-- [ ] `RankingInputs` gains the source's reliability, read through the published `ingestion` read the recompute item provides. There is no N+1 query, and the bound on query count is tested, as the digest's other reads already are.
-- [ ] Slots 2 and 3 (`score_slot_2` and `score_slot_3`, whose FR-5 formulas multiply by `source_reliability`) are updated, or are explicitly left reduced with a reason. Their docstrings currently name FR-16 as the missing input.
-- [ ] **Explanations already persisted are not recomputed (AD-10).** The design states what happens to stored `DigestComposition` rows and to hysteresis (`apply_hysteresis`) when the weights change, so that no user sees a card's Confidence Pulse jump with no change in the event.
-- [ ] The weight constants are re-pinned in `tests/shared/test_constants.py` with the amendment reference. The pin test must still fail on an unreferenced change.
-- [ ] **The proof:** two otherwise-identical events, one from a source scored 0.2 (past the minimum N) and one from a source scored 0.8, rank in that order. A test for each slot that uses the term. A mutation (removing the term) fails them.
+- [x] `RankingInputs` gains the source's reliability, read through the published `ingestion` read the recompute item provides. There is no N+1 query, and the bound on query count is tested, as the digest's other reads already are.
+- [x] Slots 2 and 3 (`score_slot_2` and `score_slot_3`, whose FR-5 formulas multiply by `source_reliability`) are updated, or are explicitly left reduced with a reason. Their docstrings currently name FR-16 as the missing input.
+- [x] **Explanations already persisted are not recomputed (AD-10).** The design states what happens to stored `DigestComposition` rows and to hysteresis (`apply_hysteresis`) when the weights change, so that no user sees a card's Confidence Pulse jump with no change in the event.
+- [x] The weight constants are re-pinned in `tests/shared/test_constants.py` with the amendment reference. The pin test must still fail on an unreferenced change.
+- [x] **The proof:** two otherwise-identical events, one from a source scored 0.2 (past the minimum N) and one from a source scored 0.8, rank in that order. A test for each slot that uses the term. A mutation (removing the term) fails them.
 
 ## Technical Notes
 
@@ -40,3 +42,36 @@ High complexity, so this item gets a design doc. `relevance_score` is at `domain
 ## Dependencies
 
 - reliability-recompute-and-escalation
+
+## Delivered
+
+**Design:** `ranking-consumes-reliability-design.md` (D1–D14; D14 records what the
+implementation and the code review changed).
+
+**The amendment:** `docs/adr/ADR-0025.md`, plus **`Amendment A-10 (2026-11-11)`** in the
+PRD's FR-22 section. The MVP weights did not move; what the amendment records is *which
+term the implementation evaluates for each published component*.
+
+**The code:** `domain/ranking.py` (the five-term formula, `RankingInputs.source_reliability`
+required), `apps/ingestion/services/catalog_read.py` (the candidate carries the score, at
+**no extra query**), `apps/personalization/services/digest_composition.py` (public passes
+the candidate's score, personal passes the prior), `shared/constants.py` (the five weights
+and the amendment reference).
+
+**The proofs:** `tests/domain/test_ranking.py` (the term moves the score by exactly its
+weight, and two sources rank in that order in **each** slot), `tests/personalization/
+test_digest_composition.py` (the value travels through the database; the query count does
+not grow with the pool), `tests/architecture/test_ad10_explanation_persistence.py`
+(stored explanations are never rewritten, hysteresis never crosses a composition, and the
+ranking never writes FR-16's score), `tests/shared/test_constants.py` (the pin, and the
+ADR it points at).
+
+**Every proof was verified by breaking the code.** Removing the term from
+`relevance_score` fails **12 tests**; replacing the prior with `0.00` fails the prior
+test; a per-candidate lookup fails the query-count bound with *"12 catalog queries for ten
+candidates and 2 for one"*; a planted `reliability_score` assignment fails the new
+architecture guard.
+
+**Gates:** 6158 passed, 16 failed (the run's standing pre-existing failures, verified at
+clean `HEAD`) · `domain/ranking.py` at 100% coverage · all 10 contract mutation probes
+caught · ruff clean · 19 import contracts kept · no migration.

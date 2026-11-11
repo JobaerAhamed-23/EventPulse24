@@ -559,6 +559,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/event-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a catalog event as wrong
+         * @description Records one report against a public event (FR-59). The body names the event and exactly one of four categories; there is no free-text field.
+         *
+         *     **A report never changes what anyone can see.** The event stays in the digest and on its public page until an editor decides. One person cannot pull a listing.
+         *
+         *     Five reports per user per day; the sixth answers 429 with the wait. Reporting the same event for the same reason twice is accepted and counted once — the editor's tally counts people, not taps.
+         *
+         *     An event that does not exist, or that is not publicly visible, answers 404 — the same refusal the event detail read gives, so this endpoint cannot be used to find out whether a hidden event exists.
+         */
+        post: operations["apps_personalization_api_report_event_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/events": {
         parameters: {
             query?: never;
@@ -2090,6 +2116,49 @@ export interface components {
             starts_after?: string | null;
             /** Starts Before */
             starts_before?: string | null;
+        };
+        /**
+         * EventReportIn
+         * @description The body of a report: which event, and which of the four things is wrong (FR-59).
+         *
+         *     **There is no free-text field, and that is a product decision rather than a gap.** FR-57
+         *     and FR-59 both put free text in Phase 2. Four fixed categories mean there is nothing for
+         *     a user to type into, so there is nothing to moderate, nothing to leak into an editor's
+         *     screen, and nothing that needs its own retention rule.
+         */
+        EventReportIn: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "wrong_date_time" | "wrong_venue" | "does_not_exist" | "duplicate";
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+        };
+        /**
+         * EventReportOut
+         * @description What the client needs for the toast, and deliberately nothing else.
+         *
+         *     **No report id, no tally, no queue state.** A client that could read the tally could
+         *     count other people's reports on an event, which is a fact about other users and not
+         *     about this one. FR-59 asks only that the user sees "Thanks — we'll review this."
+         *
+         *     `category` is echoed so an optimistic UI can confirm what it sent without keeping it.
+         */
+        EventReportOut: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "wrong_date_time" | "wrong_venue" | "does_not_exist" | "duplicate";
+            /**
+             * Reported
+             * @default true
+             */
+            reported: boolean;
         };
         /** HealthDetails */
         HealthDetails: {
@@ -4132,6 +4201,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DigestOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_report_event_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventReportIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

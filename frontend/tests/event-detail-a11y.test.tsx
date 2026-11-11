@@ -240,6 +240,36 @@ describe("the Detail Screen's axe-core gate", () => {
     );
   });
 
+  it("has zero serious or critical violations with the report modal open", async () => {
+    // **The report modal (FR-59) is a modal sheet with its own content** — a heading,
+    // a radio group of four options, and two buttons. It is a surface where an
+    // accessibility failure would hurt: the reader came here to say something is
+    // wrong, and the control that lets them say it must not be the one that traps
+    // them.
+    //
+    // **The radio group is the thing axe checks here.** A group of buttons with
+    // `role="radio"` and `aria-checked` is a composite widget, and axe has rules for
+    // one — a radio with no checked sibling, or a group with no accessible name, would
+    // both be reported.
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts(), personal: personal() },
+    });
+
+    await renderPage();
+
+    screen.getByRole("button", { name: "Report this event" }).click();
+
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: "Report this event" })).toBeInTheDocument(),
+    );
+
+    const violations = await audit();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual(
+      [],
+    );
+  });
+
   it("audits a document with the real landmarks in place", async () => {
     // A gate that passed because the page rendered nothing would pass forever.
     readEventDetail.mockResolvedValue({
@@ -252,5 +282,57 @@ describe("the Detail Screen's axe-core gate", () => {
     expect(screen.getByRole("main")).toBeInTheDocument();
     expect(screen.getByRole("article")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The report flag's **presence**, and where it is and is not.
+ *
+ * **This file renders the *real* action row.** `app/events/[id]/page.test.tsx` stubs
+ * `DetailActions` out — it tests the page's contribution to the row — so it cannot see
+ * the flag at all. So the flag's presence is pinned here, where the row is the real one.
+ *
+ * **The pair is the claim.** The flag is there for a signed-in reader and absent for an
+ * anonymous one — the same rule Save follows, because the whole row is behind one
+ * `personal` gate (`app/events/[id]/page.tsx:477`).
+ */
+describe("the report flag", () => {
+  it("is there for a signed-in reader", async () => {
+    readEventDetail.mockResolvedValue({
+      kind: "found",
+      detail: { event: facts(), personal: personal() },
+    });
+
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: "Report this event" })).toBeInTheDocument();
+  });
+
+  it("is absent for an anonymous reader", async () => {
+    // **The flag matches what Save does on the same screen.** Save is absent for an
+    // anonymous reader, and the flag is absent in the same render — because they are
+    // behind the same gate, not because each has its own rule.
+    readEventDetail.mockResolvedValue({
+      kind: "anonymous",
+      detail: { event: facts(), personal: null },
+    });
+
+    await renderPage();
+
+    expect(screen.queryByRole("button", { name: "Report this event" })).not.toBeInTheDocument();
+  });
+
+  it("is gone for an anonymous reader in the same way Save is", async () => {
+    // **The two absences are the same absence.** If the flag were routed to sign-in
+    // while Save were hidden, this would fail — and the criterion is that they match.
+    readEventDetail.mockResolvedValue({
+      kind: "anonymous",
+      detail: { event: facts(), personal: null },
+    });
+
+    await renderPage();
+
+    expect(screen.queryByRole("button", { name: /Save to Pulse/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Report this event" })).not.toBeInTheDocument();
   });
 });

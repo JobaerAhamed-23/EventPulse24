@@ -4,9 +4,11 @@ title: The arithmetic of trust — FR-16's score as pure functions
 intent: trust-loop
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-10
+run_id: run-eventpulse24-026
+completed_at: 2026-11-10T16:34:25.842Z
 ---
 
 # Work Item: The arithmetic of trust — FR-16's score as pure functions

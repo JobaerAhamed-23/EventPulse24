@@ -4,11 +4,13 @@ title: Approve, edit, reject — the editor's three verbs as ingestion commands
 intent: trust-loop
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - review-queue-model
   - event-rejection-state
 created: 2026-11-10
+run_id: run-eventpulse24-026
+completed_at: 2026-11-10T17:33:03.909Z
 ---
 
 # Work Item: Approve, edit, reject — the editor's three verbs as ingestion commands

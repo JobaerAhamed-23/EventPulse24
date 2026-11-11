@@ -4,12 +4,14 @@ title: The score that remembers — history, weekly recompute, and escalation
 intent: trust-loop
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on:
   - editorial-review-commands
   - event-report-api
   - reliability-score-domain
 created: 2026-11-10
+run_id: run-eventpulse24-026
+completed_at: 2026-11-11T01:32:45.867Z
 ---
 
 # Work Item: The score that remembers — history, weekly recompute, and escalation

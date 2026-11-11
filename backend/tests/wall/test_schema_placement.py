@@ -49,6 +49,11 @@ INGESTION_TABLES = {
     # Event or a Source) and carries no user identity (review-queue-model D4), so it sits on
     # the catalog side of the AD-3 wall; the reporter stays in `personal.EventReport`.
     "ingestion_reviewitem",
+    "ingestion_sourceobservation",
+    # FR-16: the reliability history is a catalog table. Each row is a week's score for a
+    # source — a standing fact about the catalog, carrying no user identity — so it sits on
+    # the catalog side of the AD-3 wall.
+    "ingestion_sourcereliabilityscore",
 }
 
 PERSONALIZATION_TABLES = {
