@@ -4,8 +4,9 @@ title: A way to actually pay — checkout, portal, and the fake-billing dead end
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [billing-adapter-and-webhooks]
+status: in_progress
+depends_on:
+  - billing-adapter-and-webhooks
 created: 2026-11-11
 ---
 

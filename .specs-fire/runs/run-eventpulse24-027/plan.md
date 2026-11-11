@@ -161,3 +161,81 @@ Every test below can fail; none asserts a tautology.
 `.specs-fire/intents/pro-tier-and-monetization/work-items/subscription-model-and-entitlement-design.md`
 (checkpoint 1 approved 2026-11-11), including its correction that this is an **AD-2
 `models-identity`** concern, not an AD-3 wall crossing.
+
+---
+
+## Work Item: billing-adapter-and-webhooks
+
+*(checkpoint 2 — plan. Design doc approved 2026-11-11.)*
+
+### Approach
+
+Five pieces, bottom-up, each green before the next.
+
+1. **`stripe` pinned in `pyproject.toml`.** The `stripe-sdk` contract already exists and needs
+   no edit. Verify `lint-imports` still reports 19 kept.
+2. **`ports/billing.py`** gains `BillingEventKind`, `BillingEvent`, `InvalidWebhookSignature`
+   and `parse_event`. The port is what `apps` imports; the SDK never leaves `adapters.billing`.
+3. **`adapters/billing/fake.py`** implements `parse_event` **first**, before the real adapter.
+   Everything above the adapter can then be built and tested without the SDK, which is the
+   whole point of the seam.
+4. **`adapters/billing/stripe.py`** — checkout, portal, parse-and-verify, status mapping.
+5. **`apps/identity/webhooks_api.py`** — raw-body read, dispatch to item 1's three commands,
+   200/400 discipline.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/adapters/billing/stripe.py` | The real adapter |
+| `backend/apps/identity/webhooks_api.py` | The receiver |
+| `backend/tests/adapters/test_billing_stripe.py` | Adapter tests, no network |
+| `backend/tests/identity/test_billing_webhooks.py` | Receiver tests, through the fake |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/pyproject.toml` | Pin `stripe` |
+| `backend/ports/billing.py` | The event value, its kinds, the exception, `parse_event` |
+| `backend/adapters/billing/fake.py` | Implement `parse_event` deterministically |
+| `backend/config/adapters.py` | `billing` into `REAL_ADAPTERS` |
+| `backend/config/api.py` | Mount the webhook router |
+| `backend/config/env.py` | `stripe_api_key`, `stripe_webhook_secret` — required, no default |
+| `.env.example` | Local-only placeholders |
+| `backend/tests/config/test_adapters.py` | Assertion now names `email, embedding, llm` |
+| `backend/tests/adapters/test_fakes.py` | Cover the fake's new `parse_event` |
+
+### Tests
+
+- **Signature:** a wrong signature raises `InvalidWebhookSignature` in the adapter, and the
+  endpoint answers 400 with no state change.
+- **Raw bytes:** a payload whose re-serialised JSON differs byte-for-byte from what was posted
+  still verifies — proving the endpoint did not parse before verifying.
+- **Each kind** reaches exactly one command.
+- **Replay:** the same event twice changes state once, answered 200 both times.
+- **Out of order:** a stale `updated` after a `deleted` does not restore entitlement, asserted
+  through the endpoint rather than only at the command level.
+- **Unknown event type** → 200, no state change.
+- **Unknown subscription** → 200, no state change.
+- **Unmapped Stripe status** → the conservative fallback, not a crash.
+- **`ADAPTER_MODE=real` still refuses to boot**, naming `email, embedding, llm`.
+
+### Risk to flag early
+
+`stripe` is a new dependency and `uv` may need network to resolve it. This is checked **first**,
+before any code is written, so a blocked install is discovered immediately rather than after
+four files exist. If it cannot be installed, the item stops and is reported — the port, the
+fake and the receiver would still be buildable, but shipping a real adapter that was never
+imported is not something to claim.
+
+### Deviations from the Design
+
+None at plan time. Two design decisions are worth restating because they are the ones most
+likely to be "simplified" later: **no idempotency table** (item 1's row guards already cover
+it) and **`PAYMENT_FAILED` as its own kind** (Stripe does not say what the status became).
+
+### Based on Design Doc
+
+`.specs-fire/intents/pro-tier-and-monetization/work-items/billing-adapter-and-webhooks-design.md`
+(checkpoint 1 approved 2026-11-11).

@@ -12,17 +12,17 @@ work_items:
   - id: billing-adapter-and-webhooks
     intent: pro-tier-and-monetization
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: checkout-and-portal-api
     intent: pro-tier-and-monetization
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: free-tier-caps-read-entitlement
     intent: pro-tier-and-monetization
     mode: confirm
@@ -107,7 +107,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: billing-adapter-and-webhooks
+current_item: checkout-and-portal-api
 status: in_progress
 started: 2026-11-11T07:05:42.898Z
 completed: null
@@ -120,8 +120,8 @@ wide (15 work items)
 
 ## Work Items
 1. **subscription-model-and-entitlement** (validate) — completed
-2. **billing-adapter-and-webhooks** (validate) — in_progress
-3. **checkout-and-portal-api** (confirm) — pending
+2. **billing-adapter-and-webhooks** (validate) — completed
+3. **checkout-and-portal-api** (confirm) — in_progress
 4. **free-tier-caps-read-entitlement** (confirm) — pending
 5. **frontend-pricing-page** (confirm) — pending
 6. **frontend-upgrade-prompts** (confirm) — pending
@@ -137,7 +137,7 @@ wide (15 work items)
 
 
 ## Current Item
-billing-adapter-and-webhooks (validate)
+checkout-and-portal-api (confirm)
 
 ## Files Created
 (none yet)

@@ -991,13 +991,15 @@ intents:
         run_id: run-eventpulse24-027
         completed_at: 2026-11-11T07:45:29.301Z
       - id: billing-adapter-and-webhooks
-        status: in_progress
+        status: completed
         complexity: high
         mode: validate
         depends_on:
           - subscription-model-and-entitlement
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-11T08:44:27.984Z
       - id: checkout-and-portal-api
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -1098,17 +1100,18 @@ runs:
         - id: billing-adapter-and-webhooks
           intent: pro-tier-and-monetization
           mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-11T08:44:27.984Z
+        - id: checkout-and-portal-api
+          intent: pro-tier-and-monetization
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: checkout-and-portal-api
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: free-tier-caps-read-entitlement
           intent: pro-tier-and-monetization
           mode: confirm
@@ -1193,7 +1196,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: billing-adapter-and-webhooks
+      current_item: checkout-and-portal-api
       started: 2026-11-11T07:05:42.898Z
   completed:
     - id: run-eventpulse24-001

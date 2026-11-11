@@ -148,10 +148,11 @@ design; it is landing a planned entity into sockets that already exist.
 - The receiver is **idempotent and order-tolerant**: a replayed event changes nothing, and
   an out-of-order event never lets a stale state overwrite a newer one. `SavedEvent`'s
   `event_version` guard is the precedent to follow.
-- Both adapter and receiver are proven against `tests/adapters/scripted_network.py`, the
-  harness already used by `test_crawl_http.py`, `test_revalidation_http.py` and
-  `test_calendar_ics.py`. **No Stripe account is required to run the suite**, and CI stays
-  secret-free.
+- Both adapter and receiver are proven with **no Stripe account and no network**, and CI
+  stays secret-free. *(Corrected 2026-11-11: this criterion originally named
+  `scripted_network.py` as a shared harness. It is bound to `HttpFetchAdapter` and only
+  `test_crawl_http.py` uses it; `test_revalidation_http.py` and `test_calendar_ics.py` use
+  their own fakes. See `billing-adapter-and-webhooks.md`.)*
 - Keys are read via pydantic-settings at startup with local-only placeholders in
   `.env.example`; no credential enters source control.
 

@@ -118,3 +118,121 @@ next reader is not misled into deleting the `IntegrityError` catch as redundant.
 
 **5 findings: 3 fixed, 2 documented.** Suite green for everything this item touches —
 `tests/identity/` and `tests/architecture/` together: **1128 passed**.
+
+---
+
+# Code Review: Real Stripe, and the way subscription state gets back in
+
+*(work item: `billing-adapter-and-webhooks`)*
+
+## Scope
+
+| File | Action |
+|---|---|
+| `backend/pyproject.toml` / `uv.lock` | modified — `stripe==13.1.0` pinned |
+| `ports/billing.py` | modified — `BillingEventKind`, `BillingEvent`, `InvalidWebhookSignature`, `parse_event` |
+| `adapters/billing/stripe.py` | created |
+| `adapters/billing/fake.py` | modified — `parse_event`, `FAKE_SIGNATURE` |
+| `apps/identity/webhooks_api.py` | created |
+| `config/{adapters,api,env,settings}.py` | modified |
+| `.env`, `.env.example`, `.github/workflows/ci.yml` | modified |
+| `tests/adapters/test_billing_stripe.py`, `tests/identity/test_billing_webhooks.py` | created |
+| `tests/adapters/test_fakes.py`, `tests/config/test_env.py`, `tests/config/test_databases.py`, `tests/architecture/test_no_direct_writes.py`, `tests/architecture/test_digest_composition_separation.py` | modified |
+
+## Findings
+
+### 1. The adapter could not be built by its own registry — FIXED
+
+**Severity: would have failed at first use.** `StripeBillingAdapter.__init__` took three
+required keyword arguments. `ports.registry.get_adapter` ends with `return cast(P, adapter())`
+— **no arguments**. Every call through `get_billing_port()` would have raised `TypeError`.
+
+Found by reading the registry before wiring, not by a test — the unit tests constructed the
+adapter directly and would have passed indefinitely. `test_the_adapter_is_constructible_with_no_arguments`
+now closes that hole.
+
+**Fix:** all arguments optional, resolved from `settings` lazily, matching
+`HttpRevalidationAdapter` and `RedisThrottleAdapter`. The SDK client is a `cached_property`
+so importing the module does not require a key — otherwise collecting the test suite would.
+
+### 2. A mapping function that nothing called — FIXED
+
+`mapped_status()` translated Stripe's nine statuses onto this product's four. No code path
+reached it: `_subscription` set `raw_status` to Stripe's own string, and the receiver read
+that field as though it had already been mapped. A `customer.subscription.updated` carrying
+`unpaid` would have hit the receiver's `except ValueError` fallback instead of mapping to
+`past_due` — right answer, wrong road, and silently wrong for any status where the fallback
+and the mapping disagree.
+
+**Fix:** `BillingEvent` carries two fields with distinct jobs — `status` (ours, acted on) and
+`raw_status` (the provider's, logged only). Both docstrings say which is which, because the
+confusion is the whole reason the pair exists.
+`test_the_receiver_reads_the_mapped_status_not_the_providers_own` fails if they are swapped.
+
+### 3. My error body disclosed more than the project's — FIXED
+
+The first version returned `{"code": "invalid_signature", "message": "Invalid signature."}`,
+which tells anyone probing the endpoint exactly which check rejected them.
+
+`config/errors.py` already had a better answer, under a comment that states the policy:
+*"Framework HttpErrors get a stable code and a calm message; their own text is not shown."*
+A 400 becomes `bad_request` / *"That request couldn't be read."*
+
+**Fix:** `raise HttpError(400, ...) from None`. The response no longer reveals that signature
+verification is what failed, the `from None` keeps the provider's message out of any
+traceback or error reporter, and the deprecated tuple-return warnings (21 of them, which no
+other endpoint in the codebase produces) are gone.
+
+### 4. Two AD-5 guards did not know about the new surface — FIXED
+
+`test_no_direct_writes` and `test_digest_composition_separation` each hold an explicit list of
+request modules. The former is blunt about the stakes: *"a surface file that is missing from
+this list is **exempt from AD-5**, and nothing else would catch it."*
+
+`apps/identity/webhooks_api.py` is registered in both, with a note that the caller being a
+payment provider changes nothing about who may write.
+
+### 5. Pre-existing: CI could not boot Django — FIXED, after being verified
+
+`ci.yml`'s env block was two settings short of what `config.env` requires
+(`calendar_credential_key`, `revalidation_secret`), independent of this work. Verified by
+reconstructing CI's exact environment rather than by reading the file. All four required
+settings are now present and the check was re-run against the real `ci.yml`.
+
+Fixed at the user's explicit instruction, having first been reported rather than folded in.
+
+## Checked and found clean
+
+- **No SDK import anywhere outside `adapters.billing`.** The `stripe-sdk` contract enforces
+  it; `lint-imports` reports 19 kept. Verified that `adapters.billing → stripe → requests`
+  does not break `http-client`, whose `allow_indirect_imports = true` permits the chain —
+  probed with a planted import, not assumed.
+- **No provider vocabulary in `apps`.** The receiver matches on `BillingEventKind`. The
+  strings `customer.subscription.deleted` and friends appear only in `adapters/billing/stripe.py`.
+- **Raw bytes reach verification unparsed**, pinned by a test where re-serialised JSON fails.
+- **No Stripe object is logged.** The endpoint logs a kind slug, an outcome slug and nothing
+  else — a Stripe object can carry an email, a name and a card's last four digits.
+- **No secret in source control.** Both keys are required settings with no default;
+  `.env.example` and `ci.yml` carry placeholders of the right shape. The redaction allowlist
+  is deny-by-default and its scrubber already matches `sk_test`, `sk_live` and `whsec`.
+- **The webhook grants nothing by itself that the commands would not.** All three dispatch
+  paths go through item 1's audited commands; there is no direct write to `Subscription` in
+  this item.
+- **`makemigrations --check --dry-run`**: no changes detected — the new code adds no model.
+
+## Not changed, and why
+
+- **No idempotency table.** The design rejected it and nothing built here changed that:
+  replay and ordering are both covered by item 1's row guards, now asserted through the
+  endpoint too.
+- **No reconciliation job.** A safety net for webhooks Stripe never delivers is a real
+  concern and a separate item; inventing it here would be scope the design explicitly
+  excluded.
+- **`ADAPTER_MODE=real` still does not boot.** Deliberate, asserted, and documented in
+  `config/adapters.py`.
+
+## Result
+
+**5 findings: all 5 fixed.** One of them (the registry constructor) would have failed the
+first time anything used the adapter through its port, and no test written for this item
+would have caught it.

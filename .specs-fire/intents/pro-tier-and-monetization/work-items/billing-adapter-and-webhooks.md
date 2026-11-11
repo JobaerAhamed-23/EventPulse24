@@ -4,10 +4,12 @@ title: Real Stripe, and the way subscription state gets back in
 intent: pro-tier-and-monetization
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on:
   - subscription-model-and-entitlement
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T08:44:27.984Z
 ---
 
 # Work Item: Real Stripe, and the way subscription state gets back in
@@ -56,10 +58,19 @@ That is why this item is `validate`.
       validated once at startup"*. `.env.example` gains local-only placeholders in the style
       of `DJANGO_SECRET_KEY` and `REVALIDATION_SECRET`. **No credential enters source
       control.**
-- [ ] Both adapter and receiver are proven against `tests/adapters/scripted_network.py`, the
-      harness already used by `test_crawl_http.py`, `test_revalidation_http.py` and
-      `test_calendar_ics.py`. **The suite runs with no Stripe account and no network**, and
-      CI stays secret-free.
+- [ ] Both adapter and receiver are proven **without a Stripe account and without a
+      network**, and CI stays secret-free.
+
+      *(Corrected 2026-11-11, during item 1.* An earlier version of this criterion named
+      `tests/adapters/scripted_network.py` as a shared harness used by `test_crawl_http.py`,
+      `test_revalidation_http.py` and `test_calendar_ics.py`. That was wrong on both counts:
+      that module is bound to `HttpFetchAdapter` — it injects into `getaddrinfo` and the TCP
+      connector *that adapter* supplies, and imports `FetchLimits` and `HttpFetchAdapter`
+      directly — and **only** `test_crawl_http.py` uses it. `test_revalidation_http.py` uses a
+      local stand-in for `httpx.Client`; `test_calendar_ics.py` uses
+      `tests/adapters/calendar_fakes.ScriptedFetch`. The pattern to follow here is
+      `test_revalidation_http.py`'s, or the Stripe SDK's own test constructs — the design doc
+      decides. The conclusion is unchanged: no account, no network.)*
 - [ ] Tests cover: signature rejection; a replayed event; an out-of-order event that must not
       regress state; each of the four event types reaching its command; an unknown type; and
       a cancellation closing entitlement.
