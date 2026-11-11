@@ -227,6 +227,80 @@ class NotificationPreference(UUIDv7Model):
         return f"quiet {self.quiet_hours_start}-{self.quiet_hours_end}"
 
 
+class QuietHoursOverride(UUIDv7Model):
+    """One weekday's quiet-hours window for a Pro user (FR-51).
+
+    **An override, not a replacement.** `NotificationPreference`'s `quiet_hours_start` /
+    `_end` pair stays exactly what it was: the user's **base window**, meaning "this window,
+    every day". This table says "…except on Thursdays". A user with no rows here has the
+    behaviour they have always had, down to the same columns and the same check constraint,
+    which is why this item's migration writes no data at all.
+
+    That shape was chosen over the two alternatives for one reason. Seven column pairs on
+    `NotificationPreference` would have meant rewriting
+    `notification_preference_quiet_hours_pair_ck` seven times over; a table that *replaced*
+    the pair would have meant a data migration copying every existing user's window into it.
+    The acceptance criterion is that the migration invents nothing, and the strongest form
+    of that is a migration with no data step in it.
+
+    **The windows are local wall clocks, never instants** — the same rule as the base pair,
+    for the same reason. "10pm" means 10pm wherever the user is, and survives travel and DST
+    because it is re-read against the zone every time a due time is computed. The zone is
+    not here and is not on `NotificationPreference` either: the user has exactly one, on
+    `DigestPreference`, and a second copy would be free to drift.
+
+    **`weekday` is `date.weekday()`** — Monday 0 through Sunday 6 — because that is what the
+    domain indexes by and a second numbering would be a conversion waiting to be got wrong.
+
+    **Rows outlive the subscription that bought them.** The brief forbids deleting a lapsed
+    Pro user's data, so nothing here is removed when a subscription ends; the rows simply
+    stop being read (`notification_preferences` gates on `is_pro`). If the user resubscribes,
+    their seven windows are exactly where they left them.
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # `date.weekday()`: Monday 0 … Sunday 6.
+    weekday = models.SmallIntegerField()
+    # Local wall clocks (HH:MM), NOT instants. Both always set: a row exists only to say
+    # what the window *is*, so there is no null pair here and no pair constraint. "No quiet
+    # hours on this day" is the absence of a row.
+    start = models.TimeField()
+    end = models.TimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # One window per weekday per user. This is what makes "seven distinct windows"
+            # a fact about the table rather than a hope about the command.
+            models.UniqueConstraint(
+                fields=["user_id", "weekday"],
+                name="quiet_hours_override_user_weekday_uq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(weekday__gte=0) & models.Q(weekday__lte=6),
+                name="quiet_hours_override_weekday_range_ck",
+            ),
+            # `start == end` is the single-window spelling of "disabled", and the base pair
+            # already owns the one spelling of "no quiet hours" (a null pair). A row here
+            # that said nothing would be a second spelling, so the database refuses it as
+            # well as the command does.
+            models.CheckConstraint(
+                condition=~models.Q(start=models.F("end")),
+                name="quiet_hours_override_not_empty_ck",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="quiet_hours_override_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"weekday {self.weekday}: quiet {self.start}-{self.end}"
+
+
 class ScheduledSend(UUIDv7Model):
     """One intended send: what it is, who for, when it is due, and its idempotency key (AD-7).
 

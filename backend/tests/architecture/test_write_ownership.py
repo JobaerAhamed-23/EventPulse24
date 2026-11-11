@@ -124,6 +124,11 @@ TABLE_OWNERS = {
     "delivery_notificationpreference": "delivery",
     # AD-16: `delivery` owns the schedule itself. AD-7 makes SCHEDULED_SEND rows "the sole
     # source of truth for what is due", and the minting service is their single writer.
+    # AD-16: `delivery` owns the per-weekday quiet-hours override too. It qualifies the
+    # window on `delivery_notificationpreference`, which `delivery` already owns, and it is
+    # read on the same hot path — so splitting ownership would put one window's two halves
+    # in two apps.
+    "delivery_quiethoursoverride": "delivery",
     "delivery_scheduledsend": "delivery",
     # AD-16: `delivery` owns FR-54's state-change notice. It is a delivery — the record
     # behind one email and two in-app surfaces — and `personalization` reads it through a
