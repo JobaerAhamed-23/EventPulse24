@@ -4,8 +4,9 @@ title: Seven windows over the wire
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [per-day-quiet-hours-domain-and-model]
+status: in_progress
+depends_on:
+  - per-day-quiet-hours-domain-and-model
 created: 2026-11-11
 ---
 

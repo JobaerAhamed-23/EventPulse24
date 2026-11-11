@@ -866,3 +866,71 @@ load-bearing.
 - **`readApiError` was not widened.** It is used in nine places; `readCapDetails` is a
   sibling that reads the same body for a different question, so the other nine are
   untouched.
+
+---
+
+## Work Item: `per-day-quiet-hours-domain-and-model`
+
+All seven acceptance criteria met. The two design decisions that changed during
+implementation are both recorded in the plan's "Deviations" section; this is what a reviewer
+should look at.
+
+### 1. The design doc contradicted itself, and the resolution is the safer half
+
+It said `NotificationSettings.quiet_hours` *becomes* the weekly value, and also listed
+`schemas.py` among the files asserted unchanged. Those cannot both hold: `schemas.py` reads
+`window.start` off that field.
+
+Resolved by keeping `quiet_hours` exactly as it was — the base window, the thing the settings
+API reports — and adding `effective_quiet_hours: WeeklyQuietHours` as what the delivery path
+reads. All seven delivery call sites were moved to it.
+
+**This is also the safer failure mode, which is why it was not just the cheaper fix.** Under
+the design as approved, a consumer nobody updated raises `AttributeError`. Under this one it
+keeps using the base window: wrong for a Pro user, but today's behaviour, and it cannot put
+a send at 3am. For a change whose one serious failure mode is a notification at the wrong
+hour, the variant that degrades to "the old correct answer" beats the one that degrades to a
+crash on the delivery path.
+
+### 2. A guard was designed, tested, and deleted before it shipped
+
+`has_sendable_gap` protected against a week with no sendable moment. Seven day-anchored
+windows **cannot** cover a week (the arithmetic is in the test report and in
+`MAX_DEFERRALS`' docstring), so the function could only ever return `True`, and the command
+refusal built on it could never fire or be tested.
+
+Deleting it was the right call over shipping it "defensively": an untestable refusal is a
+branch that will rot, and a reader who finds it will reasonably assume the state it guards
+is reachable. The invariant is better recorded as a proof beside the bound it justifies.
+
+### 3. `max(ends)` is an optimisation, not the mechanism
+
+Found by mutation, and written up in the test report. The docstring was corrected; the
+acceptance criterion is met by the fixpoint loop. Flagged here because a future reader
+tempted to "simplify" the loop into a single pass would break the criterion while `max`
+sits there looking like the thing that enforces it — the three-day-chain test is what stops
+that, and it is named in the docstring.
+
+### 4. What a lapsed Pro user gets, stated once and in one place
+
+The criterion forbade leaving this implicit. It is decided in `_effective_week` and nowhere
+else: **the override rows stay, and they stop being read.** The user falls back to their base
+window, and a resubscribe restores all seven without them re-entering anything. Two tests
+cover the lapse and the return.
+
+**The consequence worth carrying to item 8:** a lapse silently moves a Pro user's delivery
+times back to the base window. That is correct — they are not paying for seven windows any
+more — but it is the only delivery-time change in this intent caused by a billing event.
+`quiet-hours-pro-api` should report the **effective** schedule rather than the stored one, so
+a lapsed user is never shown seven windows that are not in force.
+
+### 5. The entitlement read landed on the delivery path, cheaply
+
+`_effective_week` queries overrides first and asks `is_pro` only if it finds any. A user who
+has never been Pro — every Free user, which is the batch's whole population — never reads
+`Subscription` at all. Both halves are pinned by tests that assert on the **table a query
+names**, not on a query count, because the count includes transaction bookkeeping that has
+nothing to do with the claim.
+
+`apps.delivery → apps.identity.services` is permitted: only `apps.identity.models` is
+protected, and `save_cap.py` already does it. All 19 import contracts stay kept.

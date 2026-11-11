@@ -1012,3 +1012,79 @@ the refusal path: the user tried, and was refused.
 (`pro-upgrade-cta-desktop.html` is a states-only showcase for a page that does not exist).
 This item renders the prompt **in place**, on the surface where the refusal happened, which
 is what the criteria ask for. A dedicated route is a separate thing.
+
+---
+
+# Work Item: `per-day-quiet-hours-domain-and-model` — seven windows instead of one
+
+## Implementation Plan
+
+Based on the design doc
+`.specs-fire/intents/pro-tier-and-monetization/work-items/per-day-quiet-hours-domain-and-model-design.md`
+(checkpoint 1 approved).
+
+### Approach
+
+The reshape is small on the delivery path because of one fact about the existing code:
+**all seven consumers of the window forward it untouched to `shift_to_sendable`** — not one
+of them reads `.start`, `.end`, `covers()` or `crosses_midnight`. So the plumbing does not
+change shape; only what flows through it does.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/tests/domain/test_weekly_quiet_hours.py` | The weekly type, the midnight rule, DST, the week-coverage proof |
+| `backend/tests/delivery/test_quiet_hours_overrides.py` | The model, the commands, the lapse, the Free user, the migration |
+| `backend/apps/delivery/migrations/0008_quiethoursoverride.py` | **Schema only.** No data step. |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/domain/quiet_hours.py` | `WeeklyQuietHours`, `Window`, `_ends_covering`, the iterating shift. `QuietHours` itself untouched. |
+| `backend/apps/delivery/models.py` | `QuietHoursOverride` |
+| `backend/apps/delivery/services/notification_preferences.py` | `effective_quiet_hours`, `_effective_week`, the two override commands |
+| `backend/apps/delivery/services/scheduled_sends.py` | Forward `effective_quiet_hours`; annotation `QuietHours \| None` → `Window \| None` |
+| `backend/apps/delivery/services/reminder_plan_read.py` | The same two changes |
+| `backend/tests/architecture/test_write_ownership.py` | The new table's owner |
+
+**Unchanged, and asserted so:** `preferences_read.py`, `schemas.py`, `preferences_api.py`,
+`delivery_sweep.py`, and every existing test in `tests/domain/test_quiet_hours.py`.
+
+### Deviations from the Design
+
+**1. `NotificationSettings.quiet_hours` keeps its name, its type and its meaning.** The
+design said it *becomes* the weekly value while also listing `schemas.py` as unchanged —
+those contradict, because `schemas.py` reads `window.start` off it. Resolved by adding a
+**second** field, `effective_quiet_hours: WeeklyQuietHours`, which is what the delivery path
+reads, and leaving `quiet_hours` as the base window the settings API reports.
+
+This is also the safer failure mode. Under the design as written, a consumer nobody updated
+would raise `AttributeError`; under this one it keeps using the base window — today's
+behaviour, which is wrong for a Pro user but cannot put a send at 3am. The seven call sites
+were all updated regardless, and the API is genuinely untouched, which is what the design
+intended.
+
+**2. `has_sendable_gap` was removed before it shipped.** See the design doc's decision 3: a
+fully-covered week is arithmetically impossible, so the guard could only ever return one
+answer. The proof moved into `MAX_DEFERRALS`' docstring and into a brute-force test.
+
+### Tests
+
+| File | Coverage |
+|---|---|
+| `test_quiet_hours.py` (existing, **unmodified**) | 24 single-window cases still pass, which is how "a Free user's behaviour is unchanged" is proven at the arithmetic level |
+| `test_weekly_quiet_hours.py` | Weeknight vs weekend; a day's window owning the next morning; Saturday's window *not* governing Saturday morning; two windows over one instant; the three-day chain; idempotence; never backwards; `every_day` ≡ the bare window over a whole week; DST both ways; the week-coverage proof |
+| `test_quiet_hours_overrides.py` | A Free user's effective schedule; overrides ignored off-Pro; seven distinct windows; the lapse and the resubscribe; the refusals in Python *and* in the database; clearing; the audit rows; the migration's shape |
+
+### Risks flagged early
+
+1. **A send at 3am** is the failure mode this item can cause. The midnight rule is stated in
+   `WeeklyQuietHours`' docstring, and each branch has a test — including the one that would
+   be wrong if the rule were "ask the instant's own weekday".
+2. **The entitlement read is on the delivery path.** One query per user per batch, and
+   skipped entirely for a user with no override rows.
+3. **A lapse moves a Pro user's delivery times.** Correct, but it is the only delivery-time
+   change in this intent caused by a billing event. Item 8's API should report the
+   *effective* schedule rather than the stored one.

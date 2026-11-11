@@ -47,17 +47,17 @@ work_items:
   - id: per-day-quiet-hours-domain-and-model
     intent: pro-tier-and-monetization
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: quiet-hours-pro-api
     intent: pro-tier-and-monetization
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: frontend-pro-quiet-hours
     intent: pro-tier-and-monetization
     mode: confirm
@@ -107,7 +107,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: per-day-quiet-hours-domain-and-model
+current_item: quiet-hours-pro-api
 status: in_progress
 started: 2026-11-11T07:05:42.898Z
 completed: null
@@ -125,8 +125,8 @@ wide (15 work items)
 4. **free-tier-caps-read-entitlement** (confirm) — completed
 5. **frontend-pricing-page** (confirm) — completed
 6. **frontend-upgrade-prompts** (confirm) — completed
-7. **per-day-quiet-hours-domain-and-model** (validate) — in_progress
-8. **quiet-hours-pro-api** (confirm) — pending
+7. **per-day-quiet-hours-domain-and-model** (validate) — completed
+8. **quiet-hours-pro-api** (confirm) — in_progress
 9. **frontend-pro-quiet-hours** (confirm) — pending
 10. **saved-collections-model** (confirm) — pending
 11. **data-export** (confirm) — pending
@@ -137,7 +137,7 @@ wide (15 work items)
 
 
 ## Current Item
-per-day-quiet-hours-domain-and-model (validate)
+quiet-hours-pro-api (confirm)
 
 ## Files Created
 (none yet)

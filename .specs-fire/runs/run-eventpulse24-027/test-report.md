@@ -932,3 +932,68 @@ handled — the assertion then failed against the text "Connecting…". `findBy*
 Both calendar-step assertions now wait on the hint's **text** and check its enclosing role,
 which waits for the right thing. Any later test of a transient status region on this surface
 has the same trap.
+
+---
+
+## Work Item: `per-day-quiet-hours-domain-and-model`
+
+**42 new tests. Backend 6411 passed / 16 failed — exactly the pre-existing 16, unchanged
+since item 1. No endpoint, so no `make client` and no frontend run.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `tests/domain/test_weekly_quiet_hours.py` | 18 | The weekly type and the midnight rule |
+| `tests/delivery/test_quiet_hours_overrides.py` | 24 | The table, the commands, the lapse, the Free user, the migration |
+| `tests/domain/test_quiet_hours.py` | **0 — and that is the result** | 24 existing single-window tests pass **unmodified** |
+
+That last row is the one that matters most. *"A Free user keeps exactly one window, with
+today's behaviour unchanged"* is not asserted by a new test claiming it; it is asserted by
+the 24 old tests never being touched, plus
+`test_one_window_every_day_is_the_same_answer_as_the_bare_window`, which compares the two
+shapes hour by hour across a whole week.
+
+### Mutation testing: five guards probed, one claim retracted
+
+Everything here is arithmetic that fails silently — a wrong answer is a plausible-looking
+timestamp, not an exception — so every branch was broken on purpose.
+
+| Mutation | Result |
+|---|---|
+| The previous day's window is never consulted | **3 failed** — caught |
+| Today's window uses `covers()` instead of its start side | **5 failed** — caught |
+| The **earlier** end wins (`max` → `min`) | **63 passed** — **not caught** |
+| A single pass instead of the fixpoint loop | **1 failed** — caught |
+| Entitlement ignored; overrides always apply | **3 failed** — caught |
+
+The second is the dangerous one, and it is caught five times over: it is the "ask the
+instant's own weekday" rule, which would let a Saturday-night setting govern Saturday
+*morning*.
+
+**The third is a claim I had to retract.** The acceptance criterion says a send must
+*"defer to the later end, not the earlier one"*, and I wrote `max(ends)` and a docstring
+saying the later end wins. Mutation testing says otherwise: `min` produces the identical
+answer. The reason is that coverage is a union of intervals and the loop steps forward
+inside it until nothing covers the instant, so **it exits at the right-hand end of the run
+of overlapping windows whichever end it steps to first**. `max` only gets there in fewer
+passes.
+
+So the criterion is met — `test_two_windows_covering_one_instant_defer_to_the_later_end`
+asserts the right instant and passes — but **the loop is what makes it true, and `max` is an
+optimisation**. The docstring now says that, including the mutation result, rather than
+crediting the wrong line.
+
+### A test that found something before the code existed
+
+`has_sendable_gap` was in the approved design: a pure check so the command could refuse a
+week with no sendable moment. Writing its tests first made the fixture impossible to
+construct, and the arithmetic says why:
+
+> A window spans `(end − start) mod 1440` minutes, at most **1439** — a span of 0 is
+> `disabled`, not 24 hours. Closing every seam around the week needs the seven spans to sum
+> to 10080; seven windows sum to at most 7 × 1439 = **10073**. Every schedule leaves at
+> least **seven minutes** open.
+
+The function was deleted rather than shipped. `test_every_schedule_leaves_a_sendable_moment`
+replaces it, walking the worst case the arithmetic allows — seven maximal windows at every
+alignment of their starts, 10080 minutes each — and the proof lives in `MAX_DEFERRALS`'
+docstring, where it explains why a bound exists that can never be reached.

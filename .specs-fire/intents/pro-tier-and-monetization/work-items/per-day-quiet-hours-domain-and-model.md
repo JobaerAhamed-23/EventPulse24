@@ -5,10 +5,12 @@ title: Seven windows instead of one — reshaping quiet hours without breaking
 intent: pro-tier-and-monetization
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on:
   - subscription-model-and-entitlement
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T13:23:38.224Z
 ---
 
 # Work Item: Seven windows instead of one — reshaping quiet hours without breaking Free users
