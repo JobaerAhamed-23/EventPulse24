@@ -914,6 +914,36 @@ def test_the_detail_reports_the_mute_state():
     assert body["personal"]["muted"] is True
 
 
+def test_a_muted_event_still_reports_its_notice():
+    """FR-55/FR-54: **the mute and the notice are independent facts, and the read says both.**
+
+    Two docstrings in the production code defend this invariant and nothing proved it.
+    `services/detail_read.py` — *"a notice and a mute are different things, and a client
+    must not read 'muted' as 'there is nothing to say'"* — and `schemas.py` says the same
+    of the `muted` field.
+
+    **Why collapsing them would be a real bug, not a tidiness complaint.** The API reports
+    the two facts; the *client* decides what the mute reaches. And the mute's reach is
+    deliberately narrower than "everything": `delivery/services/state_notices.py` raises a
+    `cancelled` or `superseded` notice **despite** a mute, because FR-55 has already pulled
+    the event from the digest and silence about a cancellation is the one failure with no
+    second channel to catch it. A read that suppressed the notice whenever `muted` was true
+    would make that impossible to honour — the client would never learn the event was off.
+    """
+    event = make_event()
+    user = make_user()
+    make_mute(user_id=user.pk, event_id=event.id)
+    notice = make_notice(user_id=user.pk, event_id=event.id, kind="cancelled")
+
+    body = signed_in(user).get(detail_url(event)).json()
+
+    # Both facts, side by side. Neither is derived from the other.
+    assert body["personal"]["muted"] is True
+    assert body["personal"]["notice"] is not None
+    assert body["personal"]["notice"]["id"] == str(notice.id)
+    assert body["personal"]["notice"]["change_kind"] == "cancelled"
+
+
 def test_an_unmuted_event_is_not_muted():
     event = make_event()
 

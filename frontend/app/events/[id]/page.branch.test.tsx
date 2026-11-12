@@ -363,6 +363,57 @@ describe("the metadata", () => {
     expect(metadata.openGraph?.images).toHaveLength(1);
   });
 
+  it("carries the Open Graph description — FR-28's third field", async () => {
+    // **FR-28: "The share-link is Open Graph-rich (title, description, image)."** The
+    // tags above assert the title and the image. The description was the one field of
+    // the three that nothing asserted, and it is the one that degrades *silently*: an
+    // unfurl with a blank description still renders, still looks like a card, and tells
+    // the recipient nothing about the event.
+    readPublicEvent.mockResolvedValue({ kind: "found", page: publicPage() });
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: SLUG }) });
+
+    expect(metadata.openGraph?.description).toBe(
+      "A short, opinionated panel on building products that respect attention.",
+    );
+    const twitter = metadata.twitter as { description?: string };
+    expect(twitter.description).toBe(
+      "A short, opinionated panel on building products that respect attention.",
+    );
+  });
+
+  it("falls back to title and source when the event has no description", async () => {
+    // **The branch that makes "Open Graph-rich" true for every event, not most of them.**
+    // A sourced event with no description is ordinary — plenty of feeds carry a title, a
+    // time and nothing else. Without this fallback the unfurl would be a blank-bodied
+    // card; with it, the recipient at least learns what and from whom.
+    readPublicEvent.mockResolvedValue({
+      kind: "found",
+      page: publicPage({ description: null }),
+    });
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: SLUG }) });
+
+    expect(metadata.openGraph?.description).toBe(
+      "Designing for Calm — Brooklyn Arts Council",
+    );
+    // The description is never empty, whichever branch produced it.
+    expect(metadata.openGraph?.description).not.toBe("");
+  });
+
+  it("truncates a long description to 200 characters", async () => {
+    // Unfurl bodies are clipped by the consuming platform anyway; sending the whole
+    // thing just makes the document bigger. 200 is the implementation's own bound.
+    readPublicEvent.mockResolvedValue({
+      kind: "found",
+      page: publicPage({ description: "x".repeat(500) }),
+    });
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: SLUG }) });
+
+    expect(metadata.openGraph?.description).toHaveLength(200);
+  });
+
   it("carries the Twitter Card tags", async () => {
     readPublicEvent.mockResolvedValue({ kind: "found", page: publicPage() });
 

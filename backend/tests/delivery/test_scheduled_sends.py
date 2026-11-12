@@ -692,6 +692,46 @@ def test_a_plan_edited_to_zero_slots_cancels_every_send():
     assert pending_of(user).count() == 0
 
 
+def test_a_personal_events_plan_emptied_cancels_every_send():
+    """FR-20: "The user can remove all reminders" — on a **Personal Event**.
+
+    The sibling test above proves this for a `saved_event`, which is FR-9's target kind.
+    FR-20 is about Personal Events specifically, and the two kinds take different paths in
+    (`attach_default_plan` is called by `personalization` on creation for one and by the save
+    command for the other), so the cancellation is proven separately rather than assumed to
+    carry across. Without this, "remove all reminders" is proven to empty a personal event's
+    *plan* and to cancel a saved event's *sends* — and nothing proves a personal event stops
+    actually emailing.
+    """
+    from apps.delivery.services.reminder_plans import attach_default_plan, remove_all_reminders
+
+    user, target = uuid7(), a_target(catalog=False)
+    assert target.target_kind == "personal_event"
+
+    attach_default_plan(
+        user_id=user,
+        target_kind="personal_event",
+        target_id=target.target_id,
+        actor=Actor.user(user),
+        now=NOW,
+    )
+    mint_for_plan(user_id=user, target=target, slots=ALL_SLOTS, actor=Actor.user(user), now=NOW)
+    assert pending_of(user).count() == 4
+
+    remove_all_reminders(
+        user_id=user,
+        target_kind="personal_event",
+        target_id=target.target_id,
+        actor=Actor.user(user),
+        now=NOW,
+        send_target=target,
+    )
+
+    # No pending send survives: removing the reminders actually stops the reminders,
+    # rather than only emptying the plan the UI reads.
+    assert pending_of(user).count() == 0
+
+
 def test_a_kept_slot_keeps_its_row_and_its_key():
     """`resync_plan` cancels only what was dropped. Spending a kept slot's key would leave it
     unable to be re-minted."""
