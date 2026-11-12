@@ -3,6 +3,12 @@
 This is the fake the tests use. It owns the notion of "now", so a test can pin the window
 boundary exactly — no sleeping, no Redis, no timing flake. That is what makes the throttle
 limit deterministically testable, which the work item asks for.
+
+**The window is fixed, and it is anchored at the first attempt in it** — the same rule the
+port states and the Redis adapter implements. The fake exists to stand in for the real
+adapter, so it must not answer a differently-shaped question: a window that slid from the
+last attempt would let the fake and the real adapter disagree about the same call, and a
+test written against the fake would then be pinning behaviour production does not have.
 """
 
 import time
@@ -26,13 +32,31 @@ class InMemoryThrottleAdapter(ThrottlePort):
 
     def check(self, key: str, *, limit: int, window_seconds: int) -> ThrottleDecision:
         moment = self._now()
-        cutoff = moment - window_seconds
-        attempts = [t for t in self._attempts.get(key, ()) if t > cutoff]
-        attempts.append(moment)
+        attempts = self._attempts.get(key, ())
+        # **The window is fixed, and it is anchored at the first attempt in it.** The port
+        # says so — "the count resets `window_seconds` after the first attempt in it" — and
+        # the Redis adapter implements exactly that: `EXPIRE` is set only when the count
+        # is 1, so the window slides from the *first* attempt and not from the last one.
+        #
+        # The window therefore closes when `first + window_seconds` passes, and **every**
+        # attempt made since the first one counts against the limit — including the ones
+        # that were refused. That is what makes a refusal cost the user no extra time: a
+        # refused attempt does not move the anchor, so the bucket frees up on the schedule
+        # the first attempt set.
+        #
+        # A window that slid from the *last* attempt instead would let a client keep a
+        # bucket alive forever by attempting just often enough, and would make the two
+        # adapters disagree about the same call — which is the one thing a test double
+        # must never do.
+        if attempts and attempts[0] + window_seconds <= moment:
+            # The window has closed. The next attempt starts a new one.
+            attempts = ()
+        attempts = (*attempts, moment)
         self._attempts[key] = attempts
 
         if len(attempts) <= limit:
             return ThrottleDecision(allowed=True)
-        # The window frees up when the oldest attempt in it falls out.
+        # The window frees up when it closes, which is `window_seconds` after the first
+        # attempt in it.
         retry_after = max(1, int(attempts[0] + window_seconds - moment) + 1)
         return ThrottleDecision(allowed=False, retry_after_seconds=retry_after)

@@ -28,6 +28,11 @@ const USER = {
   onboarding: { completed: true, current_step: null },
 };
 
+/** The route's props, with an optional `next`. */
+function props(next?: string) {
+  return { searchParams: Promise.resolve(next === undefined ? {} : { next }) };
+}
+
 beforeEach(() => {
   getSession.mockReset();
   redirect.mockReset();
@@ -37,7 +42,25 @@ describe("/signin", () => {
   it("sends a visitor whose session is still valid to the home", async () => {
     getSession.mockResolvedValue({ kind: "signed-in", user: USER });
 
-    await SigninPage();
+    await SigninPage(props());
+
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
+  it("sends a visitor whose session is still valid to where they were going", async () => {
+    getSession.mockResolvedValue({ kind: "signed-in", user: USER });
+
+    await SigninPage(props("/pricing"));
+
+    expect(redirect).toHaveBeenCalledWith("/pricing");
+  });
+
+  it("refuses to redirect to somewhere off this site", async () => {
+    // **The open redirect, caught.** A visitor whose cookie is still valid would be sent
+    // straight to the attacker's page — no sign-in at all.
+    getSession.mockResolvedValue({ kind: "signed-in", user: USER });
+
+    await SigninPage(props("https://attacker.example/steal"));
 
     expect(redirect).toHaveBeenCalledWith("/");
   });
@@ -45,7 +68,7 @@ describe("/signin", () => {
   it("renders the form for an anonymous visitor", async () => {
     getSession.mockResolvedValue({ kind: "anonymous" });
 
-    render(await SigninPage());
+    render(await SigninPage(props()));
 
     expect(redirect).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeInTheDocument();
@@ -57,7 +80,7 @@ describe("/signin", () => {
     // Somebody trying to sign in during an outage should see the form, not a bounce.
     getSession.mockResolvedValue({ kind: "unavailable" });
 
-    render(await SigninPage());
+    render(await SigninPage(props()));
 
     expect(redirect).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
@@ -66,7 +89,7 @@ describe("/signin", () => {
   it("offers the cross-link to sign-up and the privacy line, as drawn", async () => {
     getSession.mockResolvedValue({ kind: "anonymous" });
 
-    render(await SigninPage());
+    render(await SigninPage(props()));
 
     expect(screen.getByRole("link", { name: "Sign up →" })).toHaveAttribute("href", "/signup");
     expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");

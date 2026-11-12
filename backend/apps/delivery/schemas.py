@@ -140,6 +140,38 @@ class QuietHoursOut(Schema):
     end: time
 
 
+class QuietHoursOverrideOut(Schema):
+    """One weekday's quiet-hours window, as stored (FR-51).
+
+    `weekday` is **Monday 0 through Sunday 6** — `date.weekday()`, the same numbering the
+    domain and the table use, because a second numbering is a conversion waiting to be got
+    wrong.
+
+    **These are the windows the user stored, not necessarily the ones in force.** A lapsed
+    Pro account still has its seven here, because they are the user's own data and are never
+    deleted. What is actually applied is `effective_quiet_hours`.
+    """
+
+    weekday: int
+    start: time
+    end: time
+
+
+class EffectiveQuietHoursOut(Schema):
+    """One weekday of the schedule the delivery path will actually use (FR-51).
+
+    **Read-only, and derived.** It is the base window with a Pro account's overrides laid
+    over it; for a Free or lapsed account it is the base window on all seven days whatever
+    `quiet_hours_overrides` holds. It exists so a lapsed user is never shown seven windows
+    that are not in force — the one honest answer to "when will I actually be quiet".
+
+    `quiet_hours` is `null` on a day with no quiet hours at all.
+    """
+
+    weekday: int
+    quiet_hours: QuietHoursOut | None
+
+
 class DigestScheduleOut(Schema):
     """When and where the daily digest is due.
 
@@ -161,6 +193,10 @@ class NotificationSettingsOut(Schema):
     """
 
     quiet_hours: QuietHoursOut | None
+    #: The per-weekday overrides as stored. Empty for an account that has never set any.
+    quiet_hours_overrides: list[QuietHoursOverrideOut]
+    #: **Read-only.** Seven entries, Monday first: what the scheduler will actually apply.
+    effective_quiet_hours: list[EffectiveQuietHoursOut]
     default_reminder_slots: list[str]
     digest: DigestScheduleOut
 
@@ -168,10 +204,24 @@ class NotificationSettingsOut(Schema):
     def from_view(cls, view: NotificationSettingsView) -> "NotificationSettingsOut":
         """Project the read's plain data onto the wire shape."""
         window = view.quiet_hours
+        effective = view.effective_quiet_hours
         return cls(
             quiet_hours=(
                 QuietHoursOut(start=window.start, end=window.end) if window is not None else None
             ),
+            quiet_hours_overrides=[
+                QuietHoursOverrideOut(weekday=weekday, start=override.start, end=override.end)
+                for weekday, override in sorted(view.quiet_hours_overrides.items())
+            ],
+            effective_quiet_hours=[
+                EffectiveQuietHoursOut(
+                    weekday=weekday,
+                    quiet_hours=(
+                        QuietHoursOut(start=day.start, end=day.end) if day is not None else None
+                    ),
+                )
+                for weekday, day in enumerate(effective.windows)
+            ],
             default_reminder_slots=list(view.default_reminder_slots),
             digest=DigestScheduleOut(delivery_time=view.delivery_time, timezone=view.timezone),
         )
@@ -187,6 +237,19 @@ class QuietHoursIn(Schema):
     """
 
     start: time = Field(description="When quiet hours begin, as a local wall clock.")
+    end: time = Field(description="When quiet hours end, as a local wall clock.")
+
+
+class QuietHoursOverrideIn(Schema):
+    """One weekday's quiet-hours window to save (FR-51).
+
+    `weekday` is Monday 0 through Sunday 6. A full-day window (`start == end`) is refused
+    here exactly as it is for the base window, and **the whole list is validated before any
+    of it is written**, so a bad seventh window does not leave six applied.
+    """
+
+    weekday: int = Field(ge=0, le=6, description="Monday 0 through Sunday 6.")
+    start: time = Field(description="When quiet hours begin that day, as a local wall clock.")
     end: time = Field(description="When quiet hours end, as a local wall clock.")
 
 
@@ -226,6 +289,16 @@ class NotificationSettingsIn(Schema):
             "The Quiet Hours window, as two local wall clocks. **Omit this field to leave "
             "the window alone; send `null` to turn quiet hours off.** A full-day window "
             "(the same clock twice) is refused."
+        ),
+    )
+    quiet_hours_overrides: list[QuietHoursOverrideIn] | None = Field(
+        default=None,
+        description=(
+            "A quiet-hours window per weekday — **a Pro feature**. Omit this field to "
+            "leave your per-day windows alone; send `[]` to remove them all and go back "
+            "to one window for the whole week. The list **replaces** your weekdays rather "
+            "than merging into them, and the whole week is applied in one transaction. A "
+            "Free account sending a non-empty list is refused with an upgrade hint."
         ),
     )
     default_reminder_slots: list[str] | None = Field(

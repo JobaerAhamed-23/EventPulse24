@@ -26,8 +26,7 @@ def test_real_mode_fails_and_names_every_missing_adapter():
         adapter_paths("real")
 
     assert str(excinfo.value) == (
-        "ADAPTER_MODE=real is not available yet: "
-        "no real adapter for billing, email, embedding, llm."
+        "ADAPTER_MODE=real is not available yet: no real adapter for email, embedding, llm."
     )
 
 

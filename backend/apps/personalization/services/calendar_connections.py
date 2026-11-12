@@ -35,6 +35,7 @@ from django.db import connections, transaction
 from django.utils import timezone
 
 from apps.delivery.services.reminder_plans import remove_plans_for_targets
+from apps.identity.services import is_pro
 from apps.personalization.credentials import fingerprint
 from apps.personalization.models import CalendarConnection, ConflictPair, PersonalEvent
 from apps.personalization.services.audit import write_audit
@@ -48,7 +49,11 @@ from domain.errors import (
 from ports.calendar import Credential
 from ports.fetch_policy import fetch_deny_policy
 from shared.actor import Actor
-from shared.constants import CALENDAR_CLAIM_TTL, FREE_TIER_CALENDAR_PROVIDER_CAP
+from shared.constants import (
+    CALENDAR_CLAIM_TTL,
+    FREE_TIER_CALENDAR_PROVIDER_CAP,
+    PRO_TIER_CALENDAR_PROVIDER_CAP,
+)
 from shared.credential_key import InvalidCredentialKey, parse_key
 from shared.db import PERSONAL
 
@@ -301,6 +306,26 @@ def _slot_count(user_id) -> int:
     )
 
 
+def _provider_cap(user_id) -> int:
+    """How many providers this user's tier lets them connect (FR-50).
+
+    **One rule with two values, not two rules.** The choice is made by `is_pro` — the
+    single published entitlement read — so this module never develops its own idea of
+    who is Pro, and cannot disagree with the rest of the product about it.
+
+    A Pro user holds up to three providers; a Free user holds one.
+
+    **A Pro user who lapses keeps what they have.** This cap is enforced at the
+    *connect* step, so a lapse closes the door behind the user rather than taking the
+    connections they already hold away from them. Nothing here deletes anything: what
+    happens to over-cap data on a downgrade is an open question in the brief, and
+    answering it here would be answering it quietly.
+    """
+    if is_pro(user_id=user_id):
+        return PRO_TIER_CALENDAR_PROVIDER_CAP
+    return FREE_TIER_CALENDAR_PROVIDER_CAP
+
+
 def connect_calendar(
     *,
     user_id,
@@ -402,14 +427,20 @@ def connect_calendar(
         #    on this path let a user end up with two active calendars on a one-calendar
         #    plan. The count is taken over the occupying statuses either way; the
         #    reuse path simply does not add to it.
+        #
+        #    **The cap is the user's tier's cap, not a fixed one.** A Pro user holds up
+        #    to three providers; a Free user holds one. The choice is made by the one
+        #    published entitlement read, so there is no second mapping of "who is Pro"
+        #    that could disagree with the rest of the product.
+        cap = _provider_cap(user_id)
         occupying = _slot_count(user_id)
         if existing is not None:
             # The row being reused is already counted, so it does not add a slot.
             occupying -= 1
-        if occupying >= FREE_TIER_CALENDAR_PROVIDER_CAP:
+        if occupying >= cap:
             raise CalendarProviderCapReached(
                 details={
-                    "cap": FREE_TIER_CALENDAR_PROVIDER_CAP,
+                    "cap": cap,
                     # The approved copy is an **inline** prompt with a quiet "Upgrade"
                     # link, not a modal (EXPERIENCE.md §3, the Free-tier cap prompt; and
                     # §4, the Browse save-quota-exceeded line). So the hint is one calm

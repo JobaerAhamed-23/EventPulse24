@@ -20,6 +20,7 @@ from uuid import UUID
 from ninja import Schema
 
 from apps.personalization.schemas import OnboardingStatusOut
+from ports.billing import ProPlan
 
 
 class SignUpIn(Schema):
@@ -142,3 +143,95 @@ class CsrfTokenOut(Schema):
     """
 
     csrf_token: str
+
+
+class CheckoutIn(Schema):
+    """The checkout request: which plan to buy.
+
+    **The plan is the only field.** There is deliberately no `success_url`, no
+    `cancel_url` and no `return_url`, and that absence is the security property rather
+    than an oversight: the URLs handed to the provider are built from configuration, so a
+    client cannot name one. Taking the redirect target from the request is the classic
+    open-redirect in a checkout flow — a crafted target sends a paying user (and the
+    session id in the query string) to somebody else's site.
+
+    The plan is an enum, so an unknown one is a 422 at the edge rather than a provider
+    error later.
+    """
+
+    plan: ProPlan
+
+
+class CheckoutOut(Schema):
+    """The checkout answer: the URL to send the user to.
+
+    **It carries no entitlement, and asking for one here would be a lie.** The user is not
+    Pro when this response is written; they are Pro when the provider's webhook lands,
+    which may be later or never. So there is no `is_pro` field, no status and no plan
+    echo: the answer is a URL and nothing else.
+    """
+
+    url: str
+
+
+class PortalOut(Schema):
+    """The portal answer: the URL to send the user to.
+
+    Same shape as the checkout answer and for the same reason — the URL is the whole
+    answer, and nothing about the subscription rides along with it.
+    """
+
+    url: str
+
+
+class SubscriptionOut(Schema):
+    """The caller's entitlement: one bool and nothing else.
+
+    **The minimum, on purpose.** This answers exactly one question — *may this person buy
+    a plan?* — and the answer is a bool. There is no plan name, no renewal date and no
+    status here, because the fuller subscription record belongs to the account-and-billing
+    surface, which needs a wider read and builds it there. A field here would be a field
+    two callers could disagree about.
+
+    **It is a read of the caller's own entitlement.** There is no user id in the request
+    and none in the response: the user comes from the session, so a caller cannot ask
+    about somebody else.
+    """
+
+    is_pro: bool
+
+
+class BillingAccountOut(Schema):
+    """The account screen's view of a plan (FR-48).
+
+    **The wider read `SubscriptionOut` deliberately refused to become.** That schema stays
+    one bool because *"a field here would be a field two callers could disagree about"*;
+    this one carries the state a person needs to act on their own subscription, and the two
+    cannot disagree because `is_pro` here is computed from the same
+    `LIVE_SUBSCRIPTION_STATUSES` the entitlement read uses.
+
+    **`needs_payment` is the field this schema exists for.** `is_pro` is true for a
+    `past_due` account — a failed payment leaves someone entitled while they fix it — so a
+    screen that could only see the bool would show a person with a recoverable problem
+    exactly what it shows a person with none.
+
+    **`period_end` is not a renewal date**, and is not named as one. This product does not
+    model `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads
+    `active` until its term runs out and nothing here can tell them apart. The field says
+    when the current term ends, which is true in both cases.
+    """
+
+    #: `active`, `past_due`, `canceled`, `expired` — or `null` for an account that never
+    #: subscribed.
+    status: str | None
+    #: `monthly` or `yearly`, or `null`.
+    plan: str | None
+    #: When the current term ends, if known. **Not a renewal date** — see the docstring.
+    period_end: str | None
+    #: Whether Pro is available right now. True for `past_due`.
+    is_pro: bool
+    #: Whether a payment failed and the portal is where to fix it.
+    needs_payment: bool
+    #: Whether this account ever had Pro, so the Free state can read as "ended" rather than
+    #: as "never started".
+    had_pro: bool

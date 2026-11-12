@@ -18,6 +18,8 @@ from apps.personalization.models import (
     PersonalEvent,
     PersonalizationAuditEntry,
     PulseDigest,
+    SavedCollection,
+    SavedCollectionItem,
     SavedEvent,
 )
 from shared.db import PERSONAL
@@ -71,6 +73,24 @@ class SavedEventFactory(PersonalFactory):
     start_utc = FIRST_START
     end_utc = FIRST_START + timedelta(hours=2)
     event_version = 1
+
+
+class SavedCollectionFactory(PersonalFactory):
+    class Meta:
+        model = SavedCollection
+
+    user_id = factory.LazyFunction(uuid7)
+    name = factory.Sequence(lambda n: f"Collection {n}")
+    # Dense within a user; tests that care about the order set it explicitly.
+    position = factory.Sequence(lambda n: n)
+
+
+class SavedCollectionItemFactory(PersonalFactory):
+    class Meta:
+        model = SavedCollectionItem
+
+    collection = factory.SubFactory(SavedCollectionFactory)
+    saved_event = factory.SubFactory(SavedEventFactory)
 
 
 class ConflictPairFactory(PersonalFactory):

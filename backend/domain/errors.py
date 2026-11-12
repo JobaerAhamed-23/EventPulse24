@@ -198,6 +198,127 @@ class CalendarProviderCapReached(ConflictError):
     default_message = "You've connected the calendars your plan allows."
 
 
+class SaveCapReached(ConflictError):
+    """The account has used the saves its tier allows in this window (FR-49).
+
+    **A conflict, not a rate limit.** The request is well-formed and the event is
+    perfectly saveable; it is the *state of the account* that refuses it, because the
+    account has already spent its allowance. A 429 would say "come back later", and the
+    remedy here is not to wait — it is to upgrade. So this is a 409, the same shape as
+    `CalendarProviderCapReached`, which is the reference for the payload too.
+
+    **Its own `code`, because the save endpoint already answers 409.** A conflicting save
+    answers 409 with `SchedulingConflictError`, and the two must be told apart by the
+    client without guessing. `save_cap_reached` and `calendar_cap_reached` are different
+    facts about different limits.
+
+    **`details` carries the cap and one upgrade sentence** — `{"cap", "upgrade_hint"}`, and
+    nothing else. The hint is an **inline** prompt with a quiet "Upgrade" link, not a modal
+    (EXPERIENCE.md §3, the Free-tier cap prompt), so the payload carries no modal-shaped
+    field at all: no `modal`, no `title`, no `actions`, no `dismissable`.
+    """
+
+    code = "save_cap_reached"
+    default_message = "You've used your free save for today."
+
+
+class QuietHoursProRequired(ConflictError):
+    """Per-weekday quiet hours are a Pro feature, and this account is not Pro (FR-51).
+
+    **A conflict, not a 403.** The request is well-formed and the windows are perfectly
+    storable; it is the *state of the account* that refuses them. A 403 would say "you may
+    not do this", and the remedy here is not a permission grant — it is an upgrade. That is
+    the same reasoning that made `SaveCapReached` and `CalendarProviderCapReached` 409s, and
+    this carries their payload for the same reason.
+
+    **`details` carries `{"cap", "upgrade_hint"}`** — the cap being the one window a Free
+    account gets — so the inline upgrade prompt built for the save cap renders this with no
+    new component and no new copy path. As there, the payload carries **no modal-shaped
+    field**: no `modal`, no `title`, no `actions`, no `dismissable`. A paywall that
+    interrupts is the thing this product's posture is against.
+
+    **It refuses the write, never the read.** A lapsed Pro user's seven windows are their
+    own data and are never deleted, so they can always be read back; what a lapse removes is
+    their effect and the ability to change them. The read reports both the stored overrides
+    and the effective week, so nobody is shown seven windows that are not in force.
+    """
+
+    code = "quiet_hours_pro_required"
+    default_message = "Setting a different window for each day is part of Pro."
+
+
+class InvalidCollectionOrderError(ValidationError):
+    """A reorder did not name this user's collections exactly once each (FR-49).
+
+    **A client can send this, so it cannot be a `ValueError`.** The reorder body comes
+    straight off the wire, and a `ValueError` from the command layer reaches the caller as
+    a 500 — a server error for a request the server understood perfectly and chose to
+    refuse. This is a 422 with a sentence, like any other refused input.
+
+    **A partial list is refused rather than completed.** The collections it does not name
+    would have to be placed somewhere this code invented, and an order nobody asked for is
+    worse than a refusal.
+    """
+
+    code = "invalid_collection_order"
+    default_message = "That ordering doesn't match your collections."
+
+
+class CollectionsProRequired(ConflictError):
+    """Named collections are a Pro feature, and this account is not Pro (FR-49).
+
+    **A conflict, not a 403.** The request is well-formed and the collection is perfectly
+    storable; what refuses it is the *state of the account*, and the remedy is not a
+    permission grant but an upgrade. The same reasoning that made `SaveCapReached`,
+    `CalendarProviderCapReached` and `QuietHoursProRequired` 409s, and this carries their
+    payload for the same reason.
+
+    **`details` carries `{"cap", "upgrade_hint"}`** — the cap being zero, which is what a
+    Free account gets — so the inline prompt built for the save cap renders this with no new
+    component and no new copy path. As there, the payload carries **no modal-shaped field**:
+    no `modal`, no `title`, no `actions`, no `dismissable`.
+
+    **It refuses the two operations that add, never the ones that read or tidy.** A lapsed
+    Pro user keeps their collections, keeps reading them, and keeps renaming, reordering,
+    unassigning and deleting — what they lose is the ability to make the set bigger. The
+    brief forbids deleting a downgraded user's data, and a gate that froze their own names
+    and ordering would be punishing them for lapsing rather than bounding a tier.
+    """
+
+    code = "collections_pro_required"
+    default_message = "Collections are part of Pro."
+
+
+class CollectionNameTaken(ConflictError):
+    """This user already has a collection with this name (FR-49).
+
+    **A conflict, not a validation error.** The name is perfectly well-formed; what refuses
+    it is the state of the account — a collection already holds it. That is the same
+    distinction `AlreadySubscribedError` draws, and it is why the status is 409 rather than
+    422: nothing about the request needs correcting except the user's mind.
+
+    **Names are compared case-insensitively**, so "Weekend" collides with "weekend".
+    `saved_collection_user_name_uq` folds the case in the database; this error is what that
+    constraint looks like once it reaches a person. A list showing both spellings as two
+    collections would read as a bug to whoever made them.
+    """
+
+    code = "collection_name_taken"
+    default_message = "You already have a collection with that name."
+
+
+class CollectionNotFoundError(NotFoundError):
+    """The collection doesn't exist, or isn't the caller's (FR-49).
+
+    **One error for both cases, deliberately** — the same choice `SavedEventNotFoundError`
+    made. Telling a caller "it exists but is not yours" would confirm the existence of
+    another user's collection, and a name is user-written content.
+    """
+
+    code = "collection_not_found"
+    default_message = "We couldn't find that collection."
+
+
 class CalendarConnectionNotFoundError(NotFoundError):
     """The calendar connection does not exist, or is not the caller's (FR-50).
 
@@ -250,3 +371,41 @@ class OnboardingAlreadyCompleteError(ConflictError):
 
     code = "onboarding_already_complete"
     default_message = "You've already finished setting things up."
+
+
+class AlreadySubscribedError(ConflictError):
+    """The caller already holds a live subscription, so a second checkout is refused (FR-48).
+
+    **A conflict, not a bad request.** The request is well-formed and the plan is one this
+    product sells; it conflicts with the *state of the account*, which is what a 409 means.
+    A 400 would say "your request was wrong", and it was not.
+
+    The refusal points at the portal, because that is where an existing subscription is
+    actually managed — changing card, changing plan, cancelling. Sending a paying user to
+    a second checkout would create a second subscription they then have to notice and
+    cancel, which is a worse outcome than being told where to go.
+
+    `details` carries the portal path so the frontend can offer one clear next step rather
+    than inventing a route of its own.
+    """
+
+    code = "already_subscribed"
+    default_message = "Your Pro subscription is already active."
+
+
+class NoSubscriptionError(ConflictError):
+    """The caller asked for the customer portal but holds no subscription (FR-48).
+
+    The portal is where a **paying** user manages their plan, card and cancellation. A user
+    with no subscription has no customer reference, so there is nothing for the provider to
+    open a session against — and saying so plainly is better than letting the caller reach
+    the provider and receive an error about a customer that does not exist.
+
+    It is a **conflict**, not a malformed request: the request is well-formed; the account's
+    state is what refuses it. The message says plainly that there is no subscription to
+    manage, because the only sensible next step for someone with no subscription is to start
+    one — and the frontend decides where that step leads.
+    """
+
+    code = "no_subscription"
+    default_message = "You don't have a subscription to manage yet."

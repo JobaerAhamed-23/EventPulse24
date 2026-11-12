@@ -12,6 +12,11 @@ import Link from "next/link";
  * because this footer is shared with `/preview`, which is built next and draws the same
  * block. "How it works", Privacy and Terms point at routes that do not exist yet either,
  * and will 404 until they do; that is the mockups' link list, not an invention here.
+ *
+ * **Pricing is here because the footer is the conversion surface.** "Log in" and "Sign up
+ * free" live here, so the price of the paid tier belongs here too — a visitor who has to
+ * go hunting for it is a visitor who never finds out what Pro costs. The link is a real
+ * route: `/pricing` exists, so this is not one of the mockups' `#` placeholders.
  */
 
 const LINKS = [
@@ -19,6 +24,7 @@ const LINKS = [
   { href: "#", label: "About" },
   { href: "/privacy", label: "Privacy" },
   { href: "#", label: "Contact" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/signin", label: "Log in" },
   { href: "/signup", label: "Sign up free" },
 ];

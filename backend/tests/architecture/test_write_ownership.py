@@ -56,10 +56,19 @@ TABLE_OWNERS = {
     # is part of the account, and it is written by identity's own commands.
     "identity_user": "identity",
     "identity_passwordresettoken": "identity",
+    # FR-48: `identity/__init__.py` has always said "Owns User and Subscription". Billing
+    # state is account state, and the app that can tell you an account exists is the one
+    # that tells you what it is entitled to. Written only by `services/subscriptions`.
+    "identity_subscription": "identity",
     # AD-16: `personalization` owns the personal entities. `INTEREST` and
     # `CALENDAR_CONNECTION` are this intent's additions to that set.
     "personalization_personalevent": "personalization",
     "personalization_savedevent": "personalization",
+    # FR-49's named collections and their membership rows. `personalization` already owns
+    # the saves they group, so it owns the groupings (AD-16).
+    "identity_dataexport": "identity",
+    "personalization_savedcollection": "personalization",
+    "personalization_savedcollectionitem": "personalization",
     "personalization_conflictpair": "personalization",
     "personalization_interest": "personalization",
     "personalization_calendarconnection": "personalization",
@@ -120,6 +129,11 @@ TABLE_OWNERS = {
     "delivery_notificationpreference": "delivery",
     # AD-16: `delivery` owns the schedule itself. AD-7 makes SCHEDULED_SEND rows "the sole
     # source of truth for what is due", and the minting service is their single writer.
+    # AD-16: `delivery` owns the per-weekday quiet-hours override too. It qualifies the
+    # window on `delivery_notificationpreference`, which `delivery` already owns, and it is
+    # read on the same hot path — so splitting ownership would put one window's two halves
+    # in two apps.
+    "delivery_quiethoursoverride": "delivery",
     "delivery_scheduledsend": "delivery",
     # AD-16: `delivery` owns FR-54's state-change notice. It is a delivery — the record
     # behind one email and two in-app surfaces — and `personalization` reads it through a

@@ -118,6 +118,22 @@ function prompt(): HTMLElement {
   return screen.getByRole("dialog", { name: "Schedule conflict" });
 }
 
+/**
+ * The *other* 409 the save answers with: the Free tier's one-save-a-day ceiling.
+ *
+ * It shares a status code with `CLASH_409` and nothing else, which is why the screen
+ * narrows on `code` rather than on which fields happen to be present.
+ */
+const SAVE_CAP_409 = {
+  data: undefined,
+  error: {
+    code: "save_cap_reached",
+    message: "You've used your free save for today.",
+    details: { cap: 1, upgrade_hint: "You saved one event today. Save more with Pro." },
+  },
+  response: { status: 409 },
+};
+
 describe("the action row", () => {
   it("offers Save and Share", () => {
     renderActions();
@@ -177,6 +193,102 @@ describe("the action row", () => {
     screen.getByRole("button", { name: "Saved to your Pulse" }).click();
 
     expect(POST).not.toHaveBeenCalled();
+  });
+});
+
+describe("the save cap", () => {
+  it("shows the inline upgrade prompt, in the server's own words", async () => {
+    POST.mockResolvedValue(SAVE_CAP_409);
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    const prompt = await screen.findByText("You saved one event today. Save more with Pro.");
+    expect(prompt.closest("[role='status']")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/pricing");
+  });
+
+  it("does not retry the refused save", async () => {
+    // The cap is final until the user upgrades. Re-sending would be refused again, and
+    // a button that keeps trying is what this screen avoids everywhere else.
+    POST.mockResolvedValue(SAVE_CAP_409);
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    await screen.findByText("You saved one event today. Save more with Pro.");
+    expect(POST).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not claim the event was saved, and does not call it a failure", async () => {
+    POST.mockResolvedValue(SAVE_CAP_409);
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    await screen.findByText("You saved one event today. Save more with Pro.");
+    // The save did not happen, so the button has not moved to "Saved to your Pulse"…
+    expect(screen.getByRole("button", { name: "Save to Pulse" })).toBeInTheDocument();
+    // …and nothing went wrong, so the generic refusal line is not shown instead.
+    expect(screen.queryByText(/Couldn't save that/)).not.toBeInTheDocument();
+  });
+
+  it("is not a modal, and does not interrupt the screen", async () => {
+    POST.mockResolvedValue(SAVE_CAP_409);
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    await screen.findByText("You saved one event today. Save more with Pro.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The row behind it is untouched — Save and Share are both still operable.
+    expect(screen.getByRole("button", { name: "Save to Pulse" })).toBeEnabled();
+  });
+
+  it("renders a reworded hint without a frontend change", async () => {
+    POST.mockResolvedValue({
+      ...SAVE_CAP_409,
+      error: {
+        ...SAVE_CAP_409.error,
+        details: { cap: 3, upgrade_hint: "Three a day is the free plan. Pro has no limit." },
+      },
+    });
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    expect(
+      await screen.findByText("Three a day is the free plan. Pro has no limit."),
+    ).toBeInTheDocument();
+  });
+
+  it("never appears for a Pro user, because their save is not refused", async () => {
+    // The acceptance criterion, stated where it is actually true. Entitlement is not a
+    // client-side flag this screen holds and could get wrong — including right after an
+    // upgrade with no reload. A Pro user's save simply succeeds, and a prompt that only
+    // renders on a refusal has nothing to render.
+    POST.mockResolvedValue({ data: { id: "saved-1" }, response: { status: 201 } });
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Saved to your Pulse" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("link", { name: "Upgrade" })).toBeNull();
+    expect(screen.queryByText(/Save more with Pro/)).toBeNull();
+  });
+
+  it("leaves the scheduling conflict on its own path", async () => {
+    // The regression this narrowing exists to prevent: the other 409 must still open
+    // the conflict sheet, and must not render an upgrade prompt.
+    POST.mockResolvedValue(CLASH_409);
+
+    renderActions();
+    screen.getByRole("button", { name: "Save to Pulse" }).click();
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "Upgrade" })).toBeNull();
   });
 });
 

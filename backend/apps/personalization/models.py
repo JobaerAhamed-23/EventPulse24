@@ -13,6 +13,7 @@ the save-race protocol) belongs to the commands.
 """
 
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 # Aliased as well, because `PulseDigest` has a field named `timezone`, and a field that
@@ -655,6 +656,19 @@ class DigestPreference(UUIDv7Model):
     city_source = models.CharField(max_length=16, choices=CitySource.choices, null=True, blank=True)
     # FR-19 / PRD [ASSUMPTION-7]: personal events are included unless the user opts out.
     include_personal_events = models.BooleanField(default=True)
+    #: Whether this user's own event locations may leave the product in full (FR-52).
+    #:
+    #: **It defaults to `True`, and the default is the only thing a user has until a
+    #: toggle exists.** DESIGN.md A-14 specifies the control; no surface writes this yet,
+    #: so the export's redaction branch is reachable today only by a direct write. That is
+    #: recorded rather than hidden: a privacy control with no UI is half a control.
+    #:
+    #: **It is about *export*, not about the digest.** `include_personal_events` above says
+    #: what goes *into* the digest; this says whether a location leaves the product when the
+    #: user asks for their data. Conflating them would let one checkbox govern two unrelated
+    #: things, and a user who hid personal events from their own digest would be surprised
+    #: to find their addresses stripped from their own download.
+    share_precise_location = models.BooleanField(default=True)
     # When the scheduler's claim on this user's daily digest is held (AD-7).
     #
     # **Null means unclaimed.** The dispatcher takes the claim with `FOR UPDATE SKIP
@@ -1099,3 +1113,124 @@ class EventReport(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"{self.user_id} reported {self.event_id}: {self.category}"
+
+
+class SavedCollection(UUIDv7Model):
+    """One user's named, ordered grouping of their saves (FR-49).
+
+    FR-49 is the requirement that reached MVP with no design: TRACEABILITY.md records
+    *"Nothing designed. 'Named collections' exists only as a marketing bullet"*. This is the
+    storage it never got.
+
+    **It groups the user's saves, never the catalog's events.** Membership points at
+    `SavedEvent`, which already holds the catalog Event's id by value. Nothing here relates
+    to `catalog`, so AD-3's wall is never approached, and a collection is as personal as the
+    saves it holds.
+
+    **No tier is stored or checked here, deliberately.** Gating belongs to
+    `saved-collections-api`, because a lapsed Pro user's collections must stay readable —
+    the brief forbids deleting over-cap data on downgrade. A model that refused on tier
+    could not express "yours, still here, currently read-only".
+
+    **`position` is dense: `0..n-1`, with no gaps and no ties.** The acceptance criterion
+    asks for exactly that, which is why this is an integer and not a fractional rank — a
+    fractional rank is *defined* by leaving gaps to insert into. The cost is that a reorder
+    renumbers, and a renumber transiently puts two rows on one position, so
+    `saved_collection_user_position_uq` is **deferred to commit**. Postgres checks it when
+    the list is whole again; a plain constraint would reject the middle of a legal reorder.
+
+    **The name is stored exactly as the user typed it and compared case-insensitively.**
+    `Lower(name)` in the unique constraint means "Weekend" and "weekend" are one name for
+    one user — a list showing both reads as a bug to the person who made them — while the
+    row keeps the capitalisation they chose.
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    name = models.CharField(max_length=80)
+    #: `0..n-1` within one user, dense and unique. See the class docstring.
+    position = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # Case-insensitive: "Weekend" and "weekend" are one name. Stored verbatim.
+            models.UniqueConstraint(
+                "user_id",
+                Lower("name"),
+                name="saved_collection_user_name_uq",
+            ),
+            # **Deferred on purpose.** A reorder renumbers the whole list in one
+            # transaction and is transiently inconsistent; the list is what must be
+            # unique, not every intermediate state of it.
+            models.UniqueConstraint(
+                fields=["user_id", "position"],
+                name="saved_collection_user_position_uq",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(name=""), name="saved_collection_name_not_blank_ck"
+            ),
+        ]
+        indexes = [
+            # The list read: one user's collections, in their order.
+            models.Index(fields=["user_id", "position"], name="saved_collection_user_pos_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class SavedCollectionItem(UUIDv7Model):
+    """That one of a user's saves is in one of their collections (FR-49).
+
+    **Membership is explicit, and that is an acceptance criterion rather than a style
+    choice.** A row per `(collection, saved_event)` is what lets one save belong to two
+    collections, lets a collection be empty, and keeps a save from ever being filed
+    somewhere the user did not put it. An array column on `SavedEvent` would make "which
+    collections is this save in?" a scan, and could not be constrained.
+
+    **The two foreign keys are the first in `personal`, and they are here on purpose.**
+    Every other model in this schema holds its references by value. These do not, because
+    the acceptance criteria are *about* referential behaviour: deleting a collection must
+    leave its saves intact, and unsaving an event must not strand a membership row. Both
+    `CASCADE`s say so declaratively, in the one place that cannot be forgotten on some
+    future code path. Neither crosses an app or a schema — `ingestion` holds seventeen such
+    keys — so AD-3 is not in question.
+
+    **Deleting a collection deletes these rows and no `SavedEvent`.** That is the single
+    delete this intent permits: it removes a grouping, not the user's content, and the saves
+    inside simply become uncollected.
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    #: This table holds no `user_id`: its user is the collection's. Export reads this
+    #: rather than carrying a list of exceptions of its own (FR-52).
+    export_user_path = "collection__user_id"
+
+    collection = models.ForeignKey(SavedCollection, on_delete=models.CASCADE, related_name="items")
+    saved_event = models.ForeignKey(
+        SavedEvent, on_delete=models.CASCADE, related_name="collection_items"
+    )
+    added_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # A save is in a collection once. Adding it twice is the same statement.
+            models.UniqueConstraint(
+                fields=["collection", "saved_event"],
+                name="saved_collection_item_membership_uq",
+            ),
+        ]
+        indexes = [
+            # "Which collections is this save in?" — the question an array column could
+            # not answer without a scan.
+            models.Index(fields=["saved_event"], name="saved_coll_item_save_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.saved_event_id} in {self.collection_id}"

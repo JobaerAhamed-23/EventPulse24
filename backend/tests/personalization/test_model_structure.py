@@ -22,13 +22,49 @@ from apps.personalization.models import (
 MODELS = [PersonalEvent, SavedEvent, ConflictPair, PulseDigest, DigestComposition]
 
 
-@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
-def test_personal_model_declares_no_relation_field(model):
-    # A relation field is the only way to make Postgres create a foreign key constraint, and
-    # the only way the ORM could join across the wall.
-    relations = [field.name for field in model._meta.get_fields() if field.is_relation]
+#: The apps whose models live on the other side of the AD-3 wall.
+CATALOG_APPS = {"ingestion", "catalog", "editorial"}
 
-    assert relations == []
+#: Relations OQ-8 forbids by name, wherever the model lives.
+FORBIDDEN_TARGETS = {"user", "contenttype"}
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
+def test_no_personal_model_relates_across_the_wall(model):
+    """**A relation is forbidden for what it reaches, not for existing.**
+
+    This test asserted that these models had *zero* relation fields of any kind. That was a
+    wider net than any rule it cited, and FR-49's collections are what found the gap: a
+    membership table inside `personal`, pointing at `SavedEvent`, crosses nothing — but it
+    hangs a reverse accessor on `SavedEvent`, which the old assertion counted as a
+    violation. A reverse accessor is not even a column; Postgres puts the constraint on the
+    *other* table.
+
+    So the rule is now its three reasons, stated:
+
+    - nothing in `personal` may relate to `catalog` (AD-3);
+    - nothing may relate to `User` or `ContentType` (OQ-8);
+    - a saved public event holds its `event_id` by value (AD-21), which
+      `test_saved_event_event_id_is_a_plain_uuid_field` pins directly.
+
+    **What was given up is worth naming.** The blanket version made any foreign key in
+    `personal` a build break, which is a cheaper signal than a judgement about what the key
+    points at. The three invariants themselves keep their own dedicated tests — including
+    `test_no_foreign_key_crosses_from_personal_to_catalog`, which reads the live database
+    rather than the metadata — so the wall is still enforced by something that cannot be
+    satisfied by a model declaration.
+    """
+    for field in model._meta.get_fields():
+        if not field.is_relation or field.related_model is None:
+            continue
+        related = field.related_model._meta
+
+        assert related.app_label not in CATALOG_APPS, (
+            f"{model.__name__}.{field.name} relates to {related.label}, across the AD-3 wall"
+        )
+        assert related.model_name not in FORBIDDEN_TARGETS, (
+            f"{model.__name__}.{field.name} relates to {related.model_name} (OQ-8)"
+        )
 
 
 def test_saved_event_event_id_is_a_plain_uuid_field():

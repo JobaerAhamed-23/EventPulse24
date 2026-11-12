@@ -78,7 +78,7 @@ from apps.delivery.send_keys import (
 from apps.delivery.services.audit import write_audit
 from apps.delivery.services.notification_preferences import get_preference
 from apps.delivery.services.slots import custom_slot_minutes
-from domain.quiet_hours import QuietHours, shift_to_sendable
+from domain.quiet_hours import Window, shift_to_sendable
 from ports.email import Stream
 from shared.actor import Actor
 from shared.constants import (
@@ -293,7 +293,7 @@ def mint_digest(
     # names. A row that carried only `due_at` could not be re-timed, because the shift
     # loses the original.
     slot_at = _local_delivery_instant(local_date=local_date, delivery_time=delivery_time, zone=zone)
-    due_at = shift_to_sendable(slot_at, window=preference.quiet_hours, zone=zone)
+    due_at = shift_to_sendable(slot_at, window=preference.effective_quiet_hours, zone=zone)
 
     send_key = digest_key(user_id=user_id, local_date=local_date)
     with transaction.atomic(using=PERSONAL):
@@ -384,7 +384,10 @@ def mint_for_plan(
         if slot_at is None:
             continue
         due_at = slot_due_at(
-            start_utc=target.start_utc, slot=slot, zone=zone, window=preference.quiet_hours
+            start_utc=target.start_utc,
+            slot=slot,
+            zone=zone,
+            window=preference.effective_quiet_hours,
         )
         if due_at is None or due_at <= now:
             continue
@@ -467,7 +470,7 @@ def mint_state_notice(
     """
     preference = get_preference(user_id=user_id)
     zone = zone_for(user_id)
-    due_at = shift_to_sendable(now, window=preference.quiet_hours, zone=zone)
+    due_at = shift_to_sendable(now, window=preference.effective_quiet_hours, zone=zone)
     if event_start_utc is not None:
         latest_useful = event_start_utc - REMINDER_SLOT_OFFSET[ReminderSlot.ONE_HOUR]
         if due_at > latest_useful:
@@ -623,7 +626,7 @@ def reschedule_pending_for_user(*, user_id: UUID, actor: Actor, now: datetime) -
                     row=row,
                     delivery_time=delivery_time,
                     zone=zone,
-                    window=preference.quiet_hours,
+                    window=preference.effective_quiet_hours,
                 )
             elif row.slot_at is None:
                 # **A row with no `slot_at` has no pre-shift instant to re-shift** — a
@@ -634,7 +637,9 @@ def reschedule_pending_for_user(*, user_id: UUID, actor: Actor, now: datetime) -
                 # is the right answer rather than a guess.
                 continue
             else:
-                due_at = shift_to_sendable(row.slot_at, window=preference.quiet_hours, zone=zone)
+                due_at = shift_to_sendable(
+                    row.slot_at, window=preference.effective_quiet_hours, zone=zone
+                )
             if due_at is None or due_at == row.due_at:
                 continue
             row.due_at = due_at
@@ -657,7 +662,7 @@ def _digest_due_at(
     row: ScheduledSend,
     delivery_time: time,
     zone: str,
-    window: QuietHours | None,
+    window: Window | None,
 ) -> datetime | None:
     """A pending digest's due time, recomputed — or `None` if it cannot be recomputed.
 

@@ -37,6 +37,11 @@ REQUIRED = {
     # The revalidation shared secret (FR-26, FR-27): required, with no default and no
     # fallback — a deployment that boots without it cannot authenticate a signal.
     "REVALIDATION_SECRET": "test-revalidation-secret",
+    # FR-48 billing: required, with no default and no fallback. The API key authorises calls
+    # out to the provider; the webhook secret verifies calls in. They are separate so one
+    # leaking does not confer the other's power, and so they can rotate independently.
+    "STRIPE_API_KEY": "sk_test_not-a-real-key",
+    "STRIPE_WEBHOOK_SECRET": "whsec_not-a-real-secret",
 }
 
 

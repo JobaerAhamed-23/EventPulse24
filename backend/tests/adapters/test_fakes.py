@@ -101,3 +101,52 @@ def test_calendar_entry_repr_hides_the_title():
     [entry, *_] = result.entries
 
     assert entry.title not in repr(entry)
+
+
+def test_fake_billing_parses_an_event_from_its_own_body_shape():
+    """The fake's `parse_event` is what lets the webhook receiver be tested with no SDK.
+
+    Its body shape is its own, not Stripe's: a test writes what it means rather than
+    reconstructing a provider envelope the adapter would only throw away.
+    """
+    import json
+
+    from adapters.billing.fake import FAKE_SIGNATURE
+    from ports.billing import BillingEventKind
+
+    payload = json.dumps(
+        {
+            "kind": "subscription_ended",
+            "event_id": "evt_fake_1",
+            "occurred_at": 1_762_000_000,
+            "subscription_ref": "sub_1",
+        }
+    ).encode()
+
+    event = FakeBillingAdapter().parse_event(payload, signature=FAKE_SIGNATURE)
+
+    assert event.kind is BillingEventKind.SUBSCRIPTION_ENDED
+    assert event.subscription_ref == "sub_1"
+    assert event.occurred_at.timestamp() == 1_762_000_000
+
+
+def test_fake_billing_refuses_a_wrong_signature():
+    """So a test can exercise the receiver's 400 path without a signing secret."""
+    import json
+
+    from ports.billing import InvalidWebhookSignature
+
+    with pytest.raises(InvalidWebhookSignature):
+        FakeBillingAdapter().parse_event(json.dumps({}).encode(), signature="nope")
+
+
+def test_fake_billing_defaults_an_unnamed_kind_to_ignored():
+    import json
+
+    from adapters.billing.fake import FAKE_SIGNATURE
+    from ports.billing import BillingEventKind
+
+    event = FakeBillingAdapter().parse_event(
+        json.dumps({"event_id": "e"}).encode(), signature=FAKE_SIGNATURE
+    )
+    assert event.kind is BillingEventKind.IGNORED

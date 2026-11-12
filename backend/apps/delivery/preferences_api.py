@@ -39,8 +39,11 @@ from apps.delivery.schemas import NotificationSettingsIn, NotificationSettingsOu
 from apps.delivery.services.preferences import SettingsPatch, apply_settings_patch
 from apps.delivery.services.preferences_read import read_notification_settings
 from apps.identity.api_auth import current_user
+from apps.identity.services import is_pro
+from domain.errors import QuietHoursProRequired, ValidationError
 from domain.quiet_hours import QuietHours
 from shared.actor import Actor
+from shared.constants import FREE_TIER_QUIET_HOURS_WINDOWS, QUIET_HOURS_PRO_UPGRADE_HINT
 from shared.errors import ErrorOut
 
 router = Router(tags=["settings"], auth=current_user)
@@ -82,7 +85,7 @@ def get_notification_settings(request):
 
 @router.put(
     "/notifications",
-    response={200: NotificationSettingsOut, 422: ErrorOut},
+    response={200: NotificationSettingsOut, 409: ErrorOut, 422: ErrorOut},
     summary="Save the signed-in user's notification settings",
     description=(
         "Saves the settings the request mentions, and **re-times the pending reminders "
@@ -108,6 +111,7 @@ def get_notification_settings(request):
 def put_notification_settings(request, body: NotificationSettingsIn):
     """Save the settings the request mentions, and re-time what is already scheduled."""
     patch = _patch_from(body)
+    _refuse_weekday_windows_without_pro(request.user.pk, patch)
     apply_settings_patch(
         user_id=request.user.pk,
         patch=patch,
@@ -116,6 +120,38 @@ def put_notification_settings(request, body: NotificationSettingsIn):
     )
     view = read_notification_settings(user_id=request.user.pk)
     return NotificationSettingsOut.from_view(view)
+
+
+def _refuse_weekday_windows_without_pro(user_id, patch: SettingsPatch) -> None:
+    """A window per weekday is Pro (FR-51). Refuse the write; never the read.
+
+    **The paywall is here, not in the command.** `replace_quiet_hours_overrides` is
+    deliberately tier-agnostic: the rows are the user's data, and a command that refused on
+    tier would have to be re-run after an upgrade to restore what the user already said.
+    The API is where the *user* is, so it is where "you are not paying for this" belongs.
+
+    **Clearing is always allowed.** An empty list removes every override and returns the
+    user to one window for the week — which is the Free shape, and refusing someone the
+    ability to go back to what their plan includes would be absurd. It is also what a
+    lapsed Pro user needs in order to tidy up.
+
+    **A lapsed Pro user is refused a write and keeps their read.** Their stored windows come
+    back on every `GET`, and `effective_quiet_hours` tells them the truth about which are in
+    force.
+
+    Raises:
+        QuietHoursProRequired: the account is not Pro and the patch sets a weekday window.
+    """
+    if not patch.quiet_hours_overrides:
+        return
+    if is_pro(user_id=user_id):
+        return
+    raise QuietHoursProRequired(
+        details={
+            "cap": FREE_TIER_QUIET_HOURS_WINDOWS,
+            "upgrade_hint": QUIET_HOURS_PRO_UPGRADE_HINT,
+        }
+    )
 
 
 def _patch_from(body: NotificationSettingsIn) -> SettingsPatch:
@@ -127,6 +163,11 @@ def _patch_from(body: NotificationSettingsIn) -> SettingsPatch:
     - `quiet_hours` **not mentioned** → leave the window alone;
     - `quiet_hours` mentioned and `null` → turn quiet hours **off**;
     - `quiet_hours` mentioned with a window → set that window.
+
+    `quiet_hours_overrides` follows the same presence rule, and **an empty list is not
+    `None`**: omitted leaves the weekdays alone, `[]` removes them all, and a list sets
+    exactly those. Two entries for one weekday is a contradiction rather than a
+    last-one-wins, so it is refused.
 
     The alternative — a sentinel for "unset" — would put a fake value in the schema and a
     fake branch in the OpenAPI contract, and a client generated from it would have to know
@@ -147,6 +188,18 @@ def _patch_from(body: NotificationSettingsIn) -> SettingsPatch:
         else:
             quiet_hours = QuietHours(start=window.start, end=window.end)
 
+    quiet_hours_overrides = None
+    if "quiet_hours_overrides" in mentioned and body.quiet_hours_overrides is not None:
+        quiet_hours_overrides = {
+            override.weekday: QuietHours(start=override.start, end=override.end)
+            for override in body.quiet_hours_overrides
+        }
+        if len(quiet_hours_overrides) != len(body.quiet_hours_overrides):
+            raise ValidationError(
+                "a weekday can have only one quiet-hours window",
+                details={"field": "quiet_hours_overrides"},
+            )
+
     default_slots = body.default_reminder_slots if "default_reminder_slots" in mentioned else None
 
     delivery_time = None
@@ -158,6 +211,7 @@ def _patch_from(body: NotificationSettingsIn) -> SettingsPatch:
     return SettingsPatch(
         quiet_hours=quiet_hours,
         clear_quiet_hours=clear_quiet_hours,
+        quiet_hours_overrides=quiet_hours_overrides,
         default_reminder_slots=None if default_slots is None else tuple(default_slots),
         delivery_time=delivery_time,
         timezone=timezone_name,

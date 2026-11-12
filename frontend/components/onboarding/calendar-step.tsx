@@ -29,6 +29,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { components } from "@/lib/api/schema";
 import { readApiError } from "@/lib/api-errors";
+import { readCapDetails } from "@/lib/cap-details";
+import { UpgradePrompt } from "@/components/upgrade/upgrade-prompt";
 import { api } from "@/lib/backend-client";
 import { CALENDAR_PROVIDERS, SECRET_ADDRESS_WARNING } from "@/lib/calendar-providers";
 import { utcInstantToLocal } from "@/lib/timezones";
@@ -66,7 +68,7 @@ export function CalendarStep({ existing = null }: CalendarStepProps) {
   const [provider, setProvider] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
-  const [capMessage, setCapMessage] = useState<string | null>(null);
+  const [capHint, setCapHint] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>(
     // A user who comes back to step 1 sees what they already connected, not a blank form.
     existing ? { kind: "imported", connection: existing, events: [] } : { kind: "choosing" },
@@ -164,7 +166,7 @@ export function CalendarStep({ existing = null }: CalendarStepProps) {
     event.preventDefault();
     if (provider === null) return;
     setFieldError(null);
-    setCapMessage(null);
+    setCapHint(null);
     setPhase({ kind: "connecting" });
 
     let response;
@@ -184,8 +186,13 @@ export function CalendarStep({ existing = null }: CalendarStepProps) {
 
     if (response.error) {
       const failure = readApiError(response.error);
-      if (failure.code === "calendar_cap_reached") {
-        setCapMessage(failure.message);
+      // **The cap's own sentence, not the refusal's `message`.** `message` is the fact
+      // ("You've connected the calendars your plan allows."); `upgrade_hint` is the
+      // server-owned upgrade copy the prompt exists to render, and rendering it is what
+      // keeps a backend wording change from needing a frontend change.
+      const cap = readCapDetails(response.error);
+      if (cap !== null) {
+        setCapHint(cap.upgradeHint);
         setPhase({ kind: "choosing" });
         return;
       }
@@ -294,22 +301,9 @@ export function CalendarStep({ existing = null }: CalendarStepProps) {
         ))}
       </div>
 
-      {capMessage ? (
-        /* The Free cap. Inline, with a quiet link — the API's payload carries no modal
-           semantics and this surface adds none. */
-        <div
-          role="alert"
-          className="mt-4 rounded-card border border-border-subtle bg-surface-subtle px-4 py-3"
-        >
-          <p className="[font:var(--type-scale-body-sm)] text-ink-secondary">{capMessage}</p>
-          <a
-            href="/pricing"
-            className="mt-1 inline-block [font:var(--type-scale-body-sm)] text-accent-terracotta underline underline-offset-4"
-          >
-            Upgrade
-          </a>
-        </div>
-      ) : null}
+      {/* The Free cap. The same component the save cap renders — there is one spelling
+          of this UI, and it is not this file's. */}
+      {capHint ? <UpgradePrompt hint={capHint} className="mt-4" /> : null}
 
       {provider !== null ? (
         <AddressForm

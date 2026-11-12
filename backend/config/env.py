@@ -57,6 +57,33 @@ class Settings(BaseSettings):
     # fails later, when an event changes.
     revalidation_secret: str
 
+    # FR-48 billing. Required, with no default and no fallback, for the same reason as
+    # `revalidation_secret` above: a missing key must abort the boot rather than leave an
+    # app that looks healthy and fails the first time someone tries to pay.
+    #
+    # The webhook secret is **separate from the API key on purpose**. The API key authorises
+    # calls out to Stripe; the webhook secret verifies calls in. One leaking does not give an
+    # attacker the other's power, and Stripe rotates them independently.
+    stripe_api_key: str
+    stripe_webhook_secret: str
+    # The provider's price identifiers, one per plan. Not secrets, but configuration: they
+    # differ between test mode and live mode, so they cannot be literals in the adapter.
+    stripe_price_monthly: str = ""
+    stripe_price_yearly: str = ""
+
+    # FR-48: the paths the checkout success and cancel URLs point at, and the path the
+    # customer portal returns to. These are **configuration, not request input**, and they
+    # are the whole reason the endpoints cannot be turned into an open redirect: the URLs
+    # handed to the provider are built from `frontend_base_url` plus one of these paths.
+    #
+    # They are configurable rather than hardcoded for the same reason `frontend_base_url`
+    # is: the frontend's routes can move without a backend change, and a deployment can
+    # point the flow at a different host. What stays fixed is the rule — **the client never
+    # supplies any part of these URLs**.
+    billing_success_path: str = "/settings/billing?checkout=complete"
+    billing_cancel_path: str = "/settings/billing?checkout=cancelled"
+    billing_portal_return_path: str = "/settings/billing"
+
     # How long the backend waits for the frontend's revalidation route handler to answer.
     revalidation_timeout_seconds: PositiveFloat = 5.0
 

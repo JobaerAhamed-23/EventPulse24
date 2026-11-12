@@ -121,6 +121,11 @@ class ActorColumns(models.Model):
     No relation to `User`: these columns live on catalog tables too (AD-3, spine OQ-8).
     """
 
+    #: An audit row's "user" is whoever acted (FR-52 export). A system actor has no
+    #: `actor_id`, so those rows belong to nobody and appear in no export — which is
+    #: correct: a propagation job acting on the catalog is not a fact about a person.
+    export_user_path = "actor_id"
+
     actor_kind = models.CharField(max_length=16, choices=[(k.value, k.value) for k in ActorKind])
     actor_id = models.UUIDField(null=True, blank=True)
     # System job name only (shared.actor.SYSTEM_LABEL), never a username or email.

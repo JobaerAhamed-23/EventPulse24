@@ -152,6 +152,22 @@ REVALIDATION_SECRET = env.revalidation_secret
 FRONTEND_REVALIDATION_URL = env.frontend_revalidation_url
 REVALIDATION_TIMEOUT_SECONDS = env.revalidation_timeout_seconds
 
+# FR-48 billing. The API key authorises calls out; the webhook secret verifies calls in.
+STRIPE_API_KEY = env.stripe_api_key
+STRIPE_WEBHOOK_SECRET = env.stripe_webhook_secret
+STRIPE_PRICE_IDS = {"monthly": env.stripe_price_monthly, "yearly": env.stripe_price_yearly}
+
+# FR-48: the paths the checkout and portal URLs point at. **These are the whole reason the
+# endpoints cannot be turned into an open redirect.** The success, cancel and portal-return
+# URLs handed to the provider are built from `FRONTEND_BASE_URL` plus one of these paths,
+# so no part of them can come from a request body.
+#
+# The client supplies only the *plan*. A client that asks for a checkout with a
+# `success_url` of its own gets a session whose URLs point at this host.
+BILLING_SUCCESS_PATH = env.billing_success_path
+BILLING_CANCEL_PATH = env.billing_cancel_path
+BILLING_PORTAL_RETURN_PATH = env.billing_portal_return_path
+
 # Whether the caller's IP may be read from `X-Forwarded-For`. Off by default: the header
 # is attacker-controlled unless a trusted edge overwrites it, and trusting it let any
 # caller mint a fresh throttle bucket per request. See `env.trust_forwarded_for`.

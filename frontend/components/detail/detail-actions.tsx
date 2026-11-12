@@ -60,6 +60,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { PersonalEventsPanel, type PersonalEventSeed } from "@/components/personal-events-panel";
+import { readCapDetails, type CapDetails } from "@/lib/cap-details";
+import { UpgradePrompt } from "@/components/upgrade/upgrade-prompt";
 import { ConflictResolution, type Conflict } from "@/components/sheets/conflict-resolution";
 import { ShareControl } from "@/components/share/share-control";
 import { EventReportControl } from "@/components/detail/event-report-control";
@@ -143,6 +145,14 @@ export function DetailActions({
   const [isSaved, setIsSaved] = useState(saved);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  /**
+   * The tier cap, when a save was refused for one (FR-49).
+   *
+   * Held apart from `failed`: a cap is not a failure. The save did not happen, but
+   * nothing went wrong and there is nothing to retry — which is why the refusal is
+   * **not** retried and the prompt is shown instead of "Couldn't save that."
+   */
+  const [cap, setCap] = useState<CapDetails | null>(null);
 
   // **The prompt's conflict**, once the server has named one. It is either the pair the
   // payload already carried, or the one a 409 named — and in both cases it is the
@@ -182,12 +192,24 @@ export function DetailActions({
   const onSave = useCallback(async () => {
     setBusy(true);
     setFailed(false);
+    setCap(null);
     try {
       const response = await api.POST("/api/personal/saved-events/{catalog_event_id}", {
         params: { path: { catalog_event_id: eventId } },
       });
+      // **The 409 is one of two refusals, and the `code` says which.**
+      //
+      // `scheduling_conflict` carries the pair and the three actions; `save_cap_reached`
+      // carries the cap and an upgrade sentence (FR-49). They share a status code and
+      // nothing else, so the client narrows on `code` — the field the server set — rather
+      // than reaching for a field that only one of them has.
+      const error = response.error;
       const clash =
-        response.response.status === 409 ? response.error?.details?.conflicts?.[0] : undefined;
+        response.response.status === 409 && error?.code === "scheduling_conflict"
+          ? error.details?.conflicts?.[0]
+          : undefined;
+      // The other 409: `save_cap_reached`, carrying `{cap, upgrade_hint}`.
+      const capDetails = readCapDetails(error);
       // The save is idempotent, so a 2xx means it is saved now. A refusal is shown
       // calmly rather than swallowed — a button that silently fails is the thing this
       // screen is careful about.
@@ -200,6 +222,11 @@ export function DetailActions({
         setIsSaved(true);
         setConflict(clash);
         setPromptOpen(true);
+      } else if (capDetails !== null) {
+        // **A cap is a refusal, not a failure, and it is final until the user upgrades.**
+        // The save is not retried — re-sending it would spend nothing and be refused
+        // again, and a button that keeps trying is the thing this screen avoids.
+        setCap(capDetails);
       } else {
         setFailed(true);
       }
@@ -449,6 +476,8 @@ export function DetailActions({
           that does nothing, plus three taps.
         */}
         <EventReportControl eventId={eventId} eventName={eventName} />
+
+        {cap !== null ? <UpgradePrompt hint={cap.upgradeHint} className="w-full" /> : null}
 
         {failed ? (
           <p className="text-ink-muted [font:var(--type-scale-body-sm)]">

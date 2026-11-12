@@ -53,8 +53,16 @@ REQUEST_MODULES = (
     "apps/delivery/preferences_api.py",
     "apps/editorial/api.py",
     "apps/identity/api.py",
+    "apps/identity/billing_api.py",
+    # FR-52. It enqueues nothing itself — the tick's dispatcher picks the row up — which is
+    # exactly the shape AD-11 asks of a request handler.
+    "apps/identity/export_api.py",
+    "apps/identity/webhooks_api.py",
     "apps/ingestion/api.py",
     "apps/personalization/api.py",
+    # FR-49. It validates, calls the published commands and returns — the shape AD-11
+    # asks of a request handler.
+    "apps/personalization/collections_api.py",
     "apps/personalization/detail_api.py",
     "config/api.py",
     "config/health.py",

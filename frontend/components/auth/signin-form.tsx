@@ -27,7 +27,7 @@ import { api } from "@/lib/backend-client";
 import { AuthTextInput, PasswordInput } from "./auth-field";
 import { FormAlert, SubmitButton } from "./submit-button";
 
-export function SigninForm() {
+export function SigninForm({ next = "/" }: { next?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,7 +79,12 @@ export function SigninForm() {
     // The session cookie is set. `replace` rather than `push`, so Back does not return to
     // a sign-in form the user is already past; `refresh` re-runs the server components so
     // `/` sees the new session rather than a cached anonymous render.
-    router.replace("/");
+    //
+    // **`next` is where they were going.** A visitor who came here from the pricing page
+    // lands back on it with their intent intact; the default is the ordinary home. The
+    // value is already guarded by `lib/return-path.ts` — the route resolved it before
+    // handing it over, and only a path on this site survives that.
+    router.replace(next);
     router.refresh();
   };
 

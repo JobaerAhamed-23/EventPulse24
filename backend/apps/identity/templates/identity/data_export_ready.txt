@@ -1,0 +1,20 @@
+Hi,
+
+Your EventPulse24 data is ready to download.
+
+JSON — every record we hold about you:
+
+{{ json_link }}
+
+ICS — your events, for any calendar app:
+
+{{ ics_link }}
+
+Both links work for {{ link_days }} days and only for your account. After that they stop
+working and we delete the copies — the data itself stays in your account, untouched.
+
+{% if locations_redacted %}You've asked us not to share your event locations in full, so
+the locations on your own events read "[redacted]" in this export. Everything else is
+there.
+
+{% endif %}If you didn't ask for this, tell us — nothing about your account has changed.

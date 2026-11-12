@@ -40,7 +40,7 @@ from uuid import UUID
 from apps.delivery.models import ReminderPlan
 from apps.delivery.services.notification_preferences import get_preference
 from apps.delivery.services.scheduled_sends import SendTarget, slot_due_at, slot_offset
-from domain.quiet_hours import QuietHours
+from domain.quiet_hours import Window
 from shared.constants import DEFAULT_DIGEST_TIMEZONE
 from shared.db import PERSONAL
 
@@ -182,7 +182,7 @@ def compute_deliveries(
     slots: tuple[str, ...],
     start_utc: datetime,
     zone: str,
-    window: QuietHours | None,
+    window: Window | None,
 ) -> tuple[SlotDelivery, ...]:
     """Each slot's post-Quiet-Hours delivery time, in the plan's stored order.
 
@@ -280,7 +280,7 @@ def read_plan_for(
         slots=slots,
         start_utc=target.start_utc,
         zone=zone,
-        window=preference.quiet_hours,
+        window=preference.effective_quiet_hours,
     )
     return ReminderPlanView(
         user_id=user_id,

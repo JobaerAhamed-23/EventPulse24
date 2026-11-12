@@ -12,6 +12,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 from ports.email import EmailMessage, Stream
+from shared.constants import DATA_EXPORT_LINK_LIFETIME
 
 
 def reset_password_link(token: str) -> str:
@@ -47,4 +48,57 @@ def reset_password_stream() -> Stream:
     the stream choice is in one place and a future second auth mail cannot drift onto the
     wrong one by accident.
     """
+    return Stream.TRANSACTIONAL
+
+
+def data_export_link(*, export_id, token: str, fmt: str) -> str:
+    """A download link for one export in one format.
+
+    **It is the site's own origin plus `/api/...`, which is how every browser request in
+    this product reaches Django** — the frontend proxies `/api` through. There is no
+    separate public API origin to point at, and inventing a setting for one would create a
+    second base URL that could disagree with the one every other link already uses.
+
+    It is a direct link to the file rather than to a page that fetches it: a page in the
+    middle is a second place for the token to live and a second thing to get wrong.
+    """
+    base = settings.FRONTEND_BASE_URL.rstrip("/")
+    return f"{base}/api/exports/{export_id}/{fmt}?token={token}"
+
+
+def render_data_export_email(
+    *, to: str, json_link: str, ics_link: str, locations_redacted: bool
+) -> EmailMessage:
+    """Build the "your data is ready" message (FR-52).
+
+    **Transactional, like the reset mail.** It is a one-time answer to something the user
+    asked for, not a list they subscribed to — so it carries no RFC 8058 unsubscribe URL,
+    and `EmailPort.send`'s refusal of an unsubscribe-less *bulk* message does not apply.
+
+    **The redaction is stated in the mail, not left to be discovered.** A user who opened a
+    download and found "[redacted]" where their addresses should be would reasonably think
+    the export was broken. Saying it here, where they are already reading, is the
+    difference between a setting working and a file looking wrong.
+
+    The links carry signed tokens. They appear in the body and nowhere else — not in a log
+    line and not in an audit row (AD-13).
+    """
+    body = render_to_string(
+        "identity/data_export_ready.txt",
+        {
+            "json_link": json_link,
+            "ics_link": ics_link,
+            "link_days": DATA_EXPORT_LINK_LIFETIME.days,
+            "locations_redacted": locations_redacted,
+        },
+    ).strip()
+    return EmailMessage(
+        to=to,
+        subject="Your EventPulse24 data is ready",
+        text_body=body,
+    )
+
+
+def data_export_stream() -> Stream:
+    """The stream the export mail goes on. Transactional: the user asked for it."""
     return Stream.TRANSACTIONAL

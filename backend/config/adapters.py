@@ -28,9 +28,14 @@ CALENDAR_ADAPTER = "adapters.calendar.ics.IcsCalendarAdapter"
 
 HEADER_GEO_ADAPTER = "adapters.geo.header.HeaderGeoAdapter"
 
-# Filled in by the intents that build the real gateway, email provider, Stripe and ICS adapters.
+# Filled in by the intents that build the real gateway and email provider. The Stripe and ICS
+# adapters have landed; the LLM gateway and the email provider have not.
 REAL_ADAPTERS: dict[str, str] = {
     "fetch": HTTP_FETCH_ADAPTER,
+    # FR-48: the real Stripe adapter. Note this does **not** make ADAPTER_MODE=real bootable
+    # — `llm`, `embedding` and `email` are still missing, and `_mode_paths` still refuses.
+    # That is deliberate: this intent ships billing, not go-live.
+    "billing": "adapters.billing.stripe.StripeBillingAdapter",
     # The ICS adapter serves Google, Apple and Outlook alike: they all publish
     # iCalendar, so there is one adapter, not three.
     "calendar": CALENDAR_ADAPTER,

@@ -1,4 +1,5 @@
-"""The `identity` module's models (AD-16): the account, its reset tokens, and its audit log.
+"""The `identity` module's models (AD-16): the account, its reset tokens, its subscription
+and its audit log.
 
 `identity` owns `USER` and the auth flows. Everything here lives in the `personal` schema
 (AD-3), so nothing here relates to a catalog table.
@@ -14,6 +15,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.identity.managers import UserManager
+from ports.billing import ProPlan
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -31,6 +33,10 @@ class User(UUIDv7Model, AbstractBaseUser, PermissionsMixin):
     that bypasses the command layer cannot store a mixed-case value and slip past the
     unique constraint.
     """
+
+    #: The account row *is* the user, so its path to one is its own primary key (FR-52).
+    #: Without this it would be the one record missing from a user's own export.
+    export_user_path = "id"
 
     retention_category = RetentionCategory.ACCOUNT_IDENTITY
 
@@ -127,6 +133,194 @@ class PasswordResetToken(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"reset token for {self.user_id}"
+
+
+class SubscriptionStatus(models.TextChoices):
+    """The four states a subscription can be in (FR-48).
+
+    Deliberately four, not Stripe's nine. Stripe's vocabulary is its own
+    (`incomplete`, `trialing`, `unpaid`, `paused` …) and most of it describes situations this
+    product does not sell into: there is no trial, there is no pause, and a subscription that
+    never completed checkout is simply one that does not exist here. The adapter's job is to
+    map Stripe's set onto this one; this is the set the product reasons about.
+
+    **`PAST_DUE` is distinct from `CANCELED` because a user must be able to see it.** It is
+    the only state in which a person has a problem they can still fix, and the account screen
+    has to say so rather than rendering them as plain Free.
+    """
+
+    ACTIVE = "active", "Active"
+    PAST_DUE = "past_due", "Past due"
+    CANCELED = "canceled", "Canceled"
+    EXPIRED = "expired", "Expired"
+
+
+#: The statuses that occupy a user's one live subscription slot. A user may accumulate any
+#: number of `CANCELED` or `EXPIRED` rows — that is the history `BILLING_RECORDS` retains for
+#: seven years — but only ever one row in this set, enforced by a partial unique constraint.
+LIVE_SUBSCRIPTION_STATUSES = (SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE)
+
+
+class Subscription(UUIDv7Model):
+    """One user's Pro subscription (FR-48, Glossary: Subscription).
+
+    `identity` owns this table because `identity/__init__.py` has always said so — *"Accounts
+    and billing state. Owns User and Subscription"* — and because billing state is account
+    state: the same app that can tell you an account exists should be the one that tells you
+    what it is entitled to.
+
+    **It lives in the `PERSONAL` alias, alongside `User`.** `settings.DATABASE_ROUTING` places
+    `identity`, `personalization` and `delivery` in the same alias, so a caller asking about
+    entitlement is not crossing the AD-3 wall — that wall runs between `catalog` and
+    `personal`. What stops a caller reaching in is AD-2's `models-identity` contract: *"only
+    `apps.identity` imports `apps.identity.models` (others call its services)"*. The published
+    read is `services/entitlement.is_pro`.
+
+    **`user_id` is a plain UUID, not a `ForeignKey`.** The row is written by webhook-driven
+    commands that know a Stripe reference and a user id, never a `User` instance, and a
+    relation would invite a caller to join its way to the account from here.
+
+    **There is no delete path.** A lapse is a transition to `CANCELED`; an ended term is
+    `EXPIRED`. `BILLING_RECORDS` retains these rows for seven years for tax and legal
+    reasons, which would be meaningless against a table anything could delete.
+
+    **`last_event_at` is the ordering guard.** Stripe retries, replays and reorders its
+    webhooks; a naive writer lets a stale `customer.subscription.updated` overwrite a newer
+    `customer.subscription.deleted` and silently restores entitlement to someone who
+    cancelled. The guard lives here, on the row, rather than in the webhook handler, so every
+    writer inherits it — the handler, an admin action, a future reconciliation job. This is
+    the same reasoning `SavedEvent.event_version` records for AD-17 propagation.
+    """
+
+    retention_category = RetentionCategory.BILLING_RECORDS
+
+    user_id = models.UUIDField()
+    plan = models.CharField(max_length=16, choices=[(p.value, p.value) for p in ProPlan])
+    status = models.CharField(
+        max_length=16, choices=SubscriptionStatus.choices, default=SubscriptionStatus.ACTIVE
+    )
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    # The Stripe customer, stored rather than looked up: `create_portal_session(customer_ref=)`
+    # needs it, and a round-trip to Stripe to open a settings screen would be absurd.
+    stripe_customer_ref = models.CharField(max_length=255)
+    stripe_subscription_ref = models.CharField(max_length=255, null=True, blank=True)
+    # The external event timestamp last applied to this row. See the class docstring.
+    last_event_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # At most one live subscription per user. History is allowed: a user who
+            # subscribes, cancels and subscribes again holds one live row and any number of
+            # terminal ones.
+            models.UniqueConstraint(
+                fields=["user_id"],
+                condition=models.Q(status__in=LIVE_SUBSCRIPTION_STATUSES),
+                name="subscription_one_live_per_user_uq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user_id"], name="subscription_user_idx"),
+            # The webhook receiver finds a row by what Stripe sends it, which is the
+            # subscription reference and not a user id.
+            models.Index(fields=["stripe_subscription_ref"], name="subscription_ref_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"subscription {self.status}"
+
+
+class DataExportStatus(models.TextChoices):
+    """Where one export request has got to.
+
+    Four states and no `FAILED`-with-retry distinction: a build that raises leaves the row
+    `BUILDING` and the task's own retry is what moves it on. A separate failure state would
+    be a second thing to reconcile for no decision anybody makes differently.
+    """
+
+    PENDING = "pending"
+    BUILDING = "building"
+    READY = "ready"
+    EXPIRED = "expired"
+
+
+class DataExport(UUIDv7Model):
+    """One user's request for everything this product holds about them (FR-52, GDPR Art. 20).
+
+    `identity` owns it because an export is about an **account**, not about any one app's
+    records — the same reasoning that put `Subscription` here. The rows it exports belong to
+    `personalization`, `delivery` and `identity` alike, and none of those apps could own a
+    request that spans all three.
+
+    **The payloads are columns, not files.** This project configures no object storage, and a
+    heavy user's records are tens of kilobytes of JSON. A bucket would mean a dependency,
+    credentials, settings and a local-dev service for a payload that fits in a `TextField` —
+    and the 30-day lifetime stays one column the retention sweep already understands.
+
+    **`claimed_at` is what makes a second request join the first** rather than queue a second
+    job. It is the same claim idiom `DigestPreference.digest_claimed_at` and
+    `Source.reliability_claimed_at` use: a row is claimed by the worker that will build it,
+    and an unclaimed pending row is the only thing a new request creates.
+
+    **`expires_at` is the authority on a dead link, not the token's age.** The signed link
+    carries its own `max_age`, but a link is also dead once the row says so — which is what
+    lets an export be revoked without inventing a revocation list, and what a later account
+    deletion will set to stop a download mid-window.
+
+    **It holds `ACCOUNT_CONTENT`, not a category of its own.** What the row contains *is* the
+    user's account content, copied; retaining it longer than the content it copies would be
+    the privacy mistake of keeping a snapshot after the original is gone.
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    #: **This row is exported, but its payloads are not** (FR-52).
+    #:
+    #: The row is a fact about the user — when they asked, when it was ready, when it
+    #: expired — and that is portable. The two body columns are a *copy of everything else
+    #: in the export*, so copying them in would nest one export inside the next: a second
+    #: request would carry the first's whole payload, a third would carry both, and the
+    #: file would grow without bound while saying nothing new.
+    export_redact_fields = ("json_body", "ics_body")
+
+    user_id = models.UUIDField()
+    status = models.CharField(
+        max_length=16, choices=DataExportStatus.choices, default=DataExportStatus.PENDING
+    )
+    requested_at = models.DateTimeField(default=timezone.now)
+    #: Set when a worker takes the row. An unclaimed pending row is the one a new request
+    #: joins instead of duplicating.
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    #: After this, the links are dead whatever their signature says.
+    expires_at = models.DateTimeField(null=True, blank=True)
+    json_body = models.TextField(blank=True, default="")
+    ics_body = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            # **One live request per user.** The partial index is what makes "requesting
+            # twice does not queue two jobs" a database fact rather than a race the
+            # command layer has to win.
+            models.UniqueConstraint(
+                fields=["user_id"],
+                condition=models.Q(status__in=["pending", "building"]),
+                name="data_export_one_in_flight_per_user_uq",
+            ),
+        ]
+        indexes = [
+            # The worker's sweep: unclaimed requests, oldest first.
+            models.Index(
+                fields=["requested_at"],
+                condition=models.Q(claimed_at__isnull=True),
+                name="data_export_unclaimed_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # No email, no payload — this reaches every log line and admin column (AD-13).
+        return f"export {self.status}"
 
 
 class IdentityAuditEntry(AuditEntry):
