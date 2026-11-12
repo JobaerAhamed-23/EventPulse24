@@ -4,9 +4,12 @@ title: The /browse Route — Hero, Section Heads and the Three-Column Grid
 intent: browse-surface
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [browse-read-api]
+status: completed
+depends_on:
+  - browse-read-api
 created: 2026-11-12
+run_id: run-eventpulse24-029
+completed_at: 2026-11-12T11:43:45.657Z
 ---
 
 # Work Item: The /browse Route — Hero, Section Heads and the Three-Column Grid

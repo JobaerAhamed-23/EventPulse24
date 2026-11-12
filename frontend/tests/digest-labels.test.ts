@@ -17,7 +17,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { sourceBadge, tagLabel } from "@/lib/digest-labels";
+import { SEARCH_TAG_VOCABULARY, searchTagKey, sourceBadge, tagLabel } from "@/lib/digest-labels";
 
 const BACKEND_CONSTANTS = path.resolve(__dirname, "../../backend/shared/constants.py");
 
@@ -100,6 +100,64 @@ describe("the fixed Why-this Tags", () => {
 
   it("render an unknown tag from its slug rather than dropping it", () => {
     expect(tagLabel("a_brand_new_tag")).toBe("A Brand New Tag");
+  });
+});
+
+/**
+ * The Browse search's tag aliases.
+ *
+ * **The design names ten search tags the backend does not have.** `DESIGN.md`'s
+ * `component.input.search.browse` specifies `music · tech · community · arts · family ·
+ * food · sports · outdoor · indoor · rooftop`, and the backend's why-tag vocabulary is
+ * `RANKING_TAG_ORDER` plus `matches_<chip>`. Six of the ten resolve through the alias
+ * table; four have no counterpart at all.
+ *
+ * **The aliases must point at chips the backend really has.** An alias naming a chip
+ * that does not exist would be a search that matches nothing while appearing to be a
+ * category — and the whole point of the alias table is that it is a *translation* of a
+ * server fact rather than a second, invented vocabulary.
+ */
+describe("the search's tag aliases", () => {
+  it("resolve to chip tags the backend can send", () => {
+    const slugs = new Set(backendChips().map(([slug]) => slug));
+    const fixed = new Set(backendRankingTags());
+
+    for (const token of SEARCH_TAG_VOCABULARY) {
+      const key = searchTagKey(token);
+      expect(key, token).not.toBeNull();
+      if (key === null) continue;
+
+      if (key.startsWith("matches_")) {
+        const slug = key.slice("matches_".length);
+        expect(slugs.has(slug), `${token} → ${key}`).toBe(true);
+      } else {
+        expect(fixed.has(key), `${token} → ${key}`).toBe(true);
+      }
+    }
+  });
+
+  it("resolve a fixed backend tag to itself", () => {
+    for (const key of backendRankingTags()) {
+      expect(searchTagKey(key), key).toBe(key);
+    }
+  });
+
+  it("resolve the four tags the backend has no fact for to nothing", () => {
+    // **The design names these four; the backend has no key for any of them.** They
+    // therefore match nothing, which is the grammar's own rule: an unknown `tag:`
+    // token never widens into a plain-word match.
+    for (const token of ["music", "food", "indoor", "rooftop"]) {
+      expect(searchTagKey(token), token).toBeNull();
+    }
+  });
+
+  it("do not advertise a tag that resolves to nothing", () => {
+    // **The hint line teaches the vocabulary.** A token it listed that matched nothing
+    // would teach the reader to distrust the grammar — which is the one thing the
+    // grammar cannot afford.
+    for (const token of SEARCH_TAG_VOCABULARY) {
+      expect(searchTagKey(token), token).not.toBeNull();
+    }
   });
 });
 

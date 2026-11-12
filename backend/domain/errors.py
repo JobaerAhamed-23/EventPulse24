@@ -373,6 +373,18 @@ class OnboardingAlreadyCompleteError(ConflictError):
     default_message = "You've already finished setting things up."
 
 
+class EventAlreadyRetiredError(ConflictError):
+    """The event has already been retired, so it cannot be retired again.
+
+    Retiring is how a listing leaves the catalog for good (FR-13: never deleted, only
+    superseded). Doing it twice would leave a second replacement row that nothing points
+    at, so the second attempt is refused rather than half-done.
+    """
+
+    code = "event_already_retired"
+    default_message = "That event has already been retired."
+
+
 class AlreadySubscribedError(ConflictError):
     """The caller already holds a live subscription, so a second checkout is refused (FR-48).
 

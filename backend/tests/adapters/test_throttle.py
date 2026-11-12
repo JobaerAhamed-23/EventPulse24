@@ -29,7 +29,7 @@ are why it does not any more.
 import pytest
 
 from adapters.throttle.memory import InMemoryThrottleAdapter
-from adapters.throttle.redis import RedisThrottleAdapter
+from adapters.throttle.redis import KEY_PREFIX, RedisThrottleAdapter
 
 #: A window long enough to walk through without arithmetic drifting.
 WINDOW = 100
@@ -70,6 +70,23 @@ class StubRedis:
         if key not in self.store:
             return -2
         return max(0, int(self.expiry.get(key, 0) - self.now))
+
+    def get(self, key: str):
+        """What `peek` reads. Redis returns bytes and `None` for a missing or expired key —
+        and an expired key is indistinguishable from one that never existed, which is the
+        behaviour `peek` relies on rather than special-casing."""
+        self._sweep()
+        if key not in self.store:
+            return None
+        return str(self.store[key]).encode()
+
+    def delete(self, key: str) -> int:
+        """What `reset` calls. Redis answers with the number of keys it removed, and zero
+        is a perfectly good answer — deleting a key that was never there is not an error."""
+        self._sweep()
+        existed = self.store.pop(key, None) is not None
+        self.expiry.pop(key, None)
+        return 1 if existed else 0
 
 
 @pytest.fixture
@@ -223,3 +240,188 @@ def test_the_two_adapters_agree_on_the_window_opening_again(clock):
             assert fake_decision.allowed == real_decision.allowed, (
                 f"the adapters disagree in cycle {cycle} at t={clock['now']}"
             )
+
+
+# ── `peek`: reading the window without spending it ────────────────────────────────
+#
+# The method exists because *displaying* a limit and *spending* it are different acts.
+# Browse shows "0 of 1 save used today" on every page load; if it asked the gate, loading
+# the page would be the save. These tests pin that it counts nothing, on both adapters.
+
+
+def test_peek_on_an_untouched_key_reads_empty(memory):
+    state = memory.peek("k", window_seconds=WINDOW)
+
+    assert state.used == 0
+    assert state.resets_in_seconds == 0
+
+
+def test_peek_counts_nothing(memory):
+    """The whole point. Peeking a hundred times must not spend a single attempt."""
+    for _ in range(100):
+        memory.peek("k", window_seconds=WINDOW)
+
+    assert memory.check("k", limit=LIMIT, window_seconds=WINDOW).allowed is True
+
+
+def test_peek_reports_what_check_has_spent(memory):
+    memory.check("k", limit=LIMIT, window_seconds=WINDOW)
+
+    state = memory.peek("k", window_seconds=WINDOW)
+
+    assert state.used == 1
+    assert state.resets_in_seconds > 0
+
+
+def test_peek_forgets_a_closed_window(memory, clock):
+    """An expired window and one that never opened are the same answer — nothing is spent
+    in the window that is open *now*."""
+    memory.check("k", limit=LIMIT, window_seconds=WINDOW)
+    clock["now"] = float(WINDOW)
+
+    assert memory.peek("k", window_seconds=WINDOW).used == 0
+
+
+def test_peek_does_not_evict_the_closed_window_it_finds(memory, clock):
+    """A read that mutated the store would change the answer a later `check` gives, and a
+    surface polling it on every page load would then be deciding when a user's window
+    resets — which is the gate's job, not the sign's."""
+    memory.check("k", limit=LIMIT, window_seconds=WINDOW)
+    clock["now"] = float(WINDOW)
+    memory.peek("k", window_seconds=WINDOW)
+
+    # The gate still sees a fresh window and allows the attempt, exactly as it would have
+    # had nobody peeked.
+    assert memory.check("k", limit=LIMIT, window_seconds=WINDOW).allowed is True
+
+
+def test_peek_is_per_key(memory):
+    memory.check("a", limit=LIMIT, window_seconds=WINDOW)
+
+    assert memory.peek("a", window_seconds=WINDOW).used == 1
+    assert memory.peek("b", window_seconds=WINDOW).used == 0
+
+
+def test_the_two_adapters_agree_about_peek(clock):
+    """Parity, for the same reason `check` has it: a test written against the fake must be
+    pinning behaviour production actually has. The walk crosses the window boundary, which
+    is where two implementations are most likely to drift."""
+    memory = InMemoryThrottleAdapter(now=lambda: clock["now"])
+    stub = StubRedis()
+    real = RedisThrottleAdapter(client=stub)
+
+    for moment in (0, 1, 50, WINDOW - 1, WINDOW, WINDOW + 1, 2 * WINDOW):
+        clock["now"] = float(moment)
+        stub.now = float(moment)
+
+        memory.check("k", limit=LIMIT, window_seconds=WINDOW)
+        real.check("k", limit=LIMIT, window_seconds=WINDOW)
+
+        fake_state = memory.peek("k", window_seconds=WINDOW)
+        real_state = real.peek("k", window_seconds=WINDOW)
+
+        assert fake_state.used == real_state.used, (
+            f"the adapters disagree about `used` at t={moment}: "
+            f"memory said {fake_state.used}, redis said {real_state.used}"
+        )
+
+
+def test_the_redis_adapter_reads_a_missing_key_as_empty():
+    real = RedisThrottleAdapter(client=StubRedis())
+
+    assert real.peek("never-touched", window_seconds=WINDOW).used == 0
+
+
+def test_the_redis_adapter_survives_a_key_that_is_not_a_counter():
+    """A key under our namespace holding something else is not a throttle window.
+
+    Reporting zero shows a full allowance rather than refusing one the gate would allow —
+    and the gate itself still decides every actual save, so nothing is let through.
+    """
+    stub = StubRedis()
+    stub.store[KEY_PREFIX + "k"] = "not-a-number"
+    real = RedisThrottleAdapter(client=stub)
+
+    assert real.peek("k", window_seconds=WINDOW).used == 0
+
+
+# ── The reset, on both adapters ──────────────────────────────────────────────────
+
+
+def test_reset_puts_the_allowance_back(memory):
+    """The whole point of the reset: the key's window is gone, so the allowance is full.
+
+    **The seed needs this**, because the Free account's one-save-a-day window outlives
+    the command — a second run would otherwise find the quota already spent and the
+    walk-through's wall would be up before anything had pressed it.
+    """
+    assert memory.check("k", limit=LIMIT, window_seconds=WINDOW).allowed is True
+    assert memory.check("k", limit=LIMIT, window_seconds=WINDOW).allowed is False
+
+    memory.reset("k")
+
+    assert memory.peek("k", window_seconds=WINDOW).used == 0
+    assert memory.check("k", limit=LIMIT, window_seconds=WINDOW).allowed is True
+
+
+def test_reset_on_a_key_that_was_never_touched_is_not_an_error(memory):
+    """Clearing a key that does not exist is the same answer as clearing one that does."""
+    memory.reset("never-touched")
+
+    assert memory.peek("never-touched", window_seconds=WINDOW).used == 0
+
+
+def test_reset_is_per_key(memory):
+    """Clearing one key leaves the others alone — the reset is a key's, not the store's."""
+    memory.check("a", limit=LIMIT, window_seconds=WINDOW)
+    memory.check("b", limit=LIMIT, window_seconds=WINDOW)
+
+    memory.reset("a")
+
+    assert memory.peek("a", window_seconds=WINDOW).used == 0
+    assert memory.peek("b", window_seconds=WINDOW).used == 1
+
+
+def test_the_redis_adapter_resets_the_allowance():
+    """The Redis adapter's reset, against the stand-in.
+
+    **The key's layout is the adapter's own.** The caller says which key; the adapter
+    says where it lives. A caller that reached past the port to `DEL` the bare key would
+    be depending on the `throttle:` prefix being absent — and it is present.
+    """
+    stub = StubRedis()
+    real = RedisThrottleAdapter(client=stub)
+
+    real.check("k", limit=LIMIT, window_seconds=WINDOW)
+    real.check("k", limit=LIMIT, window_seconds=WINDOW)
+    assert real.peek("k", window_seconds=WINDOW).used == 2
+
+    real.reset("k")
+
+    assert real.peek("k", window_seconds=WINDOW).used == 0
+    assert real.check("k", limit=LIMIT, window_seconds=WINDOW).allowed is True
+
+
+def test_the_two_adapters_agree_about_reset(clock):
+    """Parity, for the same reason the other parity tests have it.
+
+    **The reset is a port method now**, so the fake and the real adapter must answer it
+    the same way — or a test written against the fake would be pinning behaviour
+    production does not have, which is the one thing a test double must never do.
+    """
+    memory = InMemoryThrottleAdapter(now=lambda: clock["now"])
+    stub = StubRedis()
+    real = RedisThrottleAdapter(client=stub)
+
+    for key in ("a", "b"):
+        memory.check(key, limit=LIMIT, window_seconds=WINDOW)
+        real.check(key, limit=LIMIT, window_seconds=WINDOW)
+
+    memory.reset("a")
+    real.reset("a")
+
+    for key in ("a", "b"):
+        assert (
+            memory.peek(key, window_seconds=WINDOW).used
+            == real.peek(key, window_seconds=WINDOW).used
+        ), f"the adapters disagree about `reset` for {key}"

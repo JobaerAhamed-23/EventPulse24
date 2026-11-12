@@ -61,6 +61,217 @@
         "title": "BillingAccountOut",
         "type": "object"
       },
+      "BrowseCardOut": {
+        "description": "One Browse card (FR-26): public facts, the personal explanation, and save state.\n\n**`tags` are Why-this Tags — the Relevance Pulse, not the Event Fit.** AD-10 forbids\nsubstituting one explanation for the other, and this surface is authed: its first\nsection head says \"3 worth your attention today\". The tags and the confidence come\nfrom the same `RankingInputs` the ranking used, so the explanation cannot drift from\nthe decision.\n\n**`is_saved` is on the card, not in an envelope-level set.** The Save button's initial\nstate is a property of the card, and an already-saved event must render \"Saved ✓\" on\nfirst paint rather than flashing \"Save\" — which a client-side join invites.\n\n**`stripe` is capped server-side.** At most one card per response carries `must_know`.\nA client-side cap would be per page, so two pages would each show \"their one\" and the\nsurface as a whole would flood.",
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0,
+            "title": "Confidence",
+            "type": "integer"
+          },
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "is_saved": {
+            "default": false,
+            "title": "Is Saved",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source_badge": {
+            "title": "Source Badge",
+            "type": "string"
+          },
+          "start_time_tz": {
+            "title": "Start Time Tz",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stripe": {
+            "default": "public",
+            "title": "Stripe",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tz_review_pending": {
+            "default": false,
+            "title": "Tz Review Pending",
+            "type": "boolean"
+          },
+          "venue_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue City"
+          },
+          "venue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Name"
+          }
+        },
+        "required": [
+          "event_id",
+          "slug",
+          "title",
+          "canonical_url",
+          "start_time_utc",
+          "start_time_tz",
+          "status",
+          "source_badge"
+        ],
+        "title": "BrowseCardOut",
+        "type": "object"
+      },
+      "BrowseOut": {
+        "description": "The Browse surface for the signed-in user (FR-26, FR-48).\n\n**Every state answers 200.** A user with no city, a city with nothing on this week,\nand an offset past the end are all answers rather than errors — the client tells them\napart by `city_missing` and `total`, and tells all three from a failure by the fact\nthat a failure is not a 200 at all. That distinction is the whole reason the surface\ncan say \"Nothing matched.\" and \"Nothing nearby tonight.\" and mean different things.\n\n**`total` is the size of the ranked pool, not a `COUNT(*)`.** It is what the user can\nactually page to. A count taken in SQL would include events that FR-14's staleness\nbound — applied in Python, because it is per source — then drops, so the section head\nwould advertise a number no amount of scrolling reaches.\n\n**`tier_2_starts_at` is the server's.** The two section heads are \"3 worth your\nattention today\" and \"More this week\", and the rule that splits them lives here so it\ncannot drift from the Digest's idea of what is worth attention.",
+        "properties": {
+          "cards": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BrowseCardOut"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "city_missing": {
+            "default": false,
+            "title": "City Missing",
+            "type": "boolean"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/BrowseQuotaOut"
+          },
+          "tier_2_starts_at": {
+            "title": "Tier 2 Starts At",
+            "type": "integer"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "window_from": {
+            "format": "date-time",
+            "title": "Window From",
+            "type": "string"
+          },
+          "window_to": {
+            "format": "date-time",
+            "title": "Window To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "city",
+          "timezone",
+          "window_from",
+          "window_to",
+          "total",
+          "tier_2_starts_at",
+          "quota"
+        ],
+        "title": "BrowseOut",
+        "type": "object"
+      },
+      "BrowseQuotaOut": {
+        "description": "What the user's save allowance stands at — for showing, never for deciding.\n\n**This is read without spending it.** The gate (`check_save_allowed`) counts an\nattempt by contract, so asking *it* what the allowance is would charge a user a save\nfor loading a page. The read goes through `ThrottlePort.peek`, which counts nothing.\n\n**A Pro account has `cap: null`,** not a very large number. FR-48's consequence is\nthat a Pro user has no soft wall at all, and a cap of \"infinity\" is a number a client\nwould eventually render into the hero.",
+        "properties": {
+          "cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap"
+          },
+          "is_pro": {
+            "default": false,
+            "title": "Is Pro",
+            "type": "boolean"
+          },
+          "resets_in_seconds": {
+            "default": 0,
+            "title": "Resets In Seconds",
+            "type": "integer"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used"
+        ],
+        "title": "BrowseQuotaOut",
+        "type": "object"
+      },
       "CalendarCapDetails": {
         "description": "The `details` of a calendar-cap refusal: the cap, and one upgrade sentence.\n\n**Exactly two fields, and nothing else** — the same shape as `SaveCapDetails`, and\nfor the same reason. No `modal`, no `title`, no `actions`, no `dismissable`: the\nrefusal is an *inline* prompt with a quiet \"Upgrade\" link, not a modal\n(EXPERIENCE.md §3, the Free-tier cap prompt). A cap that interrupts with a modal is a\ncap that trains people to dismiss prompts.\n\nThe two tier caps — one on connected calendars, one on saves — therefore speak **one**\nlanguage to the frontend: a number and a sentence. The frontend renders one prompt\ncomponent for both.",
         "properties": {
@@ -5396,6 +5607,50 @@
         "summary": "Dismiss one state-change notice",
         "tags": [
           "notices"
+        ]
+      }
+    },
+    "/api/personal/browse": {
+      "get": {
+        "description": "The signed-in user's Browse surface: public events in their city across a seven-day window, ranked by the same Relevance Pulse the Pulse Digest uses, with the save state of each card.\n\nThe city is the user's **digest preference** city, not a parameter — one meaning of 'your city' across both surfaces, which is why the surface's 'Change city' link goes to account settings. A user who skipped onboarding has no city: the response says `city_missing` and carries no cards, and the client shows the same quiet empty state it shows for a city with nothing on.\n\nThe window is cut in the **user's** timezone, so an event at 11pm local on the seventh day is inside it and one at 1am the next morning is not.\n\n`total` is how many events the user can page to, and `tier_2_starts_at` is where the second section begins — the server names the tiers so the rule cannot drift from the Digest's. `quota` reports the save allowance **without spending it**: it is a sign above the gate, not the gate.\n\nEach card carries up to three Why-this Tag keys, the Confidence Pulse bucket and the Source Badge variant, plus `is_saved` so an already-saved event renders as saved on first paint. At most one card per response carries the `must_know` stripe.",
+        "operationId": "apps_personalization_api_browse_endpoint",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowseOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Browse the user's city, tonight and the next seven days",
+        "tags": [
+          "personal"
         ]
       }
     },

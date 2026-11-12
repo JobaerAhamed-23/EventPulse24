@@ -4,10 +4,12 @@ title: The Browse Read API — Ranked, Authed, City-Aware, Save-Aware
 intent: browse-surface
 complexity: high
 mode: validate
-status: in_progress
+status: completed
 depends_on:
   - test-clock-seam
 created: 2026-11-12
+run_id: run-eventpulse24-029
+completed_at: 2026-11-12T10:59:29.042Z
 ---
 
 # Work Item: The Browse Read API — Ranked, Authed, City-Aware, Save-Aware

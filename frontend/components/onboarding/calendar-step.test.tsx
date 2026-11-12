@@ -345,8 +345,9 @@ describe("the refusals", () => {
     typeAddress();
     connect();
 
-    expect(await screen.findByText("Three calendars is the free plan. Pro has more."))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByText("Three calendars is the free plan. Pro has more."),
+    ).toBeInTheDocument();
   });
 
   it("shows a refused address on the field, in the API's words", async () => {

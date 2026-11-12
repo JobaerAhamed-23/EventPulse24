@@ -337,6 +337,7 @@ def list_public_candidates(
     now: datetime,
     city: str | None = None,
     limit: int = CANDIDATE_POOL_SIZE,
+    starts_before: datetime | None = None,
 ) -> list[PublicEventCandidate]:
     """The public events a digest may rank, soonest first.
 
@@ -395,6 +396,14 @@ def list_public_candidates(
     **The pool is bounded** by `limit`, capped at `MAX_CANDIDATE_POOL_SIZE`. A `limit` of
     zero or less returns nothing: a caller that asks for no candidates must not be handed
     one.
+
+    **`starts_before` bounds the far end, and defaults to no bound at all.** A digest ranks
+    what is coming and does not care how far out it is, so it passes nothing and this read
+    behaves exactly as it always has. Browse asks a different question — "what is on this
+    week?" — and a week has a far edge. The bound is **exclusive**, matching the lower
+    bound's inclusivity at the other end: an event starting exactly at the boundary instant
+    belongs to the next window, not this one, so the two windows a caller asks for back to
+    back neither overlap nor leave a gap.
     """
     if limit <= 0:
         return []
@@ -426,6 +435,8 @@ def list_public_candidates(
     )
     if city:
         queryset = queryset.filter(venue__city__iexact=city)
+    if starts_before is not None:
+        queryset = queryset.filter(start_time_utc__lt=starts_before)
 
     candidates: list[PublicEventCandidate] = []
     for event in queryset.order_by("start_time_utc", "id")[: limit * CANDIDATE_OVERFETCH_FACTOR]:
@@ -438,6 +449,98 @@ def list_public_candidates(
         if len(candidates) >= limit:
             break
     return candidates
+
+
+@dataclass(frozen=True)
+class SourceEventRef:
+    """The identity of one event, as its source sees it.
+
+    **The facts a caller needs to decide whether it has already created this event.**
+    The seed command writes its events under a stable `(source, source_event_id)`
+    and has to know on the next run whether it already wrote them; the ingest pipeline
+    asks the same question about a source item it has seen before.
+
+    **`start_time_utc` is here because "is it there" is not the whole question.** The
+    seed's times are *relative* — the file says "day 0, hour 7" — so the row it wrote
+    yesterday resolves to a different instant today. A row that exists at the wrong time
+    is not the row the file describes: it is an event whose clock has run out, and a
+    browse window that starts at now cannot show it. So the seed needs the time to
+    compare against, and the read carries it.
+    """
+
+    id: UUID
+    slug: str
+    source_event_id: str = ""
+    #: When the event starts. `None` only for a caller that did not ask for it.
+    start_time_utc: datetime | None = None
+
+
+def find_event_by_source_item(*, source_id: UUID, source_event_id: str) -> SourceEventRef | None:
+    """The **published** live event this source item produced, or `None`.
+
+    **"Live" means not superseded.** A superseded Event is terminal and its replacement
+    carries the same `(source, source_event_id)` — so a lookup that did not exclude the
+    superseded rows would find the *old* one and report that the event is already there,
+    when what is actually there is a retired row and a live successor. The seed would then
+    skip creating the successor, and the catalog would be missing the event entirely.
+
+    **"Published" is the other half.** A retired event's replacement row is live but not
+    published — a placeholder holding the source item's slot. This read says `None` for
+    it, so a caller that wants to (re)create the event is told to, rather than being
+    shown a placeholder and left to wonder why the event is not in the catalog.
+
+    **This is the same partial-unique-index rule the model holds.**
+    `event_live_source_item_uq` covers `(source, source_event_id)` for every row whose
+    status is not `superseded`, so "one live event per source item" is what the database
+    says, and this read answers the same question in the same terms.
+    """
+    row = (
+        Event.objects.using(CATALOG)
+        .filter(source_id=source_id, source_event_id=source_event_id)
+        .exclude(status=Event.Status.SUPERSEDED)
+        .filter(publication_status=Event.PublicationStatus.PUBLISHED)
+        .values_list("id", "slug", "start_time_utc")
+        .first()
+    )
+    if row is None:
+        return None
+    return SourceEventRef(
+        id=row[0],
+        slug=row[1],
+        source_event_id=source_event_id,
+        start_time_utc=row[2],
+    )
+
+
+def list_source_events(*, source_id: UUID) -> list[SourceEventRef]:
+    """Every **published** live event this source produced, in the order it produced them.
+
+    **"Live" means not superseded**, for the same reason `find_event_by_source_item`
+    says it: a superseded row is terminal, and its replacement is the live one.
+
+    **"Published" is the other half, and it matters.** A retired event's replacement row
+    is live but **not published** (`publication_status = in_review`) — that is what keeps
+    it out of every public read while it holds the source item's slot. Listing it here
+    would tell a reconciling writer that the source still has a live listing, which is
+    false: the listing was retired, and the row that is left is a placeholder, not an
+    event anyone can see.
+
+    **This is the read a reconciling writer needs.** A seed's data file is the source of
+    truth for what the catalog should hold, so a file that drops an event has to be able
+    to say "this row is no longer wanted" — and it can only say that if it can first see
+    every published event the source produced. The list is ordered by `source_event_id`
+    so a caller that reconciles against it reports its orphans in a stable order, run
+    after run.
+    """
+    rows = (
+        Event.objects.using(CATALOG)
+        .filter(source_id=source_id)
+        .exclude(status=Event.Status.SUPERSEDED)
+        .filter(publication_status=Event.PublicationStatus.PUBLISHED)
+        .order_by("source_event_id")
+        .values_list("id", "slug", "source_event_id")
+    )
+    return [SourceEventRef(id=row[0], slug=row[1], source_event_id=row[2]) for row in rows]
 
 
 def get_public_events(*, event_ids: set[UUID]) -> dict[UUID, PublicEvent]:
@@ -758,10 +861,13 @@ __all__ = [
     "PublicEventCandidate",
     "PublicEventDetail",
     "PublicEventPage",
+    "SourceEventRef",
+    "find_event_by_source_item",
     "get_public_event",
     "get_public_event_by_slug",
     "get_public_event_detail",
     "get_public_events",
     "list_public_candidates",
     "list_public_events",
+    "list_source_events",
 ]

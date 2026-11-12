@@ -1476,3 +1476,98 @@ class CollectionEventOut(Schema):
     end_time_utc: datetime | None
     #: The snapshot's version of the catalog event (AD-17).
     event_version: int
+
+
+class BrowseQuotaOut(Schema):
+    """What the user's save allowance stands at — for showing, never for deciding.
+
+    **This is read without spending it.** The gate (`check_save_allowed`) counts an
+    attempt by contract, so asking *it* what the allowance is would charge a user a save
+    for loading a page. The read goes through `ThrottlePort.peek`, which counts nothing.
+
+    **A Pro account has `cap: null`,** not a very large number. FR-48's consequence is
+    that a Pro user has no soft wall at all, and a cap of "infinity" is a number a client
+    would eventually render into the hero.
+    """
+
+    #: Saves spent in the current window. Always `0` for Pro, which spends no slots.
+    used: int
+    #: The daily limit, or `None` for a Pro account with no cap.
+    cap: int | None = None
+    #: Seconds until the window frees up. `0` when nothing is spent.
+    resets_in_seconds: int = 0
+    is_pro: bool = False
+
+
+class BrowseCardOut(Schema):
+    """One Browse card (FR-26): public facts, the personal explanation, and save state.
+
+    **`tags` are Why-this Tags — the Relevance Pulse, not the Event Fit.** AD-10 forbids
+    substituting one explanation for the other, and this surface is authed: its first
+    section head says "3 worth your attention today". The tags and the confidence come
+    from the same `RankingInputs` the ranking used, so the explanation cannot drift from
+    the decision.
+
+    **`is_saved` is on the card, not in an envelope-level set.** The Save button's initial
+    state is a property of the card, and an already-saved event must render "Saved ✓" on
+    first paint rather than flashing "Save" — which a client-side join invites.
+
+    **`stripe` is capped server-side.** At most one card per response carries `must_know`.
+    A client-side cap would be per page, so two pages would each show "their one" and the
+    surface as a whole would flood.
+    """
+
+    event_id: UUID
+    slug: str
+    title: str
+    canonical_url: str
+    start_time_utc: datetime
+    start_time_tz: str
+    end_time_utc: datetime | None = None
+    venue_name: str | None = None
+    venue_city: str | None = None
+    #: `scheduled`, `cancelled` or `postponed`. The card marks the last two.
+    status: str
+    source_badge: str
+    #: FR-14/AD-6: the time is published but still under review, so the client marks it.
+    tz_review_pending: bool = False
+    #: The Why-this Tag keys, in priority order. The client owns the labels.
+    tags: list[str] = []
+    #: The Confidence Pulse bucket (FR-22) — a bucket, never the raw score.
+    confidence: int = 0
+    #: `public` or `must_know`.
+    stripe: str = "public"
+    is_saved: bool = False
+
+
+class BrowseOut(Schema):
+    """The Browse surface for the signed-in user (FR-26, FR-48).
+
+    **Every state answers 200.** A user with no city, a city with nothing on this week,
+    and an offset past the end are all answers rather than errors — the client tells them
+    apart by `city_missing` and `total`, and tells all three from a failure by the fact
+    that a failure is not a 200 at all. That distinction is the whole reason the surface
+    can say "Nothing matched." and "Nothing nearby tonight." and mean different things.
+
+    **`total` is the size of the ranked pool, not a `COUNT(*)`.** It is what the user can
+    actually page to. A count taken in SQL would include events that FR-14's staleness
+    bound — applied in Python, because it is per source — then drops, so the section head
+    would advertise a number no amount of scrolling reaches.
+
+    **`tier_2_starts_at` is the server's.** The two section heads are "3 worth your
+    attention today" and "More this week", and the rule that splits them lives here so it
+    cannot drift from the Digest's idea of what is worth attention.
+    """
+
+    city: str
+    timezone: str
+    window_from: datetime
+    window_to: datetime
+    total: int
+    tier_2_starts_at: int
+    quota: BrowseQuotaOut
+    cards: list[BrowseCardOut] = []
+    has_more: bool = False
+    #: True when the user has never set a city. The surface shows the quiet empty state
+    #: with "Change city" rather than guessing one the user did not choose.
+    city_missing: bool = False

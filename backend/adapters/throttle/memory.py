@@ -14,7 +14,7 @@ test written against the fake would then be pinning behaviour production does no
 import time
 from collections.abc import Callable
 
-from ports.throttle import ThrottleDecision, ThrottlePort
+from ports.throttle import ThrottleDecision, ThrottlePort, ThrottleState
 
 
 class InMemoryThrottleAdapter(ThrottlePort):
@@ -60,3 +60,29 @@ class InMemoryThrottleAdapter(ThrottlePort):
         # attempt in it.
         retry_after = max(1, int(attempts[0] + window_seconds - moment) + 1)
         return ThrottleDecision(allowed=False, retry_after_seconds=retry_after)
+
+    def peek(self, key: str, *, window_seconds: int) -> ThrottleState:
+        """What this key's window holds, counting nothing.
+
+        **It does not evict the closed window it finds.** `check` does that, on the next
+        attempt, by starting a new one. A read that mutated the store would be a read that
+        changes the answer a later `check` gives — and a surface polling this on every page
+        load would then be deciding when a user's window resets, which is the gate's job.
+        """
+        moment = self._now()
+        attempts = self._attempts.get(key, ())
+        if not attempts or attempts[0] + window_seconds <= moment:
+            # No window, or one that has already closed: nothing is spent in the window
+            # that is open now. Both are the same answer, as the port says.
+            return ThrottleState(used=0)
+        resets_in = max(1, int(attempts[0] + window_seconds - moment) + 1)
+        return ThrottleState(used=len(attempts), resets_in_seconds=resets_in)
+
+    def reset(self, key: str) -> None:
+        """Forget the key's window entirely.
+
+        **The key is removed rather than emptied**, so a later `check` finds no window
+        and starts a fresh one — which is what "the allowance is full again" means. A
+        key that was never there is not an error.
+        """
+        self._attempts.pop(key, None)

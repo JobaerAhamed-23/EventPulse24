@@ -71,6 +71,80 @@ const CHIP_LABELS: Record<string, string> = {
 const CHIP_TAG_PREFIX = "matches_";
 
 /**
+ * The Browse search's friendly tag names, and the server's keys they stand for.
+ *
+ * **The design names ten tags the server does not have.** `DESIGN.md`'s
+ * `component.input.search.browse` and `EXPERIENCE.md`'s inline keyword search both
+ * specify a vocabulary of ten: `music · tech · community · arts · family · food ·
+ * sports · outdoor · indoor · rooftop`. The server's why-tag vocabulary is
+ * `RANKING_TAG_ORDER` — `discovery, nearby, tonight, tomorrow, weekend, saved` — plus
+ * `matches_<chip_key>` for ten *other* slugs (`tech_meetups`, `sports_fitness`,
+ * `arts_culture`, `family_kids`, `community_volunteering`, `outdoors_nature`,
+ * `classes_workshops`, `markets_fairs`, `talks_lectures`, `government_civic`).
+ *
+ * **Six of the design's ten map onto a real chip.** The other four — `music`, `food`,
+ * `indoor`, `rooftop` — have **no counterpart at all**: no fixed tag means them and no
+ * chip means them. This table therefore maps the six and **deliberately omits the
+ * four**, and a `tag:` literal naming an omitted token matches nothing.
+ *
+ * **Why a missing token matches nothing rather than falling back to a plain word.**
+ * The search's own rule is that an unknown `tag:` token matches nothing rather than
+ * widening into a plain-word match, because "silently widening a constrained query
+ * would make the grammar untrustworthy". Widening is the *worse* failure: a reader who
+ * typed `tag:music` would get every card with "music" anywhere in its title and no way
+ * to tell that the tag was ignored. Aliasing `music` onto `matches_arts_culture` would
+ * be the same lie in a subtler form — it would put "music" on a card the server tagged
+ * "Sports & fitness".
+ *
+ * **This is a translation, and it is the same seam as the labels above.** The server
+ * states the fact; the client speaks the user's language. The alias table is the
+ * client's vocabulary for a server fact, not a second fact — and
+ * `tests/digest-labels.test.ts` reads `backend/shared/constants.py` to prove every alias
+ * here still points at a chip the server has.
+ */
+const SEARCH_TAG_ALIASES: Record<string, string> = {
+  tech: "matches_tech_meetups",
+  sports: "matches_sports_fitness",
+  arts: "matches_arts_culture",
+  family: "matches_family_kids",
+  community: "matches_community_volunteering",
+  outdoor: "matches_outdoors_nature",
+};
+
+/**
+ * The friendly tag names the search accepts, in the order the hint line lists them.
+ *
+ * **This is the vocabulary the input's hint line advertises**, and it is deliberately
+ * *not* the design's ten: it is the six aliases that resolve plus the six fixed
+ * server tags. Listing a token that matches nothing would teach a grammar that lies.
+ */
+export const SEARCH_TAG_VOCABULARY: string[] = [
+  ...Object.keys(SEARCH_TAG_ALIASES),
+  "tonight",
+  "tomorrow",
+  "weekend",
+  "nearby",
+  "saved",
+  "discovery",
+];
+
+/**
+ * The server's key a friendly tag name stands for, or `null` when it stands for none.
+ *
+ * **A fixed server tag resolves to itself** — `tag:tonight` is a tag the server sends
+ * today, so it needs no alias. The alias table holds only the *friendly* names, and
+ * this function is what decides whether a token is one.
+ */
+export function searchTagKey(token: string): string | null {
+  const alias = SEARCH_TAG_ALIASES[token];
+  if (alias) return alias;
+  // **The fixed tags are their own keys.** `tag:tonight` constrains to the `tonight`
+  // why-tag, which the server really does send.
+  if (TAG_LABELS[token]) return token;
+  return null;
+}
+
+/**
  * A tag key's label.
  *
  * An unknown key is **rendered from its slug**, not dropped. A tag the backend adds

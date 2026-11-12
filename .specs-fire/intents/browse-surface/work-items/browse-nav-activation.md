@@ -4,9 +4,12 @@ title: Retire the Three "Coming Soon" Stubs
 intent: browse-surface
 complexity: low
 mode: autopilot
-status: pending
-depends_on: [frontend-browse-shell-and-grid]
+status: completed
+depends_on:
+  - frontend-browse-shell-and-grid
 created: 2026-11-12
+run_id: run-eventpulse24-029
+completed_at: 2026-11-12T12:56:11.951Z
 ---
 
 # Work Item: Retire the Three "Coming Soon" Stubs

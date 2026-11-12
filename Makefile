@@ -11,7 +11,7 @@ API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 .DEFAULT_GOAL := help
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
-        web web-install lint-web test-web openapi client dev coverage-backend
+        web web-install lint-web test-web test-e2e openapi client dev coverage-backend seed-browse
 
 UV_BACKEND := uv run --directory backend
 
@@ -105,6 +105,19 @@ lint-web: ## Lint, typecheck and format-check the frontend
 
 test-web: ## Run the frontend tests (Vitest)
 	pnpm --dir frontend test
+
+# The Browse walk-through. These tests drive the real stack — the real frontend against the
+# real backend against the real database — so they need the infrastructure up and the
+# catalog seeded. That is why they are a separate target from `test-web`: the Vitest
+# suite is hermetic and runs on every commit, and these are not.
+#
+# `seed-browse` is a prerequisite, so the data the tests sign in against is the committed
+# seed file's and never whatever the database happened to hold.
+seed-browse: ## Seed the Browse catalog (city, week of events, Free and Pro accounts)
+	$(UV_BACKEND) python manage.py seed_browse_catalog
+
+test-e2e: seed-browse ## Run the Browse end-to-end tests (Playwright); needs `make up` and the API running
+	pnpm --dir frontend exec playwright test
 
 manage: ## Run a manage.py command: make manage ARGS="check"
 	$(UV_BACKEND) python manage.py $(ARGS)

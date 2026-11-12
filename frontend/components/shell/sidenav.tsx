@@ -28,11 +28,18 @@ import {
  * toggle burns the accent on a control used many times per day". The pill mirrors the
  * `Control.Segmented` ink-inversion pattern in miniature.
  *
- * **An inert route is a `<span>`, not an `<a>`.** Two of the six routes do not exist
- * yet — Browse and Settings. An anchor with `aria-disabled="true"` is still focusable
- * and still navigates — the attribute is a hint, not a mechanism — and a link to a 404 is
- * a lie about where the label goes. A `<span>` says what is true: there is nothing
- * there yet.
+ * **An inert route is a `<span>`, not an `<a>`.** An anchor with `aria-disabled="true"`
+ * is still focusable and still navigates — the attribute is a hint, not a mechanism — and
+ * a link to a 404 is a lie about where the label goes. A `<span>` says what is true:
+ * there is nothing there yet.
+ *
+ * **All six routes exist now.** Browse shipped with the Browse surface, and Settings
+ * shipped with the first `/settings/*` screens, so the rail has no inert row left. The
+ * rule above still stands for whatever route is deferred next, and the branch that
+ * implements it is kept — but nothing in the rail uses it today, and a rule that is
+ * never exercised is a rule that rots. **The branch is therefore not deleted; it is
+ * pinned by a test**, so that the next inert route inherits the rule rather than
+ * reinventing it.
  *
  * **The account row is a control, and it obeys the same rule.** It used to link to
  * `/settings`, which does not exist — the one place in the rail that broke the rule
@@ -93,7 +100,22 @@ export function Sidenav({ name, email }: SidenavProps) {
             glyph={<TimelineGlyph />}
           />
           <SidenavItem label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
-          <SidenavItem label="Browse" glyph={<BrowseGlyph />} />
+          {/*
+            **Browse is a real route now.** The Browse surface shipped, so this row is a
+            link and not a "Coming soon" label.
+
+            **The active rule is an equality, not a prefix.** Browse has no children —
+            there is no `/browse/*` screen — so a prefix rule would be a claim about
+            routes that do not exist. Digest uses a prefix because `/events/*` hangs off
+            it, and Settings uses one because `/settings/*` does; Browse has neither,
+            so it takes the same rule as Timeline and Conflicts.
+          */}
+          <SidenavItem
+            href="/browse"
+            label="Browse"
+            active={pathname === "/browse"}
+            glyph={<BrowseGlyph />}
+          />
           <SidenavItem
             href="/conflicts"
             label="Conflicts"
@@ -200,6 +222,15 @@ function SidenavItem({
     // The inert route. It is a `<span>` with `aria-disabled`, and it says "Coming soon"
     // in muted meta ink — present, so the route order is honest, and honest about what
     // it is.
+    //
+    // **No row uses this today.** Browse was the last one, and it shipped. The branch
+    // stays anyway, because the rule it implements — *an inert route is a `<span>`, not
+    // an anchor* — is the rule the next deferred route has to inherit. Deleting the
+    // only implementation of a rule the product still states would weaken it exactly
+    // when someone needs it.
+    //
+    // `tests/digest-home-boundary.test.ts` pins this branch by name, so it cannot rot
+    // silently into an anchor while it waits.
     return (
       <li>
         <span className={className} aria-disabled="true">

@@ -16,7 +16,7 @@ DOMAIN_ALLOWED_PROJECT_MODULES = ("domain", "shared.constants", "shared.ids")
 # Files that must be stdlib-only because domain imports them (shared/__init__ runs on import).
 STDLIB_ONLY_FILES = ("shared/__init__.py", "shared/constants.py", "shared/ids.py")
 # Stdlib-only by design, not because domain imports them; they may import no project module.
-SHARED_STDLIB_ONLY_FILES = ("shared/actor.py",)
+SHARED_STDLIB_ONLY_FILES = ("shared/actor.py", "shared/durations.py")
 
 
 def _module_name(path: Path, root: Path) -> str:

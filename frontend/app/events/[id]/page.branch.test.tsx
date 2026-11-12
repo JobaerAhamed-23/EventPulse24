@@ -394,9 +394,7 @@ describe("the metadata", () => {
 
     const metadata = await generateMetadata({ params: Promise.resolve({ id: SLUG }) });
 
-    expect(metadata.openGraph?.description).toBe(
-      "Designing for Calm — Brooklyn Arts Council",
-    );
+    expect(metadata.openGraph?.description).toBe("Designing for Calm — Brooklyn Arts Council");
     // The description is never empty, whichever branch produced it.
     expect(metadata.openGraph?.description).not.toBe("");
   });

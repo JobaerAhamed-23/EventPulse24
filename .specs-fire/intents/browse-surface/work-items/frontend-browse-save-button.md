@@ -4,9 +4,12 @@ title: The Inline Save Button — State Machine, Quota Wall and the Two Refusals
 intent: browse-surface
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [frontend-browse-shell-and-grid]
+status: completed
+depends_on:
+  - frontend-browse-shell-and-grid
 created: 2026-11-12
+run_id: run-eventpulse24-029
+completed_at: 2026-11-12T12:43:02.350Z
 ---
 
 # Work Item: The Inline Save Button — State Machine, Quota Wall and the Two Refusals

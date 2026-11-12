@@ -4,8 +4,11 @@ title: End-to-End Proof — Seeded Data, a Real Browser, and an Honest Report
 intent: browse-surface
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [frontend-browse-search, frontend-browse-save-button, browse-nav-activation]
+status: in_progress
+depends_on:
+  - frontend-browse-search
+  - frontend-browse-save-button
+  - browse-nav-activation
 created: 2026-11-12
 ---
 

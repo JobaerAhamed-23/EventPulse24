@@ -609,6 +609,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse the user's city, tonight and the next seven days
+         * @description The signed-in user's Browse surface: public events in their city across a seven-day window, ranked by the same Relevance Pulse the Pulse Digest uses, with the save state of each card.
+         *
+         *     The city is the user's **digest preference** city, not a parameter — one meaning of 'your city' across both surfaces, which is why the surface's 'Change city' link goes to account settings. A user who skipped onboarding has no city: the response says `city_missing` and carries no cards, and the client shows the same quiet empty state it shows for a city with nothing on.
+         *
+         *     The window is cut in the **user's** timezone, so an event at 11pm local on the seventh day is inside it and one at 1am the next morning is not.
+         *
+         *     `total` is how many events the user can page to, and `tier_2_starts_at` is where the second section begins — the server names the tiers so the rule cannot drift from the Digest's. `quota` reports the save allowance **without spending it**: it is a sign above the gate, not the gate.
+         *
+         *     Each card carries up to three Why-this Tag keys, the Confidence Pulse bucket and the Source Badge variant, plus `is_saved` so an already-saved event renders as saved on first paint. At most one card per response carries the `must_know` stripe.
+         */
+        get: operations["apps_personalization_api_browse_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/calendars": {
         parameters: {
             query?: never;
@@ -1372,6 +1400,162 @@ export interface components {
             plan: string | null;
             /** Status */
             status: string | null;
+        };
+        /**
+         * BrowseCardOut
+         * @description One Browse card (FR-26): public facts, the personal explanation, and save state.
+         *
+         *     **`tags` are Why-this Tags — the Relevance Pulse, not the Event Fit.** AD-10 forbids
+         *     substituting one explanation for the other, and this surface is authed: its first
+         *     section head says "3 worth your attention today". The tags and the confidence come
+         *     from the same `RankingInputs` the ranking used, so the explanation cannot drift from
+         *     the decision.
+         *
+         *     **`is_saved` is on the card, not in an envelope-level set.** The Save button's initial
+         *     state is a property of the card, and an already-saved event must render "Saved ✓" on
+         *     first paint rather than flashing "Save" — which a client-side join invites.
+         *
+         *     **`stripe` is capped server-side.** At most one card per response carries `must_know`.
+         *     A client-side cap would be per page, so two pages would each show "their one" and the
+         *     surface as a whole would flood.
+         */
+        BrowseCardOut: {
+            /** Canonical Url */
+            canonical_url: string;
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** End Time Utc */
+            end_time_utc?: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Is Saved
+             * @default false
+             */
+            is_saved: boolean;
+            /** Slug */
+            slug: string;
+            /** Source Badge */
+            source_badge: string;
+            /** Start Time Tz */
+            start_time_tz: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Status */
+            status: string;
+            /**
+             * Stripe
+             * @default public
+             */
+            stripe: string;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /** Title */
+            title: string;
+            /**
+             * Tz Review Pending
+             * @default false
+             */
+            tz_review_pending: boolean;
+            /** Venue City */
+            venue_city?: string | null;
+            /** Venue Name */
+            venue_name?: string | null;
+        };
+        /**
+         * BrowseOut
+         * @description The Browse surface for the signed-in user (FR-26, FR-48).
+         *
+         *     **Every state answers 200.** A user with no city, a city with nothing on this week,
+         *     and an offset past the end are all answers rather than errors — the client tells them
+         *     apart by `city_missing` and `total`, and tells all three from a failure by the fact
+         *     that a failure is not a 200 at all. That distinction is the whole reason the surface
+         *     can say "Nothing matched." and "Nothing nearby tonight." and mean different things.
+         *
+         *     **`total` is the size of the ranked pool, not a `COUNT(*)`.** It is what the user can
+         *     actually page to. A count taken in SQL would include events that FR-14's staleness
+         *     bound — applied in Python, because it is per source — then drops, so the section head
+         *     would advertise a number no amount of scrolling reaches.
+         *
+         *     **`tier_2_starts_at` is the server's.** The two section heads are "3 worth your
+         *     attention today" and "More this week", and the rule that splits them lives here so it
+         *     cannot drift from the Digest's idea of what is worth attention.
+         */
+        BrowseOut: {
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["BrowseCardOut"][];
+            /** City */
+            city: string;
+            /**
+             * City Missing
+             * @default false
+             */
+            city_missing: boolean;
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            quota: components["schemas"]["BrowseQuotaOut"];
+            /** Tier 2 Starts At */
+            tier_2_starts_at: number;
+            /** Timezone */
+            timezone: string;
+            /** Total */
+            total: number;
+            /**
+             * Window From
+             * Format: date-time
+             */
+            window_from: string;
+            /**
+             * Window To
+             * Format: date-time
+             */
+            window_to: string;
+        };
+        /**
+         * BrowseQuotaOut
+         * @description What the user's save allowance stands at — for showing, never for deciding.
+         *
+         *     **This is read without spending it.** The gate (`check_save_allowed`) counts an
+         *     attempt by contract, so asking *it* what the allowance is would charge a user a save
+         *     for loading a page. The read goes through `ThrottlePort.peek`, which counts nothing.
+         *
+         *     **A Pro account has `cap: null`,** not a very large number. FR-48's consequence is
+         *     that a Pro user has no soft wall at all, and a cap of "infinity" is a number a client
+         *     would eventually render into the hero.
+         */
+        BrowseQuotaOut: {
+            /** Cap */
+            cap?: number | null;
+            /**
+             * Is Pro
+             * @default false
+             */
+            is_pro: boolean;
+            /**
+             * Resets In Seconds
+             * @default 0
+             */
+            resets_in_seconds: number;
+            /** Used */
+            used: number;
         };
         /**
          * CalendarCapDetails
@@ -4978,6 +5162,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_browse_endpoint: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowseOut"];
                 };
             };
         };
