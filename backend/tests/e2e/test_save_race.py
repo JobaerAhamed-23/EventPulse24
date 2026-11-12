@@ -26,6 +26,7 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from freezegun import freeze_time
 
 from apps.ingestion.models import Event, Source
 from apps.personalization.models import SavedEvent
@@ -40,6 +41,27 @@ User = get_user_model()
 
 #: A fixed instant far enough ahead that the scenario does not race the clock.
 START = datetime(2026, 11, 6, 3, 30, tzinfo=UTC)
+
+#: The instant the scenario is "now", one day before the event it saves.
+#:
+#: The fixtures this test seeds from carry **fixed** event dates, and the save endpoint
+#: serves only events that have not started yet. Left to the wall clock, every one of those
+#: events eventually slides into the past and the API answers 404 — correctly. So the clock
+#: is pinned here rather than the dates being pushed out, which would only re-arm the same
+#: failure a few weeks later.
+NOW = START - timedelta(days=1)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock():
+    """Pin the clock at `NOW` for the whole module.
+
+    `tick=True`, not a hard freeze: the primary keys here are UUIDv7, whose ordering comes
+    from their timestamp prefix, and this module asserts on row identity and ordering. A
+    stopped clock would mint keys that tie.
+    """
+    with freeze_time(NOW, tick=True):
+        yield
 
 
 @pytest.fixture(autouse=True)

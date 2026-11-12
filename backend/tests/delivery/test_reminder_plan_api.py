@@ -26,6 +26,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import connections
 from django.test.utils import CaptureQueriesContext
+from freezegun import freeze_time
 
 from apps.delivery.models import ReminderPlan, ScheduledSend
 from apps.delivery.services import scheduled_sends
@@ -48,6 +49,25 @@ User = get_user_model()
 #: function of when the suite happened to run.
 NOW = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 
+
+@pytest.fixture(autouse=True)
+def _frozen_clock():
+    """Pin the clock at `NOW` for the whole module — the thing the comment above asks for.
+
+    `NOW` was already threaded into every service call here, so the *data* was pinned. The
+    HTTP layer was not: a view calls `timezone.now()` itself, and `AFTERNOON_START` and
+    `LATE_START` are expressed as absolute instants two and four days after `NOW`. Once the
+    real date passed them, slots that should be in the future were minted in the past and
+    silently dropped — which is exactly the "function of when the suite happened to run"
+    the comment above says this must not be.
+
+    `tick=True`, not a hard freeze: send rows carry UUIDv7 keys and this module asserts on
+    the order sends are minted in.
+    """
+    with freeze_time(NOW, tick=True):
+        yield
+
+
 ZONE = "America/Los_Angeles"
 TIMEZONE_OFFSET = timedelta(hours=-8)
 
@@ -58,6 +78,15 @@ AFTERNOON_START = datetime(2026, 11, 12, 2, 0, tzinfo=UTC)  # 2026-11-11 18:00 i
 #: An event that starts at 11:30pm local — inside the quiet window's evening side, so a
 #: `1hr` slot lands at 10:30pm and **is** deferred to 8:00am the next morning.
 LATE_START = datetime(2026, 11, 14, 7, 30, tzinfo=UTC)  # 2026-11-13 23:30 in LA
+
+#: An event far enough ahead that **all four** reminder slots are still in the future.
+#:
+#: `AFTERNOON_START` is 1d14h after `NOW`, so a `5d` or `2d` slot for it would be due in
+#: the past and is correctly never minted. A test asserting all four slots needs an event
+#: beyond the widest one. This is the same 6pm local wall time, a week later — 2026-11-19
+#: is PST exactly as 2026-11-12 is (US DST ended 2026-11-01), so the quiet-hours behaviour
+#: `AFTERNOON_START` was chosen for is unchanged.
+FAR_AFTERNOON_START = AFTERNOON_START + timedelta(days=7)  # 2026-11-18 18:00 in LA
 
 
 def make_user(email="sam@example.test"):
@@ -586,7 +615,9 @@ def test_a_saved_plan_and_its_sends_move_together():
     """The sends that the save cancelled or minted are the ones the plan says."""
     user = make_user()
     with_zone(user)
-    event = make_personal_event(user, start_utc=AFTERNOON_START)
+    # `FAR_AFTERNOON_START`, not `AFTERNOON_START`: this test asserts all four slots mint,
+    # which needs an event further out than the widest slot.
+    event = make_personal_event(user, start_utc=FAR_AFTERNOON_START)
     client = signed_in(user)
     put_plan(client, "personal_event", event.id, ["5d", "2d", "1d", "1hr"])
 

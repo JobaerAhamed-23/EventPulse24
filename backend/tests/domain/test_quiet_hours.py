@@ -242,6 +242,20 @@ def test_covers_crossing_window_both_sides_and_outside():
     assert NIGHT.covers(time(12, 0)) is False
 
 
+def test_covers_daytime_window_inside_and_outside_its_bounds():
+    """The branch for a window that opens and closes on the same day.
+
+    `AFTERNOON` is declared at the top of this module "to prove one branch serves both
+    shapes", and `covers` is where that claim is actually made — the crossing case above
+    tests the disjunction, this one tests the plain comparison. Start inclusive, end
+    exclusive, the same rule either way.
+    """
+    assert AFTERNOON.covers(time(13, 0)) is True  # start is inclusive
+    assert AFTERNOON.covers(time(13, 30)) is True
+    assert AFTERNOON.covers(time(14, 0)) is False  # end is exclusive
+    assert AFTERNOON.covers(time(12, 59)) is False
+
+
 def test_shift_rejects_naive_instant():
     """AD-6 forbids naive datetimes; to_instant raises rather than guessing a zone."""
     # The naive datetime is the point of the test, so DTZ001 is waived here and only here.

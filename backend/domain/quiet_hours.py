@@ -252,4 +252,10 @@ def shift_to_sendable(instant: datetime, *, window: Window | None, zone: str) ->
 
     # Unreachable: see `MAX_DEFERRALS`. Returning the last end keeps the function total
     # without ever handing back an instant known to be inside a window.
-    return sendable
+    #
+    # `pragma: no cover` because it cannot be reached, not because it is untested: the loop
+    # above always returns first, and `test_the_shift_always_reaches_an_uncovered_instant_
+    # well_inside_its_bound` pins that it does. `domain/` carries a hard 100% gate, and a
+    # line that no input can reach would otherwise hold the gate below 100% forever — which
+    # ends with someone lowering the gate instead of keeping it honest.
+    return sendable  # pragma: no cover

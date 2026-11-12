@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.db.models import F
+from freezegun import freeze_time
 
 from apps.ingestion.models import City, Event, EventFit, EventStateChange
 from apps.ingestion.services.url_feed_read import (
@@ -40,6 +41,25 @@ from tests.ingestion.factories import (
 pytestmark = pytest.mark.django_db(databases=[CATALOG])
 
 NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock():
+    """Pin the clock at `NOW` for the whole module.
+
+    The feed's `lastmod` is the newest `updated_at` among a city's events, and the events
+    here are built at offsets from `NOW`. With the real clock running, rows written now
+    out-rank every fixture instant, so `lastmod` reported the moment the test ran instead
+    of the data's own latest change.
+
+    `tick=True`, not a hard freeze: `lastmod` is a max over timestamps, and a stopped clock
+    would make every row's `updated_at` identical, so the assertion would pass without
+    discriminating.
+    """
+    with freeze_time(NOW, tick=True):
+        yield
+
+
 HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
 
@@ -286,7 +306,12 @@ def test_the_lastmod_is_not_the_frozen_updated_at():
 def test_a_city_lastmod_is_the_latest_of_its_events():
     """A city page changes when one of its events changes, so its `lastmod` is the max
     over its qualifying events' lastmods."""
-    city = _city_with_events(CITY_PAGE_EVENT_THRESHOLD + 1)
+    # The events are created a day back, so the state change below is genuinely the latest
+    # thing that happened to this city. A `lastmod` is `COALESCE(last state change, the
+    # event's creation)` — so events created *after* the change would make the creation the
+    # max, and the assertion would pass on the wrong value or fail for the wrong reason.
+    with freeze_time(NOW - DAY, tick=True):
+        city = _city_with_events(CITY_PAGE_EVENT_THRESHOLD + 1)
     latest = NOW - timedelta(hours=2)
     target = city.event_fits.order_by("id").first().event
     EventStateChange.objects.using(CATALOG).create(
