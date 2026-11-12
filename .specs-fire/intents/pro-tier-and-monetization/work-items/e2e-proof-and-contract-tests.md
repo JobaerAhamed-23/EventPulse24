@@ -4,9 +4,16 @@ title: Prove the paid path closes — and that cancelling closes every gate
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [frontend-pricing-page, frontend-upgrade-prompts, frontend-collections, frontend-pro-quiet-hours, frontend-account-and-billing-settings]
+status: completed
+depends_on:
+  - frontend-pricing-page
+  - frontend-upgrade-prompts
+  - frontend-collections
+  - frontend-pro-quiet-hours
+  - frontend-account-and-billing-settings
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-12T02:19:36.225Z
 ---
 
 # Work Item: Prove the paid path closes — and that cancelling closes every gate

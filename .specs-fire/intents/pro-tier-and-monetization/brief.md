@@ -1,8 +1,9 @@
 ---
 id: pro-tier-and-monetization
 title: Pro Tier & Monetization — Subscription, Entitlement & the Paid Path
-status: in_progress
+status: completed
 created: 2026-11-11
+completed_at: 2026-11-12T02:19:36.240Z
 ---
 
 # Intent: Pro Tier & Monetization — Subscription, Entitlement & the Paid Path

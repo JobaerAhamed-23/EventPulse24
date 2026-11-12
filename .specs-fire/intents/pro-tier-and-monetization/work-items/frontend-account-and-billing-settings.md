@@ -4,9 +4,13 @@ title: Account settings — plan, portal, and Download my data
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [checkout-and-portal-api, data-export]
+status: completed
+depends_on:
+  - checkout-and-portal-api
+  - data-export
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-12T00:22:17.927Z
 ---
 
 # Work Item: Account settings — plan, portal, and Download my data

@@ -4,9 +4,13 @@ title: Collections over the wire — CRUD, reorder, and the Pro gate
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [saved-collections-model, free-tier-caps-read-entitlement]
+status: completed
+depends_on:
+  - saved-collections-model
+  - free-tier-caps-read-entitlement
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-12T01:11:30.261Z
 ---
 
 # Work Item: Collections over the wire — CRUD, reorder, and the Pro gate

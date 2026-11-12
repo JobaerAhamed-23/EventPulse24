@@ -997,3 +997,646 @@ The function was deleted rather than shipped. `test_every_schedule_leaves_a_send
 replaces it, walking the worst case the arithmetic allows — seven maximal windows at every
 alignment of their starts, 10080 minutes each — and the proof lives in `MAX_DEFERRALS`'
 docstring, where it explains why a bound exists that can never be reached.
+
+---
+
+## Work Item: `quiet-hours-pro-api`
+
+**21 new backend tests, 1 new frontend test. Backend 6432 passed / 16 failed — the same
+pre-existing 16 as every item since item 1. Frontend 1913 passed / 1 failed, and that one
+fails only on this machine (see below). `make client` regenerated and produced no diff, so
+the committed client was already in sync.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `tests/delivery/test_quiet_hours_pro_api.py` | 21 | Both shapes, the refusal, atomicity, the lapse, scoping |
+| `frontend/lib/cap-details.test.ts` | 1 | `quiet_hours_pro_required` is a third cap with the same shape |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| Pro writes seven windows in **one request** | `test_a_pro_account_sets_seven_windows_in_one_request` |
+| Free reads/writes one window, shape unchanged | `test_the_free_shape_is_unchanged` |
+| Free setting seven is refused with `upgrade_hint` | `test_a_free_account_setting_weekday_windows_is_refused_with_an_upgrade_hint`, `test_the_refusal_carries_no_modal_shaped_field` |
+| A lapsed Pro user can still **read** seven windows | `test_a_lapsed_account_still_reads_its_seven_windows`, `test_a_lapsed_accounts_effective_week_is_its_base_window_not_its_stored_windows` |
+| `start == end` refused on **every** window | `test_a_week_whose_last_window_is_empty_writes_none_of_them` |
+| Contract tests cover both shapes; `schema.ts` regenerated | `tests/api/test_contract.py` in the full suite; `make client` → no diff |
+
+The lapse pair is the one worth reading together. The first says the seven stored windows
+come back; the second says `effective_quiet_hours` is the base window every day. Either
+alone would be a half-truth — the first would show a user seven windows that are not in
+force, the second would look as though the lapse had deleted their data.
+
+### Mutation testing: three probes, three caught
+
+| Mutation | Result |
+|---|---|
+| Clearing no longer short-circuits the paywall (`[]` refused for a Free user) | **1 failed** — caught |
+| The tier check always says Pro | **4 failed** — caught |
+| `replace_quiet_hours_overrides` merges instead of replacing | **1 failed** — caught |
+
+### A probe that caught the test author rather than the code
+
+`test_no_app_code_deletes_a_subscription` greps `apps/` for a file containing both
+`Subscription` and `.delete()`. This item made it fail for a false reason:
+`notification_preferences.py` deletes `QuietHoursOverride` rows — that is how a weekday
+returns to the base window — and separately *mentions* `Subscription` in a docstring
+explaining that a lapse never deletes one. The guard was reading prose as a delete path.
+
+The fix strips docstrings and comments before the same scan, keeping the guard file-wide so
+it still catches a queryset parked in a variable and deleted two lines later.
+
+**The first version of that fix was wrong, and a probe is what said so.** It rebuilt the
+source by joining the surviving tokens with newlines, which splits `qs.delete()` across four
+lines — so the scan found nothing and the guard passed against a module that really did
+delete the table. The helper now blanks prose **in place**, preserving every other
+character's line and column. Re-probed both ways: clean tree passes, probe module fails.
+
+### The 16 pre-existing failures, and one that is local-only
+
+Verified against `73ba016` (the commit before this item) in a scratch worktree: the same 16
+fail there. They are date-dependent fixtures — `test_reminder_plan_api` mints only the `1hr`
+send because the fixture event is now inside five days, and the e2e save tests 404 on a
+fixture event that has aged out. **Not this item's, and not fixed here**, but they are
+stale-by-calendar rather than flaky and will not recover on their own.
+
+`frontend/lib/site-url.test.ts` fails on this machine only: the test asserts that an
+unconfigured `PUBLIC_SITE_URL` yields `undefined` in production, and the repo `.env` sets
+that variable. Unset it and the file passes 4/4. The test file is unchanged since `ccfadca`.
+
+### Lint and coverage
+
+| Check | Result |
+|---|---|
+| `ruff check` / `ruff format` | Clean for this item (one unused import removed) |
+| ESLint, `tsc --noEmit` | Clean |
+| Prettier | Clean for this item (`lib/cap-details.ts` formatted) |
+| Backend coverage | 98.69% overall — the 80% gate passes |
+
+Two gates are red for reasons this item did not create and did not fix, both from item 7:
+
+1. **`ruff` reports 2 `DTZ001` errors** in `tests/domain/test_weekly_quiet_hours.py:210,265`
+   — naive `datetime()` calls. Present at `73ba016`, so `make lint-backend` was already
+   failing when that item closed.
+2. **The `domain/` 100% coverage gate reports 99%** — `domain/quiet_hours.py` lines 79, 145
+   and 255 are uncovered. Line 255 is the **deliberately unreachable** return that item 7's
+   own report proved can never be hit (seven maximal windows leave at least seven minutes
+   open), so it cannot be covered by a test and needs a `# pragma: no cover` or an explicit
+   gate exemption. `make coverage-backend` fails its second gate until then.
+
+---
+
+## Work Item: `frontend-pro-quiet-hours`
+
+**35 new frontend tests. Frontend 1948 passed / 1 failed — the one being the same
+machine-local `site-url` failure as the previous item, unrelated to this work. ESLint and
+`tsc --noEmit` clean. No backend change, so no `make client` and no backend run.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `components/settings/weekday-quiet-hours.test.tsx` | 18 | The picker: one request, the refusals, midnight, the lapse |
+| `lib/notification-settings.test.ts` | 11 | The weekday numbering and the clock labels |
+| `app/settings/quiet-hours/page.test.tsx` (new `the tiers` block) | 6 | Free, Pro and lapsed are three states, not two |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| Pro sets seven windows from the existing route | `gives a Pro user the seven-row picker` + the picker's own 18 |
+| **A Free user's screen is unchanged** | The 9 existing `the route` tests pass **unmodified**, plus `leaves a Free user's single window exactly where it was` |
+| The whole week saves in one request | `sends the whole week in one request when one day changes` |
+| "Off" stays possible and unambiguous | `does not send a window whose clocks are the same`; the base window's own tests are untouched |
+| A window crossing midnight is shown as such | `says which morning it reaches into`, `wraps from Sunday to Monday` |
+| A Free user is offered the Pro variant inline | `offers a Free user the Pro variant, inline and once` |
+| A lapsed Pro user sees their seven windows | `shows a lapsed Pro user their seven stored windows`, `does not let a lapsed Pro user edit the week` |
+| Existing single-window tests still pass | 9 of 9, with one **renamed and scoped**, not weakened — see below |
+| Works at mobile width | `never renders more than one day's clocks, which is what makes a phone work` |
+
+**The one existing test that changed.** `does not offer per-day-of-week windows` became
+`…to a Free user`. Its assertions are unchanged and one was **added** (`queryByRole("region",
+{ name: "Per-day quiet hours" })` is null). It was the right assertion for a Free user and
+the wrong one for a Pro user; deleting it would have dropped the only guard on the Free
+screen, so it was scoped to the tier it describes.
+
+### Mutation testing: five probes, one test added because of them
+
+| Mutation | Result |
+|---|---|
+| Only the changed day is sent, not the week | **1 failed** — caught |
+| A full-day window is sent instead of withheld | **1 failed** — caught |
+| The midnight line runs off the end of the week (Sunday) | **1 failed** — caught |
+| A lapsed user's rows become editable | **2 failed** — caught |
+| The week is not sorted before sending | **32 passed — NOT caught** |
+
+**The fifth is the useful one.** `sends the whole week in one request` asserts the payload's
+weekdays are `[0,1,2,3,4,5,6]`, which looks like a test of the sort and is not: its fixture
+is already Monday-first, so the assertion holds whether anything sorts or not. Deleting the
+sort left the suite green.
+
+A test with a **shuffled** fixture now pins it, and the probe fails as it should. The sort
+itself is unchanged and the docstring's claim about it was already the modest one — *"the
+server does not care, and a reader comparing a request to the UI does"* — so what the
+mutation found was an untested line, not an untrue comment. Third item running in which a
+probe has corrected either a claim or a test.
+
+### Two things this item did not verify, and should be said plainly
+
+1. **No real browser ran.** `testing-standards.md` names Playwright + axe-core for E2E and
+   a11y, but this repo has **no `playwright.config`, no `e2e/` directory and no axe
+   dependency** — the stack is aspirational, not installed. So "works at mobile width" and
+   the a11y of the accordion are pinned by jsdom assertions about structure (one day's
+   clocks in the DOM at a time, `aria-expanded` on a real `button`, rows as a list) and by
+   construction, **not** by a 375px viewport or an axe run. That is weaker evidence than
+   the criterion deserves, and installing the E2E stack would be its own work item.
+2. **The Free user's upgrade sentence is duplicated.** It is spelled in `page.tsx` as
+   `PRO_QUIET_HOURS_HINT` and in `shared/constants.py` as `QUIET_HOURS_PRO_UPGRADE_HINT`,
+   because a Free user is never refused and so never receives the server's copy. The test
+   `offers a Free user the Pro variant, inline and once` asserts the exact string, so the
+   two cannot drift silently — but nothing *automatically* ties the TypeScript literal to
+   the Python one, and a backend copy change will turn that assertion red rather than
+   updating the screen.
+
+---
+
+## Work Item: `saved-collections-model`
+
+**39 new backend tests. Backend 6479 passed / 16 failed — the same pre-existing 16. All 19
+import contracts kept. `ruff` adds nothing new. No frontend change.**
+
+FR-49 was the only MVP requirement with no work item on disk; this is its storage.
+
+| File | Tests | What it pins |
+|---|---|---|
+| `tests/personalization/test_saved_collections.py` | 39 | The constraints, the ordering, the race, the one permitted delete |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| `SavedCollection` in `personalization`, `personal`, owned | `TABLE_OWNERS` entries + `test_the_tables_this_intent_added_have_an_owner` |
+| `ACCOUNT_CONTENT` retention on both models | `test_both_models_declare_account_content_retention` |
+| Membership explicit; a save in two collections; empty collections | `test_one_save_can_be_in_two_collections_at_once`, `test_a_collection_can_be_empty` |
+| **AD-3 holds** | `test_no_foreign_key_crosses_from_personal_to_catalog` (reads the live database) — untouched and green |
+| Ordering persisted, explicit, stable, total, gapless | `test_a_reorder_rewrites_the_whole_list_densely`, `test_deleting_from_the_middle_closes_the_gap` |
+| Name unique per user, **by constraint not code** | `test_one_user_cannot_have_two_collections_with_the_same_name` — writes around the service |
+| Deleting a collection keeps its saves | `test_deleting_a_collection_leaves_every_save_inside_it_intact` |
+| Named commands with audit rows (AD-5) | `test_every_command_writes_its_audit_row`, parametrized over all six actions |
+| Concurrent reorder | `test_two_concurrent_reorders_leave_one_whole_order_and_no_duplicate_position` |
+
+### The test that failed first, and what it taught
+
+`test_one_user_cannot_have_two_collections_at_one_position` asserted that a duplicate
+position raises inside a `transaction.atomic` block. It did not — and the reason is the
+feature: the constraint is `DEFERRABLE INITIALLY DEFERRED`, so Postgres checks it **at
+commit**, and Django wraps each test in a transaction it rolls back rather than commits. The
+error escaped into teardown instead.
+
+Rewritten as two assertions that say what deferral actually means: the duplicate insert
+lands with no complaint, and `SET CONSTRAINTS ALL IMMEDIATE` then raises. A second test
+(`test_the_name_constraint_is_not_deferred`) pins the contrast — only the position
+constraint is deferred, and a duplicate name is still refused at the insert, where the user
+can be told about it.
+
+### Mutation testing: five probes, five caught
+
+| Mutation | Result |
+|---|---|
+| The reorder takes no advisory lock | **1 failed** — caught by the concurrency test |
+| Rename does not exclude itself from the name check | **1 failed** — caught |
+| Deleting leaves a gap in the positions | **1 failed** — caught |
+| A new collection claims position 0 instead of the end | **4 failed, 9 errors** — caught |
+| Ownership is not part of the collection lookup | **1 failed** — caught |
+
+The first is the one the advisory lock exists for, and it is worth noting that the mutated
+run failed in **under a second** against 41 seconds for the real suite: without the lock the
+two threads collide immediately rather than queueing.
+
+### An architecture rule was narrowed, with approval
+
+Two tests asserted that `personal`'s models declare **zero** relation fields. The collection
+membership table has two foreign keys — both inside `personal`, neither crossing anything —
+and its only mark on `SavedEvent` is a *reverse accessor*, which is not even a column.
+
+The three rules those tests cite each have their own dedicated test, and **all three stayed
+green throughout**: AD-3's `test_no_foreign_key_crosses_from_personal_to_catalog` (which
+reads the foreign keys Postgres actually holds, not the metadata), OQ-8's
+`test_no_personal_model_relates_to_user_or_content_type`, and AD-21's
+`test_saved_event_event_id_is_a_plain_uuid_field`. The blanket assertion was a wider net
+than any of them.
+
+Both tests now forbid a relation **for what it reaches** — a catalog app, `User` or
+`ContentType` — rather than for existing. Probed by adding a `ForeignKey` from `SavedEvent`
+to `ingestion.Event` and confirming both fail; reverted immediately, and they pass again.
+
+**What was given up, stated plainly:** the blanket version made *any* foreign key in
+`personal` a build break, which is a cheaper and blunter signal than a judgement about what
+a key points at. A future intra-`personal` foreign key will now pass these two tests
+silently. The wall itself is still enforced by a test that reads the database.
+
+---
+
+## Work Item: `data-export`
+
+**75 new backend tests. Backend 6589 passed / 16 failed — the same pre-existing 16. All 19
+import contracts kept, `make client` run and the client regenerated. Frontend 1948 passed,
+unchanged by this item.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `tests/identity/test_data_export.py` | 44 | Registry enumeration, redaction, the link as a credential |
+| `tests/identity/test_export_api.py` | 16 | The two auth models, and what a token cannot be aimed at |
+| `tests/identity/test_export_ics_roundtrip.py` | 15 | The ICS through this project's own parser |
+| `tests/worker/test_data_export_tasks.py` | 12 | The dispatcher, the build-and-send job, the expiry |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| Enumerates from `retention_registry()`, no second list | `test_the_export_names_no_models_of_its_own`, `test_a_user_data_model_registered_later_is_exported_without_touching_export_code` |
+| Excluded **by category**, not by name | `test_the_categories_that_are_not_user_data_are_excluded_by_category` (parametrized) |
+| All user-created records in the JSON | `test_every_exported_model_can_name_its_user` — 29 models reached |
+| Personal-event locations redacted on opt-out | Both branches, plus `test_a_user_with_no_preference_row_shares_by_default` |
+| Saved collections included | `test_a_user_data_model_registered_later_is_exported_without_touching_export_code` |
+| ICS imports cleanly | `test_export_ics_roundtrip.py` — **weaker than the criterion, see below** |
+| Async, email within 24h | `test_the_job_builds_the_export_and_mails_the_links`, `DATA_EXPORT_SLA` |
+| Links expire; no cross-user fetch | `test_a_link_past_the_window_is_refused`, `test_another_users_token_does_not_open_this_export` |
+| Requesting twice queues one job | `test_requesting_twice_in_quick_succession_does_not_queue_two_jobs` + a partial unique constraint |
+
+### The test that found the design hole before the download did
+
+`test_every_exported_model_can_name_its_user` failed on its first run, naming **seven**
+models the export would have silently skipped:
+
+| Model | Why it had no `user_id` | Answer |
+|---|---|---|
+| `identity.User` | The account row **is** the user | `export_user_path = "id"` |
+| Four `*AuditEntry` tables | The user is whoever acted | `export_user_path = "actor_id"` on `ActorColumns` |
+| `tests.wall.personal_probe.Note` | Owns through a FK | `export_user_path = "owner_id"` |
+| `sessions.Session` | **Genuinely has none** — the account is inside the encoded blob | Declared not portable |
+
+Without that test, a user's own account record would have been the one thing missing from
+their export, and nobody would have noticed until somebody read a download.
+
+`sessions.Session` is the only entry in `FRAMEWORK_EXPORT_PATHS` mapped to `None`, and the
+reason is stated where it is declared: a session key is a **live credential**, and mailing
+one to whoever reads the mailbox is the opposite of what a privacy feature should do. It
+mirrors `FRAMEWORK_RETENTION`, which exists for the same reason — a Django model cannot
+declare an attribute we invented.
+
+### A second failure that was the wall working
+
+With the audit tables newly reachable through `actor_id`, 24 tests began failing with
+*"Database queries to 'catalog' are not allowed in this test"*. `ingestion.IngestionAuditEntry`
+is `AUDIT_LOG` like our other audit tables and sits on the **far side of the AD-3 wall**, so
+one export query would have spanned both schemas.
+
+`exported_models()` now filters on the alias, asked of Django's own `router.db_for_read` —
+not of `settings.DATABASE_ROUTING` and not of `config.db_router`, because an app importing
+`config` breaks AD-2's inward-pointing layers. That was the *first* fix, and `lint-imports`
+rejected it, which is the second guard doing its job.
+
+### Mutation testing: six probes, and one that corrected the tests
+
+| Mutation | Result |
+|---|---|
+| Not-user-data categories join the export | **2 failed** — caught |
+| The alias filter is dropped | **35 failed** — caught |
+| The location opt-out is ignored | **1 failed** — caught |
+| The download token omits the user | **10 failed** — caught |
+| The expiry check is dropped | **1 failed** — caught |
+| **Credential redaction by field *type* disabled** | **74 passed — NOT caught** |
+
+**The last one is the important one.** Disabling the type check changed nothing, because
+the only `EncryptedTextField` in the tree is *also* named `credential` — so the name list
+caught it. The belt was holding while the braces were cut, and the type check, which is the
+guard that matters for a field added later, was pinned by nothing.
+
+Three focused tests now pin `_is_secret_field` directly: an encrypted field called `notes`
+is redacted, a plain field called `password` is redacted, and an ordinary field is **not**
+— the third because a redactor that redacted everything would satisfy the first two and
+hand the user a download full of `[redacted]`. Re-probed: the mutation now fails.
+
+### What the ICS test does and does not prove
+
+The criterion says the export *"is importable into Google Calendar / Apple Calendar /
+Outlook"*. **None of those was run.** There is no Playwright, no calendar client and no
+integration harness in this repo.
+
+What was proved is a real round trip: the file is parsed by `formats/ics/parser.py`, the
+`icalendar`-based parser this project already uses to read users' subscribed feeds, and the
+events come back with their titles, locations and **instants** intact. The structural rules
+those three clients actually differ on are asserted directly — `UID` and `DTSTAMP` on every
+event, CRLF endings, `VERSION`/`PRODID`, no line over 75 octets, escaped commas and
+semicolons, and no invented `DTEND`.
+
+That is good evidence and it is not the criterion. Importing into the three clients remains
+unverified.
+
+---
+
+## Work Item: `frontend-account-and-billing-settings`
+
+**60 new tests — 15 backend, 45 frontend. Backend 6608 passed / 16 failed (the same
+pre-existing 16); frontend 1993 passed / 1 failed (the same machine-local `site-url`).
+All 19 import contracts kept, `make client` run.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `tests/identity/test_billing_account_api.py` | 15 | The four states, and that the two reads never disagree |
+| `frontend/app/settings/account/page.test.tsx` | 17 | The route: free, lapsed, active, past-due, failures |
+| `frontend/components/settings/plan-summary.test.tsx` | 17 | The plan block and the portal action |
+| `frontend/components/settings/download-my-data.test.tsx` | 11 | The export request, the repeat, the failures |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| Plan read from `Subscription`, never inferred | `GET /api/billing/account` + `test_the_read_writes_nothing_and_calls_no_provider` |
+| Pro gets **Manage subscription** → portal | `mints a session and follows the URL it returns` |
+| No local cancel flow | `offers Manage subscription and no local cancel` |
+| Free gets a quiet link to `/pricing` | `says so and links to pricing` |
+| Export says "by email within 24 hours" | `posts once and says it will arrive by email within 24 hours` |
+| Asking twice handled gracefully | `is not reported as a failure`, `cannot be double-submitted while the first is in flight` |
+| **Past-due shown honestly** | Six tests across both layers — see below |
+| Export not gated, **and not gated by placement** | `still gets Download my data` on a Free account |
+| Mobile, settings conventions | 44px controls, the same block layout as the other `/settings/*` routes |
+
+### The state this screen exists for
+
+`is_pro` is **true for `past_due`**, which is correct — a failed payment leaves someone
+entitled while they fix it — and it is exactly why this screen could not be built on the
+existing endpoint. A `past_due` account and an `active` one are indistinguishable through
+that bool, and this is the only place in the product where a failed payment is visible at
+all.
+
+`GET /api/billing/account` carries `needs_payment` beside `is_pro`, and
+`test_is_pro_agrees_with_the_entitlement_read_in_every_state` — parametrized over all four
+statuses — pins that the two endpoints can never disagree about entitlement itself. That
+failure would be silent in the worst way: a screen saying "you're on Pro" over features the
+server refuses.
+
+### Mutation testing: three probes, three caught
+
+| Mutation | Result |
+|---|---|
+| `past_due` no longer sets `needs_payment` | **1 failed** — caught |
+| A lapsed account forgets it ever had Pro | **2 failed** — caught |
+| A past-due account renders the ordinary term line | **4 failed** — caught |
+
+### Two defects found while writing the tests
+
+1. **A refusal with no sentence rendered as no refusal at all.** `saveFailureMessage`
+   returns the API's own message whenever the body is the project's error shape —
+   *including when that message is empty* — and the component renders `{failure}`, so an
+   empty string produced no line. A user would have clicked, watched nothing happen, and
+   had no way to tell whether it worked. Both call sites now fall back to their own line,
+   and both have a test for it.
+
+   **The same hole exists in `quiet-hours-window.tsx` and the other settings islands**,
+   which use the helper the same way. Not fixed here — they belong to a closed item — but
+   it is the same class of bug and worth a sweep.
+
+2. **A test of mine was passing vacuously.** `queryByText("You're on the free plan")` was
+   asserted to be null in the past-due case — and it was null for the wrong reason, since
+   the component renders the sentence *with a full stop*. The positive assertion in the
+   Free case failed first and exposed both; both now match the rendered text exactly.
+
+### Verified by construction, not by a browser
+
+Mobile layout follows the other `/settings/*` routes — stacked blocks inside
+`max-w-(--layout-container-reading)`, controls at `min-h-[44px]`. As with the previous two
+frontend items, **no 375px viewport and no axe run**: this repo still has no Playwright and
+no axe dependency. The accessibility assertions here are structural — the two sections are
+named regions, the confirmation is a `role="status"` live region that is always present,
+the failures are `role="alert"`, and the busy controls carry `aria-busy`.
+
+---
+
+## Work Item: `saved-collections-api`
+
+**35 new backend tests. Backend 6654 passed / 17 failed; frontend 1993 passed / 1 failed.
+All 19 import contracts kept, `make client` run. The backend baseline moved from 16 to 17
+overnight — see below.**
+
+| File | Tests | What it pins |
+|---|---|---|
+| `tests/personalization/test_collections_api.py` | 35 | Eight endpoints, the gate, the lapse, scoping |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| Create, rename, delete, reorder, assign, unassign | One test each, over HTTP |
+| **Writes Pro-gated** with the inline `{cap, upgrade_hint}` shape | `test_a_free_user_creating_a_collection_is_refused_with_an_upgrade_hint`, `test_the_refusal_carries_no_modal_shaped_field` |
+| **A lapsed user reads and unassigns** | Seven tests under *the lapse*, built from a fixture that subscribes, creates, then cancels |
+| Reorder takes the whole ordering in one request | `test_reorder_takes_the_whole_list_in_one_request`, and a partial list refused |
+| Own collections only, **404 not 403** | Parametrized across five endpoints |
+| Events read returns the snapshot, no `catalog` join | `test_the_events_read_returns_the_snapshot_and_no_catalog_fields`, run without the catalog database granted |
+| Contract tests; `schema.ts` regenerated | Full suite + `make client` |
+
+### The lapse, which is seven tests rather than one
+
+The acceptance criterion names read and unassign and names create as blocked. The checkpoint
+settled the rest: **only the two operations that add are gated**. So each half is pinned —
+a lapsed user may still read, unassign, rename, reorder and delete, and may not create or
+assign. The fixture subscribes a user, has them build a collection with a save in it, and
+*then* cancels the subscription, so every one of those tests runs against data that
+genuinely predates the lapse.
+
+### Two defects the tests found before a client would have
+
+**1. `/order` was unreachable.** Five tests failed with `405 Method Not Allowed` naming
+PATCH and DELETE. `PUT /collections/order` was being matched by the `/{collection_id}`
+rename route — django-ninja matches in registration order, so a literal segment loses to a
+path parameter declared above it. `"order"` then failed to parse as a UUID and the caller
+got a 405 that said nothing about the real problem.
+
+Fixed by declaring `/order` above the parameterised routes, with a comment saying why it
+must stay there. Re-probed by moving it back: five tests fail again.
+
+**2. A partial reorder answered 500.** The command raised `ValueError` for a list that does
+not name every collection — the right convention for programmer misuse, and the wrong one
+for a request body. A client can send that list, so it reached the caller as a server error
+for a request the server had understood perfectly and chosen to refuse.
+
+It now raises `InvalidCollectionOrderError(ValidationError)` → 422 with a sentence. Two of
+`saved-collections-model`'s tests expected `ValueError` and were updated with the reason.
+
+### Mutation testing: four probes, four caught
+
+| Mutation | Result |
+|---|---|
+| The gate never refuses | **5 failed** — caught |
+| Unassign is gated too (a lapsed user trapped) | **1 failed** — caught |
+| Assign is no longer gated | **1 failed** — caught |
+| `/order` declared after `/{collection_id}` again | **5 failed** — caught |
+
+The second and third are the pair that pins the checkpoint decision in both directions: the
+gate must not spread to tidying, and must not retreat from adding.
+
+### The baseline moved overnight, and it is not this item
+
+`tests/delivery/test_reminder_plan_api.py::test_a_custom_slot_is_minted` joined the
+pre-existing failures between yesterday's run and today's. Its fixture is hard-coded to
+`AFTERNOON_START = 2026-11-12 02:00 UTC`, and a `custom:90` slot is due 90 minutes before
+that — a moment that passed this morning, so no send is minted.
+
+**It is the same stale-by-calendar family as the other 16**, in the same file as one of
+them, and it touches nothing this item changed (collections live in `personalization` and
+`identity`; this is `delivery`). It will not recover on its own, and more of these will
+arrive as the fixture dates age: the set grew from 16 to 17 purely by the date changing.
+
+---
+
+## Work Item: `frontend-collections`
+
+**37 new frontend tests. Frontend 2030 passed / 1 failed — the same machine-local
+`site-url`. ESLint, `tsc` and Prettier clean. No backend change, so no `make client` and no
+backend run.**
+
+FR-49 now has a screen. TRACEABILITY.md's *"no screen shows creating, viewing, or managing a
+collection"* is closed.
+
+| File | Tests | What it pins |
+|---|---|---|
+| `components/collections/collection-manager.test.tsx` | 22 | The four verbs, membership, both empty states, failures |
+| `app/settings/collections/page.test.tsx` | 15 | Pro, Free and lapsed; the unavailable read |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| Create, rename, delete, reorder + membership | One test each, through the mocked client |
+| Reorder sends the whole ordering | `sends the whole resulting order, not a swap` |
+| Delete says the saves survive | `asks first, and says the saved events survive` |
+| Both empty states render deliberately | `renders the quiet empty state…`, `says an opened collection is empty without borrowing the failure treatment` |
+| Free sees it offered inline, not hidden | Five tests under *a Free user* |
+| Lapsed still sees and reads theirs | Four tests under *a lapsed Pro user* |
+| Events render from the `SavedEvent` snapshot | `reads the collection's events and renders the snapshot time` |
+| Mobile; design-system tokens | One column; **`tests/spacing-scale.test.ts` enforces the tokens** — see below |
+
+### The two pairs that look alike and are not
+
+**Free and lapsed are both "not Pro".** One has nothing and is being offered something; the
+other has collections that are still theirs. Rendering the second like the first would be
+the deletion the brief forbids, as far as the user could tell. Four tests pin the lapsed
+case, including that they are *not* shown the "no collections yet" copy.
+
+**An unavailable read and an empty list are both "nothing on screen".** A Pro user with
+three collections whose read blinked would otherwise see "you have none", which reads as
+data loss. `shows the unavailable state when the read fails` pins the difference.
+
+### The design system caught what no reviewer would have
+
+`tests/spacing-scale.test.ts` failed on four values — `h-14` three times in the skeleton and
+`py-10` in the empty state. The scale is `0 1 2 3 4 6 8 12 16 20 30`, and none of those four
+is on it.
+
+**That guard matters more here than anywhere else in this run**, because this is the one
+surface with no mockup to check against: there was no design to deviate from, so the token
+scale was the only thing standing between "built from the design system" and "built from
+whatever looked right". Fixed to `h-12` and `py-12`.
+
+### Mutation testing: four probes, four caught
+
+| Mutation | Result |
+|---|---|
+| Reorder sends only the moved collection | **2 failed** — caught |
+| Delete fires without confirming | **3 failed** — caught |
+| The confirmation stops saying the saves survive | **1 failed** — caught |
+| A lapsed user's collections are hidden | **2 failed** — caught |
+
+The third is the one worth having: the delete would still work, the confirmation would still
+appear, and only the sentence that stops a user fearing for their saves would be gone.
+
+### Verified by construction, not by a browser
+
+As with every frontend item in this run: **no 375px viewport and no axe run**, because this
+repo has no Playwright and no axe dependency. The accessibility work here is structural and
+asserted — the list is a real `<ul>`, the reorder controls are `<button>`s with
+`aria-label`s naming the collection they move, the ends are `disabled` rather than inert so
+the boundary is announced, the expander carries `aria-expanded`, and the delete confirmation
+is inline with no focus trap. None of that is a substitute for an audit.
+
+---
+
+## Work Item: `e2e-proof-and-contract-tests`
+
+**67 new backend tests — 21 journey, 46 contract. Backend 6721 passed / 17 failed (the same
+pre-existing 17). All 19 import contracts kept. No Stripe, no network, no secrets.**
+
+| File | Tests | What it proves |
+|---|---|---|
+| `tests/e2e/test_pro_tier_proof.py` | 21 | The paid path, all four capabilities, and the downgrade |
+| `tests/e2e/test_pro_tier_contract.py` | 46 | Every endpoint this intent added, by name |
+
+### Acceptance criteria
+
+| Criterion | Pinned by |
+|---|---|
+| The paid path end to end | `test_the_whole_paid_path` — save, refuse, checkout, webhook, save again |
+| All four capabilities in the same test | Steps 7–10 of that test: calendars, collection + assign, seven windows, export |
+| **Cancellation closes every gate** | Five refusal tests under `TestCancellationClosesEveryGate` |
+| **Nothing is deleted** | Five survival tests on the same fixture |
+| Entitlement never granted without a webhook | `TestTheWebhookIsTheOnlyGrant`, two tests |
+| Replay and out-of-order webhooks | `TestTheReplayAndTheRace`, two tests |
+| Contract covers every endpoint; client in sync | 46 tests, enumerated by path and verb |
+| No Stripe, no network, no secrets | `FakeBillingAdapter` + `InMemoryThrottleAdapter` |
+| Every test can fail | Three mutation probes below; no `or`-fallbacks anywhere |
+
+### Four product rules this test learned the hard way
+
+Every one of these was a failing assertion first, and each is a real rule rather than a
+defect. They are recorded in the test where the next reader meets them.
+
+**1. A lapsed account keeps the Free allowance it never spent.** The first version asserted
+that the next save after cancelling is refused. It is not: `save_cap.py` says a Pro user
+*"is never refused and never spends a slot"*, so a lapsing user has an untouched daily
+allowance. Asserting otherwise would have demanded that lapsing confiscate a day the user
+never used. The test now saves once, then asserts the refusal.
+
+**2. Weekday windows apply only to a Pro account.** Writing seven overrides for a Free user
+changes no send — `_effective_week` reads entitlement and falls back to the base window.
+That is the lapse promise observed from the other side, and it made the first Pro assertion
+read 07:00 instead of 09:00.
+
+**3. A day's window begins on that day.** A 23:00–09:00 window set for Friday owns
+*Saturday's* small hours, so the window governing a 03:30 send is the **previous** night's.
+The test now sets all seven days, asserting that the override takes effect rather than
+which night owns the instant — the selection itself is pinned by `test_weekly_quiet_hours.py`.
+
+**4. A preference change re-times pending sends only through the API.** `apply_settings_patch`
+wraps the write and `reschedule_pending_for_user` in one transaction (AD-7); calling
+`replace_quiet_hours_overrides` directly writes windows and re-times nothing. The send kept
+its old instant until the test went through `PUT /api/settings/notifications` — which is
+what this file's own method required anyway.
+
+### Two more the test had to be driven through the real surface to see
+
+- **`set_plan_slots` mints nothing without a `send_target`.** `delivery` may not read
+  `apps.personalization.models` (AD-3), so only a caller holding the event can supply the
+  start time the keys are minted from. Called directly it updated the plan and left an empty
+  `ScheduledSend` table.
+- **A send's `due_at` needs the user's zone.** A user with no digest preference has no
+  timezone, so no send is minted at all — the shift is of a *local* wall clock.
+
+### Mutation testing: three probes, three caught
+
+| Mutation | Result |
+|---|---|
+| A cancelled subscription still counts as Pro | **3 failed** — caught |
+| The collections gate never refuses | **2 failed** — caught |
+| **A cancellation deletes the user's collections** | **1 failed, 13 errored** — caught |
+
+The third is the one this item exists for. Every previous item proved "never delete" against
+its own table; this is the first test that would notice a downgrade path reaching across
+apps to destroy something.
+
+### No defect was found in the product
+
+Every failing assertion in this item turned out to be the test misunderstanding a rule, not
+the system breaking one. **That is a result, not an absence of one**: four gates, five
+surfaces and the entitlement read ran together for the first time and the loop closed.
+
+Nothing in `apps/`, `domain/` or `worker/` was modified by this item.

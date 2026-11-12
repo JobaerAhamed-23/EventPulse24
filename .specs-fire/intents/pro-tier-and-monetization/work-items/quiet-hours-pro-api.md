@@ -4,10 +4,12 @@ title: Seven windows over the wire
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - per-day-quiet-hours-domain-and-model
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T15:07:07.435Z
 ---
 
 # Work Item: Seven windows over the wire

@@ -4,9 +4,12 @@ title: Collections, on screen for the first time
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [saved-collections-api]
+status: completed
+depends_on:
+  - saved-collections-api
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-12T01:20:23.829Z
 ---
 
 # Work Item: Collections, on screen for the first time

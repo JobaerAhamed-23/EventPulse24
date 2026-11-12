@@ -4,9 +4,12 @@ title: Named collections — the model FR-49 never got
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [subscription-model-and-entitlement]
+status: completed
+depends_on:
+  - subscription-model-and-entitlement
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T16:06:49.980Z
 ---
 
 # Work Item: Named collections — the model FR-49 never got

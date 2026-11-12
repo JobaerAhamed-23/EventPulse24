@@ -4,9 +4,12 @@ title: Per-weekday quiet hours in settings
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [quiet-hours-pro-api]
+status: completed
+depends_on:
+  - quiet-hours-pro-api
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T15:22:02.148Z
 ---
 
 # Work Item: Per-weekday quiet hours in settings

@@ -1186,3 +1186,736 @@ base-window change rather than being a second kind of settings write.
    plan rather than left to CI.
 3. **The refusal's `code` is new.** Until `CAP_CODES` learns it, the shared upgrade prompt
    would silently fall back to the generic error line. Changed in the same item.
+
+---
+
+# Work Item: `frontend-pro-quiet-hours` — per-weekday quiet hours in settings
+
+## Implementation Plan
+
+### Approach
+
+`quiet-hours-window.tsx` is **extended, not forked** — the work item says so, and the Free
+path is the one already shipping to users. The component keeps owning "a window is two wall
+clocks, saved inline, and the server's answer wins"; what grows is how many windows it
+renders and what one save carries.
+
+**The page learns the tier the way `/pricing` already does.** `GET /api/billing/subscription`
+returns `{is_pro}` and is read server-side on the page, which is a server component. The tier
+is **not** inferred from `quiet_hours_overrides` being non-empty — a Pro user who has set no
+weekday yet would read as Free, and a lapsed user would read as Pro.
+
+**One save, always.** Changing Thursday sends the **whole** `quiet_hours_overrides` list in
+one `PUT`, not a Thursday-shaped patch. That is what makes "a partial week is never
+persisted" true, and it costs nothing: the backend command is a replace, so the full list is
+the natural payload. The inline-save behaviour and the absence of a page-level Save button
+are unchanged.
+
+### Two things the design documents do not settle — raised at the checkpoint
+
+**1. DESIGN.md contradicts itself about what a Free user sees.**
+
+| Source | Says |
+|---|---|
+| `component.control.day-picker` (A-19) | Free sees **all 7 rows locked** — lock glyph, `Upgrade for per-day →` microcopy, `aria-disabled` |
+| Do's-and-Dont's row (A-19) | "**Don't** render the per-day picker for Free users (Pro tier is the contract — Free stays single-window)" |
+| This work item's AC | "A Free user's screen is **unchanged** — one window, same controls, same behaviour" |
+| `page.test.tsx` today | Asserts the HTML contains no `per-day`, no `Upgrade to Pro`, no `day-window-chip` |
+| This work item's AC | "A **Free user** is offered the Pro variant through the inline prompt" |
+
+Four of the five say Free stays single-window; the component spec is the outlier. But the
+last row means Free must be offered *something*. The options are in the checkpoint below.
+
+**2. "Off" on a weekday does not mean what the mockup's toggle implies.**
+
+The mockup's day row carries an On/Off toggle, default Off. In the API, a weekday with **no
+override row** means *the base window applies on that day* — not *no quiet hours on that
+day*. There is no way in `quiet-hours-pro-api` to say "quiet on every day except Thursday".
+
+So the toggle cannot be labelled "Off", or a user will switch Thursday off, expect reminders
+at 3am, and get their usual silence. The row's two states are **"Same as usual"** and **"A
+different window"**, which is what the data actually distinguishes. Flagged rather than
+silently relabelled, because it is a departure from the mockup's wording.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `frontend/components/settings/weekday-quiet-hours.tsx` | The 7-row picker: one row per weekday, expand to edit, one save |
+| `frontend/components/settings/weekday-quiet-hours.test.tsx` | The Pro surface: seven windows, one request, midnight, a11y |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `frontend/components/settings/quiet-hours-window.tsx` | Accepts the weekday rows as children/slot; base-window behaviour untouched |
+| `frontend/app/settings/quiet-hours/page.tsx` | Reads `is_pro`; renders the picker for Pro, the inline prompt for Free |
+| `frontend/app/settings/quiet-hours/page.test.tsx` | `does not offer per-day-of-week windows` → **scoped to a Free user**; new Pro cases |
+| `frontend/lib/notification-settings.ts` | `WEEKDAYS` (0..6 ↔ Mon..Sun) and the chip's `22:00–08:00` formatting |
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| Free unchanged | Every existing assertion in `page.test.tsx` passes with `is_pro: false`, unmodified |
+| Pro: seven windows | Seven rows render; each edits its own day; the chip shows that day's window |
+| One request | Editing one day issues **one** `PUT` carrying all seven entries |
+| Midnight | A `22:00–08:00` row says it reaches into the next day |
+| Off | The base window can still be turned off; the UI cannot emit `start == end` |
+| The lapse | A lapsed Pro user's seven stored windows render, consistent with what the API allows |
+| Mobile | The picker is usable at 375px — one day's clocks at a time |
+| a11y | Rows are a list; the expander is a real `button` with `aria-expanded`; axe clean |
+
+### Risks
+
+1. **`page.test.tsx`'s `does not offer per-day-of-week windows` must change.** It greps the
+   whole document for the string `per-day`. That is the correct assertion for a Free user and
+   the wrong one for a Pro user, so it is scoped rather than deleted — deleting it would drop
+   the only guard on the Free screen.
+2. **Node 24 is required** for the frontend suite (`.nvmrc`); under Node 20 every Vitest file
+   fails inside undici.
+3. **Seven time inputs is fourteen tab stops.** The accordion keeps one day open at a time,
+   which is also what makes the mobile layout work.
+
+### Checkpoint decisions (approved)
+
+1. **A Free user's screen stays single-window**, plus **one** `UpgradePrompt` line beneath
+   it. DESIGN.md's locked-7-row variant is **not** built; its own Do's-and-Dont's row, the
+   work item's acceptance criterion and the existing test all say Free stays single-window,
+   and the component spec is the outlier. Logged as a deviation from
+   `component.control.day-picker`.
+   - **The cost, stated:** the Free user is never refused, so the server never sends an
+     `upgrade_hint` to this screen. The sentence is therefore spelled on the client, and a
+     test pins it against the backend's `QUIET_HOURS_PRO_UPGRADE_HINT`.
+2. **The picker is an accordion** — seven rows, one open at a time, the same on desktop and
+   mobile. It is what the mockup draws (Monday expanded, the rest collapsed) and what makes
+   375px work without a second layout.
+3. **The row's two states are "Same as usual" and a window**, never "Off" — the API has no
+   way to say "no quiet hours on Thursday", and a row labelled Off would promise one.
+
+---
+
+# Work Item: `saved-collections-model` — named collections, the model FR-49 never got
+
+## Implementation Plan
+
+### Approach
+
+Two tables in `personal`, owned by `personalization`, plus a command module. The storage
+only — no Pro gate anywhere in it, because `saved-collections-api` owns gating and **a
+lapsed Pro user's collections must stay readable**, which a model that refused on tier could
+not deliver.
+
+```
+SavedCollection          one named, ordered grouping per (user, name)
+SavedCollectionItem      one row per (collection, saved event) — membership, explicit
+```
+
+**Membership is its own table, and that is what the acceptance criteria require.** A save in
+two collections is two rows; an empty collection is a collection with no rows; nothing is
+ever filed implicitly. An array column on `SavedEvent` would make "which collections is this
+save in?" a scan and could not be constrained.
+
+**AD-3 is untouched.** Neither table mentions `catalog`. Membership points at the user's own
+`SavedEvent`, which already holds the catalog event id by value with no foreign key, so the
+schema wall is never approached.
+
+### Ordering: dense integer positions, renumbered under the user's advisory lock
+
+The work item leaves the representation open and asks that the concurrent-reorder test prove
+whichever is chosen. The acceptance criterion decides it: *"no two collections of one user
+share a position, and a reorder leaves no gaps"*. A fractional rank is **defined** by leaving
+gaps, so it is the wrong shape for that sentence. Positions are therefore `0..n-1`, dense.
+
+Which creates one real problem worth stating: renumbering inside one transaction transiently
+puts two rows on the same position, and a plain unique constraint rejects it mid-statement.
+So the constraint is **`DEFERRABLE INITIALLY DEFERRED`** — Postgres checks it at commit,
+when the week is consistent again. Concurrent reorders serialise on
+`pg_advisory_xact_lock`, the pattern `notification_preferences._lock_user` already uses and
+for the same reason: the interesting race is two writers, and the lock is transaction-scoped
+so a crashed worker cannot wedge a user.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/apps/personalization/services/saved_collections.py` | The commands: create, rename, delete, reorder, add, remove |
+| `backend/apps/personalization/migrations/0014_savedcollection_savedcollectionitem.py` | The two tables and their constraints |
+| `backend/tests/personalization/test_saved_collections.py` | The constraints, the races, the deletion semantics |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/apps/personalization/models.py` | `SavedCollection`, `SavedCollectionItem` |
+| `backend/domain/errors.py` | `CollectionNameTakenError`, `CollectionNotFoundError` |
+| `backend/tests/personalization/factories.py` | A collection factory, matching the existing ones |
+
+### The constraints, named explicitly
+
+| Constraint | Shape |
+|---|---|
+| `saved_collection_user_name_uq` | unique `(user_id, Lower(name))` — see the checkpoint question |
+| `saved_collection_user_position_uq` | unique `(user_id, position)`, **deferrable** |
+| `saved_collection_position_nonneg_ck` | `position >= 0` |
+| `saved_collection_name_not_blank_ck` | `name <> ''` |
+| `saved_collection_item_membership_uq` | unique `(collection, saved_event)` — a save is in a collection once |
+
+### Deletion, which is the one delete this intent permits
+
+Deleting a collection removes the collection row and its membership rows, and **touches no
+`SavedEvent`**. The saves inside it become uncollected. That is a grouping being deleted,
+not user content — the distinction the brief's constraint rests on — and the test asserts
+the `SavedEvent` rows are still there afterwards.
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| The name constraint | Two collections, one user, same name → refused by the **database** |
+| Two users | The same name for two different users is fine |
+| Membership | One save in two collections; a collection with no saves |
+| Ordering | Positions are dense and unique after create, delete and reorder |
+| Concurrent reorder | Two reorders of one user's list serialise; no duplicate position survives |
+| Deletion | Deleting a collection leaves every `SavedEvent` row intact |
+| Audit | Every command writes a `PersonalizationAuditEntry` (AD-5) |
+| Retention | Both models declare `ACCOUNT_CONTENT`; `manage.py check` passes |
+
+### Risks
+
+1. **A deferrable unique constraint is new to this codebase.** Nothing else uses one, so the
+   test that renumbers a list inside one transaction is what proves the deferral works
+   rather than that the renumber happened to avoid collisions.
+2. **`personal` has no foreign keys today** — all six models hold references by value. The
+   membership table wants two. See the checkpoint question.
+3. **Account deletion and export do not exist yet** (FR-52 is `data-export`, the next item).
+   Both read `retention_registry()`, which is derived from the models, so these tables are
+   picked up with no registration — but nothing proves that until that item lands.
+
+### Checkpoint decisions (approved)
+
+1. **Membership uses foreign keys**, both `CASCADE`, inside one app and one schema. They are
+   the first in `personal`, and the reason to break that convention is that the acceptance
+   criteria are *about* referential behaviour: deleting a collection must leave its saves
+   alone, and unsaving an event must not leave a membership row pointing at nothing.
+   `on_delete` states both declaratively, where application code would have to remember
+   them on every path. `ingestion` already holds 17 intra-schema FKs, so they are a
+   `personal` convention rather than a project-wide prohibition.
+2. **Names are unique per user, case-insensitively** — `(user_id, Lower(name))`. The name is
+   still **stored verbatim**; only the comparison is folded. A list showing "Weekend" and
+   "weekend" as two entries reads as a bug to the person who made them.
+3. **A new collection lands at the end**, position `n`. Nothing already in the list is
+   rewritten, so a create renumbers nothing and cannot race an in-flight reorder.
+
+---
+
+# Work Item: `data-export` — download my data, JSON and ICS, off the retention registry
+
+## Implementation Plan
+
+### Approach
+
+The structural work is already done: every model declares a `RetentionCategory`, enforced by
+`eventpulse.E003/E004`. So export **enumerates from `retention_registry()`** and holds no
+list of its own. A model added later is exported because it declared a category, not because
+somebody remembered to add it here.
+
+```
+request  →  DataExport row (claimed, so a second request joins the first)
+         →  Celery task builds JSON + ICS, stores them, sets expires_at
+         →  transactional email with two signed links
+         →  GET /api/exports/{id}/{format}?token=… streams it, or refuses
+```
+
+### How "the rows that belong to this user" is answered without a second list
+
+A registry gives models, not ownership. Most user tables hold `user_id` by value, but
+`SavedCollectionItem` — built last item — holds none: its user is `collection.user_id`.
+
+So a model may declare **`export_user_path`**, defaulting to `"user_id"`. That is one
+attribute beside `retention_category`, in the same place, read the same way — not a second
+registry. A user-data model whose path does not resolve is a **test failure**, not a silent
+omission, which is what keeps the enumeration honest as the schema grows.
+
+### What is excluded, and why by category
+
+| Category | In the export? |
+|---|---|
+| `ACCOUNT_CONTENT`, `ACCOUNT_IDENTITY`, `PREFERENCE_SIGNALS` | Yes — the user's own records |
+| `EMAIL_DELIVERY_EVENTS`, `AUDIT_LOG`, `BILLING_RECORDS` | Yes — about them, and Art. 20 says so |
+| `NOT_USER_DATA`, `ANALYTICS_AGGREGATES` | **No** — named by the acceptance criterion |
+| `SOURCE_REGISTRY`, `TOS_REVIEW_RECORDS` | No — the catalog's and the operator's, not the user's |
+
+**Secrets are redacted by field type, not by name.** `ACCOUNT_IDENTITY` covers
+`CalendarConnection`, which holds an `EncryptedTextField` credential — exporting it would
+mail a user's decrypted calendar credential behind a link. Every `EncryptedTextField` is
+replaced with `"[redacted]"`, and a test asserts no export payload contains a known
+credential value. Password hashes go the same way.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/apps/identity/services/data_export.py` | Request, build, read — the commands |
+| `backend/apps/identity/services/export_serializer.py` | The registry walk, the redaction, JSON + ICS |
+| `backend/apps/identity/export_api.py` | `POST /api/exports`, `GET /api/exports/{id}/{format}` |
+| `backend/apps/identity/migrations/000X_dataexport.py` | The table |
+| `backend/tests/identity/test_data_export.py` | Enumeration, redaction, expiry, cross-user, dedupe |
+| `backend/tests/identity/test_export_ics_roundtrip.py` | The ICS goes back through `adapters/calendar/ics.py` |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/apps/identity/models.py` | `DataExport` — status, claim, payloads, `expires_at` |
+| `backend/apps/personalization/models.py` | `SavedCollectionItem.export_user_path`; the location opt-out (see checkpoint) |
+| `backend/worker/tasks.py` | `build_data_export`, following the existing task idiom |
+| `backend/shared/constants.py` | The 24h SLA and the link lifetime |
+| `backend/config/api.py` | Mount the export router |
+| `backend/tests/architecture/test_write_ownership.py` | `identity_dataexport` |
+
+### The ICS round-trip is the interesting test
+
+The acceptance criterion asks that the ICS import cleanly into Google, Apple and Outlook —
+none of which can be run here. What **can** be proved is that the ICS this project emits is
+parsed by the ICS parser this project already ships (`adapters/calendar/ics.py`), which is
+the same `icalendar` library those clients' rules are written against. The test exports a
+user's events, parses the result back, and asserts the events survive the round trip with
+their times intact. **That is weaker than the criterion as written, and the test report will
+say so** rather than implying three clients were tested.
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| Registry-driven | A model registered at test time appears with no export-code change |
+| Exclusions | `NOT_USER_DATA` and `ANALYTICS_AGGREGATES` absent, by category |
+| Secrets | No `EncryptedTextField` value and no password hash in any payload |
+| Redaction | Personal-event locations present and absent, both branches |
+| Collections | FR-49's collections and their membership are in the JSON |
+| Async + SLA | The task runs, the email sends, the row completes inside the window |
+| Expiry | A link past `expires_at` is refused |
+| Cross-user | User B's token cannot fetch user A's export |
+| Dedupe | Two requests in quick succession produce one row and one job |
+| ICS | Round-trips through the project's own parser |
+
+### Risks
+
+1. **This item touches `identity`, `personalization`, `worker` and the API.** It is the
+   widest item in the run, and the registry is what keeps it from also being the longest.
+2. **No object storage is configured** — no `STORAGES`, no S3, no `MEDIA_ROOT`. See the
+   checkpoint question.
+3. **Account deletion does not exist yet.** FR-52 says the export survives 30 days past
+   deletion; this item must not make that harder, and `expires_at` on the row is what a
+   deletion sweep will later read.
+
+### Checkpoint decisions (approved)
+
+1. **Export is not gated.** Any signed-in user can request one. GDPR Article 20 is a right,
+   and a right behind $4.99/month is a right the product is failing for the people it is
+   owed to. The jurisdiction split the PRD §11.5 table describes would require knowing each
+   user's country — which this product deliberately does not store — so implementing it
+   would mean **collecting location data in order to decide a privacy right**, and getting
+   it wrong would deny one.
+   - **Follow-on, flagged not fixed:** `/pricing` still lists "JSON + ICS export" as a Pro
+     bullet. That bullet is now inaccurate. It is a frontend copy change belonging to
+     `frontend-pricing-page`, not this item, and it is recorded here so it is not lost.
+2. **`DigestPreference.share_precise_location`**, a boolean defaulting to `True`. It joins
+   the row that already holds the user's city, `city_source` and `include_personal_events` —
+   the same question about the same user. Nothing writes it yet; the toggle DESIGN.md A-14
+   specifies is a later item's. Both redaction branches become real and testable now.
+3. **The payloads live in two columns on the export row.** A heavy user's records are tens
+   of kilobytes. Object storage would add a dependency, credentials, settings and a MinIO
+   service to `docker-compose` — real surface for a file that fits in a `TextField` — and
+   the 30-day lifetime stays one column the retention sweep already knows how to read.
+
+---
+
+# Work Item: `frontend-account-and-billing-settings` — plan, portal, and Download my data
+
+## Implementation Plan
+
+### Approach
+
+One route, `/settings/account`, with three blocks: **the plan**, **the portal**, and
+**Download my data**. It follows `app/settings/quiet-hours/` exactly — a server component
+that reads, and client islands that act.
+
+### This item needs a backend read, and the design said so in advance
+
+`GET /api/billing/subscription` returns `{is_pro}` and nothing else, deliberately — its own
+docstring says *"a field here would be a field two callers could disagree about"*. But
+`is_pro` is **true for `PAST_DUE` as well as `ACTIVE`**, so it cannot render this screen
+honestly: the one state the acceptance criteria single out is the one it cannot see.
+
+The same docstring already names the answer: *"the fuller subscription record belongs to the
+account-and-billing surface, **which needs a wider read and builds it there**."* So this item
+adds `GET /api/billing/account` — status, plan, period end — and leaves the entitlement
+endpoint untouched at one bool.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/apps/identity/services/billing_read.py` | The wider read: status, plan, period end |
+| `backend/tests/identity/test_billing_account_api.py` | Free, Pro, past-due, canceled; scoping |
+| `frontend/app/settings/account/page.tsx` | The route |
+| `frontend/app/settings/account/page.test.tsx` | The three states, the portal, the export |
+| `frontend/app/settings/account/loading.tsx` | Matching the other settings routes |
+| `frontend/components/settings/plan-summary.tsx` | The plan block and the portal button |
+| `frontend/components/settings/download-my-data.tsx` | FR-52's request button |
+| `frontend/components/settings/download-my-data.test.tsx` | The request, the repeat, the failure |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/apps/identity/billing_api.py` | `GET /api/billing/account` |
+| `frontend/lib/api/openapi.json`, `schema.ts` | Regenerated — `make client` in this item |
+| `backend/tests/architecture/*` | Nothing — no new surface file, no new table |
+
+### The three states, and what each says
+
+| State | What the screen says | The action |
+|---|---|---|
+| Free | "You're on the free plan." | A quiet link to `/pricing` |
+| Pro (`active`) | "You're on Pro." + the period end | **Manage subscription** → portal |
+| Pro (`past_due`) | "You're on Pro. **We couldn't take your last payment.**" | **Update payment** → portal |
+| Ended (`canceled`/`expired`) | "You're on the free plan." + when Pro ended | A quiet link to `/pricing` |
+
+**A past-due user is Pro with a problem, not a Free user**, which is the criterion this
+screen exists to satisfy. The copy stays in the product's register — it states the fact and
+points at the fix, with no alarm colour and no interruption.
+
+### Cancellation stays in Stripe's portal
+
+No local cancel flow, per the work item: it would be a second write path into subscription
+state that the webhook would then have to reconcile against.
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| The three states | Free, `active`, `past_due` each render their own copy and action |
+| Past-due is not Free | Explicitly asserted — the regression this screen exists to prevent |
+| The portal | The button posts and follows the returned URL; a refusal shows a line |
+| The export | Requests once, says "by email within 24 hours", never appears to download |
+| The repeat | A second click is handled gracefully and does not look like a failure |
+| Ungated | The export control renders for a Free account, outside any Pro-only block |
+| Mobile | The blocks stack at 375px |
+
+### Risks
+
+1. **A backend endpoint in a frontend item.** Sanctioned by `SubscriptionOut`'s own
+   docstring, but it means `make client` runs here and the contract tests must pass.
+2. **`/settings` still does not exist** as an index. `account-menu.tsx` carries a note that
+   it is "a control, not a route" because `/settings` would 404. This item adds
+   `/settings/account`, which is the page that row most likely wants — but repointing the
+   nav is a change to a shipped surface and is **not** done here.
+
+### Checkpoint decisions (approved)
+
+1. **The date is stated neutrally — "Your plan runs until 3 March."** `cancel_at_period_end`
+   is modelled nowhere in this product, so "renews" and "ends" are indistinguishable here.
+   Guessing "renews" would be reassuring and wrong for exactly the person most likely to be
+   on this screen: someone who cancelled five minutes ago and came to confirm it worked.
+   Modelling the flag properly would mean editing the port, both adapters, the model and the
+   webhook mapping — an already-closed item's territory. **Recorded as a known limitation**,
+   not papered over.
+2. **The sidenav account row is left alone.** No criterion asks for it, and repointing a
+   shared shell component used on every authed screen is its own change. Flagged as a
+   follow-on, with the dead-control note it already carries.
+
+---
+
+# Work Item: `saved-collections-api` — collections over the wire, and the Pro gate
+
+## Implementation Plan
+
+### Approach
+
+The commands already exist from `saved-collections-model` — create, rename, delete,
+reorder, add, remove, and two reads — and every one of them is deliberately **tier-agnostic**.
+This item puts them on the wire and adds the gate **at the API, where the user is**, which
+is the same split `quiet-hours-pro-api` made: the rows are the user's data, and the
+subscription governs their effect rather than their existence.
+
+```
+POST   /api/personal/collections                      create          ← gated
+GET    /api/personal/collections                      list
+PATCH  /api/personal/collections/{id}                 rename
+DELETE /api/personal/collections/{id}                 delete
+PUT    /api/personal/collections/order                reorder (whole list)
+GET    /api/personal/collections/{id}/events          the saves inside
+PUT    /api/personal/collections/{id}/events/{save}   assign          ← gated
+DELETE /api/personal/collections/{id}/events/{save}   unassign
+```
+
+**Reorder takes the whole ordering in one request** — the command already refuses a partial
+list — so the server never observes a half-reordered list.
+
+**A cross-user id is answered 404, never 403.** `_get_owned` already does this and the
+reasoning is recorded there: "forbidden" confirms the row exists, and a collection name is
+content somebody wrote.
+
+**Listing a collection's events returns the `SavedEvent` snapshot** that AD-17 propagation
+already maintains. No `catalog` read, so AD-3 is not approached — the same rule the Timeline
+follows, and the snapshot is what the user's own screens show anyway.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/apps/personalization/collections_api.py` | The eight endpoints |
+| `backend/apps/personalization/services/collection_cap.py` | The gate and its sentence |
+| `backend/tests/personalization/test_collections_api.py` | Every endpoint, the gate, the lapse, scoping |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| `backend/apps/personalization/schemas.py` | `CollectionIn/Out`, `CollectionOrderIn`, `CollectionEventOut` |
+| `backend/domain/errors.py` | `CollectionsProRequired(ConflictError)` with `{cap, upgrade_hint}` |
+| `backend/shared/constants.py` | `FREE_TIER_COLLECTIONS = 0` |
+| `backend/config/api.py` | Mount the router |
+| `frontend/lib/cap-details.ts` | `collections_pro_required` joins `CAP_CODES` |
+| `frontend/lib/api/openapi.json`, `schema.ts` | Regenerated — `make client` in this item |
+| `backend/tests/architecture/*` | The new surface file's registrations |
+
+### The refusal reuses the prompt rather than growing a second one
+
+`CollectionsProRequired` carries `{cap, upgrade_hint}` and **no modal-shaped field** — the
+same payload as `SaveCapReached`, `CalendarProviderCapReached` and `QuietHoursProRequired`.
+The whole frontend change is one code joining `CAP_CODES`; the inline prompt from
+`frontend-upgrade-prompts` renders it with no new component and no new copy path.
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| CRUD | Create, rename, delete, list — each over HTTP |
+| Reorder | The whole list in one request; a partial list refused |
+| Membership | Assign and unassign; the snapshot fields come back |
+| AD-3 | The events read touches no `catalog` table |
+| The gate | A Free user's create is 409 with `{cap, upgrade_hint}` and no modal field |
+| **The lapse** | Read, unassign and the rest still work; create does not |
+| Scoping | Another user's collection is **404**, never 403, on every endpoint |
+| Contract | The regenerated client is in sync |
+
+### Risks
+
+1. **Eight endpoints is the widest API surface in this run.** The scoping test is
+   parametrized over all of them rather than written once, because "this one endpoint forgot
+   the user id" is exactly the bug that hides in a surface this size.
+2. **`make client` must run here.**
+
+### Checkpoint decisions (approved)
+
+**Only the two operations that *add* are gated: creating a collection, and assigning a save
+into one.** Reading, unassigning, renaming, reordering and deleting stay open on every tier.
+
+The rule is "a lapsed subscriber may keep using what they have at its current size, but may
+not grow it", and it falls out of the brief's own constraint — nothing of theirs is deleted
+on a downgrade. Gating rename or reorder would mean a lapsed user cannot fix a typo in a
+name they wrote, which reads as punishment rather than as a tier boundary; gating delete
+would trap them with data they want gone, which is the opposite of what the constraint is
+for. Gating assign is what keeps the cap meaningful: without it the gate would limit how
+many collections exist and not how much they are used.
+
+---
+
+# Work Item: `frontend-collections` — collections, on screen for the first time
+
+## Implementation Plan
+
+### Approach
+
+**This is the one surface in the intent with no approved design**, and the work item says so:
+EXPERIENCE.md claims `settings-desktop.html` covers FR-49, and TRACEABILITY.md checked and
+found *"the mockup contains zero 'collection' content"*. So it is built from the design
+system and the existing settings surfaces rather than from a mockup, and the walkthrough
+will carry that note.
+
+The PRD's own examples — *"Music this month", "For the kids"* — set the register: a quiet
+organisational convenience over saved events, not a new primary surface. The build keeps it
+to a modest management UI, which is also the work item's stated stop condition.
+
+### Where it lives, and why that is constrained
+
+DESIGN.md closes the navigation: its Do's-and-Dont's row forbids adding routes to the nav,
+with **Browse as the single named exception**. So a top-level `/collections` would be a
+route nothing links to — the same dead end `/settings/account` is currently in.
+
+`/settings/collections` is reachable without touching the nav at all: the sidenav's Settings
+item matches on `pathname.startsWith("/settings/")`, so it lights up by itself. See the
+checkpoint question.
+
+### Reorder: move up / move down, not drag
+
+The work item prefers it and the reasons hold — it is **keyboard-accessible by default**,
+needs no pointer, no library and no motion (the product has exactly one transition, and
+`styles/motion.test.ts` fails the suite on any other animation), and it is the cheaper half
+of the two by a wide margin. Each press sends the **whole ordering** in one request, as
+`saved-collections-api` requires.
+
+### The Free user sees it offered, not hidden
+
+The page reads `is_pro` server-side with `readIsPro()` — built in `frontend-pro-quiet-hours`
+— and a Free account gets the explanation plus one inline `UpgradePrompt`, with no create
+form. **Not hidden, and not a modal**, per the criterion.
+
+Letting a Free user fill in a name and *then* refusing them would be the alternative, and it
+is worse: the refusal would be accurate and the experience would be a trap.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `frontend/app/settings/collections/page.tsx` | The route |
+| `frontend/app/settings/collections/page.test.tsx` | Tiers, empty states, the shell |
+| `frontend/app/settings/collections/loading.tsx` | The skeleton |
+| `frontend/components/collections/collection-manager.tsx` | The island: four verbs + membership |
+| `frontend/components/collections/collection-manager.test.tsx` | The verbs, the confirm, the failures |
+| `frontend/lib/collections-read.ts` | The server read |
+
+### Files to Modify
+
+| File | Change |
+|---|---|
+| — | No shared component changes; no nav change |
+
+### The two empty states, which are different states
+
+| State | What it says |
+|---|---|
+| **No collections yet** (Pro) | `component.emptystate.quiet`: a headline, a lede, and the create control |
+| **An empty collection** | A quiet line inside it — it is a container the user made on purpose, not a failure |
+
+### Deleting says what survives
+
+The criterion is explicit: the confirmation must make clear **the saved events survive**.
+The copy names it — *"Delete 'Weekend'? Your saved events stay saved."* — because "delete"
+over a list of events reads as deleting the events.
+
+### Tests
+
+| Area | Coverage |
+|---|---|
+| The four verbs | Create, rename, delete, reorder — each over the mocked client |
+| Membership | Unassign from inside a collection; the snapshot fields render |
+| Reorder | One request carrying the whole order; the ends cannot move further |
+| Delete | The confirmation names the saves; cancelling does nothing |
+| Empty states | No collections, and an empty collection — both deliberate |
+| Free | The prompt, no create form, nothing hidden |
+| Lapsed | Collections visible and readable, never shown as deleted |
+| Mobile | One column at 375px |
+
+### Risks
+
+1. **No design to check against.** The stop condition is the work item's: if this grows
+   beyond a modest management UI, stop and get a design pass.
+2. **`/settings/collections` is reachable only by URL** unless something links to it — the
+   same gap `/settings/account` has. Both want one later item.
+
+### Checkpoint decisions (approved)
+
+1. **`/settings/collections`.** Reachable with no navigation change: the sidenav's Settings
+   item already matches `pathname.startsWith("/settings/")`. DESIGN.md's rule closes the nav
+   to new routes with Browse as its single named exception, so a top-level `/collections`
+   would be a route nothing could point at. The semantic stretch — collections are content,
+   not configuration — is the price of a reachable surface, and it is the smaller cost.
+2. **An inline two-step confirm**, in the row: *"Delete 'Weekend'? Your saved events stay
+   saved."* with Confirm and Cancel. No overlay and no focus trap, consistent with the
+   product's posture. A modal is specified by A-16 for deleting an **account**, with
+   type-to-confirm; this deletes a grouping and destroys nothing, so that weight is wrong.
+   Undo was rejected on a concrete ground: the API has no restore, so "undo" would
+   re-create a lookalike with a new id and re-add every membership.
+3. **Reorder is move up / move down**, as the work item prefers — keyboard-accessible with
+   no pointer, no library and no motion, and each press sends the whole ordering.
+
+---
+
+# Work Item: `e2e-proof-and-contract-tests` — the paid path closes, and cancelling closes it
+
+## Implementation Plan
+
+### Approach
+
+One proof file, following `tests/e2e/test_trust_loop_proof.py`: **every step driven through
+the surface a real actor would touch**, not by calling services directly.
+
+- The user saves through `POST /api/personal/saved-events/{id}`, signed in, with CSRF.
+- Checkout starts through `POST /api/billing/checkout`.
+- **The webhook arrives through `POST /api/webhooks/billing`** with the fake adapter's
+  signature — the only thing in the system that grants entitlement.
+- The four capabilities are exercised through their own endpoints: `/api/personal/calendars`,
+  `/api/personal/collections`, `PUT /api/settings/notifications`, `POST /api/exports`.
+- Cancellation arrives as another webhook.
+
+**No Stripe, no network, no secrets.** `FakeBillingAdapter` + `InMemoryThrottleAdapter`, so
+CI runs it unchanged.
+
+### Structure
+
+| Class | What it proves |
+|---|---|
+| `TestThePaidPathCloses` | Free → wall → pay → webhook → all four capabilities, in one test |
+| `TestCancellationClosesEveryGate` | Every gate refuses again **and nothing is deleted** |
+| `TestTheWebhookIsTheOnlyGrant` | A returned-from checkout with no webhook grants nothing |
+| `TestTheReplayAndTheRace` | A replayed grant and a stale update after cancellation |
+| `TestTheContract` | Every endpoint this intent added is in the document, and the client is in sync |
+
+### Every date is relative, and that is a deliberate choice
+
+**17 tests in this repo currently fail because their fixtures hard-code dates** that have
+since passed — the count grew from 16 to 17 overnight during this run. Every instant in this
+file is derived from `timezone.now()`, so it cannot join them. Where an exact boundary must
+be asserted, the clock is frozen per-call by passing `now` to the service, as the trust-loop
+proof does.
+
+### FR-51 is asserted at the instant, not at the feature
+
+A weekday override is set through the settings API, a reminder plan is attached to a personal
+event whose slot falls inside that weekday's window, and the assertion is on the
+`ScheduledSend.due_at` — that it is the window's **end**, not the raw slot time.
+`scheduled_sends.py:296` is where `shift_to_sendable` applies `effective_quiet_hours`, so
+this exercises the real path rather than a flag.
+
+### Files to Create
+
+| File | Purpose |
+|---|---|
+| `backend/tests/e2e/test_pro_tier_proof.py` | The journey, the downgrade, the refusals |
+| `backend/tests/e2e/test_pro_tier_contract.py` | The intent's endpoints in the document, client in sync |
+
+### Files to Modify
+
+Nothing in `apps/`, `domain/` or `worker/`. **A defect found here is a finding, not a patch
+smuggled into the item that was meant to measure it** — the work item says so, and
+`trust-loop`'s proof set the precedent with `TestTheStrandedEventGetsOut`.
+
+### What "nothing is deleted" means concretely
+
+After `subscription_ended`, the test asserts the user still holds: their three calendar
+connections, their collection and its membership, their saves, and their seven stored
+weekday windows — while `is_pro` reads false and every gate refuses a *new* one.
+
+### Risks
+
+1. **This is the item most likely to surface real defects.** Four gates, five surfaces and
+   the entitlement read running together for the first time. Any defect gets a test that
+   asserts the broken behaviour and a note carried to the walkthrough.
+2. **Assignment has no UI** (found in `frontend-collections`), so the e2e exercises it
+   through the API — which is what the acceptance criterion asks for anyway.
+
+### Checkpoint decisions (approved)
+
+**The backend journey plus a contract test that enumerates this intent's endpoints by name.**
+
+The frontend's five surfaces are covered by their own suites — 2030 passing — and a Vitest
+journey over them would mock the API client anyway, so it would prove the components agree
+with a *fake* rather than with the server the backend proof just exercised. The contract
+test is what actually closes that gap, and it enumerates the routes rather than comparing
+whole-document hashes: the four existing contract tests would not notice a route being
+dropped, because the client would simply be regenerated without it and both sides would
+agree.

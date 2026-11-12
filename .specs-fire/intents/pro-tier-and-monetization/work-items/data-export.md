@@ -4,9 +4,13 @@ title: Download my data — JSON and ICS, off the retention registry
 intent: pro-tier-and-monetization
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [subscription-model-and-entitlement, saved-collections-model]
+status: completed
+depends_on:
+  - subscription-model-and-entitlement
+  - saved-collections-model
 created: 2026-11-11
+run_id: run-eventpulse24-027
+completed_at: 2026-11-11T16:48:21.860Z
 ---
 
 # Work Item: Download my data — JSON and ICS, off the retention registry

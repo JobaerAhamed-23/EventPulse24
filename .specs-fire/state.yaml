@@ -980,7 +980,7 @@ intents:
     completed_at: 2026-11-11T06:03:02.089Z
   - id: pro-tier-and-monetization
     title: Pro Tier & Monetization — Subscription, Entitlement & the Paid Path
-    status: in_progress
+    status: completed
     created: 2026-11-11
     work_items:
       - id: subscription-model-and-entitlement
@@ -989,7 +989,7 @@ intents:
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T07:45:29.301Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: billing-adapter-and-webhooks
         status: completed
         complexity: high
@@ -997,7 +997,7 @@ intents:
         depends_on:
           - subscription-model-and-entitlement
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T08:44:27.984Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: checkout-and-portal-api
         status: completed
         complexity: medium
@@ -1005,7 +1005,7 @@ intents:
         depends_on:
           - billing-adapter-and-webhooks
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T09:39:49.370Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: free-tier-caps-read-entitlement
         status: completed
         complexity: medium
@@ -1013,7 +1013,7 @@ intents:
         depends_on:
           - subscription-model-and-entitlement
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T11:00:33.769Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: frontend-pricing-page
         status: completed
         complexity: medium
@@ -1021,7 +1021,7 @@ intents:
         depends_on:
           - checkout-and-portal-api
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T12:23:08.945Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: frontend-upgrade-prompts
         status: completed
         complexity: medium
@@ -1030,7 +1030,7 @@ intents:
           - checkout-and-portal-api
           - free-tier-caps-read-entitlement
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T12:47:25.637Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: per-day-quiet-hours-domain-and-model
         status: completed
         complexity: high
@@ -1038,54 +1038,68 @@ intents:
         depends_on:
           - subscription-model-and-entitlement
         run_id: run-eventpulse24-027
-        completed_at: 2026-11-11T13:23:38.224Z
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: quiet-hours-pro-api
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - per-day-quiet-hours-domain-and-model
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: frontend-pro-quiet-hours
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - quiet-hours-pro-api
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: saved-collections-model
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - subscription-model-and-entitlement
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: data-export
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - subscription-model-and-entitlement
           - saved-collections-model
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: frontend-account-and-billing-settings
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - checkout-and-portal-api
           - data-export
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: saved-collections-api
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - saved-collections-model
           - free-tier-caps-read-entitlement
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: frontend-collections
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - saved-collections-api
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
       - id: e2e-proof-and-contract-tests
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
@@ -1094,125 +1108,11 @@ intents:
           - frontend-collections
           - frontend-pro-quiet-hours
           - frontend-account-and-billing-settings
+        run_id: run-eventpulse24-027
+        completed_at: 2026-11-12T02:19:36.225Z
+    completed_at: 2026-11-12T02:19:36.225Z
 runs:
-  active:
-    - id: run-eventpulse24-027
-      scope: wide
-      work_items:
-        - id: subscription-model-and-entitlement
-          intent: pro-tier-and-monetization
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T07:45:29.301Z
-        - id: billing-adapter-and-webhooks
-          intent: pro-tier-and-monetization
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T08:44:27.984Z
-        - id: checkout-and-portal-api
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T09:39:49.370Z
-        - id: free-tier-caps-read-entitlement
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T11:00:33.769Z
-        - id: frontend-pricing-page
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T12:23:08.945Z
-        - id: frontend-upgrade-prompts
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T12:47:25.637Z
-        - id: per-day-quiet-hours-domain-and-model
-          intent: pro-tier-and-monetization
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-11T13:23:38.224Z
-        - id: quiet-hours-pro-api
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: in_progress
-          current_phase: execute
-          checkpoint_state: approved
-          current_checkpoint: plan
-        - id: frontend-pro-quiet-hours
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: saved-collections-model
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: data-export
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: frontend-account-and-billing-settings
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: saved-collections-api
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: frontend-collections
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-        - id: e2e-proof-and-contract-tests
-          intent: pro-tier-and-monetization
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: quiet-hours-pro-api
-      started: 2026-11-11T07:05:42.898Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -1659,3 +1559,53 @@ runs:
           mode: confirm
       started: 2026-11-10T14:08:55.031Z
       completed: 2026-11-11T06:03:02.089Z
+    - id: run-eventpulse24-027
+      scope: wide
+      work_items:
+        - id: subscription-model-and-entitlement
+          intent: pro-tier-and-monetization
+          mode: validate
+        - id: billing-adapter-and-webhooks
+          intent: pro-tier-and-monetization
+          mode: validate
+        - id: checkout-and-portal-api
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: free-tier-caps-read-entitlement
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: frontend-pricing-page
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: frontend-upgrade-prompts
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: per-day-quiet-hours-domain-and-model
+          intent: pro-tier-and-monetization
+          mode: validate
+        - id: quiet-hours-pro-api
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: frontend-pro-quiet-hours
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: saved-collections-model
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: data-export
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: frontend-account-and-billing-settings
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: saved-collections-api
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: frontend-collections
+          intent: pro-tier-and-monetization
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: pro-tier-and-monetization
+          mode: confirm
+      started: 2026-11-11T07:05:42.898Z
+      completed: 2026-11-12T02:19:36.225Z

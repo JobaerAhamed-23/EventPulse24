@@ -1005,3 +1005,550 @@ payload as `SaveCapReached` and `CalendarProviderCapReached`. The whole frontend
 `quiet_hours_pro_required` joining `CAP_CODES`; the inline prompt built in
 `frontend-upgrade-prompts` renders it with no new component and no new copy path. The
 surface that shows it is item 9's.
+
+### 6. Addendum — one guard test changed, and why that is not a weakening
+
+Closing this item required touching a test belonging to `subscription-model-and-entitlement`:
+`test_no_app_code_deletes_a_subscription`. It scanned each file under `apps/` for the words
+`Subscription` and `.delete()` and flagged any file holding both.
+`notification_preferences.py` holds both — it deletes `QuietHoursOverride` rows, and its
+docstring explains that a lapse never deletes a subscription. The guard was reading an
+explanation as a violation.
+
+The scan now runs over the file's **code**, with docstrings and comments blanked out. What
+was *not* changed is as important: it is still file-wide rather than following the call, so
+`qs = Subscription.objects.all()` on one line and `qs.delete()` on the next is still caught.
+A probe module asserting exactly that shape was run against the new guard; it fails, as it
+must, and the clean tree passes.
+
+**Three files were changed after the review above was written**, all of them cleanup rather
+than behaviour: the unused `time` import in the new test file, the guard test, and Prettier
+formatting of `lib/cap-details.ts`. No production code changed.
+
+---
+
+## Work Item: `frontend-pro-quiet-hours`
+
+All nine acceptance criteria met, two of them on weaker evidence than they deserve (below).
+One defect found and fixed in review; one deviation from DESIGN.md logged on purpose.
+
+### 1. The deviation: `component.control.day-picker`'s Free state was not built
+
+DESIGN.md's Amendment A-19 contains **both** of these:
+
+> Free users see all 7 rows in a locked visual state — day-name in `{color.ink.muted}` …
+> toggle replaced by a small `Lock` glyph …
+
+> **Don't:** Render the per-day picker for Free users (Pro tier is the contract — Free
+> stays single-window).
+
+They cannot both be followed. The build takes the second, because three other sources agree
+with it: the work item's acceptance criterion (*"A Free user's screen is unchanged"*), the
+existing `page.test.tsx` guard, and `page.tsx`'s own standing note that *"a locked row for a
+feature that does not exist on this tier would be a row the user can neither use nor
+remove."* A Free user gets their single window plus **one** inline line — approved at the
+plan checkpoint.
+
+### 2. The toggle was relabelled, because the mockup's wording promises a state the API lacks
+
+The mockup draws an On/Off toggle per day, default Off. In the data, a weekday with no
+override row means **the base window applies that day** — not *no quiet hours that day*.
+There is no way, anywhere in `quiet-hours-pro-api`, to say "quiet every night except
+Thursday".
+
+A row labelled "Off" would therefore tell a user they had switched Thursday's silence off
+when they had not, and the only way they would find out is a 3am notification that never
+came. The two states the control can actually distinguish are **"Same as usual"** and **a
+window of its own**, and those are the two it shows.
+
+### 3. The paywall is read server-side, not inferred
+
+`readIsPro()` calls `GET /api/billing/subscription` — the published one-bool answer. The
+tempting shortcut, inferring the tier from `quiet_hours_overrides` being non-empty, is wrong
+in **both** directions: a Pro user who has set no weekday yet would be sold something they
+already own, and a lapsed user would be handed an editor the API refuses. The page therefore
+has **three** states rather than two, and the third — lapsed — is the one that needed saying
+out loud.
+
+### 4. Defect found in review: a dangling `aria-controls`
+
+Each day's header button carried `aria-controls={panelId}` unconditionally, while the panel
+itself only exists when the row is open. A collapsed row therefore pointed at an id that was
+not in the document — an ARIA reference to nothing, on all seven rows at rest, which is the
+state the page is in when it loads.
+
+Fixed by setting the attribute only while the panel exists. Keeping the panel mounted and
+hidden would have been the other fix, and was rejected: an always-mounted panel puts
+fourteen time inputs in the DOM, which is the thing the accordion exists to avoid.
+
+### 5. Mutation testing found an untested line, not an untrue comment
+
+Deleting the `.sort()` from the payload left the whole suite green: the test that looked
+like it pinned the order used a Monday-first fixture, so its assertion held whether anything
+sorted or not. A shuffled fixture now pins it. The docstring's claim was already the modest
+one — *"the server does not care, and a reader comparing a request to the UI does"* — so
+nothing had to be retracted this time. Four of the other five probes were caught outright.
+
+### 6. What is weakly evidenced, and should not be read as proven
+
+**"Works at mobile width" and the accordion's accessibility are pinned in jsdom, not in a
+browser.** `testing-standards.md` names Playwright + axe-core, but the repo has no
+`playwright.config`, no `e2e/` directory and no axe dependency — the E2E stack is
+aspirational. What is actually asserted is structural: one day's clocks in the DOM at a
+time, `aria-expanded` on a real `button`, the week as a list. Nothing has rendered this at
+375px or run an accessibility audit over it.
+
+**The Free user's upgrade sentence is duplicated across the stack.** It is a string in
+`page.tsx` and a constant in `shared/constants.py`, because a Free user is never refused and
+so never receives the server's copy. A test asserts the exact string, so they cannot drift
+silently — but a backend copy change turns that test red rather than updating the screen,
+and that is the cost of the chosen option, accepted at the checkpoint.
+
+---
+
+## Work Item: `saved-collections-model`
+
+All nine acceptance criteria met. Two defects found and fixed in review, one architecture
+rule narrowed with approval, and one small Unicode caveat left standing deliberately.
+
+### 1. Defect: an N+1 in `reorder_collections`
+
+`_view()` falls back to counting one collection's memberships when the caller does not
+supply a count. That is right for a command that touched one collection and wrong for a
+reorder, which returns the **whole list** — so reordering twelve collections ran twelve
+extra `COUNT` queries, one per returned view, on top of the renumbering.
+
+Fixed by extracting `_item_counts(user_id)`, the single grouped read `list_collections` was
+already doing, and using it in both places. `test_a_reorder_counts_the_collections_in_one_query_not_one_each`
+pins it, and was probed by reinstating the N+1 — it fails, as it must.
+
+### 2. Defect: a missing *save* reported as a missing *collection*
+
+`add_to_collection` raised `CollectionNotFoundError` when the saved event could not be
+found — having located the collection successfully one line earlier. A client acting on
+that error would go looking at the wrong object, and the docstring I had written for it was
+muddled in a way that should have been the clue.
+
+It now raises `SavedEventNotFoundError`, the error that already exists for exactly this.
+The privacy reasoning is unchanged: another user's save is reported as **absent**, never as
+forbidden, because "it exists but is not yours" confirms the existence of someone else's
+content.
+
+### 3. The architecture rule, narrowed — what was traded
+
+Two tests asserted that `personal`'s models hold **zero** relation fields. The membership
+table's two foreign keys are intra-schema and intra-app, and the only trace either leaves on
+`SavedEvent` is a reverse accessor — not a column, and not a constraint on `SavedEvent`'s
+table.
+
+Each of the three rules those tests cite has its own dedicated test, and **all three were
+green the entire time**, including `test_no_foreign_key_crosses_from_personal_to_catalog`,
+which reads the keys Postgres actually holds rather than the models' metadata. The blanket
+assertion was a wider net than its own stated rationale.
+
+Both now forbid a relation for **what it reaches** — a catalog app, `User`, `ContentType` —
+rather than for existing, and were probed with a real `SavedEvent → ingestion.Event`
+foreign key, which both reject.
+
+**The honest cost:** a blanket rule is cheaper than a judgement, and this one is now a
+judgement. Any future foreign key inside `personal` passes these two tests in silence. The
+wall itself is unaffected — it is enforced against the database — but the early, mechanical
+warning that *any* relation here deserves a second look is gone. That trade was put to the
+user explicitly rather than taken quietly, which is the only reason it is acceptable.
+
+### 4. Deferred constraints are new here, and the test says what they mean
+
+`saved_collection_user_position_uq` is the codebase's first `DEFERRABLE INITIALLY DEFERRED`
+constraint. It exists because dense positions must be renumbered, and a renumber is
+transiently inconsistent by nature.
+
+The first version of its test asserted the wrong thing — it expected an error at the end of
+an `atomic` block, which in Django's test transaction never commits — and the deferral was
+what made it fail. It now asserts both halves: the duplicate insert lands quietly, and
+`SET CONSTRAINTS ALL IMMEDIATE` raises. A companion test pins that the *name* constraint is
+**not** deferred, so the contrast is recorded rather than assumed.
+
+### 5. Left standing: case folding is the database's, not Python's
+
+`_name_taken` compares with Python's `str.lower()`; the constraint uses Postgres' `Lower()`.
+For ASCII they agree. For a few Unicode cases they need not — Turkish dotted/dotless I being
+the usual example — and a disagreement would mean the pre-check passes and the insert then
+raises `IntegrityError`, surfacing as a 500 rather than as `CollectionNameTaken`.
+
+Not fixed, because the fix (`.annotate(folded=Lower("name")).filter(folded=Lower(Value(name))))`,
+pushing both sides into the database) buys a case no test can currently reach, and the
+constraint is still the authority either way — the race between check and insert ends there
+regardless. Recorded so the next person meets it as a known edge rather than a surprise.
+
+---
+
+## Work Item: `data-export`
+
+All nine acceptance criteria met, one of them on weaker evidence than it asks for. Two
+defects found in review, one security gap found by mutation testing, and one tradeoff
+accepted knowingly.
+
+### 1. The decision this item turned on was legal, not technical
+
+FR-52 concedes its own tension — *"export is free for GDPR compliance but UX is in Pro
+settings for non-EU users"* — and the PRD §11.5 table resolves it as *"Free in EU/UK/CA/BR/AU;
+Pro-only elsewhere"*. **That resolution is not implementable here without doing something
+worse than the problem.** The product stores no country and no geo consent, so the gate
+would require collecting location data in order to decide a privacy right, and every wrong
+guess denies a legal entitlement to the person it belongs to.
+
+The export is therefore ungated. `test_a_free_account_may_request_an_export` exists so the
+decision cannot be quietly reverted into a tier check by someone reading the pricing page.
+
+**Follow-on, flagged and not fixed here:** `/pricing` still sells "JSON + ICS export" as a
+Pro bullet. That copy is now inaccurate. It belongs to `frontend-pricing-page`.
+
+### 2. Defect found in review: an export nested inside the next one
+
+`DataExport` is `ACCOUNT_CONTENT`, so the registry exports it — rightly, since *when a user
+asked for their data* is a fact about them. But the row carries `json_body` and `ics_body`,
+which are **a copy of everything else in the export**. Left in, a second request would carry
+the first's entire payload, a third would carry both, and each download would double while
+telling the user nothing new.
+
+The model now declares `export_redact_fields = ("json_body", "ics_body")` — one more
+declaration beside `retention_category` and `export_user_path`, in the same place, read the
+same way. The metadata still exports. Probed by ignoring the declaration: the test fails.
+
+### 3. Security gap found by mutation testing, not by review
+
+Disabling the credential redaction's **type** check left all 74 tests green. The only
+`EncryptedTextField` in the tree is also *named* `credential`, so the name list caught it —
+the belt held while the braces were cut, and the check that matters for a field added later
+was pinned by nothing.
+
+`_is_secret_field` now has three tests of its own: an encrypted field named `notes` is
+redacted, a plain field named `password` is redacted, and an ordinary field is **not** — the
+third because a redactor that redacted everything would pass the first two and hand the user
+a file of nothing but `[redacted]`.
+
+### 4. Two tests failed in ways that improved the design
+
+**Seven models could not name their user.** `identity.User` was among them — the account
+row itself would have been the one record missing from a user's own export. The audit tables
+reach their user through `actor_id`; `User` through its own `id`. Only `sessions.Session`
+genuinely cannot, and it is declared not portable with the reason recorded where it is
+declared: a session key is a **live credential**.
+
+**The export reached across the AD-3 wall.** Once the audit tables became reachable,
+`ingestion.IngestionAuditEntry` — `AUDIT_LOG`, in `catalog` — joined the walk, and 24 tests
+failed with *"Database queries to 'catalog' are not allowed"*. The fix filters on the alias;
+the **first** version of that fix imported `config.db_router` from an app and was rejected
+by `lint-imports` for breaking AD-2's inward-pointing layers. Two guards, in sequence, each
+catching what the other would have missed.
+
+### 5. Accepted knowingly: the token is in the URL
+
+`GET /api/exports/{id}/{fmt}?token=…` carries a credential in a query string, which reaches
+server access logs and proxy logs. The alternatives are worse for the actual use: a header
+cannot be sent by a mail client following a link, and a POST form in an email is not a link.
+
+Mitigated rather than solved — the token is single-purpose (one export, one user, one
+format), expires with the row, and the response sets `Cache-Control: no-store, private` and
+`Referrer-Policy: no-referrer` so it is neither cached by a shared proxy nor forwarded in a
+`Referer`. **Access-log exposure remains**, and an operator rotating logs should know the
+links in them were live for seven days.
+
+### 6. The ICS criterion is met on weaker evidence than it asks for
+
+*"Importable into Google Calendar / Apple Calendar / Outlook"* — none was run, and this repo
+has no harness that could. The file round-trips through `formats/ics/parser.py`, the
+`icalendar`-based parser this product already uses for subscribed feeds, with titles,
+locations and instants intact; the structural rules those clients differ on are asserted
+directly. That is real evidence of a real round trip and it is **not** three clients. Stated
+here and in the test report rather than implied away.
+
+---
+
+## Work Item: `frontend-account-and-billing-settings`
+
+All nine acceptance criteria met. One backend endpoint added inside a frontend item with the
+design's explicit blessing, two defects found while testing, and one limitation recorded
+rather than papered over.
+
+### 1. A backend read in a frontend item, sanctioned in advance
+
+`SubscriptionOut` stays one bool — its docstring is emphatic that *"a field here would be a
+field two callers could disagree about"* — and `is_pro` is **true for `past_due`**. So the
+existing endpoint cannot see the one state these criteria single out.
+
+The same docstring named the remedy before this item existed: *"the fuller subscription
+record belongs to the account-and-billing surface, **which needs a wider read and builds it
+there**."* `GET /api/billing/account` is that read. The entitlement endpoint is untouched,
+and a parametrized test pins that the two never disagree about entitlement — a failure that
+would otherwise be silent, showing "you're on Pro" over features the server refuses.
+
+### 2. The limitation this screen cannot fix, stated instead of hidden
+
+Stripe cancels by setting `cancel_at_period_end`. **This product models it nowhere** — not
+in `ports.billing`, not in either adapter, not on `Subscription`, not in the webhook
+mapping. A subscription cancelled in the portal therefore reads `active` until its term runs
+out, and nothing on this side can tell "renews on 3 March" from "ends on 3 March".
+
+So the copy says **"Your plan runs until 3 March"**, which is true either way, and a test
+asserts the word "renew" never appears. Guessing "renews" would be reassuring and wrong for
+precisely the person most likely to be on this screen: somebody who cancelled five minutes
+ago and came to confirm it worked.
+
+**The real fix is a field**, and it reaches the port, both adapters, the model, a migration
+and the webhook mapping — an already-closed item's territory, and more than this item should
+quietly take on. Recorded here as the follow-on it is.
+
+### 3. Defect: a refusal with no sentence rendered as no refusal at all
+
+`saveFailureMessage` returns the API's own message whenever the body is the project's error
+shape, **including when that message is empty**, and the component renders `{failure}` —
+which an empty string makes falsy. A user would have clicked, seen nothing change, and had
+no way to know whether anything happened.
+
+Both call sites now fall back to their own line, each with a test. **The same hole exists in
+`quiet-hours-window.tsx`, `digest-delivery-time.tsx` and `default-reminder-slots.tsx`**,
+which call the helper the same way. They belong to a closed item and are not changed here,
+but it is one class of bug across four files and deserves a sweep rather than four
+rediscoveries.
+
+### 4. A test of mine was passing for the wrong reason
+
+The past-due case asserted that `"You're on the free plan"` was absent — and it was absent
+whatever the component did, because the rendered sentence ends in a full stop. The *positive*
+assertion in the Free case failed first and exposed both. Both now match the rendered text
+exactly.
+
+This is the second time in this run a negative assertion has been found passing vacuously
+(the first was the `.sort()` fixture in `frontend-pro-quiet-hours`). Worth noting as a
+pattern: a `queryBy*(...)` asserted null is only as strong as the string it looks for, and
+nothing fails when the string is wrong.
+
+### 5. What was deliberately not built
+
+- **No local cancel flow.** It would be a second write path into subscription state for the
+  webhook to reconcile against. The portal is the one door, and a test asserts no cancel
+  control exists.
+- **The sidenav account row was left alone.** Its own comment calls it "a control, not a
+  route" because `/settings` would 404 — and this item adds `/settings/account`, which is
+  plausibly the page it wanted. Repointing a shell component used on every authed screen is
+  its own change, approved as out of scope at the checkpoint. **`/settings/account` is
+  currently reachable only by typing the URL**, which is a real gap for a later item to
+  close.
+- **The export sits in its own top-level section**, not nested under the plan. That is
+  load-bearing rather than cosmetic: the acceptance criterion forbids gating the export *by
+  placement*, and a Pro-shaped block around it would be the same gate wearing a layout.
+
+---
+
+## Work Item: `saved-collections-api`
+
+All seven acceptance criteria met. Two defects found by the tests, one decision made at the
+checkpoint that the criteria left open, and one observation about the run's failing baseline.
+
+### 1. The gate is at the API, and the commands stayed tier-agnostic
+
+`services/saved_collections.py` was written in `saved-collections-model` with no notion of a
+tier, deliberately, and this item did not change that. The gate is a single
+`check_collections_allowed` call at two endpoints. That split is the same one
+`quiet-hours-pro-api` made and for the same reason: **the rows are the user's data, and a
+command that refused on tier would have to be re-run after an upgrade to restore what the
+user already said.**
+
+The payload is `{cap, upgrade_hint}` with no modal-shaped field, so the whole frontend
+change is `collections_pro_required` joining `CAP_CODES` — the fourth code to reuse the one
+inline prompt, with no new component and no new copy path.
+
+### 2. The checkpoint decision, and why it is pinned in both directions
+
+The criteria name read and unassign as surviving a lapse and create as blocked; rename,
+reorder, delete and assign were unspecified. **Only the two operations that add are gated.**
+
+The reasoning is recorded in `collection_cap.py` where someone changing it will see it:
+gating rename would stop a lapsed user fixing a typo in a name they wrote; gating delete
+would trap them with data they want gone, which is the inverse of what the never-delete
+constraint is for; and *not* gating assign would leave the cap limiting how many
+collections exist rather than how much they are used.
+
+Two mutations pin it from both sides — the gate spreading to unassign, and the gate
+retreating from assign — because a one-sided test would let the boundary drift in the
+untested direction.
+
+### 3. Defect: `/order` was unreachable, and the error said nothing useful
+
+`PUT /collections/order` was matched by the `/{collection_id}` rename route, because
+django-ninja matches in registration order and a literal segment loses to a path parameter
+declared above it. The caller received `405 Method Not Allowed` listing PATCH and DELETE —
+an answer about the wrong route entirely.
+
+**This is a class of bug worth naming rather than just fixing**: it is invisible to review
+(both routes read correctly in isolation), it only appears when the two are read together in
+order, and the error it produces points away from the cause. The fix is a comment plus
+ordering, and a mutation that moves it back fails five tests.
+
+### 4. Defect: a client could make the server 500 by sending a short list
+
+`reorder_collections` raised `ValueError` for a list that does not name every collection.
+That is the right convention for programmer misuse and the wrong one for a request body —
+and this item is precisely what turned that body into user input. A caller sending two ids
+for a three-collection list got a 500.
+
+It raises `InvalidCollectionOrderError(ValidationError)` → 422 now. **The underlying lesson
+is about the model item, not this one**: a command written as internal-only acquires a new
+contract the moment an endpoint exposes it, and its `ValueError`s need re-reading as
+possible client input at that point. `create_collection` and `rename_collection` still raise
+`ValueError` for an empty name — **unreachable here only because the schema's
+`min_length=1` refuses it first**, which is a parser guarantee rather than a service one.
+Worth knowing if either is ever called from somewhere without that schema in front of it.
+
+### 5. The failing baseline is growing by itself
+
+The run's pre-existing failures went from 16 to 17 between yesterday and today, with no code
+change: `test_a_custom_slot_is_minted` has a fixture hard-coded to `2026-11-12 02:00 UTC`
+and a 90-minute lead time that elapsed this morning.
+
+**That is the whole family in miniature.** These tests are not flaky — they are stale by
+calendar, they fail deterministically from a fixed date onward, and the count will keep
+rising as the fixtures age. Nothing in this run caused them and nothing in this run has
+fixed them; they are worth their own item before the number makes a genuinely broken suite
+indistinguishable from the expected noise.
+
+---
+
+## Work Item: `frontend-collections`
+
+All nine acceptance criteria met. **This surface was designed during the build**, which the
+work item asked to be stated plainly, and the review is largely about what that means.
+
+### 1. Designed during the build — what that actually cost
+
+EXPERIENCE.md's coverage table claims `settings-desktop.html` covers FR-49. TRACEABILITY.md
+checked and found *"the mockup contains zero 'collection' content"*. So there was no design
+to follow and no design to deviate from.
+
+What held the build to the product rather than to taste:
+
+- **`component.emptystate.quiet`**, used as specified — dashed `border-strong`, centred,
+  headline plus lede — so the empty state reads as intentional rather than failed.
+- **`tests/spacing-scale.test.ts`**, which rejected four off-scale values. On a surface with
+  a mockup this is a tidiness check; here it was **the only automated thing standing between
+  "built from the design system" and "built from whatever looked right"**.
+- **The existing controls' shapes** — the settings routes' inputs, the inline prompt, the
+  `44px` minimum target — reused rather than re-invented.
+
+No new component, no new token, no new visual idea. If this surface grows past a modest
+management UI, the work item's stop condition applies and it should get a design pass before
+it does.
+
+### 2. The nav constraint shaped the route, and the route is still unreachable
+
+DESIGN.md closes the nav to new routes, with Browse as its single named exception. So
+`/settings/collections` was chosen because the sidenav's Settings item matches
+`pathname.startsWith("/settings/")` and lights up with no nav change at all.
+
+**But nothing links to it**, exactly as nothing links to `/settings/account` from item 12.
+Two new surfaces in this run are reachable only by typing a URL. That is now a pattern
+rather than an oversight, and it wants one item: either a `/settings` index that lists the
+sub-routes, or the account-menu row repointed — the row whose own comment already calls
+itself "a control, not a route" because `/settings` would 404.
+
+### 3. The lapsed user gets a different component, not a disabled one
+
+A lapsed Pro user is served a plain read-only list from the page rather than the manager
+with its controls removed. That was deliberate: a manager rendered with every button
+disabled tells the user the controls exist and are refused, which is a different and worse
+message than *these are yours, and here is how to get the rest back*.
+
+The cost is a second rendering of a collection row — small, and the duplication is three
+lines of markup rather than a component that two tiers have to agree about.
+
+### 4. What the mutation probe found worth keeping
+
+Deleting the sentence *"Your saved events stay saved"* leaves the delete working, the
+confirmation appearing and one test failing. That is the right ratio: the sentence carries
+no behaviour and all of the reassurance, and it is exactly the kind of line a later edit
+trims as redundant. It now has a test whose name says why it is there.
+
+### 5. Carried forward from this item
+
+- **Assignment has no surface.** A user can take a save *out* of a collection here, but
+  putting one *in* happens through `PUT /collections/{id}/events/{save}`, which no screen
+  calls — the saved-events surface that would own that control is `SavedEventsSection`, and
+  it is **mounted on no page at all**. So collections can be created, named, ordered and
+  emptied, and filled only by an API client. FR-49's "assign" is built and reachable; its
+  affordance is not, and the empty-collection copy points at a surface that does not exist
+  yet.
+- **`SavedEventsSection` being unmounted** is the root of that, and predates this intent.
+
+---
+
+## Work Item: `e2e-proof-and-contract-tests`
+
+All eight acceptance criteria met. **No defect was found in the product**, and the reasons
+that is a finding rather than a blank are below.
+
+### 1. Every failure was the test misunderstanding a rule
+
+Six assertions failed before this file went green, and not one of them was the system
+breaking a promise. Each was a real rule the proof had to learn: a lapsed account keeps its
+unspent Free allowance; weekday windows apply only to Pro; a day's window owns the next
+morning; a preference change re-times sends only through the API; `set_plan_slots` mints
+nothing without a `send_target`; a send needs the user's zone.
+
+**That is the strongest thing this item can report.** The intent's fourteen prior items each
+proved their own piece against their own seam; this is the first time four gates, five
+surfaces and the entitlement read ran together, and the loop closed. The place a defect was
+most expected — the downgrade, where every item promised "never delete" in isolation — held.
+
+### 2. The test was made to fail on purpose, three times
+
+A proof that has never failed proves nothing about itself. The probes:
+
+- A cancelled subscription still counting as Pro — **3 tests fail**.
+- The collections gate never refusing — **2 tests fail**.
+- **A cancellation deleting the user's collections** — **1 fails, 13 error**.
+
+The third is the one worth keeping. Every earlier item asserted "never delete" against its
+own table, so a downgrade path reaching across apps would have passed all of them; this file
+is the first that notices.
+
+### 3. The contract test enumerates routes, and that is deliberate
+
+The repo already had four "the generated client is in sync" tests. **Every one of them would
+stay green if a route were deleted** — the client would be regenerated without it and both
+artefacts would agree about an API that had quietly lost a feature.
+
+`INTENT_PATHS` names all thirteen paths and their verbs, in **both** directions: a missing
+verb is a lost feature, and an extra one is a surface nobody designed. Two of those
+assertions are about absences that matter — no `DELETE` on an export (a client that could
+delete one could destroy a user's own copy of their data before they collected it) and no
+write verb on either entitlement read (only the webhook grants Pro, and that is now a
+property of the published contract rather than a convention).
+
+### 4. Every instant is relative, and the reason is in this run's own data
+
+The repository's failing baseline went from **16 to 17 during this run**, with no code
+change: a fixture hard-coded to `2026-11-12 02:00 UTC` aged past its lead time overnight.
+
+Nothing in this file can join them. Every instant derives from `timezone.now()`, and where
+the save cap needed a deterministic window it is the *throttle's* clock that is pinned, not
+a calendar date. **This is now the clearest statement in the tree of what those seventeen
+tests should have done**, which is worth something when they are finally fixed.
+
+### 5. What this item deliberately did not do
+
+- **Nothing in `apps/`, `domain/` or `worker/` was modified.** A defect found by a proof is
+  a finding, not a patch smuggled into the item meant to measure it.
+- **No frontend journey test.** It would mock the API client, so it would prove the
+  components agree with a fake rather than with the server this proof exercises. The
+  contract test is what actually closes that gap, and the five surfaces have 2030 passing
+  tests of their own.
+
+### 6. Carried forward from this item
+
+- **The seventeen stale fixtures** are the one thing in the repository that will keep
+  getting worse on its own. They are deterministic, not flaky, and the count rises as dates
+  pass. They need an item before the number makes a genuinely broken suite
+  indistinguishable from expected noise.
+- **Assignment still has no UI** (from `frontend-collections`): this proof exercises
+  `PUT /collections/{id}/events/{save}` through the API because no screen calls it.
