@@ -32,3 +32,8 @@ out/
 
 # Local agent worktrees (tool artifacts, not project source)
 .puku-cli/worktrees/
+
+# Filesystem conflict copies ("name 2.ext") from syncing file systems.
+# These are never real source: a duplicate in a Django migrations/ directory
+# breaks the migration loader, since a filename with a space is not a module name.
+*\ 2.*

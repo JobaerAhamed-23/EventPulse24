@@ -1,0 +1,440 @@
+<!--
+  EventPulse24 — Saved Collections (Desktop, 1280px) — DARK THEME
+
+  FR-49 Unlimited Saves + Saved Collections (Pro). Closes the TRACEABILITY.md **MISSING**
+  rating — the only one of the four design gaps rated MISSING rather than PARTIAL.
+
+  WHY IT WAS MISSING, AND WHY A COVERAGE TABLE MADE IT WORSE.
+  EXPERIENCE.md's Surface Coverage Map claimed `settings-desktop.html` covered FR-49.
+  TRACEABILITY.md checked and found "the mockup contains zero 'collection' content" — a
+  count this run reproduced: `collection` appears 0 times in that file, while `quiet` (×10),
+  `Pro` (×7) and `export` (×4) all do. Exactly one of that row's six claims was false, and
+  it was this one. A row that over-claims is how a requirement ships undesigned: nobody goes
+  looking for a design the table says already exists. Row 10 is corrected; FR-49 moves here.
+
+  THIS MOCKUP DOCUMENTS A SURFACE BUILT WITHOUT A DESIGN.
+  The risk runs backwards from the usual one. `components/collections/collection-manager.tsx`
+  says so in its own first paragraph: "This surface has no approved design, and that is a
+  fact about the build rather than an oversight ... it is assembled from the design system's
+  existing vocabulary ... If it ever grows past a modest management UI, that is the signal to
+  stop and get a design pass." This file is that pass. It records what was assembled. It
+  invents nothing, and improvements noticed while drawing are change requests, not silent
+  corrections — otherwise the mockup would document a product that does not exist.
+
+  FOUR THINGS A READER WOULD OTHERWISE GET WRONG:
+    1. REORDER IS BUTTONS, NOT DRAG. Move up / move down, keyboard-operable with no pointer,
+       needing no library and no motion — the product has exactly one transition and
+       `styles/motion.test.ts` fails the suite on any other animation. A grab handle in a
+       mockup would licence a drag implementation this product cannot have. The ends are
+       `disabled` rather than silently inert, so the boundary is announced, not discovered.
+    2. DELETE CONFIRMS IN PLACE, AND THE COPY NAMES WHAT SURVIVES. "Delete" sitting above a
+       list of events reads as deleting the events. It does not. No overlay and no focus
+       trap — removing a grouping does not warrant the weight Amendment A-16 specifies for
+       deleting an account.
+    3. THE TIER GATE IS ON `create` AND `assign` ONLY. Rename, reorder, delete, unassign and
+       read are open on every tier, so a lapsed Pro user keeps using what they have at its
+       current size. Locking the whole surface behind Pro would be wrong — the backend has
+       seven tests pinning the lapsed-user paths.
+    4. THE CAP PROMPT IS INLINE AND CARRIES NO MODAL-SHAPED FIELD. The server's refusal is
+       `{cap, upgrade_hint}` with no `modal` and no `title`; the client renders the hint as
+       it arrived. Pinned by `test_the_refusal_carries_no_modal_shaped_field`.
+
+  Two empty states, and they are different. The no-collections state is
+  `component.emptystate.quiet` (dashed border — a found absence). The empty-collection state
+  is a plain line, because "a container somebody made on purpose" is not an absence at all.
+  Neither is `component.emptystate.chosen` (FR-20), which is a third thing again.
+
+  Shell + sidenav + topbar + sidenav-footer byte-identical to reminder-picker-desktop.html
+  (Amendment A-8 shell + A-10 6-route sidenav variant). Active nav-item is Settings — the
+  surface lives at `/settings/collections`.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Collections · Settings · EventPulse24</title>
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --warm-personal:#C8967A; --warn-amber:#D8A86A;
+    --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+
+    --container-max: 1180px;
+    --sidenav-w: 240px;
+    --page-pad: 32px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input { font: inherit; color: inherit; background: none; border: 0; padding: 0; }
+
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  .crumb { font-size: 12px; color: var(--ink-muted); margin: 24px 0 8px; }
+  .crumb a { color: var(--ink-secondary); }
+  .crumb .here { color: var(--ink-primary); }
+
+  .eyebrow { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-terracotta); margin-bottom: 14px; }
+  h1 { font-family: var(--family-display); font-size: 32px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lede { font-size: 14px; color: var(--ink-secondary); margin: 0 0 8px; max-width: 70ch; line-height: 1.6; }
+
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin: 44px 0 16px; padding-top: 28px; border-top: 1px solid var(--border-subtle); }
+  .section-head:first-of-type { border-top: 0; padding-top: 0; margin-top: 28px; }
+  .section-head .key { font-family: var(--family-mono); font-size: 12px; font-weight: 600; color: var(--ink-inverse); background: var(--accent-terracotta); border-radius: 6px; padding: 3px 8px; flex-shrink: 0; }
+  .section-head .what { font-family: var(--family-display); font-size: 19px; font-weight: 600; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .section-head .why { font-size: 12px; color: var(--ink-muted); margin-left: auto; font-family: var(--family-mono); }
+
+  /* ── Create row ── */
+  .create-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field .label { font-size: 12px; color: var(--ink-secondary); }
+  .field input { min-height: 44px; min-width: 280px; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--surface-elevated); padding: 8px 12px; color: var(--ink-primary); font-size: 14px; }
+  .field input::placeholder { color: var(--ink-faint); }
+  .field input:focus { outline: 2px solid var(--accent-terracotta); outline-offset: 2px; }
+  .btn-bordered { min-height: 44px; border-radius: 12px; border: 1px solid var(--border-strong); padding: 11px 18px; color: var(--ink-primary); font-size: 13px; font-weight: 600; }
+  .btn-bordered:hover { background: var(--surface-subtle); }
+  .btn-bordered[disabled] { color: var(--ink-faint); border-color: var(--border-subtle); cursor: default; }
+
+  /* ── The list ── */
+  .clist { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .citem { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 16px 18px; }
+  .crow { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .cname { min-height: 44px; display: inline-flex; align-items: center; text-align: left; color: var(--ink-primary); font-size: 15px; }
+  .cname .count { margin-left: 12px; color: var(--ink-muted); font-size: 12px; }
+  .ctools { display: flex; align-items: center; gap: 4px; }
+  .arrow { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-secondary); border-radius: 10px; font-size: 15px; }
+  .arrow:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .arrow[disabled] { color: var(--ink-faint); cursor: default; background: none; }
+  .tlink { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; color: var(--ink-secondary); font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
+  .tlink:hover { color: var(--ink-primary); }
+
+  /* ── Delete confirm, in place ── */
+  .confirm { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .confirm p { font-size: 13px; color: var(--ink-secondary); margin: 0; }
+  .confirm .yes { min-height: 44px; border-radius: 12px; border: 1px solid var(--border-strong); padding: 0 16px; color: var(--ink-primary); font-size: 12px; display: inline-flex; align-items: center; }
+  .confirm .no { min-height: 44px; padding: 0 12px; color: var(--ink-secondary); font-size: 12px; text-decoration: underline; text-underline-offset: 4px; display: inline-flex; align-items: center; }
+
+  /* ── Opened collection ── */
+  .inside { margin-top: 16px; border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+  .inside ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .inside li { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface-subtle); border-radius: 10px; padding: 12px 14px; }
+  .inside .ev-title { font-size: 13px; color: var(--ink-primary); }
+  .inside .ev-when { font-family: var(--family-mono); font-size: 12px; color: var(--ink-muted); }
+  .inside .plain { font-size: 13px; color: var(--ink-muted); margin: 0; }
+
+  /* ── Rename, in place ── */
+  .rename { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .rename input { min-height: 44px; min-width: 240px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--surface-paper); padding: 8px 12px; color: var(--ink-primary); font-size: 14px; }
+
+  /* ── Empty states — two, and they differ ── */
+  .empty-quiet { margin-top: 32px; border: 1px dashed var(--border-strong); border-radius: 14px; padding: 48px 24px; text-align: center; }
+  .empty-quiet .h { font-family: var(--family-display); font-size: 18px; font-weight: 600; color: var(--ink-primary); margin: 0 0 8px; }
+  .empty-quiet .p { font-size: 14px; color: var(--ink-secondary); margin: 0; }
+
+  /* ── Free-tier inline cap prompt ── */
+  .cap { margin-top: 14px; background: rgba(255,106,71,0.06); border: 1px solid rgba(255,106,71,0.22); border-radius: 12px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .cap .glyph { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,106,71,0.16); color: var(--accent-terracotta); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+  .cap p { margin: 0; font-size: 13px; color: var(--ink-secondary); line-height: 1.55; }
+  .cap a { color: var(--accent-terracotta); text-decoration: underline; text-underline-offset: 3px; }
+
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; }
+  .panel h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); margin: 0 0 12px; letter-spacing: -0.01em; }
+  .panel p { font-size: 13px; color: var(--ink-secondary); margin: 0 0 12px; line-height: 1.55; }
+  .panel p.muted { font-size: 12px; color: var(--ink-muted); margin: 0; line-height: 1.55; }
+  .two-up { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; align-items: start; }
+  @media (max-width: 1023px) { .two-up { grid-template-columns: 1fr; } }
+  .tier { display: grid; grid-template-columns: 1fr auto; gap: 10px 20px; font-size: 13px; }
+  .tier .op { color: var(--ink-primary); }
+  .tier .who { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); text-align: right; }
+  .tier .who.pro { color: var(--accent-terracotta); }
+  .note-fr { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); line-height: 1.7; margin: 0; }
+  .note-fr b { color: var(--ink-secondary); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Pro</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <div class="crumb"><a href="#">Settings</a> · <span class="here">Collections</span></div>
+
+    <div class="eyebrow">Pro</div>
+    <h1>Collections</h1>
+    <p class="lede">Group your saves into something like “Music this month” or “For the kids”. Creating a collection and adding a save to one are Pro; everything else stays open on every tier.</p>
+
+    <!-- ============== A — the populated surface, all four verbs ============== -->
+    <div class="section-head">
+      <span class="key">A</span>
+      <span class="what">Create, rename, reorder, delete</span>
+      <span class="why">FR-49 · all four verbs</span>
+    </div>
+
+    <div class="create-row">
+      <label class="field">
+        <span class="label">New collection</span>
+        <input type="text" placeholder="Music this month" maxlength="80" aria-label="New collection name" />
+      </label>
+      <button class="btn-bordered" type="button">Create</button>
+    </div>
+
+    <ul class="clist">
+      <li class="citem">
+        <div class="crow">
+          <button class="cname" type="button" aria-expanded="false">Music this month<span class="count">6 events</span></button>
+          <div class="ctools">
+            <button class="arrow" type="button" disabled aria-label="Move Music this month up">↑</button>
+            <button class="arrow" type="button" aria-label="Move Music this month down">↓</button>
+            <button class="tlink" type="button">Rename</button>
+            <button class="tlink" type="button">Delete</button>
+          </div>
+        </div>
+      </li>
+
+      <!-- Rename, in place -->
+      <li class="citem">
+        <div class="crow">
+          <div class="rename">
+            <input type="text" value="For the kids" aria-label="Rename collection" />
+            <button class="btn-bordered" type="button">Save</button>
+            <button class="tlink" type="button">Cancel</button>
+          </div>
+          <div class="ctools">
+            <button class="arrow" type="button" aria-label="Move For the kids up">↑</button>
+            <button class="arrow" type="button" aria-label="Move For the kids down">↓</button>
+          </div>
+        </div>
+      </li>
+
+      <!-- Opened, with contents -->
+      <li class="citem">
+        <div class="crow">
+          <button class="cname" type="button" aria-expanded="true">Weekend plans<span class="count">2 events</span></button>
+          <div class="ctools">
+            <button class="arrow" type="button" aria-label="Move Weekend plans up">↑</button>
+            <button class="arrow" type="button" disabled aria-label="Move Weekend plans down">↓</button>
+            <button class="tlink" type="button">Rename</button>
+            <button class="tlink" type="button">Delete</button>
+          </div>
+        </div>
+        <div class="inside">
+          <ul>
+            <li>
+              <span class="ev-title">Designing for Calm</span>
+              <span class="ev-when">Thu, 28 Aug · 6:30 PM</span>
+              <button class="tlink" type="button">Remove from collection</button>
+            </li>
+            <li>
+              <span class="ev-title">Prospect Park Jazz</span>
+              <span class="ev-when">Sat, 30 Aug · 2:00 PM</span>
+              <button class="tlink" type="button">Remove from collection</button>
+            </li>
+          </ul>
+        </div>
+      </li>
+    </ul>
+
+    <!-- ============== B — delete confirms in place ============== -->
+    <div class="section-head">
+      <span class="key">B</span>
+      <span class="what">Delete confirms in place, and names what survives</span>
+      <span class="why">no overlay, no focus trap</span>
+    </div>
+
+    <ul class="clist" style="margin-top:0;">
+      <li class="citem">
+        <div class="crow">
+          <button class="cname" type="button">Music this month<span class="count">6 events</span></button>
+          <div class="ctools">
+            <button class="arrow" type="button" disabled aria-label="Move up">↑</button>
+            <button class="arrow" type="button" aria-label="Move down">↓</button>
+            <button class="tlink" type="button">Rename</button>
+            <button class="tlink" type="button">Delete</button>
+          </div>
+        </div>
+        <div class="confirm">
+          <p>Delete “Music this month”? Your saved events stay saved.</p>
+          <button class="yes" type="button">Delete it</button>
+          <button class="no" type="button">Keep it</button>
+        </div>
+      </li>
+    </ul>
+    <p class="lede" style="margin-top:12px;">“Delete” sitting above a list of events reads as deleting the events. It does not — and the copy is where that becomes true for the user, rather than only in the API. Removing a grouping does not warrant the modal weight Amendment A-16 specifies for deleting an account.</p>
+
+    <!-- ============== C — the two empty states ============== -->
+    <div class="section-head">
+      <span class="key">C</span>
+      <span class="what">Two empty states, and they are not the same thing</span>
+      <span class="why">absence vs. a container made on purpose</span>
+    </div>
+
+    <div class="two-up">
+      <div>
+        <div class="empty-quiet">
+          <p class="h">No collections yet.</p>
+          <p class="p">Group your saves into something like “Music this month” or “For the kids”.</p>
+        </div>
+        <p class="lede" style="margin-top:12px;"><code>component.emptystate.quiet</code> — a dashed border, so it reads as intentional rather than failed. This is a <strong>found absence</strong>: the user has made nothing yet.</p>
+      </div>
+      <div>
+        <div class="citem">
+          <div class="crow">
+            <button class="cname" type="button" aria-expanded="true">For the kids<span class="count">0 events</span></button>
+            <div class="ctools">
+              <button class="tlink" type="button">Rename</button>
+              <button class="tlink" type="button">Delete</button>
+            </div>
+          </div>
+          <div class="inside">
+            <p class="plain">Nothing in here yet. Add saves to it from your saved events.</p>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:12px;">A plain line, <strong>not</strong> the dashed treatment. An empty collection is <em>a container somebody made on purpose</em>, not a failure and not an absence — so it does not borrow the “nothing here went wrong” chrome.</p>
+      </div>
+    </div>
+
+    <!-- ============== D — the free-tier cap, inline ============== -->
+    <div class="section-head">
+      <span class="key">D</span>
+      <span class="what">The cap prompt is inline — never a modal</span>
+      <span class="why">FR-49 · "no modal interruption"</span>
+    </div>
+
+    <div class="create-row">
+      <label class="field">
+        <span class="label">New collection</span>
+        <input type="text" placeholder="Music this month" maxlength="80" aria-label="New collection name" />
+      </label>
+      <button class="btn-bordered" type="button">Create</button>
+    </div>
+    <div class="cap">
+      <div class="glyph" aria-hidden="true">●</div>
+      <p>Collections are part of Pro. <a href="#">See what Pro includes →</a></p>
+    </div>
+    <p class="lede" style="margin-top:12px;">The server's refusal is <code>{cap, upgrade_hint}</code> — <strong>no <code>modal</code> field and no <code>title</code></strong> — and the client renders the hint as it arrived. There is nothing in the payload a modal could be built from, which is how the “calm, no interruption” requirement is held in place rather than merely intended. Pinned by <code>test_the_refusal_carries_no_modal_shaped_field</code>.</p>
+
+    <!-- ============== E — the tier gate ============== -->
+    <div class="section-head">
+      <span class="key">E</span>
+      <span class="what">What the gate covers — and what it deliberately does not</span>
+      <span class="why">a lapsed user keeps what they have</span>
+    </div>
+
+    <div class="two-up">
+      <div class="panel">
+        <h3>Six operations, two gated</h3>
+        <div class="tier">
+          <span class="op">Create a collection</span><span class="who pro">Pro</span>
+          <span class="op">Add a save into one</span><span class="who pro">Pro</span>
+          <span class="op">Read / open</span><span class="who">every tier</span>
+          <span class="op">Rename</span><span class="who">every tier</span>
+          <span class="op">Reorder</span><span class="who">every tier</span>
+          <span class="op">Remove a save from one</span><span class="who">every tier</span>
+          <span class="op">Delete a collection</span><span class="who">every tier</span>
+        </div>
+        <p class="muted" style="margin-top:14px;"><strong>Only the two operations that <em>add</em> are gated.</strong> A lapsed Pro user keeps using what they have, at its current size. Locking the surface entirely would make a downgrade destroy access to the user's own data.</p>
+      </div>
+      <div class="panel">
+        <h3>Reorder is buttons, not drag</h3>
+        <p>Move up / move down. Keyboard-operable with no pointer, needs no library, and needs no motion — the product has exactly one transition and <code>styles/motion.test.ts</code> fails the suite on any other animation.</p>
+        <p>The ends are <code>disabled</code> rather than silently inert, so the boundary is <em>announced</em> rather than discovered.</p>
+        <p class="muted">Each press sends the <strong>whole ordering</strong> in one request, so the server never observes a partially reordered list. A “put this one third” instruction would have to be interpreted against a list that may have changed since the client read it.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3>Traceability</h3>
+      <p class="note-fr">
+        <b>FR-49</b> — Unlimited Saves + Saved Collections (Pro). Closes the TRACEABILITY.md <b>MISSING</b> rating.<br />
+        <b>A</b> covers "create, rename, delete, and reorder saved collections".<br />
+        <b>D</b> covers "a free user hitting the cap sees a calm in-app upgrade prompt (no modal interruption)".<br />
+        "A Pro user can save 10+ events in a single day" is a cap behaviour, not a surface — pinned by <code>test_save_cap.py</code>.<br />
+        <b>Row 10 corrected:</b> <code>settings-desktop.html</code> no longer claims FR-49; it contains zero collection content.<br />
+        <b>Out of scope:</b> shared collections (Phase 2 — Pulse the Group) and collection-level reminders.
+      </p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

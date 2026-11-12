@@ -3,6 +3,19 @@
   FR-58. Wireframe-locked visual spec for the persistent amber indicator.
   Shows TWO Pulse Cards in conflict pair, both bearing the indicator.
   Shows the "tap to view" detail panel (non-alarming, informational).
+
+  FR-55 — THE SAME INDICATOR, A SECOND TRIGGER. Added 2026-11-12. Do not strip as a
+  duplicate: TRACEABILITY.md scored FR-55 "PARTIAL (inferred only)" for the absence of
+  exactly this acknowledgment. The indicator here renders from a `CONFLICT_PAIR` row, and
+  AD-21 makes that one record the source for every conflict indicator in the product — so
+  the pair raised when an organiser POSTPONES an event into a clash (FR-55) lights this
+  same indicator as the pair raised when the USER creates one (FR-58). "Symmetric by
+  construction," in AD-21's words.
+
+  One state this file does not show, and should not be read as covering: a pair that closes
+  because the event was CANCELLED. AD-21 closes it as `cleared_by_state_change`, which is
+  not a user resolution and must not render as one. That state is in
+  `event-state-conflict-desktop.html`, FR-55's own surface.
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">

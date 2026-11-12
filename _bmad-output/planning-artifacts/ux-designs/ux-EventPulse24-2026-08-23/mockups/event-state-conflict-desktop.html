@@ -1,0 +1,396 @@
+<!--
+  EventPulse24 — Conflict Resolution on State Change (Desktop, 1280px) — DARK THEME
+
+  FR-55 Conflict Resolution on State Change. Closes the TRACEABILITY.md open gap, which had
+  **nothing tagged anywhere** — not a mockup, not a DESIGN.md component, not an
+  EXPERIENCE.md flow.
+
+  THE MATRIX'S COMPLAINT WAS ABOUT DOCUMENTATION, NOT ABOUT THE BUILD.
+  It found "only overlap with FR-58's conflict UI, with no documented acknowledgment it also
+  serves this trigger". Investigating it vindicates the reuse:
+    - A postponement that creates an overlap writes a CONFLICT_PAIR row like any other
+      (`services/saved_events.py`: "one that no longer overlaps closes, one that still
+      overlaps stays, and a new overlap creates a ...").
+    - AD-21 makes that one record the single source for every surface: "The Pulse Card
+      indicator, the Timeline event-block indicator and /conflicts all read the same rows,
+      so the indicator is symmetric by construction."
+  So FR-55 and FR-58 share a surface BECAUSE THEY SHARE A RECORD. That is architecture, not
+  coincidence — and it had simply never been written down. It is written down here, and
+  `conflict-prompt-desktop.html` now carries FR-55 beside FR-58 for the same reason.
+
+  TWO TRIGGERS, ONE SURFACE — and the difference that matters:
+    FR-58 — the USER creates a conflicting event. The user is present, acting, choosing.
+    FR-55 — an event CHANGES UNDERNEATH the user. Nobody is present. Nobody chose.
+  Same visual conflict, entirely different moment. The states below are where they diverge.
+
+  THE RULE A DESIGNER WOULD MOST LIKELY GET WRONG (AD-21):
+  When propagation REMOVES an overlap — a cancel, or a postpone past the partner — the pair
+  closes as `cleared_by_state_change`, WHICH IS NOT A USER RESOLUTION. A resolved pair is
+  immutable and never re-prompted. So a conflict that disappears because the event was
+  cancelled must not look like one the user resolved: a UI that congratulated the user for a
+  decision they never made would be lying to them. `models.py` has the enum value and a check
+  constraint (`conflict_pair_resolution_kind_ck`) pinning it.
+
+  THE OTHER RULE: A MUTE IS NOT SILENCE.
+  FR-55's per-event mute silences corrections — a moved time, a moved venue, a sold-out. But
+  a TERMINAL change still shows: `delivery/services/state_notices.py` raises a `cancelled` or
+  `superseded` notice DESPITE the mute, and `services/mutes.py` says why — "FR-55 has already
+  removed the event from their digest, so silence about it is the one failure with no second
+  channel to catch it." The mute silences the corrections the backend would have suppressed
+  anyway, and leaves the one correction that has no second channel.
+
+  THE PERSONAL EVENT IS NEVER TOUCHED. FR-55: "the personal event is preserved (no
+  auto-cancel)". Pinned by `test_saved_events.py` — "a cancelled public event never
+  auto-cancels a personal event."
+
+  Shell + sidenav + topbar + sidenav-footer byte-identical to reminder-picker-desktop.html
+  (Amendment A-8 shell + A-10 6-route sidenav variant). Active nav-item is Digest — the
+  Detail Screen hangs off Digest in the IA.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Event state changes · EventPulse24</title>
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --warm-personal:#C8967A; --warn-amber:#D8A86A; --signal-warn:#D8A86A;
+    --signal-success:#7AAA7A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+    --container-max: 1180px; --sidenav-w: 240px; --page-pad: 32px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  .crumb { font-size: 12px; color: var(--ink-muted); margin: 24px 0 8px; }
+  .crumb a { color: var(--ink-secondary); } .crumb .here { color: var(--ink-primary); }
+  .eyebrow { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--signal-warn); margin-bottom: 14px; }
+  h1 { font-family: var(--family-display); font-size: 32px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lede { font-size: 14px; color: var(--ink-secondary); margin: 0 0 8px; max-width: 72ch; line-height: 1.6; }
+
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin: 44px 0 16px; padding-top: 28px; border-top: 1px solid var(--border-subtle); }
+  .section-head:first-of-type { border-top: 0; padding-top: 0; margin-top: 28px; }
+  .section-head .key { font-family: var(--family-mono); font-size: 12px; font-weight: 600; color: var(--ink-inverse); background: var(--signal-warn); border-radius: 6px; padding: 3px 8px; flex-shrink: 0; }
+  .section-head .what { font-family: var(--family-display); font-size: 19px; font-weight: 600; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .section-head .why { font-size: 12px; color: var(--ink-muted); margin-left: auto; font-family: var(--family-mono); }
+
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; }
+  .panel h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); margin: 0 0 12px; letter-spacing: -0.01em; }
+  .panel p { font-size: 13px; color: var(--ink-secondary); margin: 0 0 12px; line-height: 1.55; }
+  .panel p.muted { font-size: 12px; color: var(--ink-muted); margin: 0; line-height: 1.55; }
+  .two-up { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; align-items: start; }
+  @media (max-width: 1023px) { .two-up { grid-template-columns: 1fr; } }
+
+  /* ── The state-change banner (FR-54's surface, FR-55's trigger) ── */
+  .banner { border-radius: 12px; padding: 16px 18px; display: flex; gap: 14px; align-items: flex-start; border: 1px solid; }
+  .banner.warn { background: rgba(216,168,106,0.08); border-color: rgba(216,168,106,0.28); }
+  .banner.calm { background: var(--surface-subtle); border-color: var(--border-subtle); }
+  .banner .glyph { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 1px; }
+  .banner.warn .glyph { background: rgba(216,168,106,0.18); color: var(--signal-warn); }
+  .banner.calm .glyph { background: var(--surface-inset); color: var(--ink-muted); }
+  .banner .body strong { display: block; font-size: 14px; color: var(--ink-primary); font-weight: 600; margin-bottom: 4px; }
+  .banner .body p { font-size: 13px; color: var(--ink-secondary); margin: 0; line-height: 1.55; }
+  .banner .body .dismissed { font-size: 12px; color: var(--ink-muted); margin-top: 6px; display: block; }
+
+  /* ── Event state badge ── */
+  .state-badge { display: inline-flex; align-items: center; gap: 7px; background: var(--surface-subtle); border: 1px solid var(--border-strong); border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 600; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+  .state-badge .g { color: var(--signal-warn); }
+
+  /* ── Conflict mark ── */
+  .conflict-line { display: flex; align-items: flex-start; gap: 12px; background: rgba(216,168,106,0.07); border: 1px solid rgba(216,168,106,0.24); border-radius: 12px; padding: 14px 16px; margin-top: 14px; }
+  .conflict-line .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--signal-warn); flex-shrink: 0; margin-top: 5px; }
+  .conflict-line p { margin: 0; font-size: 13px; color: var(--ink-secondary); line-height: 1.55; }
+  .conflict-line p strong { color: var(--ink-primary); font-weight: 600; }
+  .conflict-line a { color: var(--signal-warn); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ── Cleared-by-state-change — deliberately NOT a resolution ── */
+  .cleared { display: flex; align-items: flex-start; gap: 12px; background: var(--surface-subtle); border: 1px dashed var(--border-strong); border-radius: 12px; padding: 14px 16px; margin-top: 14px; }
+  .cleared .dot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--ink-faint); background: none; flex-shrink: 0; margin-top: 5px; }
+  .cleared p { margin: 0; font-size: 13px; color: var(--ink-muted); line-height: 1.55; }
+
+  /* ── Mute control ── */
+  .mute-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .mute-btn { min-height: 44px; display: inline-flex; align-items: center; gap: 9px; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--surface-elevated); padding: 0 16px; color: var(--ink-secondary); font-size: 13px; }
+  .mute-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .mute-btn.on { border-color: var(--border-strong); color: var(--ink-primary); }
+  .mute-btn .ind { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+  .mute-btn.on .ind { background: var(--ink-secondary); }
+  .mute-note { font-size: 12px; color: var(--ink-muted); }
+
+  .personal-row { display: flex; align-items: center; gap: 10px; background: rgba(200,150,122,0.08); border: 1px solid rgba(200,150,122,0.26); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .personal-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warm-personal); flex-shrink: 0; }
+  .personal-row p { margin: 0; font-size: 13px; color: var(--ink-secondary); }
+  .personal-row p strong { color: var(--warm-personal); font-weight: 600; }
+
+  .note-fr { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); line-height: 1.7; margin: 0; }
+  .note-fr b { color: var(--ink-secondary); font-weight: 600; }
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; }
+  .vs > div { padding: 18px; }
+  .vs > div + div { border-left: 1px solid var(--border-subtle); }
+  .vs h4 { font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-muted); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .vs p { font-size: 13px; color: var(--ink-secondary); margin: 0; line-height: 1.55; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <div class="crumb"><a href="#">Digest</a> · <span class="here">When an event changes underneath you</span></div>
+
+    <div class="eyebrow">FR-55</div>
+    <h1>When an event changes underneath you</h1>
+    <p class="lede">FR-58 is the user creating a conflict — present, acting, choosing. <strong>FR-55 is an event changing while nobody is there.</strong> Same visual conflict, entirely different moment. They share a surface because they share a record: both read the one <code>CONFLICT_PAIR</code> row that AD-21 makes the single source for every conflict indicator in the product.</p>
+
+    <!-- =============== A — cancelled, no conflict =============== -->
+    <div class="section-head">
+      <span class="key">A</span>
+      <span class="what">Cancelled, with nothing else affected</span>
+      <span class="why">FR-55 · "notified, removed from the digest"</span>
+    </div>
+
+    <div class="panel">
+      <span class="state-badge"><span class="g" aria-hidden="true">✕</span>Cancelled</span>
+      <div class="banner warn">
+        <div class="glyph" aria-hidden="true">✕</div>
+        <div class="body">
+          <strong>This event was cancelled</strong>
+          <p>The organiser called it off. It's been taken out of your digest — nothing else of yours changed.</p>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:14px; font-size:12px; color:var(--ink-muted);">The card leaves the digest at the <em>candidate</em> stage, not by deleting a composed row — AD-10 keeps composed digest rows immutable. Reminders for it are cancelled with the save.</p>
+    </div>
+
+    <!-- =============== B — cancelled, conflicting with a personal event =============== -->
+    <div class="section-head">
+      <span class="key">B</span>
+      <span class="what">Cancelled, and it clashed with something of yours</span>
+      <span class="why">FR-55 · "the personal event is preserved (no auto-cancel)"</span>
+    </div>
+
+    <div class="panel">
+      <span class="state-badge"><span class="g" aria-hidden="true">✕</span>Cancelled</span>
+      <div class="banner warn">
+        <div class="glyph" aria-hidden="true">✕</div>
+        <div class="body">
+          <strong>This event was cancelled</strong>
+          <p>It's been taken out of your digest.</p>
+        </div>
+      </div>
+
+      <div class="personal-row">
+        <span class="dot" aria-hidden="true"></span>
+        <p><strong>Dentist appointment</strong> — your own event, at the same time — is untouched and still on your calendar.</p>
+      </div>
+
+      <div class="cleared">
+        <span class="dot" aria-hidden="true"></span>
+        <p>The clash between them is gone, because this event is. <strong>You didn't resolve anything</strong> — nothing is being asked of you, and this won't come back.</p>
+      </div>
+
+      <p class="muted" style="margin-top:14px; font-size:12px; color:var(--ink-muted);">The hollow dot and dashed border are the point: AD-21 closes this pair as <code>cleared_by_state_change</code>, which is <strong>not a user resolution</strong>. A filled indicator or a "Resolved ✓" would congratulate the user for a decision they never made.</p>
+    </div>
+
+    <!-- =============== C — postponed into a conflict =============== -->
+    <div class="section-head">
+      <span class="key">C</span>
+      <span class="what">Postponed — and the new time clashes</span>
+      <span class="why">FR-55 · "a calm 'this overlaps with [other event]' message"</span>
+    </div>
+
+    <div class="panel">
+      <span class="state-badge"><span class="g" aria-hidden="true">↦</span>Postponed</span>
+      <div class="banner warn">
+        <div class="glyph" aria-hidden="true">↦</div>
+        <div class="body">
+          <strong>This event moved</strong>
+          <p>It's now Thu, 19 Nov at 6:30 PM — a week later than when you saved it.</p>
+        </div>
+      </div>
+
+      <div class="conflict-line">
+        <span class="dot" aria-hidden="true"></span>
+        <p>It overlaps <strong>“Prospect Park Jazz”</strong> on your calendar. <a href="#">Choose how to handle it →</a></p>
+      </div>
+
+      <p class="muted" style="margin-top:14px; font-size:12px; color:var(--ink-muted);">
+        This is a <em>live</em> pair — filled amber dot, solid border — and it routes to the same
+        <code>Sheet.ConflictResolution</code> FR-58 uses, with the same three actions. The message names the other
+        event rather than saying "another event", which is FR-55's "[other event]".
+      </p>
+    </div>
+
+    <!-- =============== D — the mute =============== -->
+    <div class="section-head">
+      <span class="key">D</span>
+      <span class="what">The per-event mute — and why it is not silence</span>
+      <span class="why">FR-55 · "mute state-change notifications for a specific event"</span>
+    </div>
+
+    <div class="two-up">
+      <div class="panel">
+        <h3>Not muted</h3>
+        <div class="mute-row" style="border-top:0; padding-top:0; margin-top:0;">
+          <button class="mute-btn" type="button" aria-pressed="false" aria-label="Mute updates about this event">
+            <span class="ind" aria-hidden="true"></span>Mute updates about this event
+          </button>
+        </div>
+        <p class="muted" style="margin-top:14px;">The label says what pressing it does.</p>
+      </div>
+      <div class="panel">
+        <h3>Muted</h3>
+        <div class="mute-row" style="border-top:0; padding-top:0; margin-top:0;">
+          <button class="mute-btn on" type="button" aria-pressed="true" aria-label="Mute updates about this event">
+            <span class="ind" aria-hidden="true"></span>Updates about this event are muted
+          </button>
+        </div>
+        <p class="muted" style="margin-top:14px;">The label changes to say what <em>is true</em>, so a user can tell they have muted it <strong>without reading the state of a widget</strong>. A toggle whose label never changes cannot do that.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3>A muted event, cancelled — the banner still shows</h3>
+      <span class="state-badge"><span class="g" aria-hidden="true">✕</span>Cancelled</span>
+      <div class="banner warn">
+        <div class="glyph" aria-hidden="true">✕</div>
+        <div class="body">
+          <strong>This event was cancelled</strong>
+          <p>It's been taken out of your digest.</p>
+        </div>
+      </div>
+      <div class="mute-row">
+        <button class="mute-btn on" type="button" aria-pressed="true" aria-label="Mute updates about this event">
+          <span class="ind" aria-hidden="true"></span>Updates about this event are muted
+        </button>
+        <span class="mute-note">…and a cancellation still gets through.</span>
+      </div>
+      <p class="muted" style="margin-top:14px;">
+        <strong>The rule is not "muted means silent".</strong> The backend raises a <code>cancelled</code> or
+        <code>superseded</code> notice <em>despite</em> the mute, and says why: <em>"FR-55 has already removed the
+        event from their digest, so silence about it is the one failure with no second channel to catch it."</em>
+        The mute silences the corrections that have another way of reaching the user — a moved time, a moved venue,
+        a sold-out — and leaves the one that does not.
+      </p>
+      <p class="muted" style="margin-top:10px;">The API reports <code>muted</code> and <code>notice</code> as <strong>two independent facts</strong>; the client decides what the mute reaches. A read that suppressed the notice whenever <code>muted</code> was true would make this rule impossible to honour.</p>
+    </div>
+
+    <!-- =============== E — the two triggers =============== -->
+    <div class="section-head">
+      <span class="key">E</span>
+      <span class="what">One surface, two triggers</span>
+      <span class="why">the acknowledgment the matrix found missing</span>
+    </div>
+
+    <div class="vs">
+      <div>
+        <h4>FR-58 — the user acts</h4>
+        <p>The user creates or edits an event that clashes. They are present and choosing, so the prompt <strong>requires an explicit choice</strong> — there is no dismiss-without-resolution.</p>
+      </div>
+      <div>
+        <h4>FR-55 — the event changes</h4>
+        <p>An organiser cancels, postpones or moves. <strong>Nobody is present and nobody chose.</strong> So the surface <em>informs</em> first, and only offers the choice when a live overlap remains.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3>Traceability</h3>
+      <p class="note-fr">
+        <b>FR-55</b> — Conflict Resolution on State Change. Closes the TRACEABILITY.md gap that had nothing tagged anywhere.<br />
+        <b>A</b> — cancelled, no saved personal event: notified, removed from the digest.<br />
+        <b>B</b> — cancelled, clashing with a personal event: notified, <b>personal event preserved</b>.<br />
+        <b>C</b> — postponed into a clash: notified, calm overlap message naming the other event.<br />
+        <b>D</b> — per-event mute, and the terminal-change exception.<br />
+        <b>FR-54</b> — the banner itself is FR-54's; FR-55 is one of the triggers that raises it.<br />
+        <b>FR-58</b> — shares this conflict surface. See <code>conflict-prompt-desktop.html</code>, now tagged for both.<br />
+        <b>AD-21</b> — one <code>CONFLICT_PAIR</code> record behind every indicator; <code>cleared_by_state_change</code> is not a resolution.<br />
+        <b>Out of scope:</b> auto-rebooking and alternative suggestions (Phase 3).
+      </p>
+    </div>
+  </main>
+</div>
+</body>
+</html>
