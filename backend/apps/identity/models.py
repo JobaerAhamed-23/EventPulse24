@@ -34,6 +34,10 @@ class User(UUIDv7Model, AbstractBaseUser, PermissionsMixin):
     unique constraint.
     """
 
+    #: The account row *is* the user, so its path to one is its own primary key (FR-52).
+    #: Without this it would be the one record missing from a user's own export.
+    export_user_path = "id"
+
     retention_category = RetentionCategory.ACCOUNT_IDENTITY
 
     # Uniqueness is the explicit `user_email_uq` constraint below, not a column-level
@@ -225,6 +229,98 @@ class Subscription(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"subscription {self.status}"
+
+
+class DataExportStatus(models.TextChoices):
+    """Where one export request has got to.
+
+    Four states and no `FAILED`-with-retry distinction: a build that raises leaves the row
+    `BUILDING` and the task's own retry is what moves it on. A separate failure state would
+    be a second thing to reconcile for no decision anybody makes differently.
+    """
+
+    PENDING = "pending"
+    BUILDING = "building"
+    READY = "ready"
+    EXPIRED = "expired"
+
+
+class DataExport(UUIDv7Model):
+    """One user's request for everything this product holds about them (FR-52, GDPR Art. 20).
+
+    `identity` owns it because an export is about an **account**, not about any one app's
+    records — the same reasoning that put `Subscription` here. The rows it exports belong to
+    `personalization`, `delivery` and `identity` alike, and none of those apps could own a
+    request that spans all three.
+
+    **The payloads are columns, not files.** This project configures no object storage, and a
+    heavy user's records are tens of kilobytes of JSON. A bucket would mean a dependency,
+    credentials, settings and a local-dev service for a payload that fits in a `TextField` —
+    and the 30-day lifetime stays one column the retention sweep already understands.
+
+    **`claimed_at` is what makes a second request join the first** rather than queue a second
+    job. It is the same claim idiom `DigestPreference.digest_claimed_at` and
+    `Source.reliability_claimed_at` use: a row is claimed by the worker that will build it,
+    and an unclaimed pending row is the only thing a new request creates.
+
+    **`expires_at` is the authority on a dead link, not the token's age.** The signed link
+    carries its own `max_age`, but a link is also dead once the row says so — which is what
+    lets an export be revoked without inventing a revocation list, and what a later account
+    deletion will set to stop a download mid-window.
+
+    **It holds `ACCOUNT_CONTENT`, not a category of its own.** What the row contains *is* the
+    user's account content, copied; retaining it longer than the content it copies would be
+    the privacy mistake of keeping a snapshot after the original is gone.
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_CONTENT
+
+    #: **This row is exported, but its payloads are not** (FR-52).
+    #:
+    #: The row is a fact about the user — when they asked, when it was ready, when it
+    #: expired — and that is portable. The two body columns are a *copy of everything else
+    #: in the export*, so copying them in would nest one export inside the next: a second
+    #: request would carry the first's whole payload, a third would carry both, and the
+    #: file would grow without bound while saying nothing new.
+    export_redact_fields = ("json_body", "ics_body")
+
+    user_id = models.UUIDField()
+    status = models.CharField(
+        max_length=16, choices=DataExportStatus.choices, default=DataExportStatus.PENDING
+    )
+    requested_at = models.DateTimeField(default=timezone.now)
+    #: Set when a worker takes the row. An unclaimed pending row is the one a new request
+    #: joins instead of duplicating.
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    #: After this, the links are dead whatever their signature says.
+    expires_at = models.DateTimeField(null=True, blank=True)
+    json_body = models.TextField(blank=True, default="")
+    ics_body = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            # **One live request per user.** The partial index is what makes "requesting
+            # twice does not queue two jobs" a database fact rather than a race the
+            # command layer has to win.
+            models.UniqueConstraint(
+                fields=["user_id"],
+                condition=models.Q(status__in=["pending", "building"]),
+                name="data_export_one_in_flight_per_user_uq",
+            ),
+        ]
+        indexes = [
+            # The worker's sweep: unclaimed requests, oldest first.
+            models.Index(
+                fields=["requested_at"],
+                condition=models.Q(claimed_at__isnull=True),
+                name="data_export_unclaimed_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # No email, no payload — this reaches every log line and admin column (AD-13).
+        return f"export {self.status}"
 
 
 class IdentityAuditEntry(AuditEntry):

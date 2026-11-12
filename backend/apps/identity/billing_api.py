@@ -44,8 +44,15 @@ be the provider's error to explain, and it is ours to explain instead.
 from ninja import Router
 
 from apps.identity.api_auth import current_user
-from apps.identity.schemas import CheckoutIn, CheckoutOut, PortalOut, SubscriptionOut
+from apps.identity.schemas import (
+    BillingAccountOut,
+    CheckoutIn,
+    CheckoutOut,
+    PortalOut,
+    SubscriptionOut,
+)
 from apps.identity.services import open_portal, read_entitlement, start_checkout
+from apps.identity.services.billing_read import read_billing_account
 from shared.errors import ErrorOut
 
 router = Router(tags=["billing"], auth=current_user)
@@ -126,6 +133,41 @@ def post_portal(request):
 def get_subscription(request):
     """Read the caller's entitlement. Reads nothing else, writes nothing."""
     return SubscriptionOut(is_pro=read_entitlement(user_id=request.user.pk))
+
+
+@router.get(
+    "/account",
+    response={200: BillingAccountOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Read the caller's plan for the account screen",
+    description=(
+        "Reads the signed-in user's plan state: status, plan, when the current term "
+        "ends, and whether a payment needs fixing.\n\n"
+        "**This is the wider read `/subscription` deliberately is not.** That endpoint "
+        "answers one bit — may this person use Pro — and stays one bit on purpose. This "
+        "one carries what a person needs in order to act on their own subscription.\n\n"
+        "**`is_pro` is true for `past_due`, and `needs_payment` is how they differ.** A "
+        "failed payment leaves someone entitled while they fix it, so a screen reading "
+        "only the bool would show a person with a recoverable problem exactly what it "
+        "shows a person with none.\n\n"
+        "**`period_end` is not a renewal date.** This product does not model "
+        "`cancel_at_period_end`, so a subscription cancelled in the provider's portal "
+        "reads `active` until its term runs out. The field says when the term ends, "
+        "which is true whether or not it will renew.\n\n"
+        "**The user comes from the session**, so a caller cannot ask about somebody else. "
+        "Read-only: no provider call, no session minted, nothing written."
+    ),
+)
+def get_billing_account(request):
+    """Read the caller's plan state. Reads nothing else, writes nothing."""
+    account = read_billing_account(user_id=request.user.pk)
+    return BillingAccountOut(
+        status=account.status,
+        plan=account.plan,
+        period_end=account.period_end.isoformat() if account.period_end else None,
+        is_pro=account.is_pro,
+        needs_payment=account.needs_payment,
+        had_pro=account.had_pro,
+    )
 
 
 __all__ = ["router"]

@@ -1,6 +1,66 @@
 {
   "components": {
     "schemas": {
+      "BillingAccountOut": {
+        "description": "The account screen's view of a plan (FR-48).\n\n**The wider read `SubscriptionOut` deliberately refused to become.** That schema stays\none bool because *\"a field here would be a field two callers could disagree about\"*;\nthis one carries the state a person needs to act on their own subscription, and the two\ncannot disagree because `is_pro` here is computed from the same\n`LIVE_SUBSCRIPTION_STATUSES` the entitlement read uses.\n\n**`needs_payment` is the field this schema exists for.** `is_pro` is true for a\n`past_due` account — a failed payment leaves someone entitled while they fix it — so a\nscreen that could only see the bool would show a person with a recoverable problem\nexactly what it shows a person with none.\n\n**`period_end` is not a renewal date**, and is not named as one. This product does not\nmodel `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads\n`active` until its term runs out and nothing here can tell them apart. The field says\nwhen the current term ends, which is true in both cases.",
+        "properties": {
+          "had_pro": {
+            "title": "Had Pro",
+            "type": "boolean"
+          },
+          "is_pro": {
+            "title": "Is Pro",
+            "type": "boolean"
+          },
+          "needs_payment": {
+            "title": "Needs Payment",
+            "type": "boolean"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "status",
+          "plan",
+          "period_end",
+          "is_pro",
+          "needs_payment",
+          "had_pro"
+        ],
+        "title": "BillingAccountOut",
+        "type": "object"
+      },
       "CalendarCapDetails": {
         "description": "The `details` of a calendar-cap refusal: the cap, and one upgrade sentence.\n\n**Exactly two fields, and nothing else** — the same shape as `SaveCapDetails`, and\nfor the same reason. No `modal`, no `title`, no `actions`, no `dismissable`: the\nrefusal is an *inline* prompt with a quiet \"Upgrade\" link, not a modal\n(EXPERIENCE.md §3, the Free-tier cap prompt). A cap that interrupts with a modal is a\ncap that trains people to dismiss prompts.\n\nThe two tier caps — one on connected calendars, one on saves — therefore speak **one**\nlanguage to the frontend: a number and a sentence. The frontend renders one prompt\ncomponent for both.",
         "properties": {
@@ -392,6 +452,115 @@
           }
         },
         "title": "CityPageQuery",
+        "type": "object"
+      },
+      "CollectionEventOut": {
+        "description": "One saved event inside a collection — **the snapshot, and only the snapshot**.\n\n**This deliberately carries no title, venue or URL**, which is what makes it different\nfrom `SavedEventOut`. Those fields are the catalog's current values, read at request\ntime; reading them here would put a `catalog` query behind a `personal` endpoint, and\nAD-3 forbids relating the two. The snapshot is what AD-17 propagation keeps correct and\nwhat the Timeline and the conflict detector already use, so it is what this returns.\n\nA surface that wants titles has `GET /api/personal/saved-events`, which is the endpoint\nthat owns that join.",
+        "properties": {
+          "end_time_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Utc"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_version": {
+            "title": "Event Version",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "start_time_utc": {
+            "format": "date-time",
+            "title": "Start Time Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "start_time_utc",
+          "end_time_utc",
+          "event_version"
+        ],
+        "title": "CollectionEventOut",
+        "type": "object"
+      },
+      "CollectionIn": {
+        "description": "The body of a create or a rename: a name, and nothing else (FR-49).\n\n**No position.** Where a new collection lands is the server's rule — the end — and a\nclient that could choose would be a second writer of an ordering the reorder endpoint\nalready owns. Moving one is what `PUT /collections/order` is for.",
+        "properties": {
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CollectionIn",
+        "type": "object"
+      },
+      "CollectionOrderIn": {
+        "description": "A whole ordering, in one request (FR-49).\n\n**The complete list, never a move instruction.** \"Put this one third\" has to be\ninterpreted against a list that may have changed since the client read it; a complete\norder is unambiguous, and the result is the order the user saw themselves arrange. The\ncommand refuses a list that does not name every collection exactly once, so the server\nnever observes a partially reordered list.",
+        "properties": {
+          "collection_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Collection Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection_ids"
+        ],
+        "title": "CollectionOrderIn",
+        "type": "object"
+      },
+      "CollectionOut": {
+        "description": "One collection as the client sees it.\n\n`item_count` is here because every surface that lists collections wants it, and a\nclient counting for itself would need the membership of each one — turning one list\ninto N requests.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "item_count"
+        ],
+        "title": "CollectionOut",
         "type": "object"
       },
       "ComponentOut": {
@@ -870,6 +1039,60 @@
           "onboarding"
         ],
         "title": "CurrentUserOut",
+        "type": "object"
+      },
+      "DataExportOut": {
+        "description": "One export request, as the settings screen sees it.\n\n**It carries no download links.** The links live in the email, which is what FR-52\npromises and what keeps a session-authed response from becoming a second way to reach\na file that is supposed to require the token.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "due_by": {
+            "title": "Due By",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "requested_at",
+          "completed_at",
+          "expires_at",
+          "due_by"
+        ],
+        "title": "DataExportOut",
         "type": "object"
       },
       "DetailConflictOut": {
@@ -4152,6 +4375,49 @@
         ]
       }
     },
+    "/api/billing/account": {
+      "get": {
+        "description": "Reads the signed-in user's plan state: status, plan, when the current term ends, and whether a payment needs fixing.\n\n**This is the wider read `/subscription` deliberately is not.** That endpoint answers one bit — may this person use Pro — and stays one bit on purpose. This one carries what a person needs in order to act on their own subscription.\n\n**`is_pro` is true for `past_due`, and `needs_payment` is how they differ.** A failed payment leaves someone entitled while they fix it, so a screen reading only the bool would show a person with a recoverable problem exactly what it shows a person with none.\n\n**`period_end` is not a renewal date.** This product does not model `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads `active` until its term runs out. The field says when the term ends, which is true whether or not it will renew.\n\n**The user comes from the session**, so a caller cannot ask about somebody else. Read-only: no provider call, no session minted, nothing written.",
+        "operationId": "apps_identity_billing_api_get_billing_account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingAccountOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Read the caller's plan for the account screen",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/api/billing/checkout": {
       "post": {
         "description": "Mints a checkout session for the chosen plan and returns the URL to send the user to.\n\n**The body carries the plan and nothing else.** The success and cancel URLs are built from this deployment's configuration, so a client cannot name them.\n\n**Paying does not make you Pro yet.** The provider's webhook is what records the subscription; this endpoint writes nothing. If the webhook has not landed, the user is still on the free tier — which is why the response carries no entitlement field.\n\n**A user who already has a live subscription is refused** with 409, and the response points at the portal: that is where an existing subscription is managed. Starting a second checkout would create a second subscription to notice and cancel.",
@@ -4768,6 +5034,126 @@
         ]
       }
     },
+    "/api/exports": {
+      "post": {
+        "description": "Starts building a JSON and an ICS export of this account's data. The links arrive by email within 24 hours.\n\n**Available to every signed-in account**, on any tier: data portability is a right under GDPR Article 20, not a paid feature.\n\n**Asking twice while one is already building returns the request in flight** rather than starting a second one, so a double-click costs nothing.",
+        "operationId": "apps_identity_export_api_post_export",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Request an export of everything we hold about you",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/exports/{export_id}": {
+      "get": {
+        "description": "How far along one of this user's exports is.",
+        "operationId": "apps_identity_export_api_get_export_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Check on one of your export requests",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/exports/{export_id}/{fmt}": {
+      "get": {
+        "description": "Returns the export file itself. **Authenticated by the signed token in the link, not by a session** — the link is followed from a mail client, which has none.\n\nThe token names the export, the account and the format together, so none of the three can be changed in the URL. A link is refused once the export expires, whatever its signature says.",
+        "operationId": "apps_identity_export_api_download_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fmt",
+            "required": true,
+            "schema": {
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Download an export with its emailed link",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "config_health_health",
@@ -5227,6 +5613,400 @@
         "summary": "Reconnect a calendar whose access was revoked",
         "tags": [
           "personal"
+        ]
+      }
+    },
+    "/api/personal/collections": {
+      "get": {
+        "description": "This user's collections in the order they arranged, each with how many saves it holds.\n\n**Open on every tier.** A lapsed Pro user's collections do not vanish — the brief forbids deleting a downgraded account's data, and a list that hid them would be that deletion as far as the user could tell.",
+        "operationId": "apps_personalization_collections_api_get_collections",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List your collections",
+        "tags": [
+          "collections"
+        ]
+      },
+      "post": {
+        "description": "Creates an empty collection at the end of this user's list.\n\n**Pro only.** A Free account is refused with 409 and a `{cap, upgrade_hint}` payload — the same inline-prompt shape the save cap and the calendar cap use, with no modal-shaped field.\n\n**It is created empty**, which is an ordinary state rather than a half-finished one: membership is explicit, so nothing is ever filed into a collection the user did not put it in.\n\n**The name is unique per user, case-insensitively** — 'Weekend' and 'weekend' are one name — and is stored exactly as typed.",
+        "operationId": "apps_personalization_collections_api_post_collection",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Create a collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/personal/collections/order": {
+      "put": {
+        "description": "Takes the **whole ordering in one request**, so the server never observes a partially reordered list.\n\n**The complete list, never a move instruction.** 'Put this one third' has to be interpreted against a list that may have changed since the client read it; a complete order is unambiguous. A list that does not name every collection exactly once is refused, because the unnamed ones would otherwise land somewhere nobody asked for.\n\n**Open on every tier.**",
+        "operationId": "apps_personalization_collections_api_put_collection_order",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionOrderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set the order of your collections",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/personal/collections/{collection_id}": {
+      "delete": {
+        "description": "Deletes a collection and **leaves every save inside it untouched** — they simply become uncollected.\n\n**Open on every tier.** This is the one delete the intent permits, and what it deletes is a grouping rather than user content. Gating it would trap a lapsed user with data they want gone, which is the inverse of what the never-delete constraint is for.\n\nThe remaining collections close up, so positions stay dense.",
+        "operationId": "apps_personalization_collections_api_delete_collection_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Delete a collection",
+        "tags": [
+          "collections"
+        ]
+      },
+      "patch": {
+        "description": "Renames one of this user's collections.\n\n**Open on every tier.** Gating a rename would mean a lapsed user cannot fix a typo in a name they wrote themselves, which is punishment for lapsing rather than a tier boundary.\n\n**Renaming to the name it already has is allowed** and is not a collision with itself. Another collection's name is refused with 409.",
+        "operationId": "apps_personalization_collections_api_patch_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Rename a collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/personal/collections/{collection_id}/events": {
+      "get": {
+        "description": "The saves in one collection, newest addition first.\n\n**The snapshot, and only the snapshot.** The times come from the user's own `SavedEvent` rows, which AD-17 propagation keeps correct — there is no `catalog` read here, because AD-3 forbids relating the two schemas and the snapshot is what the Timeline and the conflict detector already use.\n\nA surface that wants titles and venues uses `GET /api/personal/saved-events`, which is the endpoint that owns that join.",
+        "operationId": "apps_personalization_collections_api_get_collection_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionEventOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "List the saves in a collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/personal/collections/{collection_id}/events/{saved_event_id}": {
+      "delete": {
+        "description": "Removes a membership. **The save itself is untouched** — it simply stops being in this collection.\n\n**Open on every tier**, and deliberately so: this is how a lapsed Pro user tidies up, and refusing it would trap them with an arrangement they cannot change.\n\nRemoving something that is not there is a no-op.",
+        "operationId": "apps_personalization_collections_api_delete_collection_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "saved_event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Saved Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Take a save out of a collection",
+        "tags": [
+          "collections"
+        ]
+      },
+      "put": {
+        "description": "Assigns one of this user's saves to one of their collections.\n\n**Pro only**, and refused with the same `{cap, upgrade_hint}` payload as a create. Without this gate the cap would limit how many collections exist and not how much they are used.\n\n**Idempotent**: a save already in the collection is the same statement twice, so it answers 204 and writes no audit row.\n\n**A save can be in several collections at once** — membership is a table, not a column.",
+        "operationId": "apps_personalization_collections_api_put_collection_event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "saved_event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Saved Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Put a save into a collection",
+        "tags": [
+          "collections"
         ]
       }
     },

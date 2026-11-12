@@ -13,8 +13,10 @@ from apps.delivery.notices_api import router as notices_router
 from apps.delivery.preferences_api import router as settings_router
 from apps.identity.api import router as auth_router
 from apps.identity.billing_api import router as billing_router
+from apps.identity.export_api import router as export_router
 from apps.identity.webhooks_api import router as billing_webhook_router
 from apps.personalization.api import router as personal_router
+from apps.personalization.collections_api import router as collections_router
 from apps.personalization.detail_api import router as detail_router
 from config.errors import install_error_handlers
 from config.health import router as health_router
@@ -46,7 +48,13 @@ api.add_router("/webhooks/billing", billing_webhook_router)
 # the session and never from a payload. Neither endpoint grants entitlement: the webhook
 # above is what moves `Subscription` state.
 api.add_router("/billing", billing_router)
+# FR-52. Mounted on `identity` because an export is about an account, and ungated because
+# data portability is a right rather than a tier feature — see `services/data_export.py`.
+api.add_router("/exports", export_router)
 api.add_router("/personal", personal_router)
+# FR-49's named collections. Mounted under `/personal` because a collection is a grouping
+# of the user's own saves — the gate is at the endpoints, not in the commands.
+api.add_router("/personal/collections", collections_router)
 # FR-9: the Reminder Plan picker. It has no `auth=` of its own at the mount — the auth
 # lives on the **router**, as `personalization`'s does, so the user id comes from the
 # session and never from a payload.

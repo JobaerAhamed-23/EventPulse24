@@ -91,17 +91,35 @@ def test_no_foreign_key_crosses_from_personal_to_catalog():
     assert cross_schema_foreign_keys("personal") == []
 
 
+#: The apps on the far side of the AD-3 wall.
+CATALOG_APPS = {"ingestion", "catalog", "editorial"}
+
+
 @pytest.mark.parametrize(
     "model",
     [PersonalEvent, SavedEvent, ConflictPair],
     ids=lambda m: m.__name__,
 )
-def test_the_new_models_declare_no_relation_field(model):
-    # A relation field is the only way to make Postgres create a foreign key, and the only
-    # way the ORM could join across the wall.
-    relations = [field.name for field in model._meta.get_fields() if field.is_relation]
+def test_the_new_models_relate_to_nothing_across_the_wall(model):
+    """The metadata half of AD-3, narrowed to what AD-3 actually says.
 
-    assert relations == []
+    This asserted zero relation fields, which also forbade a relation entirely inside
+    `personal` — something no rule here prohibits. FR-49's collection membership is exactly
+    that case: a table in `personal` pointing at `SavedEvent`, whose only mark on
+    `SavedEvent` is a reverse accessor.
+
+    `test_no_foreign_key_crosses_from_personal_to_catalog` above remains the stronger of the
+    pair: it reads the foreign keys Postgres actually holds, so a model that lied in its
+    metadata could not satisfy it.
+    """
+    for field in model._meta.get_fields():
+        if not field.is_relation or field.related_model is None:
+            continue
+
+        assert field.related_model._meta.app_label not in CATALOG_APPS, (
+            f"{model.__name__}.{field.name} reaches "
+            f"{field.related_model._meta.label} across the wall"
+        )
 
 
 def test_the_saved_event_holds_the_catalog_event_id_by_value():

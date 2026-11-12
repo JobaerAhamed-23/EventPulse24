@@ -65,3 +65,80 @@ export const DEFAULT_QUIET_HOURS = {
   start: "22:00:00",
   end: "08:00:00",
 } as const;
+
+/**
+ * The seven weekdays, **Monday 0 through Sunday 6**.
+ *
+ * **The numbering is the server's, which is Python's `date.weekday()`.**
+ * `QuietHoursOverrideIn.weekday` says *"Monday 0 through Sunday 6"* and
+ * `domain/quiet_hours.py` indexes its week the same way. A client that started its week
+ * on Sunday would send Sunday's window as Monday's, and nothing would ever say so — the
+ * request would be perfectly valid and the user would simply be quiet on the wrong night.
+ *
+ * So this is one array, in the server's order, and the UI reads its labels from it rather
+ * than deriving a day name from an index anywhere else.
+ */
+export const WEEKDAYS = [
+  { index: 0, short: "Mon", long: "Monday" },
+  { index: 1, short: "Tue", long: "Tuesday" },
+  { index: 2, short: "Wed", long: "Wednesday" },
+  { index: 3, short: "Thu", long: "Thursday" },
+  { index: 4, short: "Fri", long: "Friday" },
+  { index: 5, short: "Sat", long: "Saturday" },
+  { index: 6, short: "Sun", long: "Sunday" },
+] as const;
+
+/**
+ * One wall clock as a person says it — `22:00` → `10pm`, `08:30` → `8:30am`.
+ *
+ * **Minutes are dropped only when they are zero**, because "10pm" is how someone says
+ * 22:00 and "10:00pm" is how a machine says it. The chip in the day row is read at a
+ * glance, and the glance is the whole point of the chip.
+ *
+ * **Midnight is `12am` and noon is `12pm`**, the two values a naive `% 12` gets wrong by
+ * printing `0am` and `0pm`.
+ */
+export function clockLabel(stored: string): string {
+  const [rawHour = "", rawMinute = ""] = clockForInput(stored).split(":");
+  // **An empty string is not a zero, however much `Number("")` wants to be one.** It
+  // returns `0`, which is finite, so a missing clock would label itself "12am" — a chip
+  // confidently announcing midnight for a window nobody set.
+  if (rawHour === "" || rawMinute === "") return "";
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
+  const suffix = hour < 12 ? "am" : "pm";
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return minute === 0
+    ? `${twelve}${suffix}`
+    : `${twelve}:${String(minute).padStart(2, "0")}${suffix}`;
+}
+
+/**
+ * A window as the day row's chip shows it — `10pm–8am`.
+ *
+ * An **en dash**, not a hyphen: it is a range, and the type scale renders the two
+ * clocks close enough together that a hyphen reads as part of a word.
+ */
+export function windowLabel(start: string, end: string): string {
+  return `${clockLabel(start)}–${clockLabel(end)}`;
+}
+
+/**
+ * Whether a window runs past midnight into the next day.
+ *
+ * **This is the client's only piece of quiet-hours arithmetic, and it is a comparison,
+ * not a calculation.** The server owns when a reminder actually lands; all this answers
+ * is whether to tell the user that Friday's window reaches into Saturday — which they
+ * cannot see from two clocks that read `22:00` and `08:00`.
+ *
+ * Equal clocks are **not** a crossing. The server refuses `start == end` outright, so the
+ * case never reaches a stored window; treating it as a crossing here would put a
+ * "reaches into tomorrow" line under a window the user is being told to fix.
+ */
+export function crossesMidnight(start: string, end: string): boolean {
+  const from = clockForInput(start);
+  const to = clockForInput(end);
+  if (!from || !to || from === to) return false;
+  return to < from;
+}

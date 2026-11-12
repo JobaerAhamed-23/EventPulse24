@@ -26,6 +26,23 @@ TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH = Decimal("0.90")
 # D8). The other reasons carry no per-item deadline: "reviewed at least daily" is a team cadence.
 REVIEW_SLA_USER_REPORTED = timedelta(hours=24)
 
+# FR-52: "A user requesting export receives an email with download links within 24 hours."
+# **The same 24 hours as `REVIEW_SLA_USER_REPORTED`, and deliberately a separate constant.**
+# They are equal today by coincidence of policy, not by shared cause: one is how fast a
+# person's report must reach a reviewer, the other is how fast a person's own data must
+# reach them. Collapsing them would mean a change to either silently moved the other.
+DATA_EXPORT_SLA = timedelta(hours=24)
+
+# How long a download link lives once the export is built. **Not the same as the SLA** —
+# the SLA is how long the user waits, this is how long they have to collect it.
+#
+# Seven days is chosen against two failure modes: a link short enough to expire before
+# somebody back from a week away can use it is a right denied by timing, and a link that
+# lived indefinitely would be a copy of the user's whole account sitting behind a URL in
+# their mailbox forever. PRD §10.1 keeps an export for 30 days past account deletion, which
+# is a different window for a different reason and is deletion's to implement.
+DATA_EXPORT_LINK_LIFETIME = timedelta(days=7)
+
 # FR-57: which kind of review item an editor should reach for first.
 #
 # **`ReviewItem` has no priority column, and this is why.** `review-queue-model` did not add
@@ -516,6 +533,13 @@ FREE_TIER_QUIET_HOURS_WINDOWS = 1
 #: sentence, matching the save cap's and the calendar cap's: the word "Pro" is what the
 #: quiet "Upgrade" link beside it points at.
 QUIET_HOURS_PRO_UPGRADE_HINT = "Set a different window for each day with Pro."
+
+#: FR-49: named collections are a Pro feature, so a Free account gets **none**.
+#:
+#: **Zero is a real cap, not a disabled feature flag.** It is carried in the refusal's
+#: `{cap, upgrade_hint}` payload exactly as the save cap's 1 and the calendar cap's 1 are,
+#: so the inline prompt renders it with no special case for "the limit is nothing".
+FREE_TIER_COLLECTIONS = 0
 
 FREE_TIER_SAVE_DAILY_LIMIT = 1
 FREE_TIER_SAVE_WINDOW_SECONDS = 24 * 60 * 60

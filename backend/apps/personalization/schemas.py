@@ -1370,6 +1370,10 @@ __all__ = [
     "SavedEventOut",
     "SchedulingConflictDetails",
     "SchedulingConflictOut",
+    "CollectionEventOut",
+    "CollectionIn",
+    "CollectionOrderIn",
+    "CollectionOut",
     "TimelineBlockKind",
     "TimelineBlockOut",
     "TimelineDayOut",
@@ -1410,3 +1414,65 @@ class EventReportOut(Schema):
 
     reported: bool = True
     category: EventReportCategory
+
+
+class CollectionIn(Schema):
+    """The body of a create or a rename: a name, and nothing else (FR-49).
+
+    **No position.** Where a new collection lands is the server's rule — the end — and a
+    client that could choose would be a second writer of an ordering the reorder endpoint
+    already owns. Moving one is what `PUT /collections/order` is for.
+    """
+
+    name: str = Field(min_length=1, max_length=80)
+
+
+class CollectionOut(Schema):
+    """One collection as the client sees it.
+
+    `item_count` is here because every surface that lists collections wants it, and a
+    client counting for itself would need the membership of each one — turning one list
+    into N requests.
+    """
+
+    id: UUID
+    name: str
+    #: `0..n-1` within this user, dense. The order the user arranged.
+    position: int
+    item_count: int
+
+
+class CollectionOrderIn(Schema):
+    """A whole ordering, in one request (FR-49).
+
+    **The complete list, never a move instruction.** "Put this one third" has to be
+    interpreted against a list that may have changed since the client read it; a complete
+    order is unambiguous, and the result is the order the user saw themselves arrange. The
+    command refuses a list that does not name every collection exactly once, so the server
+    never observes a partially reordered list.
+    """
+
+    collection_ids: list[UUID]
+
+
+class CollectionEventOut(Schema):
+    """One saved event inside a collection — **the snapshot, and only the snapshot**.
+
+    **This deliberately carries no title, venue or URL**, which is what makes it different
+    from `SavedEventOut`. Those fields are the catalog's current values, read at request
+    time; reading them here would put a `catalog` query behind a `personal` endpoint, and
+    AD-3 forbids relating the two. The snapshot is what AD-17 propagation keeps correct and
+    what the Timeline and the conflict detector already use, so it is what this returns.
+
+    A surface that wants titles has `GET /api/personal/saved-events`, which is the endpoint
+    that owns that join.
+    """
+
+    #: The personal save's id — its identity, and what membership points at.
+    id: UUID
+    #: The catalog event's id, by value. No foreign key (AD-3).
+    event_id: UUID
+    start_time_utc: datetime
+    end_time_utc: datetime | None
+    #: The snapshot's version of the catalog event (AD-17).
+    event_version: int

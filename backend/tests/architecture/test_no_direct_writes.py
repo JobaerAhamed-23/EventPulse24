@@ -32,8 +32,14 @@ def test_surface_files_include_every_app_admin_and_api():
     # grant nothing, but they call `create_checkout` and `create_portal_session` — and
     # being in the surface list is what keeps them under AD-5 like every other endpoint.
     assert "apps/identity/billing_api.py" in names
-    # 6 admins + 6 api.py + 7 *_api.py + config/api.py + config/health.py = 21
-    assert len(names) == 21
+    # FR-52: the export endpoints are a surface file like any other. One of them answers
+    # without a session — the link is followed from a mail client — which makes it *more*
+    # important that it sits under the same no-direct-write rule as everything else.
+    assert "apps/identity/export_api.py" in names
+    # FR-49: the collections endpoints are a surface file like any other.
+    assert "apps/personalization/collections_api.py" in names
+    # 6 admins + 6 api.py + 9 *_api.py + config/api.py + config/health.py = 23
+    assert len(names) == 23
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

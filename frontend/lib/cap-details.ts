@@ -6,9 +6,10 @@
  *
  * | Cap | Endpoint | `code` | `details` |
  * |---|---|---|---|
- * | The save cap (FR-49) | `POST /api/personal/saved-events/{id}` | `save_cap_reached` | `{cap, upgrade_hint}` |
+ * | The save cap (FR-48) | `POST /api/personal/saved-events/{id}` | `save_cap_reached` | `{cap, upgrade_hint}` |
  * | The calendar cap (FR-50) | `POST /api/personal/calendars` | `calendar_cap_reached` | `{cap, upgrade_hint}` |
  * | Per-weekday quiet hours (FR-51) | `PUT /api/settings/notifications` | `quiet_hours_pro_required` | `{cap, upgrade_hint}` |
+ * | Named collections (FR-49) | `POST /api/personal/collections` and its assign | `collections_pro_required` | `{cap, upgrade_hint}` |
  *
  * **This is a sibling of `readApiError`, not a change to it.** `readApiError` is used in
  * nine places and returns `{code, message, fieldErrors}` — the shape a *form* renders. A
@@ -41,6 +42,7 @@ const CAP_CODES = new Set([
   "save_cap_reached",
   "calendar_cap_reached",
   "quiet_hours_pro_required",
+  "collections_pro_required",
 ]);
 
 /**

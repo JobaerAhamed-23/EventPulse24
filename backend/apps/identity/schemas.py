@@ -199,3 +199,39 @@ class SubscriptionOut(Schema):
     """
 
     is_pro: bool
+
+
+class BillingAccountOut(Schema):
+    """The account screen's view of a plan (FR-48).
+
+    **The wider read `SubscriptionOut` deliberately refused to become.** That schema stays
+    one bool because *"a field here would be a field two callers could disagree about"*;
+    this one carries the state a person needs to act on their own subscription, and the two
+    cannot disagree because `is_pro` here is computed from the same
+    `LIVE_SUBSCRIPTION_STATUSES` the entitlement read uses.
+
+    **`needs_payment` is the field this schema exists for.** `is_pro` is true for a
+    `past_due` account — a failed payment leaves someone entitled while they fix it — so a
+    screen that could only see the bool would show a person with a recoverable problem
+    exactly what it shows a person with none.
+
+    **`period_end` is not a renewal date**, and is not named as one. This product does not
+    model `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads
+    `active` until its term runs out and nothing here can tell them apart. The field says
+    when the current term ends, which is true in both cases.
+    """
+
+    #: `active`, `past_due`, `canceled`, `expired` — or `null` for an account that never
+    #: subscribed.
+    status: str | None
+    #: `monthly` or `yearly`, or `null`.
+    plan: str | None
+    #: When the current term ends, if known. **Not a renewal date** — see the docstring.
+    period_end: str | None
+    #: Whether Pro is available right now. True for `past_due`.
+    is_pro: bool
+    #: Whether a payment failed and the portal is where to fix it.
+    needs_payment: bool
+    #: Whether this account ever had Pro, so the Free state can read as "ended" rather than
+    #: as "never started".
+    had_pro: bool

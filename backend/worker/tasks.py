@@ -12,6 +12,12 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.delivery.services.pulse_ping import mint_ping_send
+from apps.identity.services import data_export as export_service
+from apps.identity.services.emails import (
+    data_export_link,
+    data_export_stream,
+    render_data_export_email,
+)
 from apps.ingestion.event_fit.writes import refresh_stale_event_fits
 from apps.ingestion.services import outbox, revalidation, scheduling
 from apps.ingestion.services.ingest_source import ingest_source as run_ingest
@@ -51,9 +57,10 @@ def tick() -> None:
     """The periodic tick (AD-7): the only beat entry. It enqueues and never touches the
     database, so a slow query can't delay the next tick.
 
-    Every tick: `schedule_sources`, `schedule_calendars`, `schedule_digests` and
-    `sweep_due_sends`. When the UTC minute is a multiple of 5: `reconcile_outbox` (the
-    tick keeps no state, so the 5-minute cadence is approximate; both jobs are idempotent),
+    Every tick: `schedule_sources`, `schedule_calendars`, `schedule_digests`,
+    `sweep_due_sends` and `schedule_data_exports` (FR-52). When the UTC minute is a
+    multiple of 5: `reconcile_outbox` (the tick keeps no state, so the 5-minute cadence is
+    approximate; both jobs are idempotent), `expire_data_exports` (FR-52),
     `reconcile_revalidation`, the revalidation outbox's own reconciler (FR-27), and
     `report_held_sends` and `report_stuck_propagation`, the two halves of AD-17's
     propagation alarm. When
@@ -93,8 +100,15 @@ def tick() -> None:
     _enqueue(schedule_digests)
     _enqueue(sweep_due_sends)
     _enqueue(recompute_reliability)
+    # FR-52. Every tick rather than on a slower cadence: the promise is "within 24 hours",
+    # and a person asking for their own data is owed it as soon as it can be built, not at
+    # the next five-minute boundary. The dispatcher claims nothing when nothing is waiting,
+    # which is almost always.
+    _enqueue(schedule_data_exports)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
+        # FR-52's other half: links that have run out, and the payloads behind them.
+        _enqueue(expire_data_exports)
         # Same cadence as the outbox reconciler, and for the same reason: propagation is what
         # releases a held send (AD-17), so a hold that outlives the reconciler's own recovery
         # window is evidence the consumer is failing rather than merely slow.
@@ -637,3 +651,100 @@ def reconcile_event_reports() -> None:
             "Event reports reconciled",
             extra={"job": "reconcile_event_reports", "count": raised},
         )
+
+
+@shared_task(name="worker.tasks.schedule_data_exports")
+def schedule_data_exports() -> None:
+    """Claim the export requests waiting to be built and enqueue one job each (FR-52).
+
+    The same shape as `schedule_digests` and `schedule_calendars`: the tick enqueues the
+    dispatcher, the dispatcher claims with `FOR UPDATE SKIP LOCKED`, and each claim becomes
+    one job. Two overlapping ticks therefore never build one user's export twice.
+
+    **It drains rather than taking one.** An export is rare — a user asks a handful of times
+    in the life of an account — so a dispatcher that claimed one per tick would be fine in
+    the ordinary case and would quietly take an hour to clear sixty requests after an
+    outage, against a 24-hour promise.
+    """
+    now = _now()
+    enqueued = 0
+    while (export_id := export_service.claim_next_export(now=now)) is not None:
+        try:
+            _enqueue(build_data_export, str(export_id))
+            enqueued += 1
+        except Exception as exc:  # broker down: the sweep's TTL will reclaim it
+            logger.warning(
+                "Data export not enqueued",
+                extra={"export_id": str(export_id), "error_type": type(exc).__name__},
+            )
+            break
+    if enqueued:
+        logger.info(
+            "Data exports scheduled",
+            extra={"job": "schedule_data_exports", "count": enqueued},
+        )
+
+
+@shared_task(name="worker.tasks.build_data_export")
+def build_data_export(export_id: str) -> None:
+    """Build one user's export and mail them the links (FR-52).
+
+    **The build and the mail are one job**, because an export nobody is told about is not
+    an export. If the send fails, the row is still `READY` and the links still work — the
+    user can see the request completed on the settings screen, which is a better failure
+    than a built file nobody can reach.
+
+    **The address is read through `identity`'s own service**, never logged and never put in
+    the audit row (AD-13).
+    """
+    from apps.identity.services.recipients import get_recipient_address
+
+    export_uuid = UUID(export_id)
+    view = export_service.build_export(export_id=export_uuid, now=_now())
+
+    address = get_recipient_address(user_id=view.user_id)
+    if not address:
+        logger.warning(
+            "Data export built but no address to send it to",
+            extra={"job": "build_data_export", "export_id": export_id},
+        )
+        return
+
+    from apps.personalization.services.export_source import shares_precise_location
+
+    message = render_data_export_email(
+        to=address,
+        json_link=data_export_link(
+            export_id=view.id,
+            token=export_service.download_token(
+                export_id=view.id, user_id=view.user_id, fmt="json"
+            ),
+            fmt="json",
+        ),
+        ics_link=data_export_link(
+            export_id=view.id,
+            token=export_service.download_token(export_id=view.id, user_id=view.user_id, fmt="ics"),
+            fmt="ics",
+        ),
+        locations_redacted=not shares_precise_location(user_id=view.user_id),
+    )
+    get_email_port().send(
+        message,
+        stream=data_export_stream(),
+        # AD-7: the key is the row, so a retried job cannot send a second copy.
+        idempotency_key=f"data-export-{view.id}",
+    )
+    logger.info("Data export sent", extra={"job": "build_data_export", "export_id": export_id})
+
+
+@shared_task(name="worker.tasks.expire_data_exports")
+def expire_data_exports() -> None:
+    """Close the window on exports whose links have run out, and drop their payloads.
+
+    **Clearing the bodies is the point, not the status.** An expired export still holding
+    the user's records would be a copy of their account living past the lifetime they were
+    told about.
+    """
+    count = export_service.expire_due_exports(now=_now())
+    if count:
+        logger.info("Data exports expired", extra={"job": "expire_data_exports", "count": count})

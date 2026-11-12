@@ -247,6 +247,78 @@ class QuietHoursProRequired(ConflictError):
     default_message = "Setting a different window for each day is part of Pro."
 
 
+class InvalidCollectionOrderError(ValidationError):
+    """A reorder did not name this user's collections exactly once each (FR-49).
+
+    **A client can send this, so it cannot be a `ValueError`.** The reorder body comes
+    straight off the wire, and a `ValueError` from the command layer reaches the caller as
+    a 500 — a server error for a request the server understood perfectly and chose to
+    refuse. This is a 422 with a sentence, like any other refused input.
+
+    **A partial list is refused rather than completed.** The collections it does not name
+    would have to be placed somewhere this code invented, and an order nobody asked for is
+    worse than a refusal.
+    """
+
+    code = "invalid_collection_order"
+    default_message = "That ordering doesn't match your collections."
+
+
+class CollectionsProRequired(ConflictError):
+    """Named collections are a Pro feature, and this account is not Pro (FR-49).
+
+    **A conflict, not a 403.** The request is well-formed and the collection is perfectly
+    storable; what refuses it is the *state of the account*, and the remedy is not a
+    permission grant but an upgrade. The same reasoning that made `SaveCapReached`,
+    `CalendarProviderCapReached` and `QuietHoursProRequired` 409s, and this carries their
+    payload for the same reason.
+
+    **`details` carries `{"cap", "upgrade_hint"}`** — the cap being zero, which is what a
+    Free account gets — so the inline prompt built for the save cap renders this with no new
+    component and no new copy path. As there, the payload carries **no modal-shaped field**:
+    no `modal`, no `title`, no `actions`, no `dismissable`.
+
+    **It refuses the two operations that add, never the ones that read or tidy.** A lapsed
+    Pro user keeps their collections, keeps reading them, and keeps renaming, reordering,
+    unassigning and deleting — what they lose is the ability to make the set bigger. The
+    brief forbids deleting a downgraded user's data, and a gate that froze their own names
+    and ordering would be punishing them for lapsing rather than bounding a tier.
+    """
+
+    code = "collections_pro_required"
+    default_message = "Collections are part of Pro."
+
+
+class CollectionNameTaken(ConflictError):
+    """This user already has a collection with this name (FR-49).
+
+    **A conflict, not a validation error.** The name is perfectly well-formed; what refuses
+    it is the state of the account — a collection already holds it. That is the same
+    distinction `AlreadySubscribedError` draws, and it is why the status is 409 rather than
+    422: nothing about the request needs correcting except the user's mind.
+
+    **Names are compared case-insensitively**, so "Weekend" collides with "weekend".
+    `saved_collection_user_name_uq` folds the case in the database; this error is what that
+    constraint looks like once it reaches a person. A list showing both spellings as two
+    collections would read as a bug to whoever made them.
+    """
+
+    code = "collection_name_taken"
+    default_message = "You already have a collection with that name."
+
+
+class CollectionNotFoundError(NotFoundError):
+    """The collection doesn't exist, or isn't the caller's (FR-49).
+
+    **One error for both cases, deliberately** — the same choice `SavedEventNotFoundError`
+    made. Telling a caller "it exists but is not yours" would confirm the existence of
+    another user's collection, and a name is user-written content.
+    """
+
+    code = "collection_not_found"
+    default_message = "We couldn't find that collection."
+
+
 class CalendarConnectionNotFoundError(NotFoundError):
     """The calendar connection does not exist, or is not the caller's (FR-50).
 

@@ -64,6 +64,11 @@ TABLE_OWNERS = {
     # `CALENDAR_CONNECTION` are this intent's additions to that set.
     "personalization_personalevent": "personalization",
     "personalization_savedevent": "personalization",
+    # FR-49's named collections and their membership rows. `personalization` already owns
+    # the saves they group, so it owns the groupings (AD-16).
+    "identity_dataexport": "identity",
+    "personalization_savedcollection": "personalization",
+    "personalization_savedcollectionitem": "personalization",
     "personalization_conflictpair": "personalization",
     "personalization_interest": "personalization",
     "personalization_calendarconnection": "personalization",

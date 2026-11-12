@@ -18,7 +18,7 @@ The client is a `CsrfClient`, because the endpoints resolve their user through `
 resolver and the resolver checks CSRF on every unsafe method (D13).
 """
 
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 
 import pytest
 from django.contrib.auth import get_user_model

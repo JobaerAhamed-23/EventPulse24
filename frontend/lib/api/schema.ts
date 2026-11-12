@@ -146,6 +146,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the caller's plan for the account screen
+         * @description Reads the signed-in user's plan state: status, plan, when the current term ends, and whether a payment needs fixing.
+         *
+         *     **This is the wider read `/subscription` deliberately is not.** That endpoint answers one bit — may this person use Pro — and stays one bit on purpose. This one carries what a person needs in order to act on their own subscription.
+         *
+         *     **`is_pro` is true for `past_due`, and `needs_payment` is how they differ.** A failed payment leaves someone entitled while they fix it, so a screen reading only the bool would show a person with a recoverable problem exactly what it shows a person with none.
+         *
+         *     **`period_end` is not a renewal date.** This product does not model `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads `active` until its term runs out. The field says when the term ends, which is true whether or not it will renew.
+         *
+         *     **The user comes from the session**, so a caller cannot ask about somebody else. Read-only: no provider call, no session minted, nothing written.
+         */
+        get: operations["apps_identity_billing_api_get_billing_account"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/checkout": {
         parameters: {
             query?: never;
@@ -410,6 +438,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request an export of everything we hold about you
+         * @description Starts building a JSON and an ICS export of this account's data. The links arrive by email within 24 hours.
+         *
+         *     **Available to every signed-in account**, on any tier: data portability is a right under GDPR Article 20, not a paid feature.
+         *
+         *     **Asking twice while one is already building returns the request in flight** rather than starting a second one, so a double-click costs nothing.
+         */
+        post: operations["apps_identity_export_api_post_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports/{export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check on one of your export requests
+         * @description How far along one of this user's exports is.
+         */
+        get: operations["apps_identity_export_api_get_export_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports/{export_id}/{fmt}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an export with its emailed link
+         * @description Returns the export file itself. **Authenticated by the signed token in the link, not by a session** — the link is followed from a mail client, which has none.
+         *
+         *     The token names the export, the account and the format together, so none of the three can be changed in the URL. A link is refused once the export expires, whatever its signature says.
+         */
+        get: operations["apps_identity_export_api_download_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -580,6 +674,152 @@ export interface paths {
          */
         post: operations["apps_personalization_api_post_reconnect_calendar"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your collections
+         * @description This user's collections in the order they arranged, each with how many saves it holds.
+         *
+         *     **Open on every tier.** A lapsed Pro user's collections do not vanish — the brief forbids deleting a downgraded account's data, and a list that hid them would be that deletion as far as the user could tell.
+         */
+        get: operations["apps_personalization_collections_api_get_collections"];
+        put?: never;
+        /**
+         * Create a collection
+         * @description Creates an empty collection at the end of this user's list.
+         *
+         *     **Pro only.** A Free account is refused with 409 and a `{cap, upgrade_hint}` payload — the same inline-prompt shape the save cap and the calendar cap use, with no modal-shaped field.
+         *
+         *     **It is created empty**, which is an ordinary state rather than a half-finished one: membership is explicit, so nothing is ever filed into a collection the user did not put it in.
+         *
+         *     **The name is unique per user, case-insensitively** — 'Weekend' and 'weekend' are one name — and is stored exactly as typed.
+         */
+        post: operations["apps_personalization_collections_api_post_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/collections/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the order of your collections
+         * @description Takes the **whole ordering in one request**, so the server never observes a partially reordered list.
+         *
+         *     **The complete list, never a move instruction.** 'Put this one third' has to be interpreted against a list that may have changed since the client read it; a complete order is unambiguous. A list that does not name every collection exactly once is refused, because the unnamed ones would otherwise land somewhere nobody asked for.
+         *
+         *     **Open on every tier.**
+         */
+        put: operations["apps_personalization_collections_api_put_collection_order"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a collection
+         * @description Deletes a collection and **leaves every save inside it untouched** — they simply become uncollected.
+         *
+         *     **Open on every tier.** This is the one delete the intent permits, and what it deletes is a grouping rather than user content. Gating it would trap a lapsed user with data they want gone, which is the inverse of what the never-delete constraint is for.
+         *
+         *     The remaining collections close up, so positions stay dense.
+         */
+        delete: operations["apps_personalization_collections_api_delete_collection_endpoint"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a collection
+         * @description Renames one of this user's collections.
+         *
+         *     **Open on every tier.** Gating a rename would mean a lapsed user cannot fix a typo in a name they wrote themselves, which is punishment for lapsing rather than a tier boundary.
+         *
+         *     **Renaming to the name it already has is allowed** and is not a collision with itself. Another collection's name is refused with 409.
+         */
+        patch: operations["apps_personalization_collections_api_patch_collection"];
+        trace?: never;
+    };
+    "/api/personal/collections/{collection_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the saves in a collection
+         * @description The saves in one collection, newest addition first.
+         *
+         *     **The snapshot, and only the snapshot.** The times come from the user's own `SavedEvent` rows, which AD-17 propagation keeps correct — there is no `catalog` read here, because AD-3 forbids relating the two schemas and the snapshot is what the Timeline and the conflict detector already use.
+         *
+         *     A surface that wants titles and venues uses `GET /api/personal/saved-events`, which is the endpoint that owns that join.
+         */
+        get: operations["apps_personalization_collections_api_get_collection_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal/collections/{collection_id}/events/{saved_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put a save into a collection
+         * @description Assigns one of this user's saves to one of their collections.
+         *
+         *     **Pro only**, and refused with the same `{cap, upgrade_hint}` payload as a create. Without this gate the cap would limit how many collections exist and not how much they are used.
+         *
+         *     **Idempotent**: a save already in the collection is the same statement twice, so it answers 204 and writes no audit row.
+         *
+         *     **A save can be in several collections at once** — membership is a table, not a column.
+         */
+        put: operations["apps_personalization_collections_api_put_collection_event"];
+        post?: never;
+        /**
+         * Take a save out of a collection
+         * @description Removes a membership. **The save itself is untouched** — it simply stops being in this collection.
+         *
+         *     **Open on every tier**, and deliberately so: this is how a lapsed Pro user tidies up, and refusing it would trap them with an arrangement they cannot change.
+         *
+         *     Removing something that is not there is a no-op.
+         */
+        delete: operations["apps_personalization_collections_api_delete_collection_event"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1100,6 +1340,40 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * BillingAccountOut
+         * @description The account screen's view of a plan (FR-48).
+         *
+         *     **The wider read `SubscriptionOut` deliberately refused to become.** That schema stays
+         *     one bool because *"a field here would be a field two callers could disagree about"*;
+         *     this one carries the state a person needs to act on their own subscription, and the two
+         *     cannot disagree because `is_pro` here is computed from the same
+         *     `LIVE_SUBSCRIPTION_STATUSES` the entitlement read uses.
+         *
+         *     **`needs_payment` is the field this schema exists for.** `is_pro` is true for a
+         *     `past_due` account — a failed payment leaves someone entitled while they fix it — so a
+         *     screen that could only see the bool would show a person with a recoverable problem
+         *     exactly what it shows a person with none.
+         *
+         *     **`period_end` is not a renewal date**, and is not named as one. This product does not
+         *     model `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads
+         *     `active` until its term runs out and nothing here can tell them apart. The field says
+         *     when the current term ends, which is true in both cases.
+         */
+        BillingAccountOut: {
+            /** Had Pro */
+            had_pro: boolean;
+            /** Is Pro */
+            is_pro: boolean;
+            /** Needs Payment */
+            needs_payment: boolean;
+            /** Period End */
+            period_end: string | null;
+            /** Plan */
+            plan: string | null;
+            /** Status */
+            status: string | null;
+        };
+        /**
          * CalendarCapDetails
          * @description The `details` of a calendar-cap refusal: the cap, and one upgrade sentence.
          *
@@ -1369,6 +1643,87 @@ export interface components {
              * @default 20
              */
             page_size: number;
+        };
+        /**
+         * CollectionEventOut
+         * @description One saved event inside a collection — **the snapshot, and only the snapshot**.
+         *
+         *     **This deliberately carries no title, venue or URL**, which is what makes it different
+         *     from `SavedEventOut`. Those fields are the catalog's current values, read at request
+         *     time; reading them here would put a `catalog` query behind a `personal` endpoint, and
+         *     AD-3 forbids relating the two. The snapshot is what AD-17 propagation keeps correct and
+         *     what the Timeline and the conflict detector already use, so it is what this returns.
+         *
+         *     A surface that wants titles has `GET /api/personal/saved-events`, which is the endpoint
+         *     that owns that join.
+         */
+        CollectionEventOut: {
+            /** End Time Utc */
+            end_time_utc: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Version */
+            event_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+        };
+        /**
+         * CollectionIn
+         * @description The body of a create or a rename: a name, and nothing else (FR-49).
+         *
+         *     **No position.** Where a new collection lands is the server's rule — the end — and a
+         *     client that could choose would be a second writer of an ordering the reorder endpoint
+         *     already owns. Moving one is what `PUT /collections/order` is for.
+         */
+        CollectionIn: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * CollectionOrderIn
+         * @description A whole ordering, in one request (FR-49).
+         *
+         *     **The complete list, never a move instruction.** "Put this one third" has to be
+         *     interpreted against a list that may have changed since the client read it; a complete
+         *     order is unambiguous, and the result is the order the user saw themselves arrange. The
+         *     command refuses a list that does not name every collection exactly once, so the server
+         *     never observes a partially reordered list.
+         */
+        CollectionOrderIn: {
+            /** Collection Ids */
+            collection_ids: string[];
+        };
+        /**
+         * CollectionOut
+         * @description One collection as the client sees it.
+         *
+         *     `item_count` is here because every surface that lists collections wants it, and a
+         *     client counting for itself would need the membership of each one — turning one list
+         *     into N requests.
+         */
+        CollectionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Count */
+            item_count: number;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
         };
         /** ComponentOut */
         ComponentOut: {
@@ -1681,6 +2036,31 @@ export interface components {
              */
             id: string;
             onboarding: components["schemas"]["OnboardingStatusOut"];
+        };
+        /**
+         * DataExportOut
+         * @description One export request, as the settings screen sees it.
+         *
+         *     **It carries no download links.** The links live in the email, which is what FR-52
+         *     promises and what keeps a session-authed response from becoming a second way to reach
+         *     a file that is supposed to require the token.
+         */
+        DataExportOut: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Due By */
+            due_by: string;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Requested At */
+            requested_at: string;
+            /** Status */
+            status: string;
         };
         /**
          * DetailConflictOut
@@ -3891,6 +4271,44 @@ export interface operations {
             };
         };
     };
+    apps_identity_billing_api_get_billing_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_identity_billing_api_post_checkout: {
         parameters: {
             query?: never;
@@ -4292,6 +4710,82 @@ export interface operations {
             };
         };
     };
+    apps_identity_export_api_post_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataExportOut"];
+                };
+            };
+        };
+    };
+    apps_identity_export_api_get_export_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataExportOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_export_api_download_export: {
+        parameters: {
+            query?: {
+                token?: string;
+            };
+            header?: never;
+            path: {
+                export_id: string;
+                fmt: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     config_health_health: {
         parameters: {
             query?: never;
@@ -4645,6 +5139,292 @@ export interface operations {
             };
             /** @description Unprocessable Content */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_get_collections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"][];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_post_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_put_collection_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionOrderIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_delete_collection_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_patch_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_get_collection_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionEventOut"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_put_collection_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                saved_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_collections_api_delete_collection_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                saved_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
