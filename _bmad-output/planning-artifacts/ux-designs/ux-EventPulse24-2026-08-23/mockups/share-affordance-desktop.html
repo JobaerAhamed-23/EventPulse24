@@ -1,0 +1,384 @@
+<!--
+  EventPulse24 — Share Affordance, the SENDER's side (Desktop, 1280px) — DARK THEME
+
+  FR-28 Share-Card Public Link. Closes the TRACEABILITY.md open gap
+  ("PARTIAL (inferred only)").
+
+  WHY THIS FILE EXISTS, AND WHY share-link-desktop.html IS NOT IT.
+  `share-link-desktop.html` is self-tagged `UJ-5` — the journey where a RECIPIENT lands on
+  a shared link. That is the other end of the interaction. FR-28 is the SENDER's action:
+  "From any Pulse Card or Detail Screen, the user can generate a public share-link URL."
+  Where that control lives, what it looks like mid-share, what confirms the link was taken,
+  and what happens with no Web Share API — none of it was designed anywhere. EXPERIENCE.md
+  §964 carried one line: "Web Share API: for outbound shares (Pulse share-link, PRD FR-28)",
+  a platform-capability footnote, not a design. share-link-desktop.html KEEPS its UJ-5 tag;
+  this file does not repurpose it.
+
+  TWO SURFACES, TWO WEIGHTS, ONE BEHAVIOUR — per FR-28's "any Pulse Card or Detail Screen":
+    [1] Pulse Card      — `card` weight: bordered ghost, min 44px tap target.
+    [2] Detail Screen   — `secondary` weight: Button.Secondary, elevated fill.
+  Both produce the SAME URL. `lib/share-link.ts` is the only place it is built, because two
+  copies of a string concatenation are two URLs waiting to drift.
+
+  FOUR OUTCOMES, AND ONE OF THEM IS SILENCE:
+    [A] Shared.                          — the native Web Share sheet took it.
+    [B] Link copied.                     — no Web Share API; the clipboard took it.
+    [C] Couldn't copy the link. Try again. — neither happened.
+    [D] (nothing)                        — the user DISMISSED the share sheet.
+  [D] is a designed state, not an omission. Dismissing is the user's own choice; reporting
+  it as an error would be a lie about their action. A designer reading only a mockup would
+  reasonably add a "Share cancelled" toast — this file exists partly to stop that.
+
+  WHAT IS SHARED: `/events/{slug}` — FR-26's public page, which carries the Open Graph
+  metadata (rich unfurl) and the "Save to Pulse →" CTA (somewhere for an account-less
+  recipient to go). NEVER `/events/{uuid}`, which is the signed-in Detail Screen and would
+  meet a friend with a sign-in wall. That bug existed before the component did.
+
+  NOT ON THE TIMELINE. The Timeline event-block has no share control and should not get
+  one: the Timeline is read-only at MVP per Amendment A-8. Recorded here so the absence
+  reads as a decision rather than an oversight.
+
+  NOT GATED BY PRECISE-LOCATION. `share_precise_location` gates FR-52 data export only
+  (`apps/personalization/services/export_source.py`). It has no bearing on the share-link's
+  metadata, so there is no second, redacted state to draw.
+
+  Shell + sidenav + topbar + sidenav-footer byte-identical to reminder-picker-desktop.html
+  (Amendment A-8 shell + A-10 6-route sidenav variant). Active nav-item is Digest — both
+  host surfaces hang off the Digest surface in the IA.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Share affordance · EventPulse24</title>
+<link rel="icon" type="image/png" href="../../../../../docs/EventPulse24-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-paper:#0A0A0B; --surface-elevated:#131316; --surface-subtle:#1B1B1F; --surface-inset:#232328;
+    --ink-primary:#F2F2F4; --ink-secondary:#C9C9CF; --ink-muted:#8A8A92; --ink-faint:#3A3A40; --ink-inverse:#0A0A0B;
+    --accent-terracotta:#FF6A47; --accent-slate:#6E7E92; --accent-amber:#E89B4A;
+    --warm-personal:#C8967A; --warn-amber:#D8A86A;
+    --signal-success:#7AAA7A; --signal-warn:#D8A86A;
+    --border-subtle:rgba(242,242,244,0.08); --border-strong:rgba(242,242,244,0.16);
+    --family-display:"Source Serif 4",Fraunces,Georgia,serif;
+    --family-body:"Inter",-apple-system,system-ui,sans-serif;
+    --family-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+
+    --container-max: 1180px;
+    --sidenav-w: 240px;
+    --page-pad: 32px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background: var(--surface-paper); color: var(--ink-primary); font-family: var(--family-body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  /* ===== A-8 shell ===== */
+  .shell { display: grid; grid-template-columns: var(--sidenav-w) 1fr; min-height: 100vh; }
+  .main { padding: 0 var(--page-pad) 64px; max-width: var(--container-max); width: 100%; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 16px; max-width: var(--container-max); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 18px; font-weight: 600; letter-spacing: -0.012em; color: var(--ink-primary); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 14px rgba(255,106,71,0.55); }
+
+  .sidenav { position: sticky; top: 0; align-self: start; padding: 24px 16px 24px 0; border-right: 1px solid var(--border-subtle); height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+  .sidenav .brand-wrap { padding: 0 8px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); }
+  .sidenav .brand-wrap img { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 12px rgba(255,106,71,0.55); }
+  .sidenav .divider { height: 1px; background: var(--border-subtle); margin: 0 8px 8px; }
+  .sidenav .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .nav-item:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .nav-item.active { color: var(--ink-primary); background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+  .sidenav .nav-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .sidenav .sidenav-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+  .sidenav .footer-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; width: 100%; text-align: left; transition: background 160ms ease, color 160ms ease; }
+  .sidenav .footer-btn:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .footer-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .sidenav .account-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-secondary); font-weight: 500; }
+  .sidenav .account-row:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .sidenav .account-row .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #C8967A, #6E7E92); display: inline-flex; align-items: center; justify-content: center; color: var(--ink-inverse); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .sidenav .account-row .name { line-height: 1.2; }
+  .sidenav .account-row .name .small { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; }
+
+  .crumb { font-size: 12px; color: var(--ink-muted); margin: 24px 0 8px; }
+  .crumb .here { color: var(--ink-primary); }
+
+  .eyebrow { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-terracotta); margin-bottom: 14px; }
+  h1 { font-family: var(--family-display); font-size: 32px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lede { font-size: 14px; color: var(--ink-secondary); margin: 0 0 8px; max-width: 70ch; line-height: 1.6; }
+
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin: 44px 0 16px; padding-top: 28px; border-top: 1px solid var(--border-subtle); }
+  .section-head:first-of-type { border-top: 0; padding-top: 0; margin-top: 28px; }
+  .section-head .key { font-family: var(--family-mono); font-size: 12px; font-weight: 600; color: var(--ink-inverse); background: var(--accent-terracotta); border-radius: 6px; padding: 3px 8px; flex-shrink: 0; }
+  .section-head .what { font-family: var(--family-display); font-size: 19px; font-weight: 600; color: var(--ink-primary); letter-spacing: -0.01em; }
+  .section-head .why { font-size: 12px; color: var(--ink-muted); margin-left: auto; font-family: var(--family-mono); }
+
+  .two-up { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  @media (max-width: 1023px) { .two-up { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 24px; }
+  .panel h3 { font-family: var(--family-display); font-size: 16px; font-weight: 600; color: var(--ink-primary); margin: 0 0 12px; letter-spacing: -0.01em; }
+  .panel p { font-size: 13px; color: var(--ink-secondary); margin: 0 0 12px; line-height: 1.55; }
+  .panel p.muted { font-size: 12px; color: var(--ink-muted); margin: 0; line-height: 1.55; }
+
+  /* ===== [1] Pulse Card host surface ===== */
+  .pulse-card { background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 22px; position: relative; overflow: hidden; }
+  .pulse-card .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent-slate); }
+  .pulse-card .cat { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--accent-slate); margin-bottom: 10px; display: block; }
+  .pulse-card h2 { font-family: var(--family-display); font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 8px; }
+  .pulse-card .meta { font-size: 13px; color: var(--ink-secondary); margin: 0 0 6px; }
+  .pulse-card .why { font-size: 12px; color: var(--ink-muted); font-style: italic; margin: 0 0 18px; }
+  .card-actions { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+
+  /* `card` weight — the bordered ghost, 44px floor */
+  .btn-card { display: inline-flex; min-height: 44px; align-items: center; border-radius: 12px; border: 1px solid var(--border-subtle); padding: 8px 16px; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
+  .btn-card:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+  .btn-card.save { color: var(--accent-terracotta); border-color: rgba(255,106,71,0.30); }
+
+  /* ===== [2] Detail Screen host surface ===== */
+  .detail-actions { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .btn-primary { background: var(--accent-terracotta); color: var(--ink-inverse); padding: 11px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+  .btn-primary:hover { background: #FF7E5E; }
+  /* `secondary` weight — Button.Secondary */
+  .btn-secondary { background: var(--surface-elevated); border: 1px solid var(--border-subtle); color: var(--ink-secondary); padding: 11px 24px; border-radius: 12px; font-size: 14px; font-weight: 500; }
+  .btn-secondary:hover { background: var(--surface-subtle); color: var(--ink-primary); }
+
+  /* The share control's own stack: button + its confirmation line */
+  .share-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .share-say { font-size: 12px; color: var(--ink-muted); min-height: 16px; }
+  .share-say.fail { color: var(--signal-warn); }
+  .share-say em { font-style: normal; color: var(--ink-faint); font-family: var(--family-mono); font-size: 11px; }
+
+  /* Outcome matrix */
+  .outcomes { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-top: 4px; }
+  @media (max-width: 1023px) { .outcomes { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  .outcome { background: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; }
+  .outcome .tag { font-family: var(--family-mono); font-size: 11px; font-weight: 600; color: var(--ink-muted); display: block; margin-bottom: 10px; }
+  .outcome .trigger { font-size: 12px; color: var(--ink-muted); margin: 10px 0 0; line-height: 1.5; }
+  .outcome.silent { border-style: dashed; }
+
+  /* URL plate */
+  .url-plate { background: var(--surface-paper); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px 14px; font-family: var(--family-mono); font-size: 12px; color: var(--ink-secondary); word-break: break-all; }
+  .url-plate .good { color: var(--signal-success); }
+  .url-plate .bad { color: var(--signal-warn); text-decoration: line-through; }
+  .url-note { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; line-height: 1.55; }
+
+  .note-fr { font-family: var(--family-mono); font-size: 11px; color: var(--ink-muted); line-height: 1.7; margin: 0; }
+  .note-fr b { color: var(--ink-secondary); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidenav" aria-label="Primary">
+    <div class="brand-wrap">
+      <img src="../../../../../docs/EventPulse24-logo.png" alt="" width="24" height="24" aria-hidden="true" />
+      EventPulse24
+    </div>
+    <div class="divider"></div>
+    <a href="#" class="nav-item active" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      Digest
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Timeline
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-4 4-2-2"/><path d="m3 12 3-3M21 12l-3 3"/></svg>
+      Browse
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/></svg>
+      Conflicts
+    </a>
+    <a href="#" class="nav-item">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </a>
+
+    <div class="sidenav-footer">
+      <button type="button" class="footer-btn" aria-label="Search events">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </button>
+      <a href="#" class="account-row" aria-label="Account: Maya Patel — opens Settings">
+        <span class="avatar" aria-hidden="true">MP</span>
+        <span class="name">Maya Patel<span class="small">Account</span></span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <nav class="topbar" aria-label="Brand">
+      <span class="brand">
+        <img class="brand-mark" src="../../../../../docs/EventPulse24-logo.png" alt="" width="26" height="26" aria-hidden="true" />
+        <span class="brand-text">EventPulse24</span>
+      </span>
+    </nav>
+
+    <div class="crumb"><span class="here">Share affordance — the sender's side</span></div>
+
+    <div class="eyebrow">FR-28 · sender</div>
+    <h1>Sharing an event</h1>
+    <p class="lede">The control that <em>generates</em> the link. The page a recipient lands on is <code>share-link-desktop.html</code>, tagged <code>UJ-5</code> — that is the other end of this interaction, and it is not this.</p>
+
+    <!-- ===================== [1] + [2] the two host surfaces ===================== -->
+    <div class="section-head">
+      <span class="key">1·2</span>
+      <span class="what">Two surfaces, two weights, one behaviour</span>
+      <span class="why">FR-28 · "any Pulse Card or Detail Screen"</span>
+    </div>
+
+    <div class="two-up">
+      <div>
+        <div class="panel" style="padding:0; background:none; border:0;">
+          <h3>On a Pulse Card — <code>card</code> weight</h3>
+        </div>
+        <div class="pulse-card">
+          <span class="stripe" aria-hidden="true"></span>
+          <span class="cat">Public · Tech</span>
+          <h2>Designing for Calm</h2>
+          <p class="meta">Thu, Aug 28 · 6:30 PM · Brooklyn Arts Council</p>
+          <p class="why">Because you saved two design talks this month.</p>
+          <div class="card-actions">
+            <button class="btn-card save" type="button">Save to Pulse</button>
+            <span class="share-stack">
+              <button class="btn-card" type="button" aria-label="Share Designing for Calm">Share</button>
+              <span class="share-say" aria-live="polite"></span>
+            </span>
+          </div>
+        </div>
+        <p class="url-note">Bordered ghost, <code>min-height: 44px</code> — the card is a touch surface first, and a 36px control is a miss on a phone.</p>
+      </div>
+
+      <div>
+        <div class="panel" style="padding:0; background:none; border:0;">
+          <h3>On the Detail Screen — <code>secondary</code> weight</h3>
+        </div>
+        <div class="panel">
+          <p class="muted" style="margin-bottom:16px;">Action row, <em>Designing for Calm</em></p>
+          <div class="detail-actions">
+            <button class="btn-primary" type="button">Save to Pulse</button>
+            <button class="btn-secondary" type="button">Edit reminders</button>
+            <span class="share-stack">
+              <button class="btn-secondary" type="button" aria-label="Share Designing for Calm">Share</button>
+              <span class="share-say" aria-live="polite"></span>
+            </span>
+          </div>
+        </div>
+        <p class="url-note">Same affordance at the surface's own specified weight. The behaviour does not change with the weight — only the chrome does.</p>
+      </div>
+    </div>
+
+    <!-- ===================== outcomes ===================== -->
+    <div class="section-head">
+      <span class="key">A–D</span>
+      <span class="what">Four outcomes — and one of them is silence</span>
+      <span class="why">the control makes claims; they must be true</span>
+    </div>
+
+    <div class="outcomes">
+      <div class="outcome">
+        <span class="tag">A · shared</span>
+        <span class="share-stack">
+          <button class="btn-card" type="button">Share</button>
+          <span class="share-say">Shared.</span>
+        </span>
+        <p class="trigger">The native Web Share sheet accepted it. The user picked the app; the app did the rest.</p>
+      </div>
+
+      <div class="outcome">
+        <span class="tag">B · copied</span>
+        <span class="share-stack">
+          <button class="btn-card" type="button">Share</button>
+          <span class="share-say">Link copied.</span>
+        </span>
+        <p class="trigger">No Web Share API. The clipboard took it — and the control <strong>says which</strong>, because "I copied it" and "I shared it" are different claims.</p>
+      </div>
+
+      <div class="outcome">
+        <span class="tag">C · failed</span>
+        <span class="share-stack">
+          <button class="btn-card" type="button">Share</button>
+          <span class="share-say fail">Couldn't copy the link. Try again.</span>
+        </span>
+        <p class="trigger">Neither happened. Never claims a copy that did not occur — the one thing this confirmation must not do.</p>
+      </div>
+
+      <div class="outcome silent">
+        <span class="tag">D · dismissed</span>
+        <span class="share-stack">
+          <button class="btn-card" type="button">Share</button>
+          <span class="share-say"><em>(says nothing)</em></span>
+        </span>
+        <p class="trigger"><strong>A designed state, not an omission.</strong> The user closed the sheet. That is their choice, not an error, and reporting it as one would be a lie about their own action.</p>
+      </div>
+    </div>
+
+    <!-- ===================== the URL ===================== -->
+    <div class="section-head">
+      <span class="key">URL</span>
+      <span class="what">What actually gets shared</span>
+      <span class="why">FR-28 → FR-26's public page</span>
+    </div>
+
+    <div class="two-up">
+      <div class="panel">
+        <h3>One URL, one builder</h3>
+        <div class="url-plate">
+          <span class="good">https://eventpulse24.com/events/designing-for-calm</span><br /><br />
+          <span class="bad">https://eventpulse24.com/events/0191f3c2-…-7a41</span>
+        </div>
+        <p class="url-note">The <strong>slug</strong>, never the id. <code>/events/{uuid}</code> is the signed-in Detail Screen — a friend who opened it would meet a sign-in wall instead of the event.</p>
+        <p class="url-note">No query parameter, no fragment, no <code>?shared_by=</code>. A variant would be a second URL for one document, and the public page canonicalises to <code>/events/{slug}</code> — a crawler fetching the variant would record two documents.</p>
+      </div>
+
+      <div class="panel">
+        <h3>Why the link is worth receiving</h3>
+        <p>The destination is FR-26's public page, which carries its <strong>Open Graph metadata</strong> — title, description and image — so the unfurl is rich in a messaging app, and a <strong>"Save to Pulse →"</strong> CTA so a recipient with no account has somewhere to go.</p>
+        <p class="muted">The description falls back to "{title} — {source}" when the event has none, so an unfurl is never a blank-bodied card. The image is static and branded, the same for every event.</p>
+      </div>
+    </div>
+
+    <!-- ===================== rules ===================== -->
+    <div class="section-head">
+      <span class="key">!</span>
+      <span class="what">Three rules a mockup alone would lose</span>
+      <span class="why">read before implementing</span>
+    </div>
+
+    <div class="two-up">
+      <div class="panel">
+        <h3>The confirmation is not a toast</h3>
+        <p>It is a <strong>bare <code>aria-live="polite"</code> region, never a second <code>role="status"</code></strong>. The digest page owns the page's status region and the Detail Screen's action row owns one for the conflict failure; two on a surface makes "which one is the page talking?" unanswerable by the DOM.</p>
+        <p class="muted">It is always present in the DOM, even when it says nothing — a live region added <em>together with</em> its text is not announced reliably.</p>
+      </div>
+
+      <div class="panel">
+        <h3>A visible label, never an icon alone</h3>
+        <p>There is no icon library in this product (<code>DESIGN.md</code>: "UI system: None"), and a share glyph with no label would fail the rule every other control here passes.</p>
+        <p class="muted">The accessible name is "Share {event title}" and <em>contains</em> the visible word "Share" (WCAG 2.5.3). On a digest of three cards, three buttons all named "Share" would tell a screen-reader user nothing about which event they are about to send.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <h3>Traceability</h3>
+      <p class="note-fr">
+        <b>FR-28</b> — Share-Card Public Link, the sender's side. Closes the TRACEABILITY.md PARTIAL.<br />
+        <b>UJ-5</b> — the recipient's landing page, <code>share-link-desktop.html</code>. Unchanged, not repurposed.<br />
+        <b>FR-26</b> — the public page this link resolves to, and the source of the Open Graph tags.<br />
+        <b>AD-12</b> — the shared URL carries no session-dependent data; the public surface never depends on a session.<br />
+        <b>A-8</b> — no share control on the Timeline event-block; the Timeline is read-only at MVP.
+      </p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

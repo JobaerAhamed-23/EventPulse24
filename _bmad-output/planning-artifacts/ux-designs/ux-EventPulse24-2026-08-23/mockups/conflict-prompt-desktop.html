@@ -1,6 +1,25 @@
 <!--
   EventPulse24 — Conflict Resolution Prompt (Desktop, modal) — DARK THEME
   FR-58 — Three forced choices. No dismiss button.
+
+  FR-55 — THE SAME SURFACE, A SECOND TRIGGER. Added 2026-11-12. Do not strip this tag as a
+  duplicate: its absence is exactly what TRACEABILITY.md scored FR-55 "PARTIAL (inferred
+  only)" for, having found "only overlap with FR-58's conflict UI, WITH NO DOCUMENTED
+  ACKNOWLEDGMENT IT ALSO SERVES THIS TRIGGER". This comment is that acknowledgment.
+
+  The reuse is architectural, not incidental. FR-58 fires when the USER creates a clash;
+  FR-55 fires when an organiser cancels, postpones or moves an event underneath the user.
+  Both write and read the SAME `CONFLICT_PAIR` row, and AD-21 makes that record the single
+  source for every conflict indicator in the product — "the Pulse Card indicator, the
+  Timeline event-block indicator and /conflicts all read the same rows, so the indicator is
+  symmetric by construction." One record, therefore one surface.
+
+  What differs is the moment, not the markup: under FR-58 the user is present and choosing,
+  so the prompt requires an explicit choice; under FR-55 nobody is present and nobody chose,
+  so the surface informs first and offers this prompt only while a live overlap remains. A
+  pair that closes because the event was cancelled closes as `cleared_by_state_change`,
+  which is NOT a user resolution and is never re-prompted — see
+  `event-state-conflict-desktop.html`, which is FR-55's own surface.
 -->
 <!doctype html>
 <html lang="en" data-theme="dark">
