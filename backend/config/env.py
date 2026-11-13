@@ -80,9 +80,15 @@ class Settings(BaseSettings):
     # is: the frontend's routes can move without a backend change, and a deployment can
     # point the flow at a different host. What stays fixed is the rule — **the client never
     # supplies any part of these URLs**.
-    billing_success_path: str = "/settings/billing?checkout=complete"
-    billing_cancel_path: str = "/settings/billing?checkout=cancelled"
-    billing_portal_return_path: str = "/settings/billing"
+    # **They point at `/settings/account`, which is the screen that renders the plan.**
+    # They pointed at `/settings/billing` until 2026-11-13, and that route has never
+    # existed — so every completed checkout and every return from the customer portal
+    # landed the user on a 404 immediately after paying. The plan, the portal button and
+    # the `past_due` banner are all on `/settings/account`; that is where the flow
+    # belongs, and the account screen ignores the query parameter it arrives with.
+    billing_success_path: str = "/settings/account?checkout=complete"
+    billing_cancel_path: str = "/settings/account?checkout=cancelled"
+    billing_portal_return_path: str = "/settings/account"
 
     # How long the backend waits for the frontend's revalidation route handler to answer.
     revalidation_timeout_seconds: PositiveFloat = 5.0

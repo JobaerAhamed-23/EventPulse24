@@ -8,6 +8,10 @@ was never regenerated across eleven intents and twenty-eight runs. Three of its 
 expired and one was always wrong; all four are retired below, with evidence, rather than
 being silently dropped by the re-scan.
 
+**Section C — PRD ↔ Implementation was added 2026-11-13** and is the only section that asks
+whether a user can reach a requirement. Sections A and B are unchanged by that addition:
+adding a third measurement must not quietly restate the first two.
+
 **Sources scanned:**
 - PRD: `_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md` — 45 MVP functional requirements (FR-1–FR-30, FR-32, FR-33, FR-48–FR-60). FR-31 and FR-34–FR-47 are Phase 2/3/Year 2+, listed separately and not scored.
 - Architecture Spine: `_bmad-output/planning-artifacts/architecture/architecture-EventPulse24-2026-09-04/ARCHITECTURE-SPINE.md`
@@ -185,6 +189,65 @@ Both claims are contradicted by the current spine:
 It is not recorded whether the spine changed after 2026-09-08 or whether the finding was
 wrong when written. Either way it is wrong now, and leaving it to be dropped silently by a
 re-scan would lose the fact that it was ever claimed.
+
+---
+
+## Section C — PRD ↔ Implementation
+
+*Added 2026-11-13 by `unwired-surfaces/traceability-implementation-section`
+(`run-eventpulse24-031`). The rules are now Step 4b of the `doc-trace` skill, so a
+regeneration reproduces this section rather than deleting it.*
+
+**Can a user reach this, in the running product, today?**
+
+Sections A and B cannot see the difference between designed and built. FR-18 carried `FULL`
+in both while its delete control did not exist — scored on a mockup that draws a danger zone
+nobody implemented. A manual audit on 2026-11-13 found **eight** such gaps across twelve
+intents and thirty runs, with every test green.
+
+**Evidence here is running code — a route, a mount, a control on a surface that renders.**
+A mockup is Section A's evidence and is never reused here. `UNASSESSED` is honest; a guessed
+`FULL` is how this section would become as blind as the two above it.
+
+**Counts: 9 FULL · 0 PARTIAL · 3 MISSING · 33 UNASSESSED** (45 MVP FRs)
+
+### Scored this pass — the FRs the audit and `run-eventpulse24-031` touched
+
+| FR | Requirement | Status | Evidence (running code) |
+|---|---|---|---|
+| FR-18 | Manual Personal Event Creation — *"a user can edit **or delete**"* | **FULL** | create/edit: `components/sheets/personal-event-form.tsx`; delete: its `DangerZone`, reachable from the Timeline's personal blocks, the conflicts panel and the detail move flow. **Was MISSING until commit `2ba0073` (2026-11-13)** while Sections A and B both said FULL |
+| FR-20 | Personal Event Reminder Defaults | **FULL** | `app/personal-events/[id]/reminders/page.tsx`, linked from the edit sheet. **Was MISSING until commit `63a9535`**: `ReminderPicker` was mounted once, hard-coded `targetKind="saved_event"` |
+| FR-24 | Neighbour count — *"saved **or** opened"* | **FULL** | `components/detail/record-detail-open.tsx`, mounted for `read.kind === "found"`. **Was PARTIAL until commit `d064713`**: the save half fired, the open half never did, so every count was the saver count |
+| FR-49 | Unlimited Saves + Saved Collections (Pro) | **FULL** | `components/collections/collection-manager.tsx` — create, rename, reorder, delete, assign, unassign. **Assign was MISSING until commit `da924ca`**: a collection could not be filled |
+| FR-50 | Calendar Provider Read-Only Sync | **FULL** | connect: `components/onboarding/calendar-step.tsx`; disconnect + reconnect: `app/settings/calendars/page.tsx`. **Both were MISSING until commit `2dc7432`**, while onboarding promised disconnect twice |
+| FR-19 | Personal Event in Pulse Digest (and its opt-out) | **FULL** | `app/settings/digest/` + `components/settings/digest-personal-events.tsx` (`run-eventpulse24-030`) |
+| FR-9 | Multi-Tier Reminder Picker | **FULL** | `app/events/[id]/reminders/page.tsx` |
+| FR-28 | Share affordance | **FULL** | `components/share/share-control.tsx`, used by the detail row and the Pulse Card |
+| FR-59 | User-Reported Event Quality | **FULL** | `components/detail/event-report-control.tsx` → `POST /api/personal/event-reports` |
+| FR-25 | "Less like this" Adjustment | **MISSING** | No endpoint, no model, no column, no UI. `EmbeddingPort` has no production caller and no migration enables pgvector. Now `relevance-feedback-loop` |
+| FR-16 | Source Reliability Score | **MISSING** | `domain/reliability.py` computes it and `SourceReliabilityScore` stores it; **nothing exposes it to a user**. Now `source-transparency-and-mute`. (Section A scores this `PARTIAL` for a different reason — no design citation — and the two are unrelated) |
+| FR-13 | Source Registry | **MISSING** | The registry is built and populated; there is no user-reachable surface for it. Same intent as FR-16 |
+
+### Not scored this pass
+
+**33 MVP FRs are `UNASSESSED`.** They were not checked against the code in this pass, and
+are left unscored rather than inferred from Section A — which is the error this section
+exists to correct. A full pass is a `doc-trace` run of its own.
+
+### Two traps this section must keep avoiding
+
+1. **A called endpoint is not a reachable feature.** `SavedEventsSection` called
+   `GET /api/personal/saved-events` from a component nothing rendered;
+   `PersonalEventsPanel`'s list branch was the same. Both had passing tests. Both were
+   deleted in commit `b9b8438`. `frontend/tests/endpoint-coverage.test.ts` would have
+   counted them covered and says so in its own docstring.
+2. **A passing test is not a reachable feature.** Every gap above sat behind a green suite.
+
+### Open items carried out of Section C
+
+- 33 FRs to assess.
+- FR-25, FR-16 and FR-13 have intents (`relevance-feedback-loop`,
+  `source-transparency-and-mute`) and are not otherwise tracked here.
 
 ---
 

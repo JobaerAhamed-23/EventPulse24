@@ -45,6 +45,14 @@ export type PersonalEventFormProps = {
    * conflict flow.
    */
   highlightStartTime?: boolean;
+  /**
+   * The event being edited, when there is one.
+   *
+   * **Only the edit sheet has one**, and it is what the reminders link points at. The
+   * form itself never sends it anywhere — it edits by calling `onSubmit`, and the caller
+   * knows which event it opened.
+   */
+  eventId?: string;
   /** Called when the sheet closes without saving. */
   onClose: () => void;
   /**
@@ -99,6 +107,7 @@ export function PersonalEventForm({
   mode,
   initial,
   highlightStartTime = false,
+  eventId,
   onClose,
   onSubmit,
   onDelete,
@@ -344,6 +353,27 @@ export function PersonalEventForm({
               className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
             />
           </Field>
+          {/*
+            **The way to this event's reminders (FR-20).**
+
+            The plan is attached silently at creation — this form says nothing about
+            reminders, by design — so the edit sheet is where a user first learns the
+            event has one, and the link is how they reach it. Only in edit mode: a
+            create has no event to carry a plan yet.
+
+            A link, not a button: it leaves the sheet for a full route, and a control
+            that navigates should be something a reader can open in a new tab.
+          */}
+          {mode === "edit" && eventId ? (
+            <a
+              href={`/personal-events/${eventId}/reminders`}
+              data-reminders-link
+              className="inline-block min-h-[44px] text-ink-secondary underline underline-offset-4 [font:var(--type-scale-meta-md)]"
+            >
+              Edit reminders for this event
+            </a>
+          ) : null}
+
           {mode === "edit" && onDelete ? (
             <DangerZone
               eventName={storedName}

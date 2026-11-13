@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CollectionManager } from "@/components/collections/collection-manager";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { UpgradePrompt } from "@/components/upgrade/upgrade-prompt";
@@ -66,6 +67,8 @@ export default async function SettingsCollectionsPage() {
   if (read.kind === "unavailable") {
     return (
       <AppShell name={name} email={session.user.email}>
+        <SettingsNav />
+
         <SettingsStates />
       </AppShell>
     );
@@ -75,6 +78,8 @@ export default async function SettingsCollectionsPage() {
 
   return (
     <AppShell name={name} email={session.user.email}>
+      <SettingsNav />
+
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Collections</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">

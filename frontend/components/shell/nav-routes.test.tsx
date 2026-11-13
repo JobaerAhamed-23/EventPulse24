@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BottomTabNav } from "@/components/shell/bottom-tab-nav";
 import { Sidenav } from "@/components/shell/sidenav";
+import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
 /**
  * The navigation's real routes.
@@ -145,27 +146,30 @@ describe("the sidenav", () => {
     expect(link?.getAttribute("aria-current")).toBeNull();
   });
 
-  it("makes Settings a real route, because the settings screens exist", () => {
+  it("points Settings at the index, not at one of the six screens", () => {
+    // It pointed at `/settings/reminders` until the index existed, and that screen has
+    // no links out — so the rail's Settings row landed the user on one of six settings
+    // screens with no way to reach the other five.
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
     const item = sidenavItem("Settings");
     const link = item?.querySelector("a");
     expect(link).not.toBeNull();
-    expect(link?.getAttribute("href")).toBe("/settings/reminders");
+    expect(link?.getAttribute("href")).toBe("/settings");
     expect(item?.querySelector("[aria-disabled='true']")).toBeNull();
   });
 
-  it("marks Settings active on both settings routes", () => {
-    // **The prefix rule, like Digest's.** The user has not left Settings on
-    // `/settings/quiet-hours`, and a rail that marks nothing active on half of
-    // Settings reads as "you have left Settings".
-    for (const path of ["/settings/reminders", "/settings/quiet-hours"]) {
+  it("marks Settings active on the index and on every section", () => {
+    // **The prefix rule, like Digest's** — plus the equality the prefix cannot cover.
+    // `"/settings".startsWith("/settings/")` is false, so a bare prefix would drop the
+    // highlight on the index: the rail going quiet on the screen it just navigated to.
+    for (const path of ["/settings", ...SETTINGS_SECTIONS.map((section) => section.href)]) {
       pathname.mockReturnValue(path);
 
       render(<Sidenav name="Maya" email="maya@example.test" />);
 
       const link = [...sidenavRail().querySelectorAll("a")].find(
-        (anchor) => anchor.getAttribute("href") === "/settings/reminders",
+        (anchor) => anchor.getAttribute("href") === "/settings",
       );
       expect(link?.getAttribute("aria-current"), path).toBe("page");
       cleanup();
@@ -178,7 +182,7 @@ describe("the sidenav", () => {
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
-      (anchor) => anchor.getAttribute("href") === "/settings/reminders",
+      (anchor) => anchor.getAttribute("href") === "/settings",
     );
     expect(link?.getAttribute("aria-current")).toBeNull();
   });
@@ -225,10 +229,10 @@ describe("the bottom tab", () => {
     // change these later in Settings"* — has to be true on a phone too.
     //
     // **Every route the bar carries is a real one now.** Browse lives behind the More
-    // sheet, and Settings points at `/settings/reminders` — so the bar's `aria-disabled`
-    // slots are gone, and this says so.
+    // sheet, and Settings points at `/settings` — the index, the same destination the
+    // desktop rail uses — so the bar's `aria-disabled` slots are gone, and this says so.
     const link = screen.getByRole("link", { name: "Settings" });
-    expect(link).toHaveAttribute("href", "/settings/reminders");
+    expect(link).toHaveAttribute("href", "/settings");
 
     const settingsSlot = [...bottomBar().querySelectorAll("a, [aria-disabled]")].find(
       (slot) => slot.textContent?.trim() === "Settings",
@@ -259,8 +263,8 @@ describe("the bottom tab", () => {
     expect(screen.getByRole("link", { name: "Digest" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("marks Settings as the current route on both settings routes", () => {
-    for (const path of ["/settings/reminders", "/settings/quiet-hours"]) {
+  it("marks Settings as the current route on the index and every section", () => {
+    for (const path of ["/settings", ...SETTINGS_SECTIONS.map((section) => section.href)]) {
       pathname.mockReturnValue(path);
 
       render(<BottomTabNav name="Maya" email="maya@example.test" />);

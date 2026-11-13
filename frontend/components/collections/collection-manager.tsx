@@ -42,6 +42,28 @@ type CollectionEvent = {
   event_version: number;
 };
 
+/**
+ * One of the user's saves, as the picker needs it.
+ *
+ * **This comes from a different endpoint than the collection's contents, and deliberately
+ * so.** `CollectionEventOut` carries no title, because *"reading them here would put a
+ * `catalog` query behind a `personal` endpoint, and AD-3 forbids relating the two"*
+ * (`schemas.py:1461`). Its docstring names the remedy: *"A surface that wants titles has
+ * `GET /api/personal/saved-events`, which is the endpoint that owns that join."* The picker
+ * wants titles — a list of bare timestamps is not something a person can choose from — so
+ * it reads that endpoint.
+ *
+ * **The two endpoints agree about identity.** `SavedEventOut.id` is *"the personal row's
+ * id"* and `CollectionEventOut.id` is *"the personal save's id — its identity, and what
+ * membership points at"*. The same id, so "already in this collection" is a set difference
+ * and not a translation.
+ */
+type AssignableSave = {
+  id: string;
+  title: string;
+  start_time_utc: string;
+};
+
 export type CollectionManagerProps = {
   /** The user's collections, in their order, as the server read them. */
   initial: CollectionOut[];
@@ -49,6 +71,15 @@ export type CollectionManagerProps = {
 
 /** The offline failure line. Nothing was lost, so it invites a retry. */
 const FAILED = "Couldn't save that. Try again in a moment.";
+
+/**
+ * The picker's read failure.
+ *
+ * **A read is not a save, and the line says so.** Reusing `FAILED` here would tell a user
+ * whose saves failed to load that we could not save something — a sentence about the wrong
+ * operation, on a screen where both happen.
+ */
+const READ_FAILED = "Couldn't read your saves. Try again in a moment.";
 
 /** One stored instant as a date a person reads. */
 function readableWhen(iso: string): string {
@@ -74,6 +105,15 @@ export function CollectionManager({ initial }: CollectionManagerProps) {
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   /** Which collection is expanded, and the saves inside it. */
   const [opened, setOpened] = useState<{ id: string; events: CollectionEvent[] } | null>(null);
+  /**
+   * The picker's state: whether it is open, and what the user has to choose from.
+   *
+   * **`saves` is `null` until the read lands**, which is how "not read yet" is told apart
+   * from "read, and there are none". The two look identical on screen and mean opposite
+   * things — the same distinction the collections page draws between "unavailable" and
+   * "you have none".
+   */
+  const [picking, setPicking] = useState<{ saves: AssignableSave[] | null } | null>(null);
 
   /** Re-read the list, so positions and counts are the server's rather than a guess. */
   const refresh = useCallback(async (): Promise<void> => {
@@ -168,20 +208,88 @@ export function CollectionManager({ initial }: CollectionManagerProps) {
     [collections, run],
   );
 
-  /** Open a collection and read what is in it. */
+  /**
+   * Read one collection's contents and show them. **This does not toggle.**
+   *
+   * `open()` is the toggle, and a write that wants to refresh what is on screen must not
+   * go through it: calling `open()` on the collection that is already open *closes* it, so
+   * an assign that re-read that way would collapse the collection the user is filling.
+   */
+  const readEvents = useCallback(async (id: string): Promise<void> => {
+    const response = await api.GET("/api/personal/collections/{collection_id}/events", {
+      params: { path: { collection_id: id } },
+    });
+    setOpened({ id, events: (response.data as CollectionEvent[] | undefined) ?? [] });
+  }, []);
+
+  /** Open a collection and read what is in it — or close it if it is already open. */
   const open = useCallback(
     async (id: string) => {
+      // **Closing or switching closes the picker.** It belongs to the collection it was
+      // opened inside; leaving it up across a switch would offer to assign into a
+      // collection the user is no longer looking at.
+      setPicking(null);
       if (opened?.id === id) {
         setOpened(null);
         return;
       }
       setFailure(null);
-      const response = await api.GET("/api/personal/collections/{collection_id}/events", {
-        params: { path: { collection_id: id } },
-      });
-      setOpened({ id, events: (response.data as CollectionEvent[] | undefined) ?? [] });
+      await readEvents(id);
     },
-    [opened],
+    [opened, readEvents],
+  );
+
+  /**
+   * Open the picker and read the user's saves.
+   *
+   * **The read happens here, not in `open()`.** A user who expands a collection to look at
+   * what is in it does not pay for a saves read; only pressing "Add a save" does. The saves
+   * list is unbounded for a Pro account, so this is not a trivial difference.
+   */
+  const startPicking = useCallback(async (): Promise<void> => {
+    setFailure(null);
+    setPicking({ saves: null });
+    try {
+      const response = await api.GET("/api/personal/saved-events");
+      // **No refusal to quote, so none is invented.** This endpoint declares a 200 and
+      // nothing else, so the generated client types its `error` as `never` — there is no
+      // server sentence to render, and `saveFailureMessage`'s refusal branch would be
+      // dead code here. A missing body is the only failure shape there is.
+      if (!response.data) {
+        setFailure(READ_FAILED);
+        setPicking(null);
+        return;
+      }
+      const items = (response.data as { items?: AssignableSave[] }).items ?? [];
+      setPicking({ saves: items });
+    } catch {
+      setFailure(READ_FAILED);
+      setPicking(null);
+    }
+  }, []);
+
+  /**
+   * Put one save into the open collection.
+   *
+   * **The write goes through `run()`**, which owns the refusal/offline split every other
+   * command here uses. A Free account's 409 carries `{cap, upgrade_hint}` and
+   * `saveFailureMessage` renders the server's own sentence — this component builds no
+   * second prompt, and a cap is never a modal.
+   */
+  const assign = useCallback(
+    async (collectionId: string, savedEventId: string): Promise<void> => {
+      const ok = await run(() =>
+        api.PUT("/api/personal/collections/{collection_id}/events/{saved_event_id}", {
+          params: { path: { collection_id: collectionId, saved_event_id: savedEventId } },
+        }),
+      );
+      // **Re-read rather than splice.** The server's list is this component's source of
+      // truth after every write, and the re-read is what removes the save from the picker:
+      // the picker is derived from what the collection holds, so it cannot drift from it.
+      // `readEvents`, not `open` — `open` would toggle the collection shut.
+      if (ok) await readEvents(collectionId);
+    },
+    [readEvents, run],
   );
 
   const unassign = useCallback(
@@ -393,7 +501,7 @@ export function CollectionManager({ initial }: CollectionManagerProps) {
                     // failure — so it says so plainly rather than borrowing the dashed
                     // "nothing here went wrong" treatment.
                     <p className="text-ink-muted [font:var(--type-scale-body-sm)]">
-                      Nothing in here yet. Add saves to it from your saved events.
+                      Nothing in here yet. Add a save to it below.
                     </p>
                   ) : (
                     <ul className="flex flex-col gap-2">
@@ -424,6 +532,16 @@ export function CollectionManager({ initial }: CollectionManagerProps) {
                       ))}
                     </ul>
                   )}
+
+                  {/* ── Add a save ─────────────────────────────────────────── */}
+                  <AssignPicker
+                    collectionId={collection.id}
+                    picking={picking}
+                    alreadyIn={opened.events}
+                    busy={busy}
+                    onStart={startPicking}
+                    onAssign={assign}
+                  />
                 </div>
               ) : null}
             </li>
@@ -431,5 +549,118 @@ export function CollectionManager({ initial }: CollectionManagerProps) {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * "Add a save" — the control that makes a collection fillable (FR-49).
+ *
+ * **The endpoint it reaches has existed, tested, since the collections intent and had no
+ * caller until now.** `PUT /api/personal/collections/{id}/events/{saved_event_id}` is
+ * idempotent and a save may belong to several collections at once — *"membership is a
+ * table, not a column"* (`collections_api.py:235`) — so the picker opens from each
+ * collection rather than asking the user to pick several at once.
+ *
+ * **A save already in this collection is not offered.** The endpoint would answer 204 and
+ * write nothing, which is correct of it and wrong of a button: an action that visibly does
+ * nothing is the failure this whole surface exists to remove.
+ *
+ * **The tier gate is inherited, not re-implemented.** `CollectionManager` renders only for
+ * a Pro account (`app/settings/collections/page.tsx:86`), so a Free user never reaches this
+ * control and no 409 is ever provoked — the same reasoning that page already applies to
+ * create: *"A Free user is never refused here, because they are never given a control that
+ * could be refused."* Taking a save **out** stays open on every tier, and is untouched.
+ */
+function AssignPicker({
+  collectionId,
+  picking,
+  alreadyIn,
+  busy,
+  onStart,
+  onAssign,
+}: {
+  collectionId: string;
+  picking: { saves: AssignableSave[] | null } | null;
+  alreadyIn: CollectionEvent[];
+  busy: boolean;
+  onStart: () => void;
+  onAssign: (collectionId: string, savedEventId: string) => void;
+}) {
+  if (picking === null) {
+    return (
+      <button
+        type="button"
+        onClick={onStart}
+        disabled={busy}
+        aria-expanded={false}
+        data-add-save
+        className="mt-3 min-h-[44px] px-3 text-ink-secondary underline underline-offset-4 [font:var(--type-scale-meta-sm)]"
+      >
+        Add a save
+      </button>
+    );
+  }
+
+  // **Not read yet is not the same as none.** `saves` is null until the read lands, and
+  // showing "nothing saved yet" in that gap would state a fact we do not have.
+  if (picking.saves === null) {
+    return (
+      <p className="mt-3 text-ink-muted [font:var(--type-scale-body-sm)]" data-picker-loading>
+        Reading your saves…
+      </p>
+    );
+  }
+
+  // **The filter is a set difference, not a lookup.** `SavedEventOut.id` and
+  // `CollectionEventOut.id` are the same id — the personal save's — so what is already in
+  // the collection is removed by identity.
+  const inThisCollection = new Set(alreadyIn.map((event) => event.id));
+  const offered = picking.saves.filter((save) => !inThisCollection.has(save.id));
+
+  if (picking.saves.length === 0) {
+    return (
+      <p className="mt-3 text-ink-muted [font:var(--type-scale-body-sm)]" data-picker-empty>
+        Nothing saved yet. Save an event and it can go in here.
+      </p>
+    );
+  }
+
+  if (offered.length === 0) {
+    return (
+      <p className="mt-3 text-ink-muted [font:var(--type-scale-body-sm)]" data-picker-exhausted>
+        Everything you&apos;ve saved is already in here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3" data-assign-picker>
+      {/*
+        **The group is named, and the name is the control the user just pressed.** A bare
+        list of event titles under a collection reads as the collection's contents — which
+        is the list immediately above it.
+      */}
+      <p className="text-ink-secondary [font:var(--type-scale-meta-sm)]" id={`add-${collectionId}`}>
+        Add a save
+      </p>
+      <ul className="mt-2 flex flex-col gap-2" aria-labelledby={`add-${collectionId}`}>
+        {offered.map((save) => (
+          <li key={save.id}>
+            <button
+              type="button"
+              onClick={() => onAssign(collectionId, save.id)}
+              disabled={busy}
+              data-assign={save.id}
+              className="min-h-[44px] w-full rounded-control border border-border-subtle px-3 py-2 text-left text-ink-primary [font:var(--type-scale-meta-sm)]"
+            >
+              <span className="block truncate">{save.title}</span>
+              <span className="block text-ink-muted [font:var(--type-scale-body-sm)]">
+                {readableWhen(save.start_time_utc)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

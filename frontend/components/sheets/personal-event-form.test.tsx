@@ -409,6 +409,34 @@ describe("PersonalEventForm", () => {
     });
   });
 
+  /**
+   * FR-20's way in. The plan attaches silently at creation — this form says nothing
+   * about reminders by design — so the edit sheet is where a user first learns the
+   * event has one.
+   */
+  describe("the reminders link", () => {
+    it("is absent while creating — there is no event to carry a plan yet", () => {
+      renderForm({ mode: "create", eventId: "abc" });
+
+      expect(screen.queryByRole("link", { name: /Edit reminders/ })).not.toBeInTheDocument();
+    });
+
+    it("is absent in edit mode when the caller gave no id", () => {
+      renderForm({ mode: "edit" });
+
+      expect(screen.queryByRole("link", { name: /Edit reminders/ })).not.toBeInTheDocument();
+    });
+
+    it("points at this event's reminder screen", () => {
+      renderForm({ mode: "edit", eventId: "6b9f0000-0000-7000-8000-00000000beef" });
+
+      expect(screen.getByRole("link", { name: /Edit reminders/ })).toHaveAttribute(
+        "href",
+        "/personal-events/6b9f0000-0000-7000-8000-00000000beef/reminders",
+      );
+    });
+  });
+
   it("closes without saving when the close button is used", () => {
     const onClose = vi.fn();
     renderForm({ onClose });

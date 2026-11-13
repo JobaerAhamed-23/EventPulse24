@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { DetailActions } from "@/components/detail/detail-actions";
+import { RecordDetailOpen } from "@/components/detail/record-detail-open";
 import { DetailBreakdown, DetailTags } from "@/components/detail/detail-breakdown";
 import { DetailHeader } from "@/components/detail/detail-header";
 import { DetailNeighbors } from "@/components/detail/detail-neighbors";
@@ -369,6 +370,19 @@ async function DetailBranch(id: string) {
 
   const content = (
     <article className="mx-auto w-full max-w-(--layout-container-reading)">
+      {/*
+        **FR-24's second signal, fired for a signed-in reader only.**
+
+        A neighbour is someone who saved **or opened**, and until now only the save was
+        ever recorded. `read.kind === "found"` is precisely the signed-in Detail Screen:
+        `"anonymous"` is the same screen without a session, and the public page is a
+        different branch. The endpoint answers 401 to an anonymous caller, so this is a
+        correctness condition and not a nicety.
+
+        It renders nothing and blocks nothing.
+      */}
+      {read.kind === "found" ? <RecordDetailOpen eventId={event.id} /> : null}
+
       {/* The way back (the mockup's "← Today"): the digest for a signed-in reader, the
           preview they came from for an anonymous one. */}
       <Link

@@ -14,7 +14,7 @@
  * and a tap-anytime control is not one. The mockup draws it as a terracotta **outline**
  * with terracotta text, and the sheet's own primary action keeps the fill.
  *
- * **Only the sheets are mounted** (`sheetsOnly`): the button belongs to the page head, and
+ * **Only the sheets are mounted**: the button belongs to the page head, and
  * the personal-events list is not part of the head.
  *
  * **The confirmation is inline, next to the button.** The digest does not show personal
@@ -89,7 +89,6 @@ export function AddEventButton() {
       </p>
 
       <PersonalEventsPanel
-        sheetsOnly
         createOpen={open}
         onCreateOpenChange={setOpen}
         onCreated={(event) => {

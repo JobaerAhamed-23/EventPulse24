@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DigestDeliveryTime } from "@/components/settings/digest-delivery-time";
 import { QuietHoursWindow } from "@/components/settings/quiet-hours-window";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { WeekdayQuietHours } from "@/components/settings/weekday-quiet-hours";
 import { AppShell } from "@/components/shell/app-shell";
@@ -84,6 +84,8 @@ export default async function SettingsQuietHoursPage() {
   if (read.kind === "unavailable") {
     return (
       <AppShell name={displayName(session.user.email)} email={session.user.email}>
+        <SettingsNav />
+
         <SettingsStates />
       </AppShell>
     );
@@ -104,6 +106,8 @@ export default async function SettingsQuietHoursPage() {
 
   return (
     <AppShell name={displayName(session.user.email)} email={session.user.email}>
+      <SettingsNav />
+
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Quiet hours</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
@@ -159,24 +163,13 @@ export default async function SettingsQuietHoursPage() {
           />
         </div>
         {/*
-          **The link to the digest's own screen.** `/settings/digest` is a separate
-          route, and **there is no settings index and no settings sub-nav** — so without
-          this link the route would be reachable and invisible.
-
-          **It lives in the "Pulse Digest" section because that is where the digest's
-          settings already are.** The delivery time is here; the opt-out is the other
-          half of the same question ("when does it arrive" and "what is in it"), and a
-          link under the heading that already says "Pulse Digest" is the one a user
-          would follow.
+          **The two hand-written links that used to live here are gone.** They pointed at
+          `/settings/digest` and `/settings/calendars`, and their own comments said why
+          they existed: *"there is no settings index and no settings sub-nav — so without
+          this link the route would be reachable and invisible."* Both are now rows in
+          `SettingsNav`, which every settings screen carries, so keeping these would be
+          the second place to keep in sync that the originals were written to avoid.
         */}
-        <div className="mt-6">
-          <Link
-            href="/settings/digest"
-            className="inline-block text-ink-secondary underline underline-offset-4 [font:var(--type-scale-meta-md)]"
-          >
-            What&apos;s in your Pulse Digest
-          </Link>
-        </div>
       </div>
     </AppShell>
   );

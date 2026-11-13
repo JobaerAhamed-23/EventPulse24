@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 **Goal:** Confirm the PRD is still the actual source of truth — every requirement it defines is traceable into Architecture and into Design, and every change made downstream (or upstream) is tagged consistently everywhere it touches. Produce a persisted matrix so this is checkable at a glance, not something anyone has to hold in their head.
 
-The report has **two separate alignment sections** (PRD↔Design, then PRD↔Architecture) — never merge them into one combined table. Each section runs its own independent FR-by-FR pass with its own evidence rules, because "does this FR have a UI design" and "does this FR have an architectural home" are different questions with different answers for the same FR (e.g. a backend-only FR is N/A for Design but must be FULL for Architecture; a pure-narrative FR could be the reverse).
+The report has **three separate alignment sections** (PRD↔Design, PRD↔Architecture, then PRD↔Implementation) — never merge them into one combined table. Each section runs its own independent FR-by-FR pass with its own evidence rules, because "does this FR have a UI design" and "does this FR have an architectural home" are different questions with different answers for the same FR (e.g. a backend-only FR is N/A for Design but must be FULL for Architecture; a pure-narrative FR could be the reverse).
 
 ## The Amendment convention (read this first — it's the rule, not just the report)
 
@@ -64,6 +64,42 @@ Build the table:
 | FR-ID | Title | Architecture (module · AD-N) | Status | Note |
 |---|---|---|---|---|
 
+## Step 4b — Section C: PRD ↔ Implementation
+
+For **every MVP FR**, answer: *can a user reach this, in the running product, today?*
+
+**This section exists because Sections A and B cannot see the difference between designed
+and built.** FR-18 carried `FULL` in both while its delete control did not exist — scored
+on a mockup that draws a danger zone nobody implemented. FR-20, FR-24, FR-49 and FR-50
+carried `FULL` on the same terms while four endpoints had no caller at all. A morning's
+manual audit found eight such gaps across twelve intents; nothing in the matrix had ever
+asked the question.
+
+**Evidence rules — and they are deliberately harsher than Section A's.**
+
+- **FULL** — a user-reachable path exists in the code: a route, a mounted component, or a
+  control on a surface that renders. Cite the file and line. A mockup is Section A's
+  evidence and **must never be reused here**; an architecture row is Section B's.
+- **PARTIAL** — the machinery exists and the surface is incomplete: an endpoint with a
+  caller that only covers part of the FR, or a control reachable from one surface where
+  the FR implies several.
+- **MISSING** — no user-reachable path. **Including the case where the backend is complete
+  and tested**: a preference the product stores, audits and honours but cannot be set is
+  MISSING here, however green its tests are.
+- **N/A** — no user surface by nature (an internal policy, a retention rule).
+- **UNASSESSED** — not yet checked against the code. **Honest and preferred over a guessed
+  FULL.** Say so in the row rather than inferring from Section A.
+
+**Two traps, both of which have already caught this project:**
+
+1. **A called endpoint is not a reachable feature.** `SavedEventsSection` called
+   `GET /api/personal/saved-events` from a component nothing rendered, and
+   `PersonalEventsPanel`'s list branch was the same shape — tested, green, unreachable.
+   `frontend/tests/endpoint-coverage.test.ts` cannot see this and says so in its own
+   docstring. **Check the mount, not just the call.**
+2. **A passing test is not a reachable feature**, for the same reason: both dead surfaces
+   had full test coverage, which is exactly why nobody noticed.
+
 ## Step 5 — Build the Amendment Ledger
 
 Cross-cutting across all docs (PRD, Architecture, Design, Experience, mockups). One row per distinct `Amendment A-N` found anywhere:
@@ -80,11 +116,12 @@ Cross-cutting across all docs (PRD, Architecture, Design, Experience, mockups). 
   1. Dated header (`Generated: YYYY-MM-DD`) + sources scanned (resolved paths, including EXPERIENCE.md and the mockups directory with its file count).
   2. **Section A: PRD ↔ Design Alignment** (table from Step 3) + a short list of every non-FULL/non-N/A row as an open gap.
   3. **Section B: PRD ↔ Architecture Alignment** (table from Step 4) + a short list of every non-FULL/non-N/A row as an open gap.
+  3b. **Section C: PRD ↔ Implementation** (table from Step 4b) + a short list of every non-FULL/non-N/A row as an open gap. Each row cites running code, never a mockup.
   4. Amendment Ledger (Step 5).
   5. Deferred/out-of-MVP FRs, listed but not scored.
   6. Epic/Story coverage (`— not yet created` when no epics doc exists — don't treat that as MISSING/PARTIAL).
-- Append one line to `_bmad-output/planning-artifacts/traceability/.memlog.md` (create it with a one-line header if it doesn't exist yet): `- YYYY-MM-DD: scanned <docs>; Design N missing/M partial; Architecture N missing/M partial; K inconsistent amendment(s)`.
+- Append one line to `_bmad-output/planning-artifacts/traceability/.memlog.md` (create it with a one-line header if it doesn't exist yet): `- YYYY-MM-DD: scanned <docs>; Design N missing/M partial; Architecture N missing/M partial; Implementation N missing/M partial/U unassessed; K inconsistent amendment(s)`.
 
 ## Step 7 — Report to the user
 
-In the chat, give a short summary (not the whole matrix): total FR count, Design section counts by status, Architecture section counts by status, the specific MISSING rows in each section, the specific inconsistent Amendments, and the path to `TRACEABILITY.md` for the full detail. If everything is FULL/N/A/Consistent, say so plainly — don't manufacture findings to seem thorough.
+In the chat, give a short summary (not the whole matrix): total FR count, Design section counts by status, Architecture section counts by status, Implementation section counts by status, the specific MISSING rows in each section, the specific inconsistent Amendments, and the path to `TRACEABILITY.md` for the full detail. If everything is FULL/N/A/Consistent, say so plainly — don't manufacture findings to seem thorough.

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { DefaultReminderSlots } from "@/components/settings/default-reminder-slots";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readNotificationSettings } from "@/lib/notification-settings-read";
@@ -54,6 +55,8 @@ export default async function SettingsRemindersPage() {
   if (read.kind === "unavailable") {
     return (
       <AppShell name={displayName(session.user.email)} email={session.user.email}>
+        <SettingsNav />
+
         <SettingsStates />
       </AppShell>
     );
@@ -61,6 +64,8 @@ export default async function SettingsRemindersPage() {
 
   return (
     <AppShell name={displayName(session.user.email)} email={session.user.email}>
+      <SettingsNav />
+
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Default reminders</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">

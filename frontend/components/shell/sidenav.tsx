@@ -15,6 +15,7 @@ import {
   SettingsGlyph,
   TimelineGlyph,
 } from "@/components/shell/nav-glyphs";
+import { isSettingsPath } from "@/lib/settings-sections";
 
 /**
  * `Component.Sidenav.App` — the desktop left rail (`EXPERIENCE.md` §4).
@@ -41,10 +42,13 @@ import {
  * pinned by a test**, so that the next inert route inherits the rule rather than
  * reinventing it.
  *
- * **The account row is a control, and it obeys the same rule.** It used to link to
- * `/settings`, which does not exist — the one place in the rail that broke the rule
- * above. It now opens the account sheet (`AccountMenu`), which is a real surface, and
- * that sheet is where Sign out lives.
+ * **The account row is a control, and it stays one.** It used to link to `/settings`,
+ * which did not exist — the one place in the rail that broke the rule above — and it was
+ * made a button onto the account sheet (`AccountMenu`), which is where Sign out lives.
+ * `/settings` exists now, but the row is **not** turned back into a link: that would
+ * evict Sign out from the only surface that mounts it at both breakpoints, to duplicate
+ * a destination the Settings row above already carries. The sheet links to `/settings`
+ * instead.
  */
 export type SidenavProps = {
   /** The user's name, for the account row. */
@@ -96,7 +100,12 @@ export function Sidenav({ name, email }: SidenavProps) {
           <SidenavItem
             href="/timeline"
             label="Timeline"
-            active={pathname === "/timeline"}
+            // **Timeline covers the personal-event reminder screen too.**
+            // `personal-event-reminders-desktop.html` is explicit: *"a Personal Event is
+            // reached from the Timeline / Add surfaces, where personal events live,
+            // rather than from the public Pulse Digest"* — so that route marks Timeline
+            // active, the way `/events/` marks Digest active.
+            active={pathname === "/timeline" || pathname.startsWith("/personal-events/")}
             glyph={<TimelineGlyph />}
           />
           <SidenavItem label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />
@@ -123,22 +132,25 @@ export function Sidenav({ name, email }: SidenavProps) {
             glyph={<ConflictsGlyph />}
           />
           {/*
-            **Settings is a real route now.** The product's first `/settings/*` screens
-            exist — the Default Reminder Plan and the Quiet Hours window — so this row
-            is a link and not a "Coming soon" label.
+            **Settings points at `/settings`, the index.**
 
-            **It points at `/settings/reminders`, and it is active on both settings
-            routes.** There is no `/settings` index page — the work item does not build
-            one — so the link goes to the first of the two, and the **prefix** rule marks
-            Settings active on `/settings/quiet-hours` too. That is the same rule Digest
-            uses for `/events/`, and the same reason: the user has not left Settings, and
-            a rail that marks nothing active on half of Settings reads as "you have left
-            Settings".
+            It used to point at `/settings/reminders`, because there was no index — and
+            that one screen has no links out, so the rail landed the user on a dead end
+            with five sibling routes they could not reach. The index exists now, and it
+            and `SettingsNav` both render `SETTINGS_SECTIONS`, so every settings screen
+            is reachable from the rail in two taps and from every other in one.
+
+            **`isSettingsPath` is the active rule, not `startsWith("/settings/")`.** The
+            trailing slash is load-bearing: `"/settings".startsWith("/settings/")` is
+            `false`, so the plain prefix would go quiet on the index — the rail dropping
+            its highlight on the very screen the rail just navigated to. Digest's
+            `/events/` rule has the same shape and avoids it the same way, with an
+            equality beside the prefix.
           */}
           <SidenavItem
-            href="/settings/reminders"
+            href="/settings"
             label="Settings"
-            active={pathname.startsWith("/settings/")}
+            active={isSettingsPath(pathname)}
             glyph={<SettingsGlyph />}
           />
         </ul>
@@ -146,10 +158,10 @@ export function Sidenav({ name, email }: SidenavProps) {
 
       {/*
         The create and conflict sheets are mounted *outside* the route list, and only the
-        sheets (`sheetsOnly`): inside the `<li>` they would be a form nested in a
+        sheets: inside the `<li>` a list would be a form nested in a
         navigation list, and the whole panel would wedge a heading into the rail.
       */}
-      <PersonalEventsPanel sheetsOnly createOpen={addOpen} onCreateOpenChange={setAddOpen} />
+      <PersonalEventsPanel createOpen={addOpen} onCreateOpenChange={setAddOpen} />
 
       {/*
         The footer is pinned to the bottom of the rail (`margin-top: auto`) and carries

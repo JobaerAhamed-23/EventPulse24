@@ -49,13 +49,13 @@ describe("DevFakeBillingPortalPage", () => {
 
     const panel = render(
       await DevFakeBillingPortalPage({
-        searchParams: Promise.resolve({ next: "http://localhost:3000/settings/billing" }),
+        searchParams: Promise.resolve({ next: "http://localhost:3000/settings/account" }),
       }),
     );
 
     // The path is shown, not the whole URL: the page reduces a same-origin URL to its
     // path, so what it renders is plainly a location on this site.
-    expect(panel.container.textContent).toContain("/settings/billing");
+    expect(panel.container.textContent).toContain("/settings/account");
   });
 
   it("refuses a return URL on another site", async () => {

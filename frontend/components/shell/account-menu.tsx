@@ -45,10 +45,14 @@ export type AccountProps = {
  * signed in and closing an account have no endpoints yet, so the panel does not offer
  * them: an affordance that cannot work is the same lie as a link to a 404.
  *
- * **Pricing is the one link in here**, and it is a real route — `/pricing` exists — so it
- * does not break the rule above. It is where a Free user reads what Pro adds, and where
- * a Pro user finds the portal. It is quiet, because the sheet is about the account, not
- * about the upsell: the plan is one line among the account's own facts.
+ * **Two links in here, and both are real routes** — so neither breaks the rule above.
+ * `/pricing` is where a Free user reads what Pro adds and a Pro user finds the portal;
+ * it is quiet, because the sheet is about the account, not about the upsell. `/settings`
+ * is the settings index, which did not exist when this panel was written — the reason
+ * the rail's account row was demoted from a link to this button in the first place. The
+ * row stays a button: the sheet is the only surface that mounts Sign out at both
+ * breakpoints, and the rail's own Settings row already goes to `/settings`. The link
+ * here is for the mobile overflow sheet, where this panel renders inline.
  */
 export function AccountPanel({ name, email }: AccountProps) {
   return (
@@ -60,6 +64,12 @@ export function AccountPanel({ name, email }: AccountProps) {
           <span className="truncate text-ink-muted [font:var(--type-scale-meta-sm)]">{email}</span>
         </span>
       </div>
+      <Link
+        href="/settings"
+        className="text-ink-secondary underline underline-offset-4 [font:var(--type-scale-body-sm)]"
+      >
+        Settings
+      </Link>
       <Link
         href="/pricing"
         className="text-ink-secondary underline underline-offset-4 [font:var(--type-scale-body-sm)]"

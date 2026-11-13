@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PersonalEventsPanel } from "@/components/personal-events-panel";
@@ -101,9 +102,14 @@ function mockBackend(overrides: Record<string, unknown> = {}): void {
   });
 }
 
-/** Open the create form, fill it and submit. */
+/**
+ * Fill the create form and submit it.
+ *
+ * **The sheet is opened by the caller, not by a button in the panel.** The panel's own
+ * "Add event" button was deleted with its list branch: every real mount drives the create
+ * sheet through `createOpen`, which is what `renderCreate` below does.
+ */
 async function submitCreate(): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Add event" }));
   fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "Dinner with Rahul" } });
   fireEvent.change(screen.getByLabelText(/^Date/), { target: { value: "2026-11-06" } });
   fireEvent.change(screen.getByLabelText(/Start time/), { target: { value: "19:30" } });
@@ -111,60 +117,60 @@ async function submitCreate(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "Save to my Pulse" }));
 }
 
+/**
+ * The panel's callers own the sheets' open state, so the harness does too.
+ *
+ * **A no-op callback cannot close a sheet**, and a test that passed one would assert the
+ * sheet stayed open and call it a pass. These wrappers hold the state the sidenav, the
+ * digest header and the Timeline each hold in the real app, so "the panel closed the
+ * sheet" is observable here exactly as it is there.
+ */
+function CreateHarness(props: Record<string, unknown>) {
+  const [open, setOpen] = useState(true);
+  return <PersonalEventsPanel createOpen={open} onCreateOpenChange={setOpen} {...props} />;
+}
+
+function EditHarness({ event, ...props }: { event: typeof EVENT } & Record<string, unknown>) {
+  const [editingId, setEditingId] = useState<string | null>(event.id);
+  return (
+    <PersonalEventsPanel
+      editingEvents={[event]}
+      editingEventId={editingId}
+      onEditingEventChange={setEditingId}
+      {...props}
+    />
+  );
+}
+
+/** The panel as every real caller mounts it, with the create sheet already open. */
+function renderCreate(extra: Record<string, unknown> = {}) {
+  return render(<CreateHarness {...extra} />);
+}
+
+/** The panel as the Timeline mounts it, with one event open in the edit sheet. */
+function renderEditing(event: typeof EVENT, extra: Record<string, unknown> = {}) {
+  return render(<EditHarness event={event} {...extra} />);
+}
+
 describe("PersonalEventsPanel", () => {
-  it("says so when there are no personal events", () => {
-    render(<PersonalEventsPanel />);
-
-    expect(screen.getByText("You haven't added any personal events yet.")).toBeInTheDocument();
-  });
-
-  it("lists the events it is given", () => {
-    render(<PersonalEventsPanel events={[EVENT]} />);
-
-    expect(screen.getByText("Dinner with Rahul")).toBeInTheDocument();
-  });
-
-  it("draws no Add button of its own when the page already has one", () => {
-    render(<PersonalEventsPanel events={[EVENT]} addButton={false} />);
-
-    expect(screen.getByRole("heading", { name: "Your personal events" })).toBeInTheDocument();
-    expect(screen.getByText("Dinner with Rahul")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
-  });
-
-  it("mounts only the sheets when the nav asks for sheetsOnly", () => {
-    // The nav's Add needs the round trip, not the panel: the whole panel in the sidenav
-    // wedged a headline into the rail, and beside the bottom-tab bar it became a third
-    // column that squeezed the mobile page.
-    const { container } = render(<PersonalEventsPanel sheetsOnly events={[EVENT]} />);
-
-    expect(screen.queryByRole("heading", { name: "Your personal events" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Add event" })).toBeNull();
-    expect(screen.queryByText("Dinner with Rahul")).toBeNull();
-    expect(container.querySelectorAll("dialog").length).toBeGreaterThan(0);
-  });
-
-  describe("the warm-personal pairing", () => {
-    it("pairs the stripe with the visible word 'Personal'", () => {
-      render(<PersonalEventsPanel events={[EVENT]} />);
-
-      // The stripe is decorative; the word carries the meaning. Colour alone is never
-      // the only carrier (WCAG 1.4.1).
-      expect(screen.getByText("Personal")).toBeInTheDocument();
-    });
-
-    it("uses the warm-personal token for the stripe", () => {
-      render(<PersonalEventsPanel events={[EVENT]} />);
-
-      const stripe = screen.getByText("Personal").previousElementSibling;
-      expect(stripe).toHaveClass("bg-warm-personal");
-    });
-  });
+  /**
+   * **The list branch and its tests were deleted together.**
+   *
+   * Six tests lived here — the empty state, the list, the Add button, the `sheetsOnly`
+   * switch and the two warm-personal pairing assertions. They covered a branch that
+   * nothing in the application rendered: all six mounts of this panel passed
+   * `sheetsOnly`, and the `events` prop was supplied only by this file. The tests passed,
+   * which is exactly why nobody noticed.
+   *
+   * The warm-personal pairing (WCAG 1.4.1: colour is never the sole carrier of meaning)
+   * is still proven — by the conflict sheet's cards and the Timeline's event blocks,
+   * which are surfaces a user can actually reach.
+   */
 
   describe("the create", () => {
     it("posts the body the form produced", async () => {
       POST.mockResolvedValue({ data: EVENT, error: undefined });
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -183,7 +189,7 @@ describe("PersonalEventsPanel", () => {
 
     it("closes the form when there is no conflict", async () => {
       POST.mockResolvedValue({ data: EVENT, error: undefined });
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -198,7 +204,7 @@ describe("PersonalEventsPanel", () => {
       // A saved event used to look like nothing happened: the form closed, and the list
       // was a server read that never re-ran.
       POST.mockResolvedValue({ data: EVENT, error: undefined });
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -210,7 +216,7 @@ describe("PersonalEventsPanel", () => {
 
     it("does not refresh when the write failed", async () => {
       POST.mockResolvedValue({ data: undefined, error: { code: "bad_request", message: "no" } });
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -220,7 +226,7 @@ describe("PersonalEventsPanel", () => {
 
     it("refreshes on a 409 too, because the event was written", async () => {
       mockBackend();
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -229,7 +235,7 @@ describe("PersonalEventsPanel", () => {
 
     it("does not open the conflict sheet when there is no conflict", async () => {
       POST.mockResolvedValue({ data: EVENT, error: undefined });
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -242,7 +248,7 @@ describe("PersonalEventsPanel", () => {
         data: undefined,
         error: { code: "bad_request", message: "nope" },
       });
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -258,7 +264,7 @@ describe("PersonalEventsPanel", () => {
     });
 
     it("opens the conflict sheet — the event was written, the prompt is pending", async () => {
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -268,7 +274,7 @@ describe("PersonalEventsPanel", () => {
     });
 
     it("closes the create form, so there is one sheet at a time", async () => {
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -280,7 +286,7 @@ describe("PersonalEventsPanel", () => {
     });
 
     it("shows the event the 409 said was written", async () => {
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
 
@@ -289,7 +295,7 @@ describe("PersonalEventsPanel", () => {
 
     it("posts the chosen resolution with the new side's id", async () => {
       mockBackend();
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
       await waitFor(() =>
@@ -309,7 +315,7 @@ describe("PersonalEventsPanel", () => {
     });
 
     it("closes the prompt once the choice is recorded", async () => {
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
       await waitFor(() =>
@@ -324,7 +330,7 @@ describe("PersonalEventsPanel", () => {
     });
 
     it("reports a resolution that could not be recorded", async () => {
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
       await waitFor(() =>
@@ -348,7 +354,7 @@ describe("PersonalEventsPanel", () => {
   describe("the edit opened from the prompt", () => {
     it("opens the new event with the start time pre-highlighted", async () => {
       mockBackend();
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
       await waitFor(() =>
@@ -368,7 +374,7 @@ describe("PersonalEventsPanel", () => {
     it("edits through the PATCH endpoint", async () => {
       PATCH.mockResolvedValue({ data: EVENT, error: undefined });
       mockBackend();
-      render(<PersonalEventsPanel />);
+      renderCreate();
 
       await submitCreate();
       await waitFor(() =>
@@ -400,7 +406,6 @@ describe("PersonalEventsPanel", () => {
   describe("deleting a personal event", () => {
     /** Open the row's edit sheet and press through the danger-zone confirmation. */
     async function confirmDelete(): Promise<void> {
-      fireEvent.click(screen.getByRole("button", { name: `Edit ${EVENT.name}` }));
       await waitFor(() =>
         expect(screen.getByRole("dialog", { name: "Edit personal event" })).toBeInTheDocument(),
       );
@@ -412,7 +417,7 @@ describe("PersonalEventsPanel", () => {
 
     it("deletes the event the sheet is open on, and refreshes the list", async () => {
       DELETE.mockResolvedValue({ data: undefined, error: undefined });
-      render(<PersonalEventsPanel events={[EVENT]} />);
+      renderEditing(EVENT);
 
       await confirmDelete();
 
@@ -432,9 +437,8 @@ describe("PersonalEventsPanel", () => {
 
     it("asks before it deletes — no request leaves on the first press", async () => {
       DELETE.mockResolvedValue({ data: undefined, error: undefined });
-      render(<PersonalEventsPanel events={[EVENT]} />);
+      renderEditing(EVENT);
 
-      fireEvent.click(screen.getByRole("button", { name: `Edit ${EVENT.name}` }));
       await waitFor(() =>
         expect(screen.getByRole("dialog", { name: "Edit personal event" })).toBeInTheDocument(),
       );
@@ -448,7 +452,7 @@ describe("PersonalEventsPanel", () => {
         data: undefined,
         error: { code: "server_error", message: "nope" },
       });
-      render(<PersonalEventsPanel events={[EVENT]} />);
+      renderEditing(EVENT);
 
       await confirmDelete();
 
@@ -464,7 +468,7 @@ describe("PersonalEventsPanel", () => {
         error: { code: "server_error", message: "nope" },
       });
       const onFailed = vi.fn();
-      render(<PersonalEventsPanel events={[EVENT]} onFailed={onFailed} />);
+      renderEditing(EVENT, { onFailed });
 
       await confirmDelete();
 
@@ -474,9 +478,8 @@ describe("PersonalEventsPanel", () => {
     });
 
     it("offers no danger zone in the create sheet", async () => {
-      render(<PersonalEventsPanel events={[EVENT]} />);
+      renderCreate();
 
-      fireEvent.click(screen.getByRole("button", { name: "Add event" }));
       await waitFor(() =>
         expect(screen.getByRole("dialog", { name: "Add personal event" })).toBeInTheDocument(),
       );

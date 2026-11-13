@@ -65,6 +65,19 @@ vi.mock("next/navigation", () => ({
  * true for the wrong reason. (The flag's own behaviour is asserted in
  * `tests/event-detail-a11y.test.tsx`, which renders the **real** row.)
  */
+/**
+ * **The detail-open signal, stubbed so the branch is assertable.**
+ *
+ * The real island fires a request in an effect; what this file is testing is *which
+ * branch mounts it*, which is a property of the page. The stub renders a marker so the
+ * signed-in and anonymous cases can be told apart without a network mock.
+ */
+vi.mock("@/components/detail/record-detail-open", () => ({
+  RecordDetailOpen: (props: { eventId: string }) => (
+    <div data-record-detail-open={props.eventId} />
+  ),
+}));
+
 vi.mock("@/components/detail/detail-actions", () => ({
   DetailActions: (props: {
     saved: boolean;
@@ -267,6 +280,20 @@ describe("the read", () => {
 });
 
 /* ── the locked order ─────────────────────────────────────────────────────────── */
+
+describe("the detail-open signal (FR-24)", () => {
+  it("is recorded for a signed-in reader, naming the event", async () => {
+    // Half of FR-24's neighbour rule — "saved **or** opened" — had no writer at all
+    // until this item. The union in `neighbor_count.py` counted savers only.
+    readEventDetail.mockResolvedValue({ kind: "found", detail: found(personal()) });
+
+    await renderPage();
+
+    const marker = document.querySelector("[data-record-detail-open]");
+    expect(marker).not.toBeNull();
+    expect(marker?.getAttribute("data-record-detail-open")).toBe(found(null).event.id);
+  });
+});
 
 describe("the locked element order", () => {
   it("renders the trust row, the name, the when·where, then the content", async () => {
@@ -507,6 +534,14 @@ describe("the anonymous case", () => {
     await renderPage();
 
     expect(document.querySelector("[data-detail-neighbors]")).toBeNull();
+  });
+
+  it("does not record a detail open — the endpoint answers 401 to an anonymous caller", async () => {
+    // FR-24's signal is a *user's* behaviour. There is no user here, and firing it would
+    // be a guaranteed failed request on every anonymous view of this screen.
+    await renderPage();
+
+    expect(document.querySelector("[data-record-detail-open]")).toBeNull();
   });
 
   it("renders no save button and no reminder picker", async () => {
