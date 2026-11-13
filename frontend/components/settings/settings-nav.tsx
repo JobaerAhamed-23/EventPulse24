@@ -32,7 +32,7 @@ import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
  *
  * The same rule and the same classes as `Component.Sidenav.App`: *"terracotta on a
  * small-control toggle burns the accent on a control used many times per day"*. This is
- * such a control, six times over.
+ * such a control, once per settings section.
  *
  * ## The shape is a wrapping row, not a second rail
  *

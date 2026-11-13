@@ -33,6 +33,7 @@ vi.mock("@/lib/backend-client", () => ({
 const USER = {
   id: "11111111-1111-1111-1111-111111111111",
   email: "maya@example.test",
+  name: "",
   onboarding: { completed: false, current_step: 2 },
 };
 

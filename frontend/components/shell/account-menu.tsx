@@ -24,16 +24,27 @@ import { useState } from "react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Sheet } from "@/components/sheets/sheet";
+import { useLiveName } from "@/lib/session-name";
 
 export type AccountProps = {
-  /** The user's name, for the row and the panel. */
+  /**
+   * The user's name, for the row and the panel.
+   *
+   * **It is the seed, not the truth.** The shell is rendered on the server, so this is
+   * the name the page was drawn with — and a name saved *after* the render is newer.
+   * `useLiveName` takes the published name when there is one and falls back to this,
+   * which is how the rail follows a save that happened on this page.
+   */
   name: string;
   /**
    * The user's email.
    *
-   * It is the only account fact the session carries — `CurrentUserOut` sends the id, the
-   * email and the onboarding status, and nothing else — so it is the only one shown. The
-   * panel does not invent fields the backend has no endpoint for.
+   * **The session carries four things** — the id, the email, the name and the
+   * onboarding status — and **the panel shows two of them**: the name and the email.
+   *
+   * **The panel does not invent fields the backend has no endpoint for.** The id is
+   * the account's key rather than something to show, and the onboarding status is a
+   * fact about a flow rather than about the person.
    */
   email: string;
 };
@@ -41,40 +52,59 @@ export type AccountProps = {
 /**
  * Who you are, and the one thing you can do about it.
  *
- * This is the whole account surface today. Changing an email, changing a password while
- * signed in and closing an account have no endpoints yet, so the panel does not offer
- * them: an affordance that cannot work is the same lie as a link to a 404.
+ * This is the whole account surface today. **The name is the one thing that can be
+ * changed** — it has an endpoint, and "Edit your name" goes to the screen that edits
+ * it. Changing an email, changing a password while signed in and closing an account
+ * have no endpoints yet, so the panel does not offer them: an affordance that cannot
+ * work is the same lie as a link to a 404.
  *
- * **Two links in here, and both are real routes** — so neither breaks the rule above.
- * `/pricing` is where a Free user reads what Pro adds and a Pro user finds the portal;
- * it is quiet, because the sheet is about the account, not about the upsell. `/settings`
- * is the settings index, which did not exist when this panel was written — the reason
- * the rail's account row was demoted from a link to this button in the first place. The
- * row stays a button: the sheet is the only surface that mounts Sign out at both
- * breakpoints, and the rail's own Settings row already goes to `/settings`. The link
- * here is for the mobile overflow sheet, where this panel renders inline.
+ * **The password is changed by the reset flow, not from here** — and that flow ends the
+ * account's other sessions, so it is not a thing a panel can quietly do on someone's
+ * behalf.
+ *
+ * **One link, and it is a real route.** `/settings/profile` exists. The two links this
+ * panel used to carry are gone: `/settings` because the rail already has a Settings row
+ * that goes to the same index — two ways to one place, and the rail's is the one that is
+ * always there — and `/pricing` because **the sheet is about the account, not about the
+ * upsell.** The account's plan already has a home: `/settings/account` shows the plan,
+ * the payment state and the data export.
+ *
+ * **The row stays a button**, and that is unchanged. The sheet is the only surface that
+ * mounts Sign out at both breakpoints, and the rail's own Settings row already goes to
+ * `/settings`.
  */
 export function AccountPanel({ name, email }: AccountProps) {
+  // **The live name, not the rendered one.** The panel shows what to call the person,
+  // and the name the account holds may have changed since the page was drawn.
+  const live = useLiveName(name);
+
   return (
-    <div className="flex flex-col gap-4">
+    /*
+      **The hook is what the ordering assertion finds the panel by.** Without it, the
+      nearest `<div>` to the Sign out button is `SignOutButton`'s own wrapper — which
+      has one child — and an assertion built on that is true whatever the panel's order
+      is. The hook names the panel's *root*, so "Sign out is last" is a claim about the
+      panel and not about the button.
+    */
+    <div className="flex flex-col gap-4" data-account-panel>
       <div className="flex items-center gap-3">
-        <Avatar name={name} />
+        <Avatar name={live} />
         <span className="flex min-w-0 flex-col">
-          <span className="text-ink-primary [font:var(--type-scale-body-md)]">{name}</span>
+          <span className="text-ink-primary [font:var(--type-scale-body-md)]">{live}</span>
           <span className="truncate text-ink-muted [font:var(--type-scale-meta-sm)]">{email}</span>
         </span>
       </div>
+      {/*
+        **"Edit your name", not "Profile".** The section in the settings nav is
+        "Profile"; the link says what it does. The rail's Settings row points at the
+        index, and the index carries the Profile row — so the two labels are different on
+        purpose, and the link here is the one that names the action.
+      */}
       <Link
-        href="/settings"
+        href="/settings/profile"
         className="text-ink-secondary underline underline-offset-4 [font:var(--type-scale-body-sm)]"
       >
-        Settings
-      </Link>
-      <Link
-        href="/pricing"
-        className="text-ink-secondary underline underline-offset-4 [font:var(--type-scale-body-sm)]"
-      >
-        Pricing
+        Edit your name
       </Link>
       <SignOutButton />
     </div>
@@ -84,6 +114,9 @@ export function AccountPanel({ name, email }: AccountProps) {
 /** The rail's account row: the button, and the sheet it opens. */
 export function AccountMenu({ name, email }: AccountProps) {
   const [open, setOpen] = useState(false);
+  // **The live name, not the rendered one** — the row is the account's face, and it
+  // must agree with the sheet it opens.
+  const live = useLiveName(name);
 
   return (
     <>
@@ -91,12 +124,12 @@ export function AccountMenu({ name, email }: AccountProps) {
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        aria-label={`Account: ${name}`}
+        aria-label={`Account: ${live}`}
         className="mt-1 flex w-full items-center gap-3 rounded-subtle px-2 py-2 text-left hover:bg-surface-subtle"
       >
-        <Avatar name={name} />
+        <Avatar name={live} />
         <span className="flex min-w-0 flex-col">
-          <span className="text-ink-primary [font:var(--type-scale-body-md)]">{name}</span>
+          <span className="text-ink-primary [font:var(--type-scale-body-md)]">{live}</span>
           <span className="text-ink-muted [font:var(--type-scale-meta-sm)]">Account</span>
         </span>
         {/*

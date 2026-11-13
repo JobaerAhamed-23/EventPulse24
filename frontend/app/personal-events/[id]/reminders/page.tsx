@@ -4,6 +4,7 @@ import { ReminderPicker } from "@/components/reminders/reminder-picker";
 import { ReminderStates } from "@/components/reminders/reminder-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { browserTimeZone } from "@/lib/detail-time";
+import { displayName } from "@/lib/display-name";
 import { readPersonalEvent } from "@/lib/personal-event-read";
 import { readDefaultReminderSlots, readReminderPlan } from "@/lib/reminder-plan-read";
 import { getSession, homeRoute } from "@/lib/session";
@@ -52,7 +53,7 @@ export default async function PersonalEventRemindersPage({
     redirect(destination);
   }
 
-  const name = session.kind === "signed-in" ? displayName(session.user.email) : "";
+  const name = session.kind === "signed-in" ? displayName(session.user) : "";
   const email = session.kind === "signed-in" ? session.user.email : "";
 
   // **The plan, the default and the event's name are read together.** The default is
@@ -112,12 +113,4 @@ export default async function PersonalEventRemindersPage({
       {content}
     </AppShell>
   );
-}
-
-/** A name for the sidenav's account row — the same rule every authed route uses. */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
 }

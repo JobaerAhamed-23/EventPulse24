@@ -43,6 +43,17 @@ class User(UUIDv7Model, AbstractBaseUser, PermissionsMixin):
     # Uniqueness is the explicit `user_email_uq` constraint below, not a column-level
     # `unique=True`: one named constraint is one thing to read, test and cite.
     email = models.EmailField(max_length=254)
+
+    #: The name the product addresses this account by (FR-52). **Blank, not null**: `""`
+    #: is the single "no name set" state, and the email-derived fallback the frontend
+    #: shows in its place is a *display* concern — the backend does not know how a human
+    #: renders their own name from an address, and must not guess. A null would make
+    #: "cleared" and "never set" two states with the same meaning.
+    #:
+    #: It is **not** normalised the way the email is: the email is a key, and this is a
+    #: person's name. The case is theirs.
+    name = models.CharField(max_length=120, blank=True, default="")
+
     is_staff = models.BooleanField(
         default=False,
         help_text="Designates whether the user can log into this admin site.",

@@ -4,6 +4,7 @@ import { DefaultReminderSlots } from "@/components/settings/default-reminder-slo
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
+import { displayName } from "@/lib/display-name";
 import { readNotificationSettings } from "@/lib/notification-settings-read";
 import { getSession, homeRoute } from "@/lib/session";
 
@@ -54,7 +55,7 @@ export default async function SettingsRemindersPage() {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={displayName(session.user.email)} email={session.user.email}>
+      <AppShell name={displayName(session.user)} email={session.user.email}>
         <SettingsNav />
 
         <SettingsStates />
@@ -63,7 +64,7 @@ export default async function SettingsRemindersPage() {
   }
 
   return (
-    <AppShell name={displayName(session.user.email)} email={session.user.email}>
+    <AppShell name={displayName(session.user)} email={session.user.email}>
       <SettingsNav />
 
       <header className="flex flex-col gap-1">
@@ -80,15 +81,3 @@ export default async function SettingsRemindersPage() {
   );
 }
 
-/**
- * A name for the sidenav's account row.
- *
- * **The email's local part is the best name the session carries** — the same rule the
- * digest home and the Timeline use.
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

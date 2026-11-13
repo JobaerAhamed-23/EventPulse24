@@ -1229,7 +1229,7 @@
         "type": "object"
       },
       "CurrentUserOut": {
-        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe **onboarding status** is here, and it is here because the frontend needs it to\ndecide between the onboarding flow and the home. It says only whether the onboarding\nis finished and which step the user is on — it carries no interests and no digest\npreference, because `me` is about *who* the user is and a settings blob there would\ngrow without bound. The full state lives at `/api/personal/onboarding`.\n\nIt is read through `personalization`'s **published interface** — the service, never\nthe model — because `identity` may not reach into another app's tables (AD-2). The\nimport contract `models-personalization` proves it.",
+        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe **onboarding status** is here, and it is here because the frontend needs it to\ndecide between the onboarding flow and the home. It says only whether the onboarding\nis finished and which step the user is on — it carries no interests and no digest\npreference, because `me` is about *who* the user is and a settings blob there would\ngrow without bound. The full state lives at `/api/personal/onboarding`.\n\nThe **name** is here for the same reason the email is: the frontend shows it on\nevery screen, so it is a read the frontend already makes. It is `\"\"` when no name is\nset — the one \"no name set\" state — and the frontend renders its own email-derived\nfallback in that case. **The backend does not guess a name from an address**: how a\nhuman renders their own name is a display concern, not a stored one.\n\nIt is read through `personalization`'s **published interface** — the service, never\nthe model — because `identity` may not reach into another app's tables (AD-2). The\nimport contract `models-personalization` proves it.",
         "properties": {
           "email": {
             "title": "Email",
@@ -1240,6 +1240,10 @@
             "title": "Id",
             "type": "string"
           },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
           "onboarding": {
             "$ref": "#/components/schemas/OnboardingStatusOut"
           }
@@ -1247,6 +1251,7 @@
         "required": [
           "id",
           "email",
+          "name",
           "onboarding"
         ],
         "title": "CurrentUserOut",
@@ -3279,6 +3284,45 @@
         "title": "ProPlan",
         "type": "string"
       },
+      "ProfileIn": {
+        "description": "The profile write: the name to set.\n\n**One field, and the name is the whole of it.** The email is not editable here — it\nis the account's key, and changing it is a different operation with different\nconsequences. The password is not here either; it is changed by the reset flow,\nwhich ends the account's other sessions.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProfileIn",
+        "type": "object"
+      },
+      "ProfileOut": {
+        "description": "The profile after a write.\n\n**It carries the email and the id as well as the name**, so the client can update\nwhat it already knows without a second `me` call after a save — the name is the only\nthing that changed, but the answer is the caller's whole profile rather than a delta.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name"
+        ],
+        "title": "ProfileOut",
+        "type": "object"
+      },
       "PublicEventPageOut": {
         "description": "One public event's page facts.\n\n**A separate shape from `EventOut`, deliberately.** `EventOut` is built by\n`cls(**vars(event))` over `PublicEvent`, so widening it would change the *catalog\nlisting's* contract as well — and the listing's contract is not the public page's to\nchange. The same reasoning that gave the Detail Screen its own shape applies here.\n\n**The fields are the JSON-LD's inputs (AD-12).** ARCHITECTURE-SPINE.md:166 requires\nthe Schema.org `Event` JSON-LD to be *\"emitted from the same data the page renders\"*.\nSo the page's payload carries the title, the description, both times, the zone, the\nvenue's name and address parts, the canonical URL, the status, the sold-out flag and\nthe version — one read, everything the page needs.\n\n**`schema_org` is the finished structured data**, projected from the fields above by\n`domain.schema_org` and carried on the DTO. The page embeds it verbatim: it does not\nbuild a second object, so it cannot disagree with the one it renders.\n\n**`event_version` is here because the revalidation work item needs it** to prove a\ncached page is current.",
         "properties": {
@@ -4290,7 +4334,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "description": "The signed-in user's id, email and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.",
+        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.",
         "operationId": "apps_identity_api_me",
         "parameters": [],
         "responses": {
@@ -4422,6 +4466,69 @@
           }
         },
         "summary": "Set a new password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/profile": {
+      "put": {
+        "description": "Sets the name the product addresses this account by. An empty name is legal and means \"no name set\" — the frontend falls back to a name derived from the email address in that case. A name carrying a line break or a control character is refused with 422 and nothing is written.\n\nThis is a `PUT`, not a `PATCH`: it is the one verb this product's settings writes use, and a second verb for the same write would put two shapes for one operation into the contract.",
+        "operationId": "apps_identity_api_put_profile",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set the signed-in user's name",
         "tags": [
           "auth"
         ]

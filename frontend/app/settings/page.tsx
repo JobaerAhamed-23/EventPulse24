@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/shell/app-shell";
+import { displayName } from "@/lib/display-name";
 import { getSession, homeRoute } from "@/lib/session";
 import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
@@ -10,7 +11,7 @@ import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
  *
  * ## Why it exists
  *
- * It did not, and that was the bug. The six settings screens shipped one per work item,
+ * It did not, and that was the bug. The settings screens shipped one per work item,
  * each inheriting the convention *"there is no `/settings` index page and no settings
  * sub-navigation"*, and each made reachable by a hand-written link from whichever page
  * shipped before it. The nav pointed at `/settings/reminders`, which has no links out;
@@ -47,7 +48,7 @@ import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
  *
  * ## It does not render `SettingsNav`
  *
- * The sub-nav *is* this list, in a compact shape. Rendering both would put the same six
+ * The sub-nav *is* this list, in a compact shape. Rendering both would put the same
  * links on the screen twice, once with descriptions and once without. The index is the
  * long form; every other settings route gets the short one.
  */
@@ -70,7 +71,7 @@ export default async function SettingsIndexPage() {
   }
 
   return (
-    <AppShell name={displayName(session.user.email)} email={session.user.email}>
+    <AppShell name={displayName(session.user)} email={session.user.email}>
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Settings</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
@@ -79,9 +80,9 @@ export default async function SettingsIndexPage() {
       </header>
 
       {/*
-        **A list, because it is a list.** Six rows in a `<ul>`, each one a whole-row
-        link: the target is the row the user sees, not the label inside it — the same
-        rule `SidenavItem` follows.
+        **A list, because it is a list.** One row per section in a `<ul>`, each one a
+        whole-row link: the target is the row the user sees, not the label inside it —
+        the same rule `SidenavItem` follows.
       */}
       <ul className="mt-8 flex max-w-(--layout-container-reading) flex-col gap-3">
         {SETTINGS_SECTIONS.map((section) => (
@@ -117,15 +118,3 @@ export default async function SettingsIndexPage() {
   );
 }
 
-/**
- * A name for the sidenav's account row.
- *
- * **The email's local part is the best name the session carries** — the same rule the
- * digest home, the Timeline and the other settings routes use.
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

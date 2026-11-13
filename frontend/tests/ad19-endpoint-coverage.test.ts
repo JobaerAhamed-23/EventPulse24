@@ -226,6 +226,35 @@ const NEW_ENDPOINTS = [
       "components/settings/digest-delivery-time.tsx",
     ],
   },
+  // ── The profile ───────────────────────────────────────────────────────────────
+  {
+    path: "/api/auth/me",
+    method: "get",
+    operationId: "apps_identity_api_me",
+    /**
+     * **The session's read, which is also the profile screen's read.**
+     *
+     * **There is no second read.** The profile screen shows the name it edits, and the
+     * session already carries that name — `CurrentUserOut` gained a `name` field for
+     * exactly this. A second `GET /api/auth/me` on the profile route would answer the
+     * same question twice and double the route's API traffic for nothing.
+     *
+     * **So the caller is `lib/session.ts`, and only that.** The profile page reads
+     * `session.user.name`; it never calls the endpoint itself.
+     */
+    caller: ["lib/session.ts"],
+  },
+  {
+    path: "/api/auth/profile",
+    method: "put",
+    operationId: "apps_identity_api_put_profile",
+    /**
+     * **The name write.** It is in the island, because the save is the one thing the
+     * island does that the server cannot do for it. The body is `{name}` — one field,
+     * and the server trims, collapses and caps it.
+     */
+    caller: ["components/settings/profile-name.tsx"],
+  },
 ] as const;
 
 const openapi = JSON.parse(readFileSync(OPENAPI, "utf8")) as {
