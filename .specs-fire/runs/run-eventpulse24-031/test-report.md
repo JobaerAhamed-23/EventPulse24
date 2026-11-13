@@ -161,3 +161,82 @@ write of the read helper. The two helpers now differ by one line and that line i
 The address is cleared whether or not the request succeeded. Holding a credential in memory
 to save a re-paste is the wrong trade; the connection is still `needs_reconnect`, so the
 control is still there and the failure line says what happened.
+
+---
+
+## Work Item: detail-open-signal
+
+### Test Results
+
+| Category | Passed | Failed | Skipped |
+|----------|--------|--------|---------|
+| `record-detail-open.test.tsx` (new) | 6 | 0 | 0 |
+| `app/events/[id]/page.test.tsx` (+2) | 72 | 0 | 0 |
+| `ad19-endpoint-coverage.test.ts` (reconciled) | — | 0 | 0 |
+| **Full frontend suite** | **2381** | **0** | **0** |
+
+136 files, up from 135. +10 tests over the previous item's 2371.
+
+### Acceptance Criteria Validation
+
+- ✅ **Opening the signed-in Detail Screen records the open** — asserted at the page level,
+  naming the event id, with the island stubbed so the assertion is about *which branch
+  mounts it*.
+- ✅ **Fire-and-forget** — the promise is not awaited; the island renders `null`.
+- ✅ **No write for an anonymous visitor** — `read.kind === "found"` gates the mount, and a
+  page test asserts the marker is absent in the anonymous case.
+- ✅ **No write on the public page** — a different branch entirely; it never reaches `content`.
+- ✅ **Once per screen view** — see finding 1.
+- ✅ **`ad19-endpoint-coverage.test.ts` reconciled** — see finding 2.
+
+### Mutation Probes
+
+| Probe | Result |
+|---|---|
+| Remove the once-guard | ⚠️ **0 failed** → test fixed → ✅ 1 failed |
+| Fire for the anonymous branch too | ✅ 1 failed |
+| Never fire at all | ✅ 1 failed |
+| Drop the rejection handler | ⚠️ **0 failed** — not fixable here, see finding 3 |
+
+### Findings
+
+#### 1. The "fires once" test could not fail
+
+The effect's dependency list is `[eventId]`, so re-rendering with the same id never re-runs
+it — **with or without the ref guard**. The old test re-rendered twice and asserted one
+call, which was true either way. Rewritten to render inside `<StrictMode>`, which mounts,
+unmounts and remounts and so actually double-invokes the effect. Re-probed: it now fails.
+
+A second test keeps the weaker re-render claim, which is worth holding separately.
+
+#### 2. The AD-19 tripwire fired exactly as designed
+
+`ad19-endpoint-coverage.test.ts` carried a **passing** test asserting the detail-open
+endpoint had *no* caller, written as a deliberate tripwire: *"When the frontend gains its
+caller, this test fails… and whoever closes it deletes the test and adds the 'reaches it
+through the generated client' assertion alongside the others."*
+
+It failed on the first run after the island was mounted. Followed its instruction exactly:
+the endpoint moved into `NEW_ENDPOINTS` with `components/detail/record-detail-open.tsx` as
+its caller, and the gap test, its constant and the now-orphaned `findCallers` helper were
+deleted.
+
+**That test is the best thing in this repo's test suite.** It is the only place where a
+known gap was written as something that would fail when closed, rather than as a comment.
+`endpoint-coverage-enforcement` should generalise this pattern, not replace it.
+
+It also caught a formatting problem: the coverage check matches `api.POST(` on the
+comment-stripped source, and the call site had been formatted as a fluent chain split
+across lines (`api\n  .POST(`). Kept contiguous, with a comment saying why.
+
+#### 3. The `.catch` is not covered by a failing test, and cannot be here
+
+A probe deleting `.catch(() => {})` left the suite green. The failure mode is an
+**unhandled promise rejection**, and Vitest installs its own `unhandledRejection` handler,
+so a listener registered inside a test never fires — verified with a throwaway spec that
+rejected a bare promise and observed nothing.
+
+The test was rewritten to claim only what it can prove (a rejected write changes nothing on
+screen), with the limit stated in the test's own docstring. The `.catch` matters in a
+browser, where an unhandled rejection is a console error on every detail view — so it is
+the **e2e work item's** to verify, and is recorded there.

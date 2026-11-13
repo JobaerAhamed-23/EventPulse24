@@ -4,9 +4,11 @@ title: The Open Signal — Half of FR-24's Neighbour Rule, Never Fired
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-031
+completed_at: 2026-11-13T07:21:52.478Z
 ---
 
 # Work Item: The Open Signal — Half of FR-24's Neighbour Rule, Never Fired

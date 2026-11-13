@@ -4,7 +4,7 @@ title: Reminders for a Personal Event — The Picker's Other Half
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-13
 ---

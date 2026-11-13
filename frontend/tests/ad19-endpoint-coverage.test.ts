@@ -79,6 +79,20 @@ const NEW_ENDPOINTS = [
     operationId: "apps_personalization_api_read_digest_endpoint",
     caller: ["lib/digest-read.ts"],
   },
+  {
+    /**
+     * **The detail-open write, which had no caller for three intents.**
+     *
+     * It was listed below as a *stated gap* — a passing test asserting that no caller
+     * existed, written as a tripwire so that closing the gap would fail it. The tripwire
+     * fired, and this entry is what it asked for: the endpoint moved up here with the
+     * module that calls it, and the gap test deleted.
+     */
+    path: "/api/events/{event_id}/opened",
+    method: "post",
+    operationId: "apps_personalization_detail_api_post_event_opened",
+    caller: ["components/detail/record-detail-open.tsx"],
+  },
   // ── The public event page ─────────────────────────────────────────────────────
   {
     path: "/api/catalog/events/by-slug/{slug}",
@@ -214,32 +228,6 @@ const NEW_ENDPOINTS = [
   },
 ] as const;
 
-/**
- * The detail-open endpoint — **present in the schema, and with no caller.**
- *
- * The backend's own module docstring states the design: *"the signal is a separate
- * request the frontend fires when the screen is actually shown."* The endpoint is in
- * the committed schema and in the generated TypeScript — so the **generated-client**
- * half of AD-19 holds — but **nothing in the frontend calls it.**
- *
- * **So the coverage check is split, and the split is the honest shape of the claim.**
- * The endpoint's *presence* is asserted; the *caller* is not asserted to exist,
- * because it does not. This is recorded as a gap in the work item's report, not
- * papered over with a check that cannot fail.
- *
- * **Why this is not silently fixed here.** Calling the endpoint is a **behaviour
- * change** to the Detail Screen — it would fire a write on every screen view, which
- * is a decision about the surface's semantics and about what a "view" means. It also
- * has to be fire-and-forget (the screen must not wait on it) and it must not fire for
- * an anonymous visitor (the endpoint answers 401). Those are the frontend-event-detail
- * item's decisions to make, not this item's to make in passing.
- */
-const DETAIL_OPEN_ENDPOINT = {
-  path: "/api/events/{event_id}/opened",
-  method: "post",
-  operationId: "apps_personalization_detail_api_post_event_opened",
-} as const;
-
 const openapi = JSON.parse(readFileSync(OPENAPI, "utf8")) as {
   paths: Record<string, Record<string, { operationId?: string }>>;
 };
@@ -298,20 +286,6 @@ function visitSources(visit: (relativePath: string, source: string) => void): vo
   }
 }
 
-/**
- * Every frontend module that names `endpointPath` in a call to the generated client.
- */
-function findCallers(endpointPath: string): string[] {
-  const callers: string[] = [];
-
-  visitSources((relative, source) => {
-    if (source.includes(endpointPath)) {
-      callers.push(relative);
-    }
-  });
-
-  return callers.sort();
-}
 
 describe("AD-19: the new endpoints are in the generated schema", () => {
   for (const endpoint of NEW_ENDPOINTS) {
@@ -419,48 +393,6 @@ describe("AD-19: the new endpoints are in the generated schema", () => {
       }
     });
   }
-});
-
-describe("AD-19: the detail-open endpoint", () => {
-  it("is in the committed schema", () => {
-    const operations = openapi.paths[DETAIL_OPEN_ENDPOINT.path];
-
-    expect(operations, `${DETAIL_OPEN_ENDPOINT.path} is not in the committed schema`).toBeDefined();
-    expect(operations?.[DETAIL_OPEN_ENDPOINT.method]).toBeDefined();
-  });
-
-  it("has its operation id, bound in the generated TypeScript", () => {
-    const operation = openapi.paths[DETAIL_OPEN_ENDPOINT.path]?.[DETAIL_OPEN_ENDPOINT.method];
-
-    expect(operation?.operationId).toBe(DETAIL_OPEN_ENDPOINT.operationId);
-    expect(schemaTs).toContain(DETAIL_OPEN_ENDPOINT.operationId);
-  });
-
-  it("has no frontend caller — a recorded gap, not a silent one", () => {
-    // **This test names a gap.** It is a test that **passes** while stating a fact
-    // that is *not* what the product wants: the endpoint is generated and reachable,
-    // but the Detail Screen never calls it.
-    //
-    // **Why it is written this way.** The alternative — asserting a caller exists —
-    // would fail today, and failing today would mean the run could not close over a
-    // gap it did not create. The alternative of *not mentioning it* would be worse:
-    // a reader of this file would conclude the endpoint is wired up.
-    //
-    // So the gap is **stated in a test that can see it change.** When the frontend
-    // gains its caller, this test **fails** — because a caller now exists and the
-    // gap is closed — and whoever closes it deletes the test and adds the
-    // "reaches it through the generated client" assertion alongside the others.
-    //
-    // That is what makes this a *test* rather than a comment: it is a tripwire on
-    // the state of the world, and it will fire.
-    const callers = findCallers(DETAIL_OPEN_ENDPOINT.path);
-
-    expect(
-      callers,
-      "the detail-open endpoint now has a frontend caller. The gap is closed: delete " +
-        "this test and add the endpoint to NEW_ENDPOINTS, with its caller's module.",
-    ).toEqual([]);
-  });
 });
 
 describe("AD-19: the generated folder is not hand-edited", () => {
