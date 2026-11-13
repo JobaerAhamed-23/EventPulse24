@@ -10,6 +10,7 @@ from apps.identity.services.password_reset import (
     request_password_reset,
     reset_password,
 )
+from apps.identity.services.profile import set_user_name
 from apps.identity.services.recipients import get_recipient_address
 from apps.identity.services.session import end_other_sessions, sign_out
 from apps.identity.services.sign_up import SignUpOutcome, sign_up
@@ -37,6 +38,7 @@ __all__ = [
     "record_subscription_started",
     "request_password_reset",
     "reset_password",
+    "set_user_name",
     "sign_out",
     "sign_up",
     "start_checkout",

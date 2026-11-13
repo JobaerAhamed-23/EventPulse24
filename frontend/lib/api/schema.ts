@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * The signed-in user
-         * @description The signed-in user's id, email and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
+         * @description The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
          */
         get: operations["apps_identity_api_me"];
         put?: never;
@@ -78,6 +78,28 @@ export interface paths {
          * @description Consumes a reset token and sets a new password. The token is single-use and short-lived: a token that was already used, revoked or expired is refused, and the refusal does not say which of the three it was. The account's other sessions end, so a stolen session does not survive the password change.
          */
         post: operations["apps_identity_api_password_reset_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the signed-in user's name
+         * @description Sets the name the product addresses this account by. An empty name is legal and means "no name set" — the frontend falls back to a name derived from the email address in that case. A name carrying a line break or a control character is refused with 422 and nothing is written.
+         *
+         *     This is a `PUT`, not a `PATCH`: it is the one verb this product's settings writes use, and a second verb for the same write would put two shapes for one operation into the contract.
+         */
+        put: operations["apps_identity_api_put_profile"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2207,6 +2229,12 @@ export interface components {
          *     preference, because `me` is about *who* the user is and a settings blob there would
          *     grow without bound. The full state lives at `/api/personal/onboarding`.
          *
+         *     The **name** is here for the same reason the email is: the frontend shows it on
+         *     every screen, so it is a read the frontend already makes. It is `""` when no name is
+         *     set — the one "no name set" state — and the frontend renders its own email-derived
+         *     fallback in that case. **The backend does not guess a name from an address**: how a
+         *     human renders their own name is a display concern, not a stored one.
+         *
          *     It is read through `personalization`'s **published interface** — the service, never
          *     the model — because `identity` may not reach into another app's tables (AD-2). The
          *     import contract `models-personalization` proves it.
@@ -2219,6 +2247,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Name */
+            name: string;
             onboarding: components["schemas"]["OnboardingStatusOut"];
         };
         /**
@@ -3427,6 +3457,38 @@ export interface components {
          */
         ProPlan: "monthly" | "yearly";
         /**
+         * ProfileIn
+         * @description The profile write: the name to set.
+         *
+         *     **One field, and the name is the whole of it.** The email is not editable here — it
+         *     is the account's key, and changing it is a different operation with different
+         *     consequences. The password is not here either; it is changed by the reset flow,
+         *     which ends the account's other sessions.
+         */
+        ProfileIn: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * ProfileOut
+         * @description The profile after a write.
+         *
+         *     **It carries the email and the id as well as the name**, so the client can update
+         *     what it already knows without a second `me` call after a save — the name is the only
+         *     thing that changed, but the answer is the caller's whole profile rather than a delta.
+         */
+        ProfileOut: {
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * PublicEventPageOut
          * @description One public event's page facts.
          *
@@ -4302,6 +4364,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasswordResetConfirmOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_put_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Forbidden */

@@ -29,6 +29,9 @@ workspace:
     - choice: wide
       items_count: 9
       timestamp: 2026-10-29T00:00:00Z
+    - choice: wide
+      items_count: 6
+      timestamp: 2026-11-13T09:47:45.462Z
   planning_sources:
     prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/
     ux: _bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/
@@ -1380,6 +1383,60 @@ intents:
         complexity: high
         mode: validate
         depends_on: []
+  - id: account-profile-name
+    title: The Account Sheet, Reduced — and a Name Worth Calling Someone
+    status: completed
+    created: 2026-11-13
+    work_items:
+      - id: user-name-model-and-command
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-032
+        completed_at: 2026-11-13T13:17:34.101Z
+      - id: profile-endpoint-and-contract
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - user-name-model-and-command
+        run_id: run-eventpulse24-032
+        completed_at: 2026-11-13T13:17:34.101Z
+      - id: profile-screen-and-editor
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - profile-endpoint-and-contract
+        run_id: run-eventpulse24-032
+        completed_at: 2026-11-13T13:17:34.101Z
+      - id: reduced-account-sheet
+        status: completed
+        complexity: low
+        mode: autopilot
+        depends_on:
+          - profile-screen-and-editor
+        run_id: run-eventpulse24-032
+        completed_at: 2026-11-13T13:17:34.101Z
+      - id: display-name-everywhere
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - profile-endpoint-and-contract
+        run_id: run-eventpulse24-032
+        completed_at: 2026-11-13T13:17:34.101Z
+      - id: contract-and-e2e-proof
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - reduced-account-sheet
+          - display-name-everywhere
+        run_id: run-eventpulse24-032
+        completed_at: 2026-11-13T13:17:34.101Z
+    completed_at: 2026-11-13T13:17:30.478Z
 runs:
   active: []
   completed:
@@ -1985,3 +2042,26 @@ runs:
           mode: confirm
       started: 2026-11-13T06:41:58.698Z
       completed: 2026-11-13T07:56:11.438Z
+    - id: run-eventpulse24-032
+      scope: wide
+      work_items:
+        - id: user-name-model-and-command
+          intent: account-profile-name
+          mode: confirm
+        - id: profile-endpoint-and-contract
+          intent: account-profile-name
+          mode: confirm
+        - id: profile-screen-and-editor
+          intent: account-profile-name
+          mode: confirm
+        - id: reduced-account-sheet
+          intent: account-profile-name
+          mode: autopilot
+        - id: display-name-everywhere
+          intent: account-profile-name
+          mode: confirm
+        - id: contract-and-e2e-proof
+          intent: account-profile-name
+          mode: confirm
+      started: 2026-11-13T09:47:48.275Z
+      completed: 2026-11-13T13:17:34.101Z

@@ -4,6 +4,7 @@ import { ReminderPicker } from "@/components/reminders/reminder-picker";
 import { ReminderStates } from "@/components/reminders/reminder-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { browserTimeZone } from "@/lib/detail-time";
+import { displayName } from "@/lib/display-name";
 import { readEventDetail } from "@/lib/event-detail-read";
 import { readDefaultReminderSlots, readReminderPlan } from "@/lib/reminder-plan-read";
 import { getSession } from "@/lib/session";
@@ -36,7 +37,7 @@ export default async function ReminderPickerPage({ params }: { params: Promise<{
   const { id } = await params;
 
   const session = await getSession();
-  const name = session.kind === "signed-in" ? displayName(session.user.email) : "";
+  const name = session.kind === "signed-in" ? displayName(session.user) : "";
   const email = session.kind === "signed-in" ? session.user.email : "";
 
   // **The plan and the default are read together.** The default is what "Reset to
@@ -110,15 +111,3 @@ export default async function ReminderPickerPage({ params }: { params: Promise<{
   );
 }
 
-/**
- * A name for the sidenav's account row.
- *
- * **The same rule the Detail Screen uses** — the email's local part is the best name
- * the session carries.
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

@@ -293,13 +293,17 @@ def test_a_wrong_password_does_not_establish_a_session():
 # ---------------------------------------------------------------------------
 
 
-def test_me_returns_the_id_the_email_and_the_onboarding_status_and_nothing_else():
+def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_nothing_else():
     """No password hash, no permission list, no catch-all field.
 
     The onboarding status is the one addition: the frontend needs it to decide between
     the onboarding flow and the home. It carries **no** interests and **no** digest
     preference — `me` is about who the user is, and a settings blob there would grow
     without bound. The full state lives at `/api/personal/onboarding`.
+
+    The **name** is here because the frontend shows it on every screen, so it is a read
+    the frontend already makes. It is `""` when no name is set — the one "no name set"
+    state, and the frontend renders its own fallback in that case.
     """
     user = UserFactory(email="maya@example.test", plain_password=PASSWORD)
     client = csrf_json_client()
@@ -312,6 +316,7 @@ def test_me_returns_the_id_the_email_and_the_onboarding_status_and_nothing_else(
     assert payload == {
         "id": str(user.pk),
         "email": "maya@example.test",
+        "name": "",
         "onboarding": {"completed": False, "current_step": 1},
     }
     # The hash is not in the body under any key.

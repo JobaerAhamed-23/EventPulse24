@@ -6,6 +6,7 @@ import { BrowseSearch } from "@/components/browse/browse-search";
 import { BrowseEmpty, BrowseError } from "@/components/browse/browse-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readBrowse } from "@/lib/browse-read";
+import { displayName } from "@/lib/display-name";
 import { getSession, homeRoute } from "@/lib/session";
 
 /**
@@ -81,7 +82,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={displayName(session.user.email)} email={session.user.email}>
+      <AppShell name={displayName(session.user)} email={session.user.email}>
         <BrowseError />
       </AppShell>
     );
@@ -92,7 +93,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const noCards = browse.cards.length === 0;
 
   return (
-    <AppShell name={displayName(session.user.email)} email={session.user.email}>
+    <AppShell name={displayName(session.user)} email={session.user.email}>
       {noCity || noCards ? (
         /*
          **A user with no city gets the same quiet empty state as a city with nothing
@@ -158,15 +159,3 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   );
 }
 
-/**
- * A name for the sidenav's account row.
- *
- * **The email's local part is the best name the session carries** — the same rule the
- * digest home and the timeline use.
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

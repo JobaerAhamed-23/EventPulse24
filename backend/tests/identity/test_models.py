@@ -70,6 +70,46 @@ def test_user_email_is_not_nullable():
     assert rows == [("NO",)]
 
 
+def test_user_name_defaults_to_empty():
+    """`""` is the single "no name set" state.
+
+    A null would make "cleared" and "never set" two states with the same meaning, and
+    the email-derived fallback the frontend shows in its place is a display rule the
+    backend does not own.
+    """
+    user = UserFactory()
+
+    assert User.objects.using(PERSONAL).get(pk=user.pk).name == ""
+
+
+def test_user_name_column_is_blank_not_null():
+    """The column accepts an empty string and never holds NULL."""
+    with connections[PERSONAL].cursor() as cursor:
+        cursor.execute(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'personal' AND table_name = 'identity_user' "
+            "AND column_name = 'name'"
+        )
+        rows = cursor.fetchall()
+
+    assert rows == [("NO",)]
+
+
+def test_user_name_round_trips():
+    user = UserFactory(name="Maya Ahmed")
+
+    assert User.objects.using(PERSONAL).get(pk=user.pk).name == "Maya Ahmed"
+
+
+def test_user_name_accepts_an_empty_string():
+    """Clearing the name is a thing a person does; the column takes it."""
+    user = UserFactory(name="Maya Ahmed")
+    user.name = ""
+    user.save(using=PERSONAL)
+
+    assert User.objects.using(PERSONAL).get(pk=user.pk).name == ""
+
+
 def test_reset_token_stores_only_a_digest():
     """The raw token is never stored: a database dump yields no usable reset link."""
     token = PasswordResetTokenFactory()

@@ -93,6 +93,12 @@ class CurrentUserOut(Schema):
     preference, because `me` is about *who* the user is and a settings blob there would
     grow without bound. The full state lives at `/api/personal/onboarding`.
 
+    The **name** is here for the same reason the email is: the frontend shows it on
+    every screen, so it is a read the frontend already makes. It is `""` when no name is
+    set — the one "no name set" state — and the frontend renders its own email-derived
+    fallback in that case. **The backend does not guess a name from an address**: how a
+    human renders their own name is a display concern, not a stored one.
+
     It is read through `personalization`'s **published interface** — the service, never
     the model — because `identity` may not reach into another app's tables (AD-2). The
     import contract `models-personalization` proves it.
@@ -100,7 +106,33 @@ class CurrentUserOut(Schema):
 
     id: UUID
     email: str
+    name: str
     onboarding: OnboardingStatusOut
+
+
+class ProfileIn(Schema):
+    """The profile write: the name to set.
+
+    **One field, and the name is the whole of it.** The email is not editable here — it
+    is the account's key, and changing it is a different operation with different
+    consequences. The password is not here either; it is changed by the reset flow,
+    which ends the account's other sessions.
+    """
+
+    name: str
+
+
+class ProfileOut(Schema):
+    """The profile after a write.
+
+    **It carries the email and the id as well as the name**, so the client can update
+    what it already knows without a second `me` call after a save — the name is the only
+    thing that changed, but the answer is the caller's whole profile rather than a delta.
+    """
+
+    id: UUID
+    email: str
+    name: str
 
 
 class PasswordResetRequestIn(Schema):

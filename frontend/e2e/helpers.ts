@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { expect, type Locator, type Page } from "@playwright/test";
 
@@ -32,6 +34,67 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * run from the wrong directory fails with a clear message instead of a module-not-found.
  */
 const SEED_FILE = path.resolve(process.cwd(), "../backend/config/browse_seed.json");
+
+/** `execFile`, promisified — the walkthrough runs the product's own commands. */
+const run = promisify(execFile);
+
+/**
+ * The backend's directory, resolved from the working directory.
+ *
+ * **Not from `import.meta.url`** — Playwright loads test files through its own CommonJS
+ * loader, where `import.meta` is unavailable. Same constraint the seed file records.
+ */
+const BACKEND_DIR = path.resolve(process.cwd(), "../backend");
+
+/**
+ * Give the account its sign-in allowance back, through the product's own reset.
+ *
+ * `AUTH_THROTTLE_SIGN_IN_ACCOUNT` is five an hour, and a spec that signs in once per
+ * test spends the account's whole allowance — so without this the last tests of a run
+ * are refused by the throttle rather than by anything they assert. **It is not a backdoor
+ * around the throttle**; it is the throttle's own reset, the same one `make seed-browse`
+ * calls.
+ *
+ * **It lives here because two specs need it.** The settings-navigation spec and the
+ * profile-name spec each sign in once per test, and a helper that one of them had to
+ * copy would be a second copy of the thing this repo keeps arguing about.
+ */
+export async function resetSignInThrottle(emails: string[]): Promise<void> {
+  const script = [
+    "from apps.identity.services.throttle import reset_sign_in_throttle",
+    "reset_sign_in_throttle(ip_address='127.0.0.1', emails=" + JSON.stringify(emails) + ")",
+  ].join("\n");
+  await run("uv", ["run", "python", "manage.py", "shell", "-c", script], { cwd: BACKEND_DIR });
+}
+
+/**
+ * The signed-in user's name, set to whatever the caller asks for.
+ *
+ * **The name is account state, so it outlives a test.** A test that sets a name leaves
+ * it on the account, and the next test — and the next *run* — inherits it. That is not
+ * hypothetical: it is exactly what happened the first time this spec ran, and the
+ * "a user with no name set" test failed because a previous test had set one.
+ *
+ * **So the name is reset explicitly, through the product's own endpoint.** Not through
+ * the database — a helper that wrote the row directly would be testing the row, not the
+ * product. **The empty string is the meaningful reset**: it is the account's own "no
+ * name set" state, and it is what a person who clears the field leaves behind.
+ *
+ * **The CSRF token is read from the browser's own cookie**, for the reason
+ * `clearSavedEvents` records: Django rotates it on sign-in, and `page.request` is
+ * Playwright's own client rather than the app's.
+ */
+export async function setName(page: Page, name: string): Promise<void> {
+  const cookies = await page.context().cookies();
+  const token = cookies.find((cookie) => cookie.name === "csrftoken")?.value;
+  expect(token, "the browser holds no csrftoken cookie").toBeTruthy();
+
+  const written = await page.request.put("/api/auth/profile", {
+    headers: { "X-CSRFToken": token as string },
+    data: { name },
+  });
+  expect(written.ok(), "the name could not be written").toBeTruthy();
+}
 
 /** A seed account, as the file names it. */
 export type SeedAccount = {

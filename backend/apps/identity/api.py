@@ -1,12 +1,13 @@
 """The auth endpoints (FR-4, AD-18, AD-19).
 
-Six endpoints, plus one that issues the CSRF token:
+Eight endpoints, plus one that issues the CSRF token:
 
 - `GET  /api/auth/csrf` — the CSRF token the frontend sends back on unsafe requests.
 - `POST /api/auth/signup` — create an account.
 - `POST /api/auth/signin` — authenticate and establish the session.
 - `POST /api/auth/signout` — end the session.
 - `GET  /api/auth/me` — the signed-in user.
+- `PUT  /api/auth/profile` — set the signed-in user's name.
 - `POST /api/auth/password-reset` — ask for a reset link.
 - `POST /api/auth/password-reset/confirm` — consume the link and set a new password.
 
@@ -79,6 +80,8 @@ from apps.identity.schemas import (
     PasswordResetConfirmOut,
     PasswordResetRequestIn,
     PasswordResetRequestOut,
+    ProfileIn,
+    ProfileOut,
     SignInIn,
     SignInOut,
     SignOutOut,
@@ -87,6 +90,7 @@ from apps.identity.schemas import (
 )
 from apps.identity.services.authenticate import authenticate
 from apps.identity.services.password_reset import request_password_reset, reset_password
+from apps.identity.services.profile import set_user_name
 from apps.identity.services.session import sign_out
 from apps.identity.services.sign_up import sign_up
 from apps.personalization.schemas import OnboardingStatusOut
@@ -250,11 +254,12 @@ def signout(request):
     response={200: CurrentUserOut, 401: ErrorOut},
     summary="The signed-in user",
     description=(
-        "The signed-in user's id, email and onboarding status. An anonymous request is "
-        "refused with 401. Nothing internal is returned: there is no password hash, no "
-        "permission list and no catch-all field. The onboarding status says only whether "
-        "the onboarding is finished and which step the user is on; the full state is at "
-        "`/api/personal/onboarding`."
+        "The signed-in user's id, email, name and onboarding status. An anonymous request "
+        "is refused with 401. Nothing internal is returned: there is no password hash, no "
+        "permission list and no catch-all field. The name is empty when no name is set; "
+        "the frontend renders its own fallback in that case. The onboarding status says "
+        "only whether the onboarding is finished and which step the user is on; the full "
+        "state is at `/api/personal/onboarding`."
     ),
 )
 def me(request):
@@ -275,11 +280,73 @@ def me(request):
     return CurrentUserOut(
         id=user.pk,
         email=user.email,
+        name=user.name,
         onboarding=OnboardingStatusOut(
             completed=state.completed,
             current_step=state.current_step,
         ),
     )
+
+
+@router.put(
+    "/profile",
+    # The statuses this endpoint can actually answer with. A 403 is the CSRF refusal
+    # (`require_csrf`), a 422 is a name the command refused — a control character or a
+    # line break — and a 401 is an anonymous caller. Declaring them is what puts
+    # `ErrorOut` in the generated client, so the frontend can read the message it has to
+    # show.
+    response={200: ProfileOut, 401: ErrorOut, 403: ErrorOut, 422: ErrorOut},
+    summary="Set the signed-in user's name",
+    description=(
+        "Sets the name the product addresses this account by. An empty name is legal and "
+        'means "no name set" — the frontend falls back to a name derived from the '
+        "email address in that case. A name carrying a line break or a control character "
+        "is refused with 422 and nothing is written.\n\n"
+        "This is a `PUT`, not a `PATCH`: it is the one verb this product's settings "
+        "writes use, and a second verb for the same write would put two shapes for one "
+        "operation into the contract."
+    ),
+)
+def put_profile(request, body: ProfileIn):
+    """Set the caller's name."""
+    # **The CSRF check is first.** This router has no router-level `auth=`, so the check
+    # is explicit, exactly as it is in `signup`, `signin` and `signout`. It comes before
+    # the resolver, so an unsafe request without a token is refused as a cross-site
+    # write rather than as an authentication problem.
+    #
+    # **The one thing that happens before this is the body's own validation.** Ninja
+    # parses and validates the request body before the handler is called, so a body that
+    # is not a `ProfileIn` is refused with a 422 `invalid_request` before the token is
+    # ever looked at. That is not a hole: the write still cannot happen. But it does
+    # mean the claim is "the CSRF check comes before the *write*", not "before anything
+    # at all" — and a request with a bad token *and* a bad body is answered 422.
+    require_csrf(request)
+
+    # The resolver raises the 401 for an anonymous caller. It is `identity`'s published
+    # resolver — the same one every other app uses — so there is one rule for "who is
+    # this request?", not two.
+    #
+    # **`current_user` checks CSRF too, and it does it after the resolver.** That is the
+    # right order for it — a 401 says "you are not signed in" and a 403 says "you are
+    # signed in, but this request could not be shown to come from this site" — and the
+    # call above is what puts this endpoint's check *first*. The check inside the
+    # resolver is then a second, idempotent pass over the same token.
+    user = current_user(request)
+
+    # **The write goes through the named command** (AD-5), never through the ORM: this
+    # module is a surface file, and `tests/architecture/test_no_direct_writes.py` scans
+    # it for exactly that. The command trims and collapses the name, truncates it to the
+    # column's limit, refuses a control character, and writes the audit row in the same
+    # transaction.
+    #
+    # It returns the name as it was **stored**, which is not the string that came in: the
+    # command collapsed the whitespace and capped the length. The answer below therefore
+    # reports what the account now holds rather than what was asked for.
+    saved = set_user_name(user_id=user.pk, name=body.name)
+
+    # The answer is the caller's whole profile — the id, the email and the name that was
+    # just saved — so the client can update what it knows without a second `me` call.
+    return ProfileOut(id=user.pk, email=user.email, name=saved)
 
 
 @router.post(

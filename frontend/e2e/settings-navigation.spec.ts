@@ -1,38 +1,6 @@
-import { execFile } from "node:child_process";
-import path from "node:path";
-import { promisify } from "node:util";
-
 import { expect, test } from "@playwright/test";
 
-import { seedAccount, signIn } from "./helpers";
-
-/** `execFile`, promisified — the walkthrough runs the product's own commands. */
-const run = promisify(execFile);
-
-/**
- * The backend's directory, resolved from the working directory.
- *
- * **Not from `import.meta.url`** — Playwright loads test files through its own CommonJS
- * loader, where `import.meta` is unavailable. Same constraint `helpers.ts` records.
- */
-const BACKEND_DIR = path.resolve(process.cwd(), "../backend");
-
-/**
- * Give the account its sign-in allowance back, through the product's own reset.
- *
- * `AUTH_THROTTLE_SIGN_IN_ACCOUNT` is five an hour, and this spec signs in once per test —
- * so without this the last tests of a run are refused by the throttle rather than by
- * anything they assert. It is not a backdoor around the throttle; it is the throttle's
- * own reset, the same one `make seed-browse` calls. The pattern is
- * `unwired-surfaces.spec.ts`'s.
- */
-async function resetSignInThrottle(emails: string[]): Promise<void> {
-  const script = [
-    "from apps.identity.services.throttle import reset_sign_in_throttle",
-    "reset_sign_in_throttle(ip_address='127.0.0.1', emails=" + JSON.stringify(emails) + ")",
-  ].join("\n");
-  await run("uv", ["run", "python", "manage.py", "shell", "-c", script], { cwd: BACKEND_DIR });
-}
+import { resetSignInThrottle, seedAccount, signIn } from "./helpers";
 
 /**
  * **Can a person get to the settings screens?** — in a real browser, by clicking.
@@ -45,6 +13,11 @@ async function resetSignInThrottle(emails: string[]): Promise<void> {
  * could not be reached by any sequence of clicks: the rail pointed at
  * `/settings/reminders`, which has no links out; `/settings/quiet-hours` carried the only
  * links to two more; `/settings/collections` was linked from nowhere at all.
+ *
+ * **The seventh section — Profile — inherited the index and the sub-nav, so it was
+ * reachable from the moment it was added.** The list below is hand-written for exactly
+ * the reason the first six were: **a hand-written list is a list somebody has to
+ * remember to update**, and this spec fails when they do not.
  *
  * **Nothing caught it**, because nothing was looking. The page tests rendered each route
  * directly and the e2e specs reached them with `page.goto()` — a deep link is not a
@@ -72,7 +45,7 @@ function subnav(page: import("@playwright/test").Page) {
   return page.getByRole("navigation", { name: "Settings sections" });
 }
 
-/** The six sections, in the order the index and the sub-nav render them. */
+/** The seven sections, in the order the index and the sub-nav render them. */
 const SECTIONS = [
   { label: "Default reminders", path: "/settings/reminders", heading: "Default reminders" },
   { label: "Quiet hours", path: "/settings/quiet-hours", heading: "Quiet hours" },
@@ -80,6 +53,7 @@ const SECTIONS = [
   { label: "Calendars", path: "/settings/calendars", heading: "Calendar sync" },
   { label: "Collections", path: "/settings/collections", heading: "Collections" },
   { label: "Account", path: "/settings/account", heading: "Account" },
+  { label: "Profile", path: "/settings/profile", heading: "Profile" },
 ];
 
 test.describe("the settings surface is navigable", () => {
@@ -110,8 +84,8 @@ test.describe("the settings surface is navigable", () => {
     await expect(page).toHaveURL(/\/settings$/);
 
     for (const section of SECTIONS) {
-      // Back to the index between sections — this asserts the index reaches all six,
-      // which is the property that was false for four of them.
+      // Back to the index between sections — this asserts the index reaches every
+      // section, which is the property that was false for four of the first six.
       await page.goto("/settings");
 
       const row = page.getByRole("link", { name: new RegExp(section.label) }).first();
@@ -133,8 +107,8 @@ test.describe("the settings surface is navigable", () => {
     await signIn(page, account);
 
     // **The dead-end test.** `/settings/reminders` was the rail's destination and had no
-    // links out at all, so a user who followed the nav landed on one screen of six with
-    // no way onward. Walk the sections in a ring: from each one, click the next.
+    // links out at all, so a user who followed the nav landed on one screen with no way
+    // onward. Walk the sections in a ring: from each one, click the next.
     await page.goto("/settings/reminders");
 
     for (let index = 0; index < SECTIONS.length; index += 1) {

@@ -7,6 +7,7 @@ import { SettingsStates } from "@/components/settings/settings-states";
 import { WeekdayQuietHours } from "@/components/settings/weekday-quiet-hours";
 import { AppShell } from "@/components/shell/app-shell";
 import { UpgradePrompt } from "@/components/upgrade/upgrade-prompt";
+import { displayName } from "@/lib/display-name";
 import { readIsPro } from "@/lib/entitlement-read";
 import { DEFAULT_QUIET_HOURS } from "@/lib/notification-settings";
 import { readNotificationSettings } from "@/lib/notification-settings-read";
@@ -83,7 +84,7 @@ export default async function SettingsQuietHoursPage() {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={displayName(session.user.email)} email={session.user.email}>
+      <AppShell name={displayName(session.user)} email={session.user.email}>
         <SettingsNav />
 
         <SettingsStates />
@@ -105,7 +106,7 @@ export default async function SettingsQuietHoursPage() {
   const weekday = isPro ? "editable" : overrides.length > 0 ? "read-only" : "none";
 
   return (
-    <AppShell name={displayName(session.user.email)} email={session.user.email}>
+    <AppShell name={displayName(session.user)} email={session.user.email}>
       <SettingsNav />
 
       <header className="flex flex-col gap-1">
@@ -175,15 +176,3 @@ export default async function SettingsQuietHoursPage() {
   );
 }
 
-/**
- * A name for the sidenav's account row.
- *
- * **The email's local part is the best name the session carries** — the same rule the
- * digest home and the Timeline use.
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

@@ -131,16 +131,26 @@ describe("the settings screens", () => {
     expect(missing).toEqual([]);
   });
 
-  it("open at least two signed-in branches each, which is what the rule above walks", () => {
+  it("open at least one signed-in branch each, which is what the rule above walks", () => {
     // The guard on the guard. If the `<AppShell name={…} email={session.user.email}>`
     // pattern above ever stops matching — a rename, a refactor to a layout — the loop
     // would find nothing and pass vacuously, which is the failure mode of every
-    // source-text assertion. Each settings page has a named `unavailable` shell and a
-    // named main shell, so two is the floor.
+    // source-text assertion.
+    //
+    // **The floor is one, not two, and that is deliberate.** Most settings pages have
+    // two: a named `unavailable` shell and the page itself, because most of them read
+    // their own data and that read can fail. **`/settings/profile` reads nothing of its
+    // own** — the name it edits is carried by the session — so it has one signed-in
+    // branch and no `unavailable` shell to go with it.
+    //
+    // **One branch is still enough for the rule above to have teeth.** The loop walks
+    // *every* branch it finds and demands the sub-nav after each, so a single branch is
+    // walked once — not vacuously, but exactly once. The floor exists so the loop finds
+    // something at all; it does not require a second copy of the same assertion.
     for (const section of builtSections()) {
       const source = readFileSync(path.join(SETTINGS_DIR, section, "page.tsx"), "utf8");
       const branches = source.match(/<AppShell name=\{.*email=\{session\.user\.email\}>/g) ?? [];
-      expect(branches.length, section).toBeGreaterThanOrEqual(2);
+      expect(branches.length, section).toBeGreaterThanOrEqual(1);
     }
   });
 

@@ -10,6 +10,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { NoticeStrip } from "@/components/state/notice-strip";
 import { RETRY_PARAM, attemptFromQuery } from "@/lib/digest-attempt";
 import { readDigest } from "@/lib/digest-read";
+import { displayName } from "@/lib/display-name";
 import { readNotices } from "@/lib/notice-read";
 import { getSession, homeRoute } from "@/lib/session";
 import { siteUrl } from "@/lib/site-url";
@@ -83,7 +84,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const attempt = attemptFromQuery((await searchParams)[RETRY_PARAM]);
 
   return (
-    <AppShell name={displayName(session.user.email)} email={session.user.email}>
+    <AppShell name={displayName(session.user)} email={session.user.email}>
       {digest.kind === "unavailable" ? (
         <DigestError attempt={attempt} />
       ) : (
@@ -216,17 +217,3 @@ function HomeUnavailable() {
   );
 }
 
-/**
- * A name for the sidenav's account row.
- *
- * **The email's local part is the best name the session carries.** `CurrentUserOut`
- * carries the email and the onboarding status, not a display name — the mockup's "Maya
- * Patel" is a persona, not a field. So the local part is used, and it is title-cased:
- * "maya@example.test" → "Maya".
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

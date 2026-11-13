@@ -131,7 +131,10 @@ beforeEach(() => {
   getSession.mockReset();
   cookies.mockReset();
   cookies.mockResolvedValue(new Map());
-  getSession.mockResolvedValue({ kind: "signed-in", user: { email: "maya@example.test" } });
+  getSession.mockResolvedValue({
+    kind: "signed-in",
+    user: { id: "11111111-1111-7111-8111-111111111111", email: "maya@example.test", name: "", onboarding: "complete" },
+  });
 });
 
 async function renderWith(id: string) {

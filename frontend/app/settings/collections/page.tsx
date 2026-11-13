@@ -6,6 +6,7 @@ import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { UpgradePrompt } from "@/components/upgrade/upgrade-prompt";
 import { readCollections } from "@/lib/collections-read";
+import { displayName } from "@/lib/display-name";
 import { readIsPro } from "@/lib/entitlement-read";
 import { getSession, homeRoute } from "@/lib/session";
 
@@ -58,7 +59,7 @@ export default async function SettingsCollectionsPage() {
     );
   }
 
-  const name = displayName(session.user.email);
+  const name = displayName(session.user);
   const [read, isPro] = await Promise.all([readCollections(), readIsPro()]);
 
   // **"Unavailable" is not "you have none".** The two look identical on screen and mean
@@ -130,13 +131,3 @@ export default async function SettingsCollectionsPage() {
   );
 }
 
-/**
- * A name for the sidenav's account row — the email's local part, the same rule every other
- * authed surface uses.
- */
-function displayName(email: string): string {
-  const local = email.split("@")[0] ?? email;
-  const words = local.split(/[._-]+/).filter(Boolean);
-  if (words.length === 0) return email;
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}

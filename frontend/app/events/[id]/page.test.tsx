@@ -113,6 +113,7 @@ vi.mock("@/lib/site-url", () => ({
 const USER = {
   id: "11111111-1111-1111-1111-111111111111",
   email: "maya@example.test",
+  name: "",
   onboarding: { completed: true, current_step: null },
 };
 
