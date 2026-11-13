@@ -123,7 +123,7 @@ export function ConflictsPanel({
   return (
     <>
       {/*
-        The edit sheet, mounted `sheetsOnly` — the page has its own heading, and the
+        The edit sheet. The panel renders only sheets — the page has its own heading, and the
         panel whole would push a headline between the page's header and its sections.
 
         **The sheet is driven**, the same way the Timeline drives it: the island names
@@ -132,7 +132,6 @@ export function ConflictsPanel({
         cannot show the wrong form.
       */}
       <PersonalEventsPanel
-        sheetsOnly
         editingEvents={editableEvents}
         editingEventId={editingId}
         onEditingEventChange={(id) => {

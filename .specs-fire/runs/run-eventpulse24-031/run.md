@@ -33,17 +33,17 @@ work_items:
   - id: personal-events-list-surface
     intent: unwired-surfaces
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: endpoint-coverage-enforcement
     intent: unwired-surfaces
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: less-like-this-adjustment
     intent: unwired-surfaces
     mode: validate
@@ -72,7 +72,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: personal-events-list-surface
+current_item: endpoint-coverage-enforcement
 status: in_progress
 started: 2026-11-13T06:41:58.698Z
 completed: null
@@ -88,8 +88,8 @@ wide (10 work items)
 2. **calendar-connection-controls** (validate) — completed
 3. **detail-open-signal** (confirm) — completed
 4. **personal-event-reminder-plan** (confirm) — completed
-5. **personal-events-list-surface** (confirm) — in_progress
-6. **endpoint-coverage-enforcement** (confirm) — pending
+5. **personal-events-list-surface** (confirm) — completed
+6. **endpoint-coverage-enforcement** (confirm) — in_progress
 7. **less-like-this-adjustment** (validate) — pending
 8. **settings-sources-surface** (validate) — pending
 9. **traceability-implementation-section** (confirm) — pending
@@ -97,7 +97,7 @@ wide (10 work items)
 
 
 ## Current Item
-personal-events-list-surface (confirm)
+endpoint-coverage-enforcement (confirm)
 
 ## Files Created
 (none yet)

@@ -31,13 +31,11 @@ import { useState } from "react";
 
 import type { components } from "@/lib/api/schema";
 import { api } from "@/lib/backend-client";
-import { cardTime } from "@/lib/detail-time";
 import { utcInstantToLocal, formatLocalDate } from "@/lib/timezones";
 
 import { ConflictResolution, type Conflict } from "./sheets/conflict-resolution";
 import { PersonalEventForm, type PersonalEventFormValues } from "./sheets/personal-event-form";
 
-type PersonalEvent = components["schemas"]["PersonalEventOut"];
 type ConflictDetails = components["schemas"]["SchedulingConflictDetails"];
 /** The resolutions the API accepts. */
 type Resolution = components["schemas"]["ConflictResolutionIn"]["resolution"];
@@ -64,8 +62,6 @@ export type PersonalEventSeed = {
 };
 
 export type PersonalEventsPanelProps = {
-  /** The user's personal events, read by the server component that renders this. */
-  events?: PersonalEvent[];
   /**
    * The create sheet's open state, when the caller drives it.
    *
@@ -76,25 +72,6 @@ export type PersonalEventsPanelProps = {
   createOpen?: boolean;
   /** Called when the caller drives the create sheet's open state. */
   onCreateOpenChange?: (open: boolean) => void;
-  /**
-   * Mount the flow's two sheets and nothing else — no heading, no list, no button.
-   *
-   * The nav's **Add** affordance needs the create → conflict → resolve round trip, not the
-   * panel around it. Rendered whole inside the sidenav, the panel pushed a headline-sized
-   * "Your personal events" between the routes and the footer; rendered whole beside the
-   * bottom-tab bar, it became a third column of the shell's flex row and squeezed the
-   * mobile page to a sliver. The sheets are native `<dialog>`s, so closed they take no
-   * space. The outcome line is announced, not shown: there is no panel to hold a line.
-   * The visible confirmation is the page's own list, which every successful write
-   * refreshes (`router.refresh()`).
-   */
-  sheetsOnly?: boolean;
-  /**
-   * Whether the panel draws its own "Add event" button. The home page's header already
-   * carries "+ Add personal event", and a second Add a few hundred pixels below it would
-   * be two controls for one action.
-   */
-  addButton?: boolean;
   /**
    * The personal events the **Timeline** offers to edit, and the events it opens the
    * edit sheet for.
@@ -169,7 +146,7 @@ export type PersonalEventsPanelProps = {
   /**
    * Whether the **caller** is the one showing the panel's message.
    *
-   * **A message is announced once.** The panel's `sheetsOnly` mode has no visible
+   * **A message is announced once.** The panel has no visible
    * message of its own — it announces through a hidden live region instead. But a
    * caller that renders the confirmation itself (the digest header's quick-add does:
    * a visible line with a link to the week) would then have **two** announcements of
@@ -183,11 +160,8 @@ export type PersonalEventsPanelProps = {
 };
 
 export function PersonalEventsPanel({
-  events = [],
   createOpen,
   onCreateOpenChange,
-  sheetsOnly = false,
-  addButton = true,
   editingEvents = [],
   editingEventId,
   onEditingEventChange,
@@ -263,13 +237,6 @@ export function PersonalEventsPanel({
     // actually closes it. Without this the caller would still believe the sheet was
     // open, and the next id it set would not reopen the form.
     onEditingEventChange?.(null);
-  };
-
-  const openCreate = (): void => {
-    setOwnEditing(null);
-    setOwnHighlightStartTime(false);
-    setFormKey((key) => key + 1);
-    setFormOpen(true);
   };
 
   const openEdit = (event: PersonalEventSeed, highlightTime = false): void => {
@@ -456,96 +423,25 @@ export function PersonalEventsPanel({
     </>
   );
 
-  if (sheetsOnly) {
-    return (
-      <>
-        {/* A live region without `role="status"`: the nav mounts this on every authed
-            page, and a page's own status region (the digest's "ready" line) stays the
-            only one there is.
-
-            **And it is only here when the caller is not showing the message.** A
-            caller that renders the confirmation itself would otherwise hear the same
-            fact twice — once from the visible line, once from here. */}
-        {messageShownByCaller ? null : (
-          <p aria-live="polite" className="sr-only">
-            {message}
-          </p>
-        )}
-        {sheets}
-      </>
-    );
-  }
-
   return (
-    <div>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="[font:var(--type-scale-headline-lg)]">Your personal events</h2>
-        {addButton ? (
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-control bg-accent-terracotta px-4 py-2 [font:var(--type-scale-meta-md)] text-ink-inverse"
-          >
-            Add event
-          </button>
-        ) : null}
-      </div>
+    <>
+      {/* A live region without `role="status"`: the nav mounts this on every authed
+          page, and a page's own status region (the digest's "ready" line) stays the
+          only one there is.
 
-      {message ? (
-        <p className="mt-3 [font:var(--type-scale-body-sm)] text-ink-secondary">{message}</p>
-      ) : null}
-
-      {events.length === 0 ? (
-        <p className="mt-4 [font:var(--type-scale-body-md)] text-ink-muted">
-          You haven&apos;t added any personal events yet.
+          **And it is only here when the caller is not showing the message.** A
+          caller that renders the confirmation itself would otherwise hear the same
+          fact twice — once from the visible line, once from here. */}
+      {messageShownByCaller ? null : (
+        <p aria-live="polite" className="sr-only">
+          {message}
         </p>
-      ) : (
-        <ul className="mt-4 flex flex-col gap-2">
-          {events.map((event) => (
-            <li key={event.id}>
-              <PersonalEventRow event={event} onEdit={() => openEdit(event)} />
-            </li>
-          ))}
-        </ul>
       )}
-
       {sheets}
-    </div>
+    </>
   );
 }
 
-/**
- * One personal event.
- *
- * The warm-personal stripe is **always paired with the visible text label "Personal"** —
- * colour is never the sole carrier of meaning (WCAG 1.4.1). This is the same pairing the
- * design system specifies for the timeline event-block and the digest card; there is no
- * Pulse Card in this item, so the rule is proven here and in the conflict sheet's cards.
- */
-function PersonalEventRow({ event, onEdit }: { event: PersonalEvent; onEdit: () => void }) {
-  return (
-    <div className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-elevated px-4 py-3">
-      <span aria-hidden="true" className="h-8 w-[3px] shrink-0 rounded-full bg-warm-personal" />
-      <span className="text-[11px] font-semibold tracking-[0.08em] text-warm-personal uppercase">
-        Personal
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate [font:var(--type-scale-meta-md)]">{event.name}</span>
-        <span className="block [font:var(--type-scale-body-sm)] text-ink-muted">
-          {cardTime(event.start_time_utc, event.start_time_tz)}
-        </span>
-      </span>
-      <button
-        type="button"
-        onClick={onEdit}
-        aria-label={`Edit ${event.name}`}
-        className="rounded-control border border-border-subtle px-3 py-1 [font:var(--type-scale-meta-sm)] text-ink-secondary"
-      >
-        Edit
-      </button>
-    </div>
-  );
-}
 
 /** The edit form's seed values, taken from the event being edited. */
 function seedFrom(event: PersonalEventSeed): Partial<PersonalEventFormValues> {

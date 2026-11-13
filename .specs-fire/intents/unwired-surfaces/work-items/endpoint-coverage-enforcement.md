@@ -4,7 +4,7 @@ title: The Check That Would Have Caught All of This
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-13
 ---

@@ -151,10 +151,10 @@ export function Sidenav({ name, email }: SidenavProps) {
 
       {/*
         The create and conflict sheets are mounted *outside* the route list, and only the
-        sheets (`sheetsOnly`): inside the `<li>` they would be a form nested in a
+        sheets: inside the `<li>` a list would be a form nested in a
         navigation list, and the whole panel would wedge a heading into the rail.
       */}
-      <PersonalEventsPanel sheetsOnly createOpen={addOpen} onCreateOpenChange={setAddOpen} />
+      <PersonalEventsPanel createOpen={addOpen} onCreateOpenChange={setAddOpen} />
 
       {/*
         The footer is pinned to the bottom of the rail (`margin-top: auto`) and carries

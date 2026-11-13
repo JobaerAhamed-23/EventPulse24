@@ -4,9 +4,11 @@ title: The List That Renders Nowhere — A Decision, Not a Cleanup
 intent: unwired-surfaces
 complexity: low
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-031
+completed_at: 2026-11-13T07:32:45.724Z
 ---
 
 # Work Item: The List That Renders Nowhere — A Decision, Not a Cleanup

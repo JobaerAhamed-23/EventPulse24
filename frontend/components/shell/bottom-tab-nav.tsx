@@ -117,10 +117,10 @@ export function BottomTabNav({ name, email }: AccountProps) {
 
       {/*
         The create and conflict sheets are mounted outside the bar, and only the sheets
-        (`sheetsOnly`): inside a nav slot they would be a form nested in a navigation list,
+        inside a nav slot a list would be a form nested in a navigation list,
         and the whole panel here would be a third column of the shell's flex row.
       */}
-      <PersonalEventsPanel sheetsOnly createOpen={addOpen} onCreateOpenChange={setAddOpen} />
+      <PersonalEventsPanel createOpen={addOpen} onCreateOpenChange={setAddOpen} />
     </>
   );
 }

@@ -302,3 +302,64 @@ is the counterpart of the saved-event route's use of `readEventDetail`, and keep
 three-way split (`found` / `missing` / `unavailable`). A name that cannot be read falls back
 to "this event" rather than failing the screen — the plan is still the user's and still
 editable.
+
+---
+
+## Work Item: personal-events-list-surface
+
+### Decision: delete both dead surfaces
+
+Verified at execution, not assumed: **six** mounts of `PersonalEventsPanel`, **all six**
+passing `sheetsOnly`; **zero** mounts of `SavedEventsSection`.
+
+Deleted rather than given routes, because **no requirement asks for either**. The Timeline
+is the personal-events surface and works. Saves are reachable from Browse, the Detail
+Screen, and now the collections assign picker; FR-49's design is `collections-desktop.html`
+and there is no saved-events-list mockup anywhere in the corpus. Building two new screens
+to justify untested-by-use code would have been scope invented to avoid a deletion.
+
+### Test Results
+
+| Category | Count |
+|----------|-------|
+| **Full frontend suite** | **2374 passed, 0 failed** |
+| Test files | 136 (down from 137) |
+
+**The test count fell by 16** — 2390 → 2374 — which is the direction the decision implies
+and the work item's own criterion: *"deleting dead code should reduce it, and a test count
+that does not change is a signal the dead code was not actually removed."*
+
+Net diff: **94 insertions, 199 deletions.** `pnpm build` green.
+
+### What was removed
+
+- `PersonalEventsPanel`'s list branch, `PersonalEventRow`, and the `events`, `sheetsOnly`
+  and `addButton` props — `sheetsOnly` was true at every call site, so the prop had one
+  value and no meaning.
+- Six tests covering that branch.
+- `components/saved-events-section.tsx` and its ten tests.
+- `openCreate` and the `cardTime` import, orphaned by the above and caught by eslint.
+- The stale `PersonalEventsSection` comment naming a component that never existed.
+
+### Findings
+
+#### 1. Deleting the list broke four tests that drove the panel through it
+
+The create and delete tests pressed the list's "Add event" and "Edit {name}" buttons —
+controls no user could reach. They were rewired to drive the panel the way every real
+caller does, through `createOpen` and `editingEventId`.
+
+**That rewiring needed stateful harnesses.** The first attempt passed `() => {}` as the
+change callbacks, and four tests failed because *the panel cannot close a sheet whose state
+the caller owns*. A no-op callback would have let "the sheet stayed open" assert as a pass.
+`CreateHarness` and `EditHarness` hold the state the sidenav, the digest header and the
+Timeline each hold in the real app.
+
+So the tests for delete — written three items ago in this same run — were themselves
+exercising a surface the user could not reach. They now exercise the one they can.
+
+#### 2. The warm-personal pairing assertions went with the list
+
+Two tests asserted WCAG 1.4.1's colour-plus-label pairing on `PersonalEventRow`. The rule
+is still proven, on the conflict sheet's cards and the Timeline's event blocks — surfaces
+a user reaches. Recorded so the deletion is not read as dropping an accessibility check.

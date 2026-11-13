@@ -66,12 +66,11 @@ export function TimelinePanel({
   return (
     <>
       {/*
-        The panel is mounted `sheetsOnly` — no heading, no list, no button. The panel
+        The panel mounts only the flow's sheets. It once had a list branch too, which
         *whole* would push a headline between the week's grid and the nav, and the
         Timeline has its own heading.
       */}
       <PersonalEventsPanel
-        sheetsOnly
         editingEvents={personalEvents}
         editingEventId={editing}
         onEditingEventChange={setEditing}

@@ -392,7 +392,7 @@ export function DetailActions({
   return (
     <>
       {/*
-        The edit sheet, mounted `sheetsOnly` — the Detail Screen has its own heading, and
+        The edit sheet. The panel renders only sheets — the Detail Screen has its own heading, and
         the panel whole would push a headline between the page's header and its content.
 
         **The sheet is driven**, the same way the Timeline and the conflict review drive
@@ -405,7 +405,6 @@ export function DetailActions({
         it rather than lingering on the next opening.
       */}
       <PersonalEventsPanel
-        sheetsOnly
         editingEvents={moving ? [moving] : []}
         editingEventId={moving?.id ?? null}
         onEditingEventChange={(id) => {
