@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DigestDeliveryTime } from "@/components/settings/digest-delivery-time";
@@ -156,6 +157,25 @@ export default async function SettingsQuietHoursPage() {
             initialDeliveryTime={settings.digest.delivery_time}
             initialTimezone={settings.digest.timezone}
           />
+        </div>
+        {/*
+          **The link to the digest's own screen.** `/settings/digest` is a separate
+          route, and **there is no settings index and no settings sub-nav** — so without
+          this link the route would be reachable and invisible.
+
+          **It lives in the "Pulse Digest" section because that is where the digest's
+          settings already are.** The delivery time is here; the opt-out is the other
+          half of the same question ("when does it arrive" and "what is in it"), and a
+          link under the heading that already says "Pulse Digest" is the one a user
+          would follow.
+        */}
+        <div className="mt-6">
+          <Link
+            href="/settings/digest"
+            className="inline-block text-ink-secondary underline underline-offset-4 [font:var(--type-scale-meta-md)]"
+          >
+            What&apos;s in your Pulse Digest
+          </Link>
         </div>
       </div>
     </AppShell>

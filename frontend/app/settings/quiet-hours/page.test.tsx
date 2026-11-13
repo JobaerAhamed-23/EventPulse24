@@ -107,6 +107,17 @@ describe("the route", () => {
     expect(screen.getByLabelText("Ends")).toHaveValue("08:00");
   });
 
+  it("links to the digest's own screen, so that route is discoverable", async () => {
+    render(await SettingsQuietHoursPage());
+
+    // **There is no settings index and no settings sub-nav.** A new `/settings/digest`
+    // route would be reachable and invisible without this link, so the link is the
+    // thing that makes the route findable — and it is asserted, because a link that
+    // quietly disappears is how a route becomes unreachable.
+    const link = screen.getByRole("link", { name: "What's in your Pulse Digest" });
+    expect(link).toHaveAttribute("href", "/settings/digest");
+  });
+
   it("marks Settings as the active sidenav item", async () => {
     render(await SettingsQuietHoursPage());
 

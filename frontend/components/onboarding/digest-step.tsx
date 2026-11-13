@@ -15,6 +15,22 @@
  *
  * The timezone list and the browser's own zone come from `lib/timezones.ts`, which the
  * personal-event form already uses — one list, one idea of which zones exist.
+ *
+ * ---
+ *
+ * ## What this step owns
+ *
+ * **The schedule: the time and its zone. Not the opt-out.**
+ *
+ * **The personal-events opt-out lives at `/settings/digest`**, a settings control. It
+ * is not on this step because onboarding is capped at three steps with named contents
+ * (FR-1) and is about *configure later* (§4.1) — the opt-out is configuration — and
+ * because no design document gives onboarding an opt-out. Every opt-out the design
+ * corpus specifies is Settings-scoped.
+ *
+ * **So `DigestValues` carries two fields, and the `PUT` sends two.** The endpoint
+ * treats an omitted field as "leave it alone", so the user's stored opt-out is
+ * untouched by this flow — which is what they asked for.
  */
 
 import {
