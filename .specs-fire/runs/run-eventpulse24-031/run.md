@@ -54,17 +54,17 @@ work_items:
   - id: settings-sources-surface
     intent: unwired-surfaces
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: traceability-implementation-section
     intent: unwired-surfaces
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: unwired-surfaces
     mode: confirm
@@ -72,7 +72,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: settings-sources-surface
+current_item: traceability-implementation-section
 status: in_progress
 started: 2026-11-13T06:41:58.698Z
 completed: null
@@ -91,13 +91,13 @@ wide (10 work items)
 5. **personal-events-list-surface** (confirm) — completed
 6. **endpoint-coverage-enforcement** (confirm) — completed
 7. **less-like-this-adjustment** (validate) — completed
-8. **settings-sources-surface** (validate) — in_progress
-9. **traceability-implementation-section** (confirm) — pending
+8. **settings-sources-surface** (validate) — completed
+9. **traceability-implementation-section** (confirm) — in_progress
 10. **e2e-proof-and-contract-tests** (confirm) — pending
 
 
 ## Current Item
-settings-sources-surface (validate)
+traceability-implementation-section (confirm)
 
 ## Files Created
 (none yet)

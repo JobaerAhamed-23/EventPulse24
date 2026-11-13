@@ -4,7 +4,7 @@ title: Section C — PRD ↔ Implementation, the Column the Matrix Never Had
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - endpoint-coverage-enforcement
 created: 2026-11-13

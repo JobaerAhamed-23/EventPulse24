@@ -463,3 +463,41 @@ port it would need. Measuring it as a wiring gap would misdescribe it to whoever
 up.
 
 `detail-actions.tsx:7` already states the correct current behaviour and is unchanged.
+
+---
+
+## Work Item: settings-sources-surface — SPLIT, not implemented
+
+**No code was written.** The design checkpoint decided scope, as the brief required.
+
+### Finding 1 — the same category as FR-25
+
+`unwired-surfaces` closes gaps where a **built endpoint has no caller**. Settings → Sources
+has no endpoints at all: the reliability score and the `Source` registry are built, but
+nothing exposes them, no per-user mute model exists, and no mute affects composition. It
+needs a model, a migration, three endpoints and a behaviour change before a screen can call
+anything.
+
+**Split on the same line FR-25 was split on.** Keeping one and splitting the other would
+make the intent's scope mean two different things in the same run.
+
+### Finding 2 — the mockup's four groups exist nowhere in the model
+
+`settings-sources-desktop.html`: *"Official / Community / Aggregator / Crawled"*. The code
+has `SourceType` (7), `AcquisitionMethod` (7) and a derived `high`/`lower` priority (2).
+"Official" maps to the high tier and "Crawled" to `CRAWL`; **"Community" and "Aggregator"
+map to nothing**, the four groups mix two taxonomies, and jsonld/rss/ics/email_ics are
+unassigned. Inventing that mapping is a product decision about how sources are described to
+users — not something to settle silently inside a feature item.
+
+### Finding 3 — the reliability copy already conflicts with the domain
+
+`domain/reliability.py:49`: *"FR-16 asks for 'a 3x week-over-week drop in reliability
+score'. That cannot happen"*. The new intent decides what the dots show before drawing them.
+
+### Outcome
+
+New intent **`source-transparency-and-mute`**, carrying all three questions plus the AD-3
+precedent for where a per-user mute lives (`SavedEvent` holds `event_id` by value with no
+foreign key). It also records that FR-25's reversal surface may be the same 3-state mute —
+to be decided once, there, rather than built twice.
