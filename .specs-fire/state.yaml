@@ -1287,6 +1287,66 @@ intents:
         run_id: run-eventpulse24-030
         completed_at: 2026-11-13T02:40:31.286Z
     completed_at: 2026-11-13T02:39:46.363Z
+  - id: unwired-surfaces
+    title: The Controls That Were Never Wired — Endpoints Without Callers, Features Without Surfaces
+    status: pending
+    created: 2026-11-13
+    work_items:
+      - id: collection-assign-control
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: calendar-connection-controls
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: detail-open-signal
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: personal-event-reminder-plan
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: personal-events-list-surface
+        status: pending
+        complexity: low
+        mode: confirm
+        depends_on: []
+      - id: endpoint-coverage-enforcement
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: less-like-this-adjustment
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: settings-sources-surface
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: traceability-implementation-section
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - endpoint-coverage-enforcement
+      - id: e2e-proof-and-contract-tests
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - collection-assign-control
+          - calendar-connection-controls
+          - detail-open-signal
+          - personal-event-reminder-plan
 runs:
   active: []
   completed:
