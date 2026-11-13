@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BottomTabNav } from "@/components/shell/bottom-tab-nav";
@@ -7,12 +7,15 @@ import { Sidenav } from "@/components/shell/sidenav";
 /**
  * The navigation's real routes.
  *
- * **A route that exists is a link; a route that does not is a `<span>`.** Timeline and
- * Conflicts are real screens now, so both are links in both rails. **A link to a 404 is
- * a lie about where the label goes**, and an inert row is a `<span>` with
- * `aria-disabled` rather than an anchor — so this pins both halves: Timeline and
- * Conflicts are links, and the two routes that still do not exist (Browse, Settings)
- * are not.
+ * **A route that exists is a link; a route that does not is a `<span>`.** Every route
+ * the product has shipped is a link now — Digest, Timeline, Browse, Conflicts and
+ * Settings are all real screens. **A link to a 404 is a lie about where the label
+ * goes**, and an inert row is a `<span>` with `aria-disabled` rather than an anchor.
+ *
+ * **Browse was the last one standing.** It was a `<span aria-disabled="true">` reading
+ * "Coming soon" in the sidenav, in the More sheet, and — as the *bottom tab's* Digest
+ * slot, which had never been a link since the digest home shipped — in the bar. All
+ * three are links now, and the "Coming soon" note is gone from the product.
  *
  * **The two rails carry the same routes in different geometry.** The sidenav is a
  * vertical list; the bottom tab is a five-slot bar. Both must offer the real routes as
@@ -107,16 +110,39 @@ describe("the sidenav", () => {
     expect(link?.getAttribute("aria-current")).toBeNull();
   });
 
-  it("leaves the routes that do not exist inert", () => {
+  it("links Browse to the screen, because the Browse surface shipped", () => {
     render(<Sidenav name="Maya" email="maya@example.test" />);
 
-    // **Browse is the only route left that does not exist.** Settings has one now —
-    // the Default Reminder Plan and the Quiet Hours window.
-    for (const label of ["Browse"]) {
-      const item = sidenavItem(label);
-      expect(item?.querySelector("a"), label).toBeNull();
-      expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
-    }
+    // **Browse was the last inert row in the rail.** The surface shipped with the
+    // Browse read API, so the row is a link to the same `/browse` the mobile More
+    // sheet points at — one route, two rails, one destination.
+    const item = sidenavItem("Browse");
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/browse");
+    expect(item?.querySelector("[aria-disabled='true']")).toBeNull();
+    expect(item?.textContent).not.toContain("Coming soon");
+  });
+
+  it("marks Browse as the current route when it is", () => {
+    pathname.mockReturnValue("/browse");
+
+    render(<Sidenav name="Maya" email="maya@example.test" />);
+
+    const link = [...sidenavRail().querySelectorAll("a")].find(
+      (anchor) => anchor.getAttribute("href") === "/browse",
+    );
+    expect(link?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("does not mark Browse as the current route on another page", () => {
+    pathname.mockReturnValue("/");
+
+    render(<Sidenav name="Maya" email="maya@example.test" />);
+
+    const link = [...sidenavRail().querySelectorAll("a")].find(
+      (anchor) => anchor.getAttribute("href") === "/browse",
+    );
+    expect(link?.getAttribute("aria-current")).toBeNull();
   });
 
   it("makes Settings a real route, because the settings screens exist", () => {
@@ -198,8 +224,9 @@ describe("the bottom tab", () => {
     // only exists on desktop is not a route, and the onboarding copy — *"You can
     // change these later in Settings"* — has to be true on a phone too.
     //
-    // **Browse is still inert**, and it is the bar's one `aria-disabled` slot — so the
-    // assertion is about *Settings* not being one, not about the bar having none.
+    // **Every route the bar carries is a real one now.** Browse lives behind the More
+    // sheet, and Settings points at `/settings/reminders` — so the bar's `aria-disabled`
+    // slots are gone, and this says so.
     const link = screen.getByRole("link", { name: "Settings" });
     expect(link).toHaveAttribute("href", "/settings/reminders");
 
@@ -207,6 +234,29 @@ describe("the bottom tab", () => {
       (slot) => slot.textContent?.trim() === "Settings",
     );
     expect(settingsSlot?.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("links Digest to the home, because the digest home shipped", () => {
+    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+    // **The first tab was the one inert slot nobody noticed.** It has had no `href`
+    // since the digest home shipped, so on a phone the Digest tab rendered the inert
+    // branch — a disabled `<span>` carrying a visually-hidden "Coming soon" — while
+    // also carrying `active={pathname === "/"}`. The home route's own tab did nothing
+    // and said it was not coming soon.
+    const link = screen.getByRole("link", { name: "Digest" });
+    expect(link).toHaveAttribute("href", "/");
+  });
+
+  it("marks Digest active on the detail screens that hang off it", () => {
+    // **The prefix rule, like the sidenav's.** The Detail Screen is reached by tapping
+    // a Digest card, so a reader on `/events/...` has not left the Digest — and a bar
+    // that marks nothing active there while the rail marks Digest reads as a bug.
+    pathname.mockReturnValue("/events/folk-pub-quiz");
+
+    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+    expect(screen.getByRole("link", { name: "Digest" }).getAttribute("aria-current")).toBe("page");
   });
 
   it("marks Settings as the current route on both settings routes", () => {
@@ -227,5 +277,57 @@ describe("the bottom tab", () => {
 
     const add = screen.getByRole("button", { name: "Add personal event" });
     expect(add).toHaveAttribute("aria-haspopup", "dialog");
+  });
+});
+
+describe("the More sheet", () => {
+  /**
+   * Open the sheet and return it.
+   *
+   * **The sheet is a dialog, and it only exists once it is opened.** The More slot is
+   * mounted in the bar with `open={false}`, so the rows inside it are not in the DOM
+   * until the user taps More — which is the correct behaviour for a dialog, and the
+   * reason these assertions have to open it first.
+   */
+  async function openMore(): Promise<HTMLElement> {
+    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+    const more = screen.getByRole("button", { name: "More" });
+    fireEvent.click(more);
+
+    return await screen.findByRole("dialog", { name: "More" });
+  }
+
+  it("links Browse to the screen, because the Browse surface shipped", async () => {
+    const sheet = await openMore();
+
+    const row = [...sheet.querySelectorAll("a")].find(
+      (anchor) => anchor.textContent?.trim() === "Browse",
+    );
+    expect(row).not.toBeUndefined();
+    expect(row?.getAttribute("href")).toBe("/browse");
+    expect(row?.getAttribute("aria-disabled")).toBeNull();
+    expect(sheet.textContent).not.toContain("Coming soon");
+  });
+
+  it("marks the Browse row as the current route when it is", async () => {
+    pathname.mockReturnValue("/browse");
+
+    const sheet = await openMore();
+
+    const row = [...sheet.querySelectorAll("a")].find(
+      (anchor) => anchor.getAttribute("href") === "/browse",
+    );
+    expect(row?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("keeps More a control, so it carries no current-route marker", async () => {
+    pathname.mockReturnValue("/browse");
+
+    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+
+    const more = screen.getByRole("button", { name: "More" });
+    expect(more.getAttribute("aria-current")).toBeNull();
+    expect(more.getAttribute("aria-haspopup")).toBe("dialog");
   });
 });

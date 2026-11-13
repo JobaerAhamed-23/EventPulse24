@@ -7,3 +7,7 @@ pnpm-lock.yaml
 next-env.d.ts
 lib/api/*.ts
 lib/api/openapi.json
+# Playwright's output: the run's results, traces and screenshots. It is a build
+# artefact, not source, and `format:check` must not trip over the JSON a run leaves.
+test-results/
+playwright-report/

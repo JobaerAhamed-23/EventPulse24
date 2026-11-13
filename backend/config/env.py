@@ -130,6 +130,29 @@ class Settings(BaseSettings):
     # Source fetches (ports.fetch). SOURCE_FETCH overrides ADAPTER_MODE for this one port, so
     # local dev can fetch real feeds while every other adapter stays fake. Unset: follow the mode.
     source_fetch: Literal["fake", "http"] | None = None
+
+    # The throttle's counter store (ports.throttle). THROTTLE_ADAPTER overrides ADAPTER_MODE
+    # for this one port. Unset: follow the mode.
+    #
+    # **This port is the one that cannot be faked locally, and the reason is that it
+    # holds state the whole stack shares.** Every other port's fake is a stateless
+    # stand-in — a canned LLM reply, a recorded crawl, a fake invoice — so a fake costs
+    # the local stack nothing. The throttle is different: its counters are the product's
+    # rate limits and the save cap, and they are read by the API, spent by the API and
+    # cleared by the seed command, which are three *separate processes*. An in-process
+    # store gives each of them its own copy, so the seed's `reset_save_allowance` clears
+    # the seed's counters and not the API's — and a repeatable seed stops being
+    # repeatable, because the second run finds the cap already spent.
+    #
+    # **So the local stack uses the real Redis adapter**, and only the counter's storage
+    # changes: Redis is already in the stack (it is the Celery broker), the key layout is
+    # the same one production uses, and the rate limits themselves are untouched. The
+    # in-memory adapter stays the unit tests' tool, because a test pins the clock and
+    # wants an isolated counter — neither of which Redis could give it.
+    #
+    # `memory` is offered so a developer can still run without Redis, at the cost of the
+    # cross-process sharing described above.
+    throttle_adapter: Literal["memory", "redis"] | None = None
     source_fetch_user_agent: str = (
         "EventPulse24-SourceFetcher/0.1 (+https://github.com/JobaerAhamed-23/EventPulse24)"
     )

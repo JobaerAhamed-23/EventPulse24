@@ -37,3 +37,9 @@ out/
 # These are never real source: a duplicate in a Django migrations/ directory
 # breaks the migration loader, since a filename with a space is not a module name.
 *\ 2.*
+# The same, for a copy with **no extension** — ".coverage 2" is a coverage
+# database left behind by a mangled shell redirect ("> .coverage 2" instead of
+# "> .coverage 2>&1"). The pattern above needs something after the "2.", so it
+# did not match, and the artefact was untracked-but-unignored: one `git add .`
+# away from being committed.
+*\ 2

@@ -31,12 +31,13 @@ import {
  * carries no `aria-current="page"` — the row *inside* the sheet carries that when the
  * overflow route is the current one.
  *
- * **An inert slot is inert.** Two of the five routes do not exist yet — Browse (behind
- * the More sheet) and Settings — and a slot that navigates to a 404 is a lie. An inert
- * slot is a `<span>` with `aria-disabled="true"`, and it carries the same "Coming soon"
- * the sidenav's inert rows carry — visually hidden here, because a slot is a fifth of
- * the bar and there is no room to print it, but said aloud, because `aria-disabled`
- * alone does not explain *why* the slot does nothing.
+ * **All five slots are real now.** Browse lives behind the More sheet and the sheet's
+ * row is a link; Settings points at `/settings/reminders`. **A slot that navigates to a
+ * 404 is a lie**, and there is no such slot left in the bar.
+ *
+ * **An inert slot is inert.** The branch for one is kept, because the rule it implements
+ * — *a route that does not exist is a `<span>`, never a link* — is the rule the next
+ * deferred route has to inherit. No slot uses it today.
  *
  * **Sign out reaches mobile through the More sheet.** The sidenav is `hidden md:flex`, so
  * the account row in its footer is desktop-only; `MoreMenu` carries the same account
@@ -53,7 +54,29 @@ export function BottomTabNav({ name, email }: AccountProps) {
         className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border-subtle bg-surface-elevated md:hidden"
         style={{ height: "var(--layout-bottom-tab-height)" }}
       >
-        <TabSlot label="Digest" active={pathname === "/"} glyph={<DigestGlyph />} />
+        {/*
+          **Digest is a real route, and it was never a link.** This slot has had no
+          `href` since the digest home shipped, so on a phone the *first* tab rendered
+          the inert branch — a disabled `<span>` carrying a visually-hidden "Coming soon"
+          — while also carrying `active={pathname === "/"}`. The home route's own tab did
+          nothing and said it was not coming soon.
+
+          **It is now a link to `/`.** The route exists; the inert branch was never the
+          right treatment for it, and it is the same defect the sidenav's Browse row
+          had, one route over.
+
+          **The active rule is a prefix, like the sidenav's.** The Detail Screen hangs
+          off Digest in the IA — it is reached by tapping a Digest card — so a reader on
+          `/events/...` has not left the Digest. The sidenav already applies this rule
+          to its Digest row, and the bottom bar must agree with it, or the same screen
+          would mark Digest active in the rail and nothing active in the bar.
+        */}
+        <TabSlot
+          href="/"
+          label="Digest"
+          active={pathname === "/" || pathname.startsWith("/events/")}
+          glyph={<DigestGlyph />}
+        />
         <TabSlot
           label="Timeline"
           href="/timeline"
@@ -111,7 +134,8 @@ export function BottomTabNav({ name, email }: AccountProps) {
  *
  * `href` is for a slot that routes. **A slot with no `href` and no `onActivate` is
  * inert** — it is a `<span>` with `aria-disabled`, because a link to a 404 is a lie
- * about where the label goes.
+ * about where the label goes. No slot is inert today, and the branch stays for the next
+ * deferred route.
  */
 function TabSlot({
   label,
@@ -156,6 +180,11 @@ function TabSlot({
 
   if (!href) {
     // The inert slot. Nothing to navigate to, so there is nothing to focus.
+    //
+    // **No slot uses this today.** Digest was the last one, and it was a link by now —
+    // but the branch stays, because the rule it implements is the rule the next deferred
+    // route has to inherit. A route that does not exist is a `<span>`, never a link to
+    // a 404.
     //
     // "Coming soon" is visually hidden rather than printed: the sidenav's inert rows show
     // it in muted meta ink, but a slot here is a fifth of the bar and the words do not

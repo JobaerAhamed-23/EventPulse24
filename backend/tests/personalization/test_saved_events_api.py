@@ -28,6 +28,7 @@ from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, SavedEvent
 from shared.db import CATALOG, PERSONAL
 from tests.csrf import CsrfClient
+from tests.identity.factories import SubscriptionFactory
 from tests.ingestion.factories import EventFactory, make_superseded_pair
 from tests.personalization.factories import PersonalEventFactory
 
@@ -91,6 +92,23 @@ def public_event(**overrides):
 
 def save(client, catalog_event_id):
     return client.post(f"/api/personal/saved-events/{catalog_event_id}")
+
+
+def pro_user():
+    """A user with a live subscription, so the Free save cap does not apply to them.
+
+    **The cap is real, and it is one save a day.** `FREE_TIER_SAVE_DAILY_LIMIT` is 1, so
+    a Free account's *second* save is refused with a 409. That is the product working,
+    not a defect — but it means a test that saves two events as a Free user is testing
+    the cap and not the thing it meant to test. The listing tests below need two saved
+    events to order or to bound, so their user is Pro: no cap, no window, no refusal.
+
+    **The cap has its own tests**, in `test_save_cap.py`, which is where the behaviour
+    belongs.
+    """
+    user = make_user()
+    SubscriptionFactory(user_id=user.pk)
+    return user
 
 
 def unsave(client, catalog_event_id):
@@ -396,12 +414,12 @@ def test_listing_does_not_show_another_users_saves():
 
 
 def test_listing_orders_by_the_snapshot_start_time():
-    user = make_user()
+    user = pro_user()
     later = public_event(start_time_utc=START + timedelta(days=2))
     sooner = public_event(start_time_utc=START)
     client = signed_in(user)
-    save(client, later.id)
-    save(client, sooner.id)
+    assert save(client, later.id).status_code == 201
+    assert save(client, sooner.id).status_code == 201
 
     payload = client.get("/api/personal/saved-events").json()
 
@@ -410,12 +428,12 @@ def test_listing_orders_by_the_snapshot_start_time():
 
 def test_listing_bounds_filter_by_the_snapshot_start_time():
     """The bound applies to the snapshot the list returns, so the two never disagree."""
-    user = make_user()
+    user = pro_user()
     earlier = public_event(start_time_utc=START)
     later = public_event(start_time_utc=START + timedelta(days=2))
     client = signed_in(user)
-    save(client, earlier.id)
-    save(client, later.id)
+    assert save(client, earlier.id).status_code == 201
+    assert save(client, later.id).status_code == 201
 
     payload = client.get(
         "/api/personal/saved-events",

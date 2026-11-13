@@ -29,6 +29,9 @@ from ninja import Query, Router, Status
 from apps.identity.api_auth import current_user
 from apps.ingestion.services.catalog_read import EventNotFoundError, get_public_event
 from apps.personalization.schemas import (
+    BrowseCardOut,
+    BrowseOut,
+    BrowseQuotaOut,
     CalendarCapOut,
     CalendarConnectIn,
     CalendarConnectionListOut,
@@ -62,6 +65,7 @@ from apps.personalization.schemas import (
     TimelineOut,
     TimelineQuery,
 )
+from apps.personalization.services.browse_read import BROWSE_PAGE_SIZE, read_browse_page
 from apps.personalization.services.calendar_connections import (
     connect_calendar,
     disconnect_calendar_for_user,
@@ -902,3 +906,96 @@ def report_event_endpoint(request, body: EventReportIn):
         now=now,
     )
     return Status(201, EventReportOut(category=body.category))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Browse (FR-26, FR-48)
+#
+# **The discovery surface, and the counterweight to the Digest.** The Digest is three
+# cards and an attention surface; Browse is the fuller list for the user's city across
+# tonight and the next seven days. `EXPERIENCE.md` §338 makes the link one-way on
+# purpose — Digest may point at Browse, Browse never points back, "because saves are
+# the conversion".
+#
+# **It ranks with the Relevance Pulse, never the Event Fit.** AD-10 names the two and
+# forbids substituting one for the other: the Event Fit is the explanation for a
+# stranger, and this surface is authed. Its first section head says "3 worth your
+# attention today" — *your* — so the explanation on its cards is the personal one.
+#
+# **Every state answers 200.** No city, nothing on this week, and a page past the end
+# are answers; a failure is not a 200 at all. That is what lets the surface say
+# "Nothing matched." and "Nothing nearby tonight." and mean two different things.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/browse",
+    response={200: BrowseOut},
+    summary="Browse the user's city, tonight and the next seven days",
+    description=(
+        "The signed-in user's Browse surface: public events in their city across a "
+        "seven-day window, ranked by the same Relevance Pulse the Pulse Digest uses, "
+        "with the save state of each card.\n\n"
+        "The city is the user's **digest preference** city, not a parameter — one "
+        "meaning of 'your city' across both surfaces, which is why the surface's "
+        "'Change city' link goes to account settings. A user who skipped onboarding "
+        "has no city: the response says `city_missing` and carries no cards, and the "
+        "client shows the same quiet empty state it shows for a city with nothing "
+        "on.\n\n"
+        "The window is cut in the **user's** timezone, so an event at 11pm local on "
+        "the seventh day is inside it and one at 1am the next morning is not.\n\n"
+        "`total` is how many events the user can page to, and `tier_2_starts_at` is "
+        "where the second section begins — the server names the tiers so the rule "
+        "cannot drift from the Digest's. `quota` reports the save allowance **without "
+        "spending it**: it is a sign above the gate, not the gate.\n\n"
+        "Each card carries up to three Why-this Tag keys, the Confidence Pulse bucket "
+        "and the Source Badge variant, plus `is_saved` so an already-saved event "
+        "renders as saved on first paint. At most one card per response carries the "
+        "`must_know` stripe."
+    ),
+)
+def browse_endpoint(request, offset: int = 0, limit: int = BROWSE_PAGE_SIZE):
+    """Browse the signed-in user's city for the coming week."""
+    page = read_browse_page(
+        user_id=request.user.pk,
+        now=timezone.now(),
+        offset=offset,
+        limit=limit,
+    )
+    return BrowseOut(
+        city=page.city,
+        timezone=page.timezone,
+        window_from=page.window_from,
+        window_to=page.window_to,
+        total=page.total,
+        tier_2_starts_at=page.tier_2_starts_at,
+        quota=BrowseQuotaOut(
+            used=page.quota.used,
+            cap=page.quota.cap,
+            resets_in_seconds=page.quota.resets_in_seconds,
+            is_pro=page.quota.is_pro,
+        ),
+        cards=[
+            BrowseCardOut(
+                event_id=card.event_id,
+                slug=card.slug,
+                title=card.title,
+                canonical_url=card.canonical_url,
+                start_time_utc=card.start_time_utc,
+                start_time_tz=card.start_time_tz,
+                end_time_utc=card.end_time_utc,
+                venue_name=card.venue_name,
+                venue_city=card.venue_city,
+                status=card.status,
+                source_badge=card.source_badge,
+                tz_review_pending=card.tz_review_pending,
+                tags=list(card.tags),
+                confidence=card.confidence,
+                stripe=card.stripe,
+                is_saved=card.is_saved,
+            )
+            for card in page.cards
+        ],
+        has_more=page.has_more,
+        city_missing=page.city_missing,
+    )

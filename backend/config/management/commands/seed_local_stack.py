@@ -40,6 +40,7 @@ from apps.ingestion.services.venue_registry import find_venue, register_venue, s
 from domain.errors import DomainError
 from shared.actor import Actor
 from shared.db import PERSONAL
+from shared.durations import parse_duration
 
 CONFIG_DIR = Path(__file__).resolve().parents[2]
 REAL_FEEDS_FILE = CONFIG_DIR / "local_feeds.json"
@@ -59,34 +60,14 @@ EDITORIAL_GRANTS: dict[str, tuple[str, ...]] = {
     "reviewitem": ("change", "view"),
 }
 
-_DURATION_UNITS = {"D": 86400.0, "H": 3600.0, "M": 60.0, "S": 1.0}
-
 
 def _duration(value: str) -> timedelta:
     """An ISO-8601 duration such as `PT4H`, as a timedelta.
 
-    Only the time part is read (`PT`), each unit appears at most once, and there must be at
-    least one component: `PT` and `PT4H4H` are refused rather than read as zero or as
-    eight hours.
+    The shape and the refusals live in `shared.durations`, because the browse seed
+    command reads the same shape of value and one parser is better than two.
     """
-    text = value.strip()
-    if not text.startswith("PT"):
-        raise ValueError(f"{value!r} is not an ISO-8601 duration")
-    total = 0.0
-    number = ""
-    seen_units: set[str] = set()
-    for character in text[2:]:
-        if character.isdigit() or character == ".":
-            number += character
-            continue
-        if character not in _DURATION_UNITS or not number or character in seen_units:
-            raise ValueError(f"{value!r} is not an ISO-8601 duration")
-        total += float(number) * _DURATION_UNITS[character]
-        number = ""
-        seen_units.add(character)
-    if number or not seen_units:
-        raise ValueError(f"{value!r} is not an ISO-8601 duration")
-    return timedelta(seconds=total)
+    return parse_duration(value)
 
 
 class Command(BaseCommand):

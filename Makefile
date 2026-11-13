@@ -11,7 +11,7 @@ API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 .DEFAULT_GOAL := help
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
-        web web-install lint-web test-web openapi client dev coverage-backend
+        web web-install lint-web test-web test-e2e openapi client dev coverage-backend seed-browse seed-browse-for-test
 
 UV_BACKEND := uv run --directory backend
 
@@ -105,6 +105,33 @@ lint-web: ## Lint, typecheck and format-check the frontend
 
 test-web: ## Run the frontend tests (Vitest)
 	pnpm --dir frontend test
+
+# The Browse walk-through. These tests drive the real stack — the real frontend against the
+# real backend against the real database — so they need the infrastructure up and the
+# catalog seeded. That is why they are a separate target from `test-web`: the Vitest
+# suite is hermetic and runs on every commit, and these are not.
+#
+# `seed-browse` is a prerequisite, so the data the tests sign in against is the committed
+# seed file's and never whatever the database happened to hold.
+#
+# The four accounts are the Free one (the save cap), the second Free one (a separate
+# save allowance, so two tests can each spend one), the Pro one (no cap) and the
+# `no-city` one (the city's emptiness, which no browser flow can produce).
+seed-browse: ## Seed the Browse catalog (city, week of events, four accounts)
+	$(UV_BACKEND) python manage.py seed_browse_catalog
+
+# The end-to-end run starts from an **empty Pulse**. The seed always puts the save
+# *allowance* back, but it leaves the *saved rows* alone — deliberately, because a seed
+# that un-saved a reader's events would change what the surface shows, and the
+# walk-through is about seeing a saved event. A test suite has the opposite need: a
+# leftover row puts the Save button in the `saved` state, so the suite's first press
+# takes the unsave branch and the button correctly goes back to "Save" — a failure with
+# nothing to do with the code under test.
+seed-browse-for-test: ## Seed the Browse catalog and clear the accounts' saved events
+	$(UV_BACKEND) python manage.py seed_browse_catalog --reset-saves
+
+test-e2e: seed-browse-for-test ## Run the Browse end-to-end tests (Playwright); needs `make up` and the API running
+	pnpm --dir frontend exec playwright test
 
 manage: ## Run a manage.py command: make manage ARGS="check"
 	$(UV_BACKEND) python manage.py $(ARGS)

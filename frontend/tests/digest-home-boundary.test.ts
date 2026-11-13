@@ -288,10 +288,62 @@ describe("the home's shell", () => {
     const more = code.get("components/shell/more-menu.tsx") ?? "";
     expect(more).toContain("<Sheet");
     expect(more).toContain("onClick");
-    // And the row it opens is inert, because Browse is not built: a link to a 404 is
-    // a lie.
-    expect(more).toContain('aria-disabled="true"');
-    expect(more).not.toContain("<Link");
+    // And the row it opens is a **link**, because the Browse surface shipped: a link
+    // to a 404 would be a lie, and so would a "Coming soon" label next to a city full
+    // of events.
+    expect(more).toContain('href="/browse"');
+    expect(more).not.toContain('aria-disabled="true"');
+  });
+
+  it("leaves no aria-disabled Browse row anywhere in the shell", () => {
+    // **Browse was the last "Coming soon" the product said out loud.** It appeared in
+    // three places — the sidenav's rail, the More sheet's row, and (as the bottom
+    // tab's Digest slot, which had never been a link) the bar itself — and all three
+    // are links now.
+    //
+    // **This is asserted on the source rather than the DOM**, because the three places
+    // live in three different files and only one of them is reachable from any single
+    // render. A source-level sweep of the shell's own files is the only assertion that
+    // sees all three at once.
+    const shellFiles = [
+      "components/shell/sidenav.tsx",
+      "components/shell/bottom-tab-nav.tsx",
+      "components/shell/more-menu.tsx",
+    ];
+
+    for (const file of shellFiles) {
+      const source = code.get(file) ?? "";
+
+      // **The inert branch is kept** — it is the rule the next deferred route inherits
+      // — so the sweep cannot be "this file contains no `aria-disabled`". It is
+      // narrower and truer: *no inert branch mentions Browse*.
+      //
+      // The inert branch is the one that renders the disabled `<span>`, so the label
+      // inside it is the label that is on the way but not here.
+      const inertBranch = /if \(!href\) \{[\s\S]*?\n  \}/.exec(source)?.[0] ?? "";
+      expect(inertBranch.includes('label="Browse"'), file).toBe(false);
+    }
+
+    // **The More sheet has no inert branch at all.** Its only row is Browse, and
+    // Browse is a route — so there was never a reason for the sheet to carry a
+    // disabled `<span>`, and the branch was removed rather than left behind empty.
+    const more = code.get("components/shell/more-menu.tsx") ?? "";
+    expect(more).not.toContain("aria-disabled");
+    expect(more).not.toContain("Coming soon");
+
+    // **And the Browse rows are links.** The sidenav's rail and the More sheet's row
+    // both point at the same route, so a phone and a desktop land on the same place.
+    const sidenav = code.get("components/shell/sidenav.tsx") ?? "";
+    expect(sidenav).toContain('href="/browse"');
+    expect(more).toContain('href="/browse"');
+
+    // **And the bar's Digest slot is a link**, because the digest home shipped — it
+    // had no `href` at all, so the bar's first tab rendered the inert branch while
+    // also carrying `active={pathname === "/"}`.
+    const bottom = code.get("components/shell/bottom-tab-nav.tsx") ?? "";
+    const digestSlot = /<TabSlot[\s\S]*?label="Digest"[\s\S]*?\/>/.exec(bottom)?.[0] ?? "";
+    expect(digestSlot).not.toBe("");
+    expect(digestSlot).toContain('href="/"');
   });
 
   it("links nowhere that does not exist — the account row included", () => {

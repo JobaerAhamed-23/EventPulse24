@@ -1,5 +1,6 @@
 """Named commands (writes) and queries (get_/list_): this module's published interface."""
 
+from apps.identity.services.accounts import AccountOutcome, ensure_account
 from apps.identity.services.audit import write_audit
 from apps.identity.services.authenticate import authenticate
 from apps.identity.services.billing import open_portal, read_entitlement, start_checkout
@@ -20,8 +21,10 @@ from apps.identity.services.subscriptions import (
 from apps.identity.services.throttle import is_throttled
 
 __all__ = [
+    "AccountOutcome",
     "SignUpOutcome",
     "authenticate",
+    "ensure_account",
     "end_other_sessions",
     "get_recipient_address",
     "hash_token",

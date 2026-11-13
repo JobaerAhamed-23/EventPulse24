@@ -16,9 +16,11 @@ from django.db import IntegrityError, transaction
 from django.db.models import F
 
 from apps.ingestion.models import Event, EventStateChange, ExtractedRecord, Source
+from apps.ingestion.services.catalog_read import EventNotFoundError
 from apps.ingestion.services.outbox import enqueue_propagation
 from apps.ingestion.services.revalidation import enqueue_revalidation, request_revalidation
 from apps.ingestion.services.slugs import mint_slug
+from domain.errors import EventAlreadyRetiredError
 from domain.lifecycle import Change, ChangeKind, EventFacts, EventStatus
 from shared.actor import Actor
 from shared.db import CATALOG
@@ -428,3 +430,118 @@ def apply_publication_change(
     event.event_version = version
     _request_revalidation(event=event, event_version=version, previous_venue_id=None)
     return change
+
+
+def retire_event(*, event_id: UUID, actor: Actor, now: datetime) -> Event:
+    """Take an Event out of the catalog for good, keeping its row and its history.
+
+    **Why there is a service for this at all.** An Event is never deleted (FR-13): the row
+    is the record of what the source said and when, and a saver who was told about an event
+    must be able to find out what became of it. So "remove it" means "move it out of every
+    live read", and the way this catalog says that is `status = superseded`.
+
+    **Why a second row.** `event_superseded_consistent_ck` says a superseded Event names
+    its replacement, and a row may not name *itself*
+    (`event_not_self_superseded_ck`) — so a superseded row needs another row to point at.
+    The replacement created here is a **tombstone**: it carries the event's facts, it is
+    never published, and it is superseded too, pointing back at the row it replaced.
+
+    **The two rows point at each other, and that is what frees the slot.**
+    `event_live_source_item_uq` is *partial* — one live Event per
+    `(source, source_event_id)`, counting only the rows that are not superseded. The
+    original row and its tombstone are both superseded, so neither holds the slot, and a
+    later write for the same source item can create a fresh live row. A tombstone that
+    was left *live* would hold the slot forever, and the source item could never be
+    ingested again — so the tombstone is superseded from the moment it is created.
+
+    **What it is for.** A seed's data file is the source of truth for what the catalog
+    should contain, and a file that drops an event has to be able to say so. Cancelling
+    the dropped event would not do it: a cancelled Event is a *must-know card* — the
+    surface's amber stripe — so "the file forgot about this" would become "the surface
+    tells the user this was cancelled", which is a different and untrue statement.
+
+    **The caller names the event by id, not by row.** AD-2's `models-ingestion` contract
+    says only `apps.ingestion` may import `apps.ingestion.models`, so a caller outside
+    this app — the seed command in `config`, say — cannot hand over an `Event`. It hands
+    over the id and this looks the row up.
+
+    Caller supplies the transaction: this runs inside `atomic(using=CATALOG)`, like every
+    other write in this module.
+    """
+    try:
+        event = Event.objects.using(CATALOG).get(pk=event_id)
+    except Event.DoesNotExist:
+        raise EventNotFoundError(details={"event_id": str(event_id)}) from None
+    if event.status == Event.Status.SUPERSEDED:
+        # **Already retired.** Retiring twice would create a second tombstone for a row
+        # that already has one, and the row's own `superseded_by` would still name the
+        # first — so the second tombstone would sit in the catalog with nothing pointing
+        # at it. Refusing is the honest answer.
+        raise EventAlreadyRetiredError(details={"event_id": str(event_id)})
+
+    tombstone_id = uuid7()
+    facts = facts_of(event)
+    incoming = IncomingEvent(
+        title=event.title,
+        description=event.description,
+        canonical_url=event.canonical_url,
+        venue_id=event.venue_id,
+        venue_fingerprint=event.venue_fingerprint,
+        title_fingerprint=event.title_fingerprint,
+        start_utc=facts.start_utc,
+        end_utc=facts.end_utc,
+        start_time_local=event.start_time_local,
+        start_time_tz=event.start_time_tz,
+        status=EventStatus.SCHEDULED,
+        is_sold_out=event.is_sold_out,
+        series_id=event.series_id,
+        tz_inference_confidence=event.tz_inference_confidence,
+        extraction_confidence=event.extraction_confidence,
+        # **Never published.** The tombstone is a record, not a listing.
+        publication_status=Event.PublicationStatus.IN_REVIEW,
+        tz_review_pending=False,
+    )
+    # The old row leaves the live set first: the partial unique index counts only the rows
+    # that are not superseded, so the slot is free before the tombstone takes it. The
+    # version bump is required — `status` and `superseded_by` are lifecycle fields, and the
+    # `catalog.guard_event_write` trigger demands exactly +1 for a change to either.
+    Event.objects.using(CATALOG).filter(pk=event.pk).update(
+        status=Event.Status.SUPERSEDED,
+        superseded_by_id=tombstone_id,
+        event_version=F("event_version") + 1,
+    )
+    tombstone = create_event(
+        source=event.source,
+        source_event_id=event.source_event_id,
+        incoming=incoming,
+        now=now,
+        event_id=tombstone_id,
+    )
+    # **The tombstone points back at the row it replaced**, and is superseded itself. That
+    # is what satisfies `event_superseded_consistent_ck` in both directions while keeping
+    # the source item's slot free: `event_not_self_superseded_ck` forbids a row naming
+    # *itself*, and these two name each other.
+    Event.objects.using(CATALOG).filter(pk=tombstone_id).update(
+        status=Event.Status.SUPERSEDED,
+        superseded_by_id=event.pk,
+        event_version=F("event_version") + 1,
+    )
+    _record_change(
+        event=event,
+        kind=ChangeKind.SUPERSEDED.value,
+        version=event.event_version + 1,
+        before={"status": event.status},
+        after={"status": Event.Status.SUPERSEDED.value, "superseded_by": tombstone_id},
+        actor=actor,
+        now=now,
+    )
+    _record_change(
+        event=tombstone,
+        kind=ChangeKind.SUPERSEDED.value,
+        version=tombstone.event_version + 1,
+        before={"status": tombstone.status},
+        after={"status": Event.Status.SUPERSEDED.value, "superseded_by": event.pk},
+        actor=actor,
+        now=now,
+    )
+    return tombstone

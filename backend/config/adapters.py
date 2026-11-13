@@ -24,6 +24,20 @@ FAKE_ADAPTERS = {
 HTTP_FETCH_ADAPTER = "adapters.crawl.http.HttpFetchAdapter"
 FETCH_ADAPTERS = {"fake": FAKE_ADAPTERS["fetch"], "http": HTTP_FETCH_ADAPTER}
 
+#: The throttle's counter store, chosen by `THROTTLE_ADAPTER` rather than by `ADAPTER_MODE`.
+#:
+#: **The throttle is the one port whose state the whole stack shares**, so it is the one
+#: port that cannot be served by a per-process fake in a local run. The API reads and
+#: spends the counters, and the seed command clears them — three separate processes that
+#: must see one set of numbers. `redis` gives them that, and it is the adapter
+#: production already uses; `memory` keeps the counters in the process, which is what a
+#: unit test wants (it pins the clock and wants an isolated counter) and what a
+#: single-process local run can live with.
+THROTTLE_ADAPTERS = {
+    "memory": FAKE_ADAPTERS["throttle"],
+    "redis": "adapters.throttle.redis.RedisThrottleAdapter",
+}
+
 CALENDAR_ADAPTER = "adapters.calendar.ics.IcsCalendarAdapter"
 
 HEADER_GEO_ADAPTER = "adapters.geo.header.HeaderGeoAdapter"
@@ -54,11 +68,24 @@ REAL_ADAPTERS: dict[str, str] = {
 }
 
 
-def adapter_paths(mode: str, fetch: str | None = None) -> dict[str, str]:
-    """The adapter table for `mode`; `fetch` (SOURCE_FETCH) overrides the fetch port alone."""
+def adapter_paths(
+    mode: str,
+    fetch: str | None = None,
+    throttle: str | None = None,
+) -> dict[str, str]:
+    """The adapter table for `mode`.
+
+    **`fetch` (SOURCE_FETCH) and `throttle` (THROTTLE_ADAPTER) each override one port.**
+    Neither changes the mode: they name the adapter for a single port and leave every
+    other port on the table the mode chose. The throttle is overridable for the same
+    reason the fetch is — it is a port whose behaviour a local run may need to change
+    without changing the mode's meaning for the ports that need credentials.
+    """
     paths = _mode_paths(mode)
     if fetch is not None:
         paths["fetch"] = FETCH_ADAPTERS[fetch]
+    if throttle is not None:
+        paths["throttle"] = THROTTLE_ADAPTERS[throttle]
     return paths
 
 

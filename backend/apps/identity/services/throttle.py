@@ -15,9 +15,15 @@ Two properties matter beyond the counting:
   throttled, which is the same answer for every address.
 
 The limits are the named constants in `shared/constants.py`.
+
+**A seed can give the allowance back.** `reset_sign_in_throttle` clears the sign-in
+windows for a set of accounts and an address, and it exists so that the repeatable seed
+starts from a full allowance. It clears the counters, not the rules — the limits are
+unchanged, and a reader is still refused the eleventh sign-in in an hour.
 """
 
 import hashlib
+from collections.abc import Iterable
 
 from ports.registry import get_throttle_port
 from shared.constants import (
@@ -77,3 +83,46 @@ def is_throttled(operation: str, *, ip_address: str | None, normalised_email: st
         account_key(operation, normalised_email), limit=account_limit, window_seconds=window
     )
     return not account_decision.allowed
+
+
+def reset_sign_in_throttle(*, ip_address: str | None, emails: Iterable[str]) -> None:
+    """Give these sign-in attempts back: clear the sign-in windows.
+
+    **This exists for the repeatable seed, and it is the auth twin of
+    `reset_save_allowance`.** The sign-in limits are ten an hour per IP and five an hour
+    per account, and the end-to-end suite signs in six times — from **one IP**, because
+    the whole suite runs on one machine against one stack. So the suite's own sign-ins
+    spend the very allowance a real reader would spend, and a second run inside the hour
+    finds the window already up: the sign-in is refused with a 429 and the test fails for
+    a reason that has nothing to do with the code under test.
+
+    **The limits themselves are not touched.** This clears the counters, not the rules:
+    `AUTH_THROTTLE_SIGN_IN_IP` is still ten and `AUTH_THROTTLE_SIGN_IN_ACCOUNT` is still
+    five, and a reader who signs in ten times in an hour is still refused the eleventh.
+    What changes is that a *seeded* run starts from a full allowance instead of from
+    whatever the previous run left behind.
+
+    **Both counters are cleared, and both have to be.** The per-IP counter is the one
+    that trips first for a single-machine suite — six sign-ins from one address is inside
+    the limit, but six more from the next run is not — and the per-account counter is
+    the one that trips first for an account the suite signs in as more than once. Leaving
+    either behind would make the suite's repeatability depend on which limit happened to
+    be reached first.
+
+    **The account key is the digest of the normalised address, so the addresses given
+    here are normalised the same way before they are keyed.** `account_key` lowercases
+    and strips, and the address the sign-in endpoint uses is normalised by
+    `UserManager.normalise_email`, so a caller that passed `Maya@Example.com` would
+    otherwise clear a key that the sign-in never writes.
+
+    Args:
+        ip_address: The address the callers sign in from. Cleared for the sign-in
+            operation only.
+        emails: The accounts' addresses. Cleared for the sign-in operation only — the
+            sign-up and reset windows are not touched, because a seeded run signs in and
+            does nothing else.
+    """
+    port = get_throttle_port()
+    port.reset(ip_key("sign_in", ip_address))
+    for email in emails:
+        port.reset(account_key("sign_in", email.strip().lower()))

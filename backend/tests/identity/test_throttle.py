@@ -4,7 +4,13 @@ out of the store (AD-13).
 The clock is injected, so the window boundary is pinned exactly — no sleeping, no flake.
 """
 
-from apps.identity.services.throttle import LIMITS, account_key, ip_key, is_throttled
+from apps.identity.services.throttle import (
+    LIMITS,
+    account_key,
+    ip_key,
+    is_throttled,
+    reset_sign_in_throttle,
+)
 from shared.constants import (
     AUTH_THROTTLE_RESET_ACCOUNT,
     AUTH_THROTTLE_RESET_IP,
@@ -96,3 +102,103 @@ def test_the_operations_do_not_share_a_bucket(throttle_adapter):
         is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="a@example.com")
 
     assert is_throttled("sign_up", ip_address="1.2.3.4", normalised_email="a@example.com") is False
+
+
+# --- the seed's reset ----------------------------------------------------------------------
+
+
+def test_the_reset_gives_the_ip_allowance_back(throttle_adapter):
+    """The per-IP bucket is the one a single-machine suite trips first.
+
+    Six sign-ins from one address is inside the limit; six more from the next run is not.
+    So the reset has to clear the per-IP counter, or the second run of a suite fails at
+    the sign-in with a 429 and nothing to do with the code under test.
+    """
+    for _ in range(AUTH_THROTTLE_SIGN_IN_IP):
+        is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="a@example.com")
+    assert is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+
+    reset_sign_in_throttle(ip_address="1.2.3.4", emails=[])
+
+    assert is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="b@example.com") is False
+
+
+def test_the_reset_gives_the_account_allowance_back(throttle_adapter):
+    """The per-account bucket is the one an account the suite signs in as twice trips."""
+    for n in range(AUTH_THROTTLE_SIGN_IN_ACCOUNT):
+        is_throttled("sign_in", ip_address=f"1.2.3.{n}", normalised_email="maya@example.com")
+    assert (
+        is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="maya@example.com") is True
+    )
+
+    reset_sign_in_throttle(ip_address="9.9.9.9", emails=["maya@example.com"])
+
+    assert (
+        is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="maya@example.com") is False
+    )
+
+
+def test_the_reset_leaves_the_limits_alone(throttle_adapter):
+    """The reset clears the counters, not the rules.
+
+    A reader who signs in ten times in an hour must still be refused the eleventh after
+    the seed has run. If the reset had changed a limit, the rate limit would be a
+    suggestion — and the seed would be the thing that broke it.
+    """
+    reset_sign_in_throttle(ip_address="1.2.3.4", emails=["maya@example.com"])
+
+    for _ in range(AUTH_THROTTLE_SIGN_IN_IP):
+        is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="a@example.com")
+
+    assert is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+
+
+def test_the_reset_normalises_the_address_before_keying_it(throttle_adapter):
+    """The sign-in endpoint keys the account on the *normalised* address.
+
+    `account_key` lowercases and strips, so a reset that passed `Maya@Example.com`
+    without normalising would clear a key the sign-in never writes — and the account's
+    allowance would still be spent.
+    """
+    for n in range(AUTH_THROTTLE_SIGN_IN_ACCOUNT):
+        is_throttled("sign_in", ip_address=f"1.2.3.{n}", normalised_email="maya@example.com")
+    assert (
+        is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="maya@example.com") is True
+    )
+
+    reset_sign_in_throttle(ip_address="9.9.9.9", emails=["  Maya@Example.com  "])
+
+    assert (
+        is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="maya@example.com") is False
+    )
+
+
+def test_the_reset_leaves_the_other_operations_alone(throttle_adapter):
+    """A seeded run signs in; it does not sign up or request a password reset.
+
+    Clearing those windows too would give away an allowance the run never spent, and a
+    sign-up window that a seed had emptied would be a window an attacker could spend
+    before the limit noticed.
+    """
+    for _ in range(AUTH_THROTTLE_SIGN_UP_IP):
+        is_throttled("sign_up", ip_address="1.2.3.4", normalised_email="a@example.com")
+    assert is_throttled("sign_up", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+
+    reset_sign_in_throttle(ip_address="1.2.3.4", emails=["a@example.com"])
+
+    assert is_throttled("sign_up", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+
+
+def test_the_reset_clears_only_the_addresses_it_is_given(throttle_adapter):
+    """Another account's spent allowance is another account's business."""
+    for n in range(AUTH_THROTTLE_SIGN_IN_ACCOUNT):
+        is_throttled("sign_in", ip_address=f"1.2.3.{n}", normalised_email="other@example.com")
+    assert (
+        is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="other@example.com") is True
+    )
+
+    reset_sign_in_throttle(ip_address="9.9.9.9", emails=["maya@example.com"])
+
+    assert (
+        is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="other@example.com") is True
+    )

@@ -66,19 +66,28 @@ def email_adapter(monkeypatch):
     return adapter
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def throttle_adapter(monkeypatch):
     """One in-memory throttle adapter, with a clock the test can move.
 
-    The fake keeps its own attempt log, so each test starts from a clean count. The clock
-    is injected, so a test pins the window boundary exactly instead of sleeping.
+    **The root `tests/conftest.py` provides this for the whole suite.** It is re-declared
+    here only so this package's docstring can say what the fixture is *for* — the auth
+    limits are the ones these tests exercise, and the sign-in budget is ten an hour per
+    address, so a test that signs in a few times is spending a real allowance.
+
+    **It has to cover both consumers of the port.** The auth limits are counted by
+    `apps.identity.services.throttle` and the save cap by
+    `apps.personalization.services.save_cap`; patching one and not the other would leave
+    a gate reading the shared counter while the test believed it had isolated it.
     """
-    clock = {"now": 1_000_000.0}
+    from tests.conftest import THROTTLE_CLOCK
+
+    clock = {"now": THROTTLE_CLOCK}
     adapter = InMemoryThrottleAdapter(now=lambda: clock["now"])
-    # `throttle.py` is the only module that resolves the throttle port by name, and all
-    # three auth services call `is_throttled`, so patching it covers them all.
-    patch_module_attribute(
-        monkeypatch, "apps.identity.services.throttle", "get_throttle_port", lambda: adapter
-    )
+    for module_path in (
+        "apps.identity.services.throttle",
+        "apps.personalization.services.save_cap",
+    ):
+        patch_module_attribute(monkeypatch, module_path, "get_throttle_port", lambda: adapter)
     adapter.test_clock = clock  # type: ignore[attr-defined]
     return adapter

@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from freezegun import freeze_time
 
 from apps.ingestion.models import Event, Source
 from apps.personalization.models import ConflictPair, PersonalEvent, SavedEvent
@@ -46,6 +47,25 @@ END = START + timedelta(hours=2)
 #: The same instant, expressed in the zone the body names.
 START_LOCAL = "2026-11-05T19:30:00"
 TZ = "America/Los_Angeles"
+
+#: The instant the scenario is "now", one day before the event it saves.
+#:
+#: The seeded catalog fixtures carry **fixed** event dates, and the save endpoint serves
+#: only events that have not started yet. Against the wall clock those events eventually
+#: fall into the past and the API answers 404 — correctly. Pinning the clock keeps the
+#: literals above meaningful instead of pushing them out and re-arming the same failure.
+NOW = START - timedelta(days=1)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock():
+    """Pin the clock at `NOW` for the whole module.
+
+    `tick=True`, not a hard freeze: the keys are UUIDv7 and order by their timestamp
+    prefix, and this module asserts on identity and ordering across saves.
+    """
+    with freeze_time(NOW, tick=True):
+        yield
 
 
 @pytest.fixture(autouse=True)

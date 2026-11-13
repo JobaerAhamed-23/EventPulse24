@@ -1164,6 +1164,69 @@ intents:
         run_id: run-eventpulse24-028
         completed_at: 2026-11-12T06:13:25.776Z
     completed_at: 2026-11-12T06:13:19.217Z
+  - id: browse-surface
+    title: Browse — the Discovery Surface, and an Honest Test Baseline
+    status: completed
+    created: 2026-11-12
+    work_items:
+      - id: test-clock-seam
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+      - id: browse-read-api
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - test-clock-seam
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+      - id: frontend-browse-shell-and-grid
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - browse-read-api
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+      - id: frontend-browse-search
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-browse-shell-and-grid
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+      - id: frontend-browse-save-button
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-browse-shell-and-grid
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+      - id: browse-nav-activation
+        status: completed
+        complexity: low
+        mode: autopilot
+        depends_on:
+          - frontend-browse-shell-and-grid
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+      - id: e2e-proof-and-contract-tests
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - frontend-browse-search
+          - frontend-browse-save-button
+          - browse-nav-activation
+        run_id: run-eventpulse24-029
+        completed_at: 2026-11-12T17:08:29.744Z
+    completed_at: 2026-11-12T17:08:29.744Z
 runs:
   active: []
   completed:
@@ -1685,3 +1748,29 @@ runs:
           mode: confirm
       started: 2026-11-12T04:49:15.502Z
       completed: 2026-11-12T06:13:25.776Z
+    - id: run-eventpulse24-029
+      scope: wide
+      work_items:
+        - id: test-clock-seam
+          intent: browse-surface
+          mode: confirm
+        - id: browse-read-api
+          intent: browse-surface
+          mode: validate
+        - id: frontend-browse-shell-and-grid
+          intent: browse-surface
+          mode: confirm
+        - id: frontend-browse-search
+          intent: browse-surface
+          mode: confirm
+        - id: frontend-browse-save-button
+          intent: browse-surface
+          mode: confirm
+        - id: browse-nav-activation
+          intent: browse-surface
+          mode: autopilot
+        - id: e2e-proof-and-contract-tests
+          intent: browse-surface
+          mode: confirm
+      started: 2026-11-12T06:53:06.076Z
+      completed: 2026-11-12T17:08:29.744Z

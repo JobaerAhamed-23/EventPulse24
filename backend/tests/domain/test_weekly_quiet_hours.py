@@ -18,7 +18,7 @@ exists before the model does.
 No Django import anywhere: this module is importable with Django absent.
 """
 
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 from domain.quiet_hours import (
@@ -207,7 +207,7 @@ def test_a_window_survives_spring_forward():
     # 02:30 does not exist that night; `read_wall_clock` resolves it deterministically, and
     # the send lands after the gap rather than before it.
     assert result > local(2026, 3, 7, 23, 0)
-    assert as_local(result).date() == datetime(2026, 3, 8).date()
+    assert as_local(result).date() == date(2026, 3, 8)
 
 
 def test_a_window_survives_fall_back():
@@ -262,7 +262,13 @@ def test_every_schedule_leaves_a_sendable_moment():
             for day in range(9, 16)
             for hour in range(24)
             for minute in range(60)
-            if not _ends_covering(schedule, datetime(2026, 11, day, hour, minute))
+            # Naive on purpose: `_ends_covering` takes a *wall clock*, reading only its
+            # `.date()` and `.time()`, and its docstring calls the ends it returns naive.
+            # A `tzinfo` here would assert an instant this value does not mean.
+            if not _ends_covering(
+                schedule,
+                datetime(2026, 11, day, hour, minute),  # noqa: DTZ001
+            )
         ]
         assert open_minutes, f"a schedule with starts stepping by {offset} covered the week"
 
@@ -289,3 +295,19 @@ def test_a_week_must_have_seven_days():
 
     with pytest.raises(ValueError, match="7 days"):
         WeeklyQuietHours(windows=(WEEKNIGHT, None))
+
+
+def test_no_schedule_at_all_covers_nothing():
+    """A user with Quiet Hours switched off entirely.
+
+    `None` is a third shape alongside a bare `QuietHours` and a `WeeklyQuietHours`, and it
+    means "no window": nothing is covered, so nothing is ever deferred. Empty ends are how
+    this module spells "send now".
+    """
+    assert (
+        _ends_covering(
+            None,
+            datetime(2026, 11, 9, 23, 30),  # noqa: DTZ001 — a wall clock, see above
+        )
+        == []
+    )

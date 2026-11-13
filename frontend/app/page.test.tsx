@@ -558,8 +558,9 @@ describe("the shell", () => {
     render(await HomePage(props()));
 
     // The route list is the nav's own `<ul>`. Each route's name is a span of its own;
-    // the inert ones also carry a "Coming soon" note, the Add row carries a button,
-    // and the glyphs are SVG.
+    // the Add row carries a button, and the glyphs are SVG. The "Coming soon" filter is
+    // left in place for the next deferred route — the inert row still renders one, and
+    // this test would otherwise read it as the route's name.
     const nav = sidenav().querySelector("nav");
     expect(nav).not.toBeNull();
     const labels = [...(nav?.querySelectorAll("li") ?? [])].map((li) => {
@@ -585,19 +586,30 @@ describe("the shell", () => {
     expect(active?.className).not.toContain("terracotta");
   });
 
-  it("does not let an inert route navigate", async () => {
+  it("makes Browse a real route, because the Browse surface shipped", async () => {
     render(await HomePage(props()));
 
-    // **Browse is the only route left that does not exist.** A link to a 404 is a lie,
-    // and an anchor with aria-disabled still navigates.
-    for (const label of ["Browse"]) {
-      const item = [...sidenav().querySelectorAll("li")].find((li) =>
-        [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === label),
-      );
-      expect(item, label).not.toBeUndefined();
-      expect(item?.querySelector("a"), label).toBeNull();
-      expect(item?.querySelector("[aria-disabled='true']"), label).not.toBeNull();
-    }
+    // **Browse was the last route the rail pretended did not exist.** The surface
+    // shipped with the Browse read API, so the row is a link — a link to a 404 would
+    // have been a lie, and so would a "Coming soon" label next to a city full of
+    // events.
+    const item = [...sidenav().querySelectorAll("li")].find((li) =>
+      [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Browse"),
+    );
+    expect(item).not.toBeUndefined();
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/browse");
+    expect(item?.querySelector("[aria-disabled='true']")).toBeNull();
+    expect(item?.textContent).not.toContain("Coming soon");
+  });
+
+  it("leaves no route in the rail inert", async () => {
+    render(await HomePage(props()));
+
+    // **Every one of the six routes is a real screen now**, so the rail has no
+    // `aria-disabled` row left — and the rule that governs an inert row (a `<span>`,
+    // never an anchor) has nothing left to govern. The *rule* survives in the
+    // component; this asserts that no row *uses* it.
+    expect(sidenav().querySelector("[aria-disabled='true']")).toBeNull();
   });
 
   it("makes Settings a real route, because the settings screens exist", async () => {

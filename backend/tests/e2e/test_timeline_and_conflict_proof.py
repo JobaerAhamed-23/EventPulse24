@@ -63,6 +63,7 @@ from uuid import UUID
 
 import pytest
 from django.contrib.auth import get_user_model
+from freezegun import freeze_time
 
 from apps.ingestion.models import Event
 from apps.personalization.models import ConflictPair, SavedEvent
@@ -77,6 +78,24 @@ User = get_user_model()
 
 #: The instant the scenario is "now". 2026-11-04 16:00 UTC is 09:00 in Los Angeles (PST).
 NOW = datetime(2026, 11, 4, 16, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock():
+    """Pin the clock at `NOW` for the whole module.
+
+    `NOW` already governs the fixtures and every service call below. What it could not
+    reach was the HTTP layer: a view calls `timezone.now()` itself, so the requests these
+    tests make were answered against the wall clock while their data sat at `NOW`. The two
+    agreed when this file was written and drifted apart as the date passed, which is why
+    the endpoints began answering 404 for events that are present and correct.
+
+    `tick=True`, not a hard freeze: the keys are UUIDv7 and order by their timestamp
+    prefix, and this module asserts on conflict-pair ordering.
+    """
+    with freeze_time(NOW, tick=True):
+        yield
+
 
 #: The zone the user's days are cut in.
 ZONE = "America/Los_Angeles"

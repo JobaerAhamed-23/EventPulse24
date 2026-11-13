@@ -37,6 +37,7 @@ and §4). A cap that interrupts with a modal is a cap that trains people to dism
 prompts.
 """
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from apps.identity.services import is_pro
@@ -96,4 +97,88 @@ def check_save_allowed(*, user_id: UUID) -> None:
         )
 
 
-__all__ = ["SAVE_CAP_UPGRADE_HINT", "check_save_allowed", "save_throttle_key"]
+@dataclass(frozen=True)
+class SaveQuota:
+    """What a user's save allowance stands at, for showing rather than for deciding.
+
+    **`check_save_allowed` is the gate; this is the sign above it.** The two must never be
+    swapped: the gate counts an attempt and this one counts nothing, so asking the gate
+    what the allowance is would spend it. A surface that displayed the cap by calling the
+    gate would charge a user a save for looking at a page.
+
+    **A Pro user has `cap=None`,** not a very large cap. FR-48's own consequence is that a
+    Pro user can save without a soft wall at all, and a cap of "infinity" is a number a
+    frontend would eventually render.
+    """
+
+    used: int
+    cap: int | None
+    resets_in_seconds: int
+    is_pro: bool
+
+    @property
+    def exhausted(self) -> bool:
+        """Has this user spent the allowance? Always `False` for Pro, which has none."""
+        return self.cap is not None and self.used >= self.cap
+
+
+def read_save_quota(*, user_id: UUID) -> SaveQuota:
+    """This user's save allowance as it stands, **without spending any of it**.
+
+    Read-only by construction: it goes through `ThrottlePort.peek`, which counts nothing.
+    The gate is still `check_save_allowed`, and it is still what decides an actual save —
+    this read only says what to show.
+
+    **The count is the throttle's, never a `SavedEvent` row count**, for the reason the
+    module docstring gives: a row count would let a user hand their allowance back by
+    unsaving, and the gate would have two sources of truth.
+
+    **A Pro user is not peeked at all.** They have no cap, so there is no window to read,
+    and a Pro user's saves spend no throttle slots — there would be nothing there to find.
+    """
+    if is_pro(user_id=user_id):
+        return SaveQuota(used=0, cap=None, resets_in_seconds=0, is_pro=True)
+
+    state = get_throttle_port().peek(
+        save_throttle_key(user_id),
+        window_seconds=FREE_TIER_SAVE_WINDOW_SECONDS,
+    )
+    return SaveQuota(
+        used=state.used,
+        cap=FREE_TIER_SAVE_DAILY_LIMIT,
+        resets_in_seconds=state.resets_in_seconds,
+        is_pro=False,
+    )
+
+
+def reset_save_allowance(*, user_id: UUID) -> None:
+    """Give this user their save allowance back: clear the throttle window.
+
+    **This exists for the repeatable seed, and it is the reason the throttle port has a
+    `reset` at all.** The walk-through's Free account has to start each run with a full
+    allowance, or the *second* run would find the quota already spent — the wall would be
+    up before the test had pressed anything, and the test that exercises the wall would
+    fail for the wrong reason. **A seed that could only be run once would not be a seed.**
+
+    **It does not touch the saved rows.** The allowance is the throttle's counter, not
+    the `SavedEvent` rows; clearing the counter gives the account its one save back
+    while leaving what it has saved where it is. That is deliberate: a seed that
+    un-saved the account's events would change what the surface shows, and the
+    walk-through is *about* seeing a saved event.
+
+    **A Pro user's allowance is never spent, so there is nothing to clear.** The call is
+    a no-op for them rather than an error — the seed does not need to know the plan.
+    """
+    if is_pro(user_id=user_id):
+        return
+    get_throttle_port().reset(save_throttle_key(user_id))
+
+
+__all__ = [
+    "SAVE_CAP_UPGRADE_HINT",
+    "SaveQuota",
+    "check_save_allowed",
+    "read_save_quota",
+    "reset_save_allowance",
+    "save_throttle_key",
+]

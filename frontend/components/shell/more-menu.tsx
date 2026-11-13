@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { Sheet } from "@/components/sheets/sheet";
@@ -16,11 +18,14 @@ import { BrowseGlyph, MoreGlyph } from "@/components/shell/nav-glyphs";
  * carries no `aria-current="page"` — the row *inside* the sheet carries that when
  * Browse is the current one.
  *
- * **Browse is not built yet.** So the sheet's row is an inert row, exactly like the
- * sidenav's Browse row: a `<span aria-disabled="true">` with a "Coming soon" note, not
- * a link to a 404. **A control that opens a sheet is not the same as a route that
- * exists**, and the two must not be confused — the sheet is a real, working surface
- * whose contents happen to be one inert row.
+ * **Browse is a real route now.** The Browse surface shipped, so the sheet's row is a
+ * link — the same `/browse` the sidenav's Browse row points at, so a phone and a
+ * desktop land on the same place.
+ *
+ * **The row carries `aria-current="page"` when Browse is the current route.** More
+ * itself carries none, and that distinction is the point: **More is a control and the
+ * row is a route.** A screen-reader user on `/browse` needs to be told where they are,
+ * and the thing they are in is the sheet's row, not the button that opened the sheet.
  *
  * **The sheet is dismissible.** It is an ordinary modal, not a forced choice: the user
  * opened it by tapping More and can close it by tapping outside it or pressing Escape.
@@ -32,6 +37,7 @@ import { BrowseGlyph, MoreGlyph } from "@/components/shell/nav-glyphs";
  * be a second overlay level, and `Sheet` keeps there being exactly one.
  */
 export function MoreMenu({ name, email }: AccountProps) {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
   return (
@@ -52,20 +58,23 @@ export function MoreMenu({ name, email }: AccountProps) {
           <ul className="flex flex-col gap-1">
             <li>
               {/*
-                The inert row. It says what is true: Browse is on the way, and this is
-                where it will be. A link to a 404 would be a lie about where the label
-                goes.
+                **The route row.** It was an inert `<span aria-disabled="true">` with a
+                "Coming soon" note, because a link to a 404 is a lie about where the
+                label goes. The surface exists now, so the lie would be the other way
+                round — a stub claiming there is nothing there when there is a whole
+                city to browse.
+
+                **The active rule is an equality.** Browse has no child routes, so a
+                prefix rule would be a claim about screens that do not exist.
               */}
-              <span
-                aria-disabled="true"
-                className="flex items-center gap-3 rounded-subtle px-2 py-2 text-ink-secondary [font:var(--type-scale-body-md)]"
+              <Link
+                href="/browse"
+                aria-current={pathname === "/browse" ? "page" : undefined}
+                className="flex items-center gap-3 rounded-subtle px-2 py-2 text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary [font:var(--type-scale-body-md)]"
               >
                 <BrowseGlyph />
                 <span>Browse</span>
-                <span className="ml-auto text-ink-muted [font:var(--type-scale-meta-sm)]">
-                  Coming soon
-                </span>
-              </span>
+              </Link>
             </li>
           </ul>
 
