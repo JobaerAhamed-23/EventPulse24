@@ -4,9 +4,11 @@ title: Reminders for a Personal Event — The Picker's Other Half
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-031
+completed_at: 2026-11-13T07:27:39.768Z
 ---
 
 # Work Item: Reminders for a Personal Event — The Picker's Other Half

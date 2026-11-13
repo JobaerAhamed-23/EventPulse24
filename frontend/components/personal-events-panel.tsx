@@ -438,6 +438,8 @@ export function PersonalEventsPanel({
         open={formOpen}
         mode={editing ? "edit" : "create"}
         initial={editing ? seedFrom(editing) : undefined}
+        // **The id the reminders link needs.** Only an edit has one.
+        eventId={editing?.id}
         highlightStartTime={highlight}
         onClose={closeForm}
         onSubmit={submit}

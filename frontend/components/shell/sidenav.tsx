@@ -96,7 +96,12 @@ export function Sidenav({ name, email }: SidenavProps) {
           <SidenavItem
             href="/timeline"
             label="Timeline"
-            active={pathname === "/timeline"}
+            // **Timeline covers the personal-event reminder screen too.**
+            // `personal-event-reminders-desktop.html` is explicit: *"a Personal Event is
+            // reached from the Timeline / Add surfaces, where personal events live,
+            // rather than from the public Pulse Digest"* — so that route marks Timeline
+            // active, the way `/events/` marks Digest active.
+            active={pathname === "/timeline" || pathname.startsWith("/personal-events/")}
             glyph={<TimelineGlyph />}
           />
           <SidenavItem label="Add" glyph={<AddGlyph />} onActivate={() => setAddOpen(true)} />

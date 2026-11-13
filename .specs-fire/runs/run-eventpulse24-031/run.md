@@ -26,17 +26,17 @@ work_items:
   - id: personal-event-reminder-plan
     intent: unwired-surfaces
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: personal-events-list-surface
     intent: unwired-surfaces
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: endpoint-coverage-enforcement
     intent: unwired-surfaces
     mode: confirm
@@ -72,7 +72,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: personal-event-reminder-plan
+current_item: personal-events-list-surface
 status: in_progress
 started: 2026-11-13T06:41:58.698Z
 completed: null
@@ -87,8 +87,8 @@ wide (10 work items)
 1. **collection-assign-control** (validate) — completed
 2. **calendar-connection-controls** (validate) — completed
 3. **detail-open-signal** (confirm) — completed
-4. **personal-event-reminder-plan** (confirm) — in_progress
-5. **personal-events-list-surface** (confirm) — pending
+4. **personal-event-reminder-plan** (confirm) — completed
+5. **personal-events-list-surface** (confirm) — in_progress
 6. **endpoint-coverage-enforcement** (confirm) — pending
 7. **less-like-this-adjustment** (validate) — pending
 8. **settings-sources-surface** (validate) — pending
@@ -97,7 +97,7 @@ wide (10 work items)
 
 
 ## Current Item
-personal-event-reminder-plan (confirm)
+personal-events-list-surface (confirm)
 
 ## Files Created
 (none yet)

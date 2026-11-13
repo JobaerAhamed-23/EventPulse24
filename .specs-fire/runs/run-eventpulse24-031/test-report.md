@@ -240,3 +240,65 @@ The test was rewritten to claim only what it can prove (a rejected write changes
 screen), with the limit stated in the test's own docstring. The `.catch` matters in a
 browser, where an unhandled rejection is a console error on every detail view — so it is
 the **e2e work item's** to verify, and is recorded there.
+
+---
+
+## Work Item: personal-event-reminder-plan
+
+### Test Results
+
+| Category | Passed | Failed | Skipped |
+|----------|--------|--------|---------|
+| `app/personal-events/[id]/reminders/page.test.tsx` (new) | 6 | 0 | 0 |
+| `personal-event-form.test.tsx` (+3) | — | 0 | 0 |
+| **Full frontend suite** | **2390** | **0** | **0** |
+
+137 files, up from 136. +9 tests over the previous item's 2381.
+
+### Acceptance Criteria Validation
+
+- ✅ **A personal event's plan can be read and saved** — `/personal-events/:id/reminders`,
+  sending `personal_event`, asserted directly.
+- ✅ **Reachable from where a personal event is managed** — a link in the edit sheet, which
+  is the one surface that opens a personal event. Three tests: absent on create, absent
+  without an id, correct href on edit.
+- ✅ **`ReminderPicker` reused, not reimplemented** — it already took `targetKind`.
+- ✅ **A plan with no slots is the picker's empty state, not a 404** — confirmed in the
+  backend before building: *"A plan that does not exist is an empty plan, not a 404"*
+  (`reminder_plan_read.py:233`), so no special-casing was needed.
+- ✅ **Saving a personal plan does not touch a saved-event plan** — different `target_kind`
+  and `target_id` in the request; the backend owns the isolation and has its own tests.
+- ✅ **A refused save is reported** — unchanged `ReminderPicker` behaviour.
+
+### Mutation Probes
+
+| Probe | Result |
+|---|---|
+| Read the plan as a `saved_event` | ✅ 1 failed |
+| Give the picker the saved kind | ✅ 1 failed |
+| Render the picker even when the plan is missing | ✅ 1 failed |
+
+### Findings
+
+#### 1. The house spacing scale caught four invented values
+
+`tests/spacing-scale.test.ts` failed the suite on `w-40`, `w-60`, `h-11` and `w-24` in the
+new loading skeleton — eleven violations across four lines. The skeleton now uses only
+values its saved-event sibling already uses. This is the repo's structural rules working
+exactly as the testing standards describe: *"Structural rules are enforced by tooling in
+CI, not by review."*
+
+#### 2. A second route, not a branch on the existing one
+
+`/events/:id` serves catalog events and already carries two surfaces plus a documented
+rendering-mode conflict; a personal event id does not resolve through `readEventDetail`.
+A new route was the smaller change. Timeline is its active sidenav item, not Digest,
+because `personal-event-reminders-desktop.html` says so and gives the reason.
+
+#### 3. The event's name needed a new read
+
+The plan payload carries slots and delivery times and no title. `lib/personal-event-read.ts`
+is the counterpart of the saved-event route's use of `readEventDetail`, and keeps the same
+three-way split (`found` / `missing` / `unavailable`). A name that cannot be read falls back
+to "this event" rather than failing the screen — the plan is still the user's and still
+editable.

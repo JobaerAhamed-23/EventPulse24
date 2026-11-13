@@ -4,7 +4,7 @@ title: The List That Renders Nowhere — A Decision, Not a Cleanup
 intent: unwired-surfaces
 complexity: low
 mode: confirm
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-13
 ---
