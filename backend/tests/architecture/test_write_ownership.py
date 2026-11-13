@@ -86,6 +86,11 @@ TABLE_OWNERS = {
     # FR-24's neighbor count. It is a personal record about the user's own behaviour,
     # so it belongs to the personal side and to its commands.
     "personalization_eventdetailopen": "personalization",
+    # AD-16: `personalization` owns `SOURCE_MUTE` — the per-user visibility preference
+    # over a catalog source. The source itself belongs to `ingestion` and is held here by
+    # value, because AD-3 forbids a relation across the wall; the *preference* is the
+    # user's, so the row and its commands live on the personal side.
+    "personalization_sourcemute": "personalization",
     # AD-16: `ingestion` owns the catalog entities. `EVENT_FIT` is the one this intent
     # added — the public, per-(event, city) explanation (AD-10).
     "ingestion_source": "ingestion",

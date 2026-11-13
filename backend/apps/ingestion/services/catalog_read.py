@@ -243,6 +243,19 @@ class PublicEventCandidate:
     status: str
     event_version: int
     source_name: str
+    #: The **catalog Source's id, by value** (OQ-8) — no FK, because AD-3 forbids a
+    #: relation across the schema wall.
+    #:
+    #: **It is here because a per-user preference has to key on it.** The source's *name*
+    #: is not a key: names change, and two sources can share one. `Settings → Sources`
+    #: mutes a source, and a mute that keyed on a name would silently stop applying the
+    #: day the source was renamed — which is exactly the drift AD-10's "the explanation and
+    #: the decision cannot disagree" rule exists to prevent.
+    #:
+    #: **It costs no query.** The candidate read already joins the source
+    #: (`select_related("venue", "source")`), so the id is on the joined row. Carrying it
+    #: here is a field, not a lookup.
+    source_id: UUID
     #: The Source Badge type — the server names the type, the client owns the label.
     source_badge: str
     #: The `Source.source_type` the badge was derived from, kept for the audit trail.
@@ -317,6 +330,7 @@ def _to_public_candidate(event: Event) -> PublicEventCandidate:
         status=event.status,
         event_version=event.event_version,
         source_name=source.name,
+        source_id=source.id,
         source_badge=source_badge_for_type(
             source_type=source.source_type,
             acquisition_method=source.acquisition_method,

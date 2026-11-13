@@ -86,6 +86,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Named groups of the events you kept.",
   },
   {
+    href: "/settings/sources",
+    label: "Sources",
+    description: "Where your events come from, and how much of each you see.",
+  },
+  {
     href: "/settings/account",
     label: "Account",
     description: "Your plan, and your data.",

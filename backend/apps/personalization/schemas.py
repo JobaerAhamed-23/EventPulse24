@@ -18,6 +18,7 @@ no field the client has no use for.
 """
 
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -1571,3 +1572,114 @@ class BrowseOut(Schema):
     #: True when the user has never set a city. The surface shows the quiet empty state
     #: with "Change city" rather than guessing one the user did not choose.
     city_missing: bool = False
+
+
+#: The three states the source-mute control offers, as a closed set.
+#:
+#: **`default` is in the set even though no row ever holds it.** The control has three
+#: positions, and the third one is what the wire shape says when the user puts a source
+#: back the way they found it. The service turns it into a row *deletion* — the absence
+#: of a row is the default state — but the vocabulary the client sends is the three
+#: positions the user sees.
+SourceMuteState = Literal["mute", "show_less", "default"]
+
+
+class SourceTrustOut(Schema):
+    """One source's trust, as the screen renders it.
+
+    **`band` is the 1–5 count the dots draw**, and it is the server's number. The client
+    draws `band` filled dots and `5 - band` empty ones; it does not compute the band from
+    `score`, because the boundaries are the server's rule and a client that recomputed
+    them would be a second opinion about what a score means.
+
+    **`score` is the raw FR-16 posterior**, in [0, 1]. It is here for the client's own
+    tooltips and for a future "why is this source low?" — not for the dots.
+
+    **`band` is never a delta.** A week-over-week drop is provably impossible
+    (`domain/reliability.py`), so there is no "down" state to render.
+    """
+
+    band: int
+    score: Decimal
+
+
+class SourceOut(Schema):
+    """One source in the registry, as the screen shows it.
+
+    **`id` is the catalog Source's id, by value.** The mute is keyed on it, and the
+    client sends it back on the write — so the id the screen shows and the id the mute
+    uses are the same one.
+
+    **`mute_state` is this user's state for this source**, and it is `"default"` for a
+    source the user has never touched. It is not `None`: the control has three
+    positions, and "no preference" is one of them.
+    """
+
+    id: UUID
+    name: str
+    #: The Source Badge type — the group this source belongs to.
+    source_badge: str
+    #: The source's city, when it has one.
+    city: str = ""
+    #: The source's trust.
+    trust: SourceTrustOut
+    #: This user's mute state for this source.
+    mute_state: SourceMuteState = "default"
+    #: Whether the source is paused. A paused source is still in the registry.
+    is_paused: bool = False
+
+
+class SourceGroupOut(Schema):
+    """One group of sources — Official, Community, Aggregator or Crawled.
+
+    **The four groups are always present, even when empty.** The screen renders a heading
+    per group, and a group that appeared and disappeared as the registry changed would
+    make the screen's shape depend on the data.
+    """
+
+    #: The Source Badge type — the group key.
+    badge: str
+    #: The heading the screen shows.
+    label: str
+    sources: list[SourceOut] = []
+
+
+class SourceListOut(Schema):
+    """Every source in the registry, grouped.
+
+    **`groups` is the whole registry**, in the order the screen shows it. A registry with
+    no sources answers with four empty groups rather than an error — an empty registry is
+    an answer, and the screen has a quiet empty state for it.
+    """
+
+    groups: list[SourceGroupOut] = []
+
+
+class SourceMuteSetIn(Schema):
+    """The request body for setting one source's mute state."""
+
+    #: The state to set. `default` restores the source to the default visibility.
+    state: SourceMuteState
+
+
+class SourceMuteResultOut(Schema):
+    """The outcome of setting one source's mute state.
+
+    **`changed` says whether the call did anything.** Setting the state a source was
+    already in is a success, not an error — but a response claiming a change when none
+    happened would make the screen redraw something that did not move.
+    """
+
+    source_id: UUID
+    state: SourceMuteState
+    changed: bool
+
+
+class SourceRestoreDefaultsOut(Schema):
+    """The outcome of the bulk reset.
+
+    **`removed` is how many preferences were cleared**, so the screen can say what
+    happened rather than just that it happened.
+    """
+
+    removed: int

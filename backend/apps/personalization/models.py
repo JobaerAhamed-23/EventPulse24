@@ -785,6 +785,82 @@ class EventDetailOpen(UUIDv7Model):
         return f"detail open {self.event_id}"
 
 
+class SourceMute(UUIDv7Model):
+    """How one user has asked to see (or not see) one source (FR-13, FR-16).
+
+    **The mute is per-user state over a global catalog object.** A `Source` belongs to
+    everyone; a mute belongs to one person. So the row is on the `personal` side, and the
+    source is held **by value** — `source_id` is a UUID with no FK — because AD-3 forbids a
+    relation across the schema wall.
+
+    **Every relation is by value (OQ-8).** `user_id` is the user's id with no relation to
+    `identity`'s `User`, and `source_id` is the catalog `Source`'s id with no relation to
+    `ingestion`'s model. This is the same shape `EventNoticeMute` and `EventDetailOpen`
+    already use, and the ORM is what enforces the wall.
+
+    **There are two states, not three.** `show_less` and `mute` are stored; `default` is
+    the **absence of a row**. The mockup's control has three positions, but a third
+    stored state saying "default" would be a row that says nothing — and it would make
+    "Restore all defaults" a three-way update instead of the bulk delete it is.
+
+    **`mute` and `show_less` are different promises, and the model keeps them apart.**
+    `mute` means "do not show me this source's events"; `show_less` means "show me fewer",
+    which is a deprioritisation, not an exclusion. A "show less" that hid the events
+    would be indistinguishable from a mute on the wire, and would be a lie to the user.
+
+    **It is `PREFERENCE_SIGNALS`.** Not `ACCOUNT_CONTENT`: this is not the user's own
+    content, it is a record of what they chose to see. Not `SOURCE_REGISTRY`: that
+    category is the registry's own contents, and this row is about a person.
+
+    Design: .specs-fire/intents/source-transparency-and-mute/work-items/
+    settings-sources-surface-design.md (decisions D3, D4).
+    """
+
+    class State(models.TextChoices):
+        """The two states a row can hold. `default` is the absence of a row."""
+
+        SHOW_LESS = "show_less"
+        MUTE = "mute"
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The catalog `Source`'s id, by value. No FK: AD-3 forbids the relation.
+    source_id = models.UUIDField()
+    state = models.CharField(max_length=16, choices=State.choices)
+
+    class Meta:
+        constraints = [
+            # One row per (user, source). Two rows for the same pair would make the
+            # user's preference for that source ambiguous — and the read that applies it
+            # would have to guess which one wins.
+            models.UniqueConstraint(
+                fields=["user_id", "source_id"], name="source_mute_user_source_uq"
+            ),
+            # The two states, enforced in the database. The model's `choices` already
+            # refuse a third value in Python, but a row written by raw SQL or by a future
+            # migration would not go through the model's validation — and a state the
+            # composition path does not understand would be a source whose visibility
+            # silently fell back to the default.
+            models.CheckConstraint(
+                condition=models.Q(state__in=["show_less", "mute"]),
+                name="source_mute_state_ck",
+            ),
+        ]
+        indexes = [
+            # "What has this user muted, and what should they see less of?" — the question
+            # the composition path asks on every read. It is asked about one user, so the
+            # index leads with the user.
+            models.Index(fields=["user_id"], name="source_mute_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The source id and the state. Both are safe: the source's *name* is third-party
+        # text, and this string reaches every log line (AD-9, AD-13).
+        return f"source mute {self.source_id} {self.state}"
+
+
 class PulseDigest(UUIDv7Model):
     """One user's Pulse Digest for one local calendar day (FR-5, FR-8, AD-10).
 

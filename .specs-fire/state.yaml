@@ -8,6 +8,9 @@ workspace:
   autonomy_bias: balanced
   run_scope_preference: wide
   run_scope_history:
+    - choice: single
+      items_count: 1
+      timestamp: 2026-11-13T17:02:13.327Z
     - choice: wide
       items_count: 10
       timestamp: 2026-11-13T12:00:00Z
@@ -1371,18 +1374,27 @@ intents:
         status: pending
         complexity: high
         mode: validate
+        design_doc: less-like-this-adjustment-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-13T21:40:00Z
         depends_on: []
   - id: source-transparency-and-mute
     title: Source Transparency & Mute — Settings → Sources, and What the Dots Mean
-    status: pending
+    status: completed
     created: 2026-11-13
     split_from: unwired-surfaces
     work_items:
       - id: settings-sources-surface
-        status: pending
+        status: completed
         complexity: high
         mode: validate
+        design_doc: settings-sources-surface-design.md
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-13T21:40:00Z
         depends_on: []
+        run_id: run-eventpulse24-033
+        completed_at: 2026-11-13T17:02:13.327Z
+    completed_at: 2026-11-13T17:02:07.888Z
   - id: account-profile-name
     title: The Account Sheet, Reduced — and a Name Worth Calling Someone
     status: completed
@@ -2065,3 +2077,11 @@ runs:
           mode: confirm
       started: 2026-11-13T09:47:48.275Z
       completed: 2026-11-13T13:17:34.101Z
+    - id: run-eventpulse24-033
+      scope: single
+      work_items:
+        - id: settings-sources-surface
+          intent: source-transparency-and-mute
+          mode: validate
+      started: 2026-11-13T15:57:14.606Z
+      completed: 2026-11-13T17:02:13.327Z

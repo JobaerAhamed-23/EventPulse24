@@ -197,6 +197,50 @@ RELIABILITY_CLAIM_TTL = timedelta(hours=1)
 # `SCHEDULE_BATCH` is: one slow source must not hold up every other tick's work.
 RELIABILITY_BATCH_SIZE = 100
 
+# FR-16's score, rendered as the **1–5 trust dots** on `Settings → Sources`.
+#
+# **These are not FR-22's bucket boundaries.** `RANKING_BUCKET_*` (below) bands the
+# *Relevance Pulse* — the Confidence Pulse's bucket — and its boundaries are FR-22's. The
+# trust dots answer a different question ("how much do we trust this source's facts?"),
+# so they get their own bands. Reusing `score_bucket` would mean the source's trust was
+# silently the confidence of an event from it.
+#
+# **0.50 is band 3 — "ok".** A source the recompute has never reached has no score, and
+# reads as the 0.50 prior (`reliability_score(0, 0)`). Banding it at 3 says "we have not
+# learned anything bad yet", which is what the prior actually means. It also means the
+# dots are meaningful before a source has 30 observations — which is every source in the
+# registry on day one.
+#
+# **Never a week-over-week delta.** `domain/reliability.py` proves a 3× drop is
+# impossible, so a delta here would assert something the domain says cannot happen.
+SOURCE_TRUST_BAND_5 = Decimal("0.80")
+SOURCE_TRUST_BAND_4 = Decimal("0.65")
+SOURCE_TRUST_BAND_3 = Decimal("0.50")
+SOURCE_TRUST_BAND_2 = Decimal("0.35")
+
+# The trust dots are 1–5, and 5 is the most trusted.
+SOURCE_TRUST_MIN = 1
+SOURCE_TRUST_MAX = 5
+
+# The penalty a `show_less` source's events take, applied **after** the published score.
+#
+# **It is not a sixth term in FR-22's formula.** `relevance_score()` is exactly five
+# weighted terms summing to 1.00, and `tests/shared/test_constants.py` pins those
+# weights against ADR-0025 — so adding a term would change a published formula and need
+# a new ADR to authorise it. "Show less" is a *preference over the ordering*, not a
+# property of the event, so it is applied to the score the formula produced, before the
+# ordering, and the formula itself is untouched.
+#
+# **It is a penalty, not an exclusion.** "Show less" means fewer, and a source whose
+# events vanished would be indistinguishable from a mute on the wire.
+#
+# **0.10 is deliberately equal to the smallest published weight** (the city term). One
+# "show less" should be able to reorder a slot — that is the whole point of the control —
+# but it should not on its own invert what a slot is for: the reliability term is 0.25 and
+# the interest term 0.35, so neither a city match nor a good source can be undone by one
+# user's preference about one source.
+SOURCE_SHOW_LESS_PENALTY = Decimal("0.10")
+
 # FR-60 tz-inference scores and DST caps (domain/timezones.py). Tuning anchors, not truths (AD-8):
 # re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
 TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim

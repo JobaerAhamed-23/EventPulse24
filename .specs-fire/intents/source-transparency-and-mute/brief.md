@@ -1,9 +1,10 @@
 ---
 id: source-transparency-and-mute
 title: Source Transparency & Mute — Settings → Sources, and What the Dots Mean
-status: pending
+status: completed
 created: 2026-11-13
 split_from: unwired-surfaces
+completed_at: 2026-11-13T17:02:07.892Z
 ---
 
 # Intent: Source Transparency & Mute

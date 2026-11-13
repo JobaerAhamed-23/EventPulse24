@@ -18,6 +18,7 @@ from apps.identity.webhooks_api import router as billing_webhook_router
 from apps.personalization.api import router as personal_router
 from apps.personalization.collections_api import router as collections_router
 from apps.personalization.detail_api import router as detail_router
+from apps.personalization.source_mutes_api import router as source_mutes_router
 from config.errors import install_error_handlers
 from config.health import router as health_router
 
@@ -70,6 +71,13 @@ api.add_router("/notices", notices_router)
 # reminders router, the auth lives on the **router**, so the user id comes from the
 # session and never from a payload.
 api.add_router("/settings", settings_router)
+# FR-13, FR-16: the source-visibility settings — the registry, grouped, with each source's
+# trust and the caller's mute state. It is a **second router on the same prefix**, because
+# the settings surface spans two apps: the notification settings above are `delivery`'s,
+# and these are `personalization`'s, because the mute is the user's own state. The client
+# sees one `/api/settings` family and never learns the split — the same thing the
+# notifications router does about its own two apps.
+api.add_router("/settings", source_mutes_router)
 # FR-24: the Detail Screen. It has no `auth=` of its own, because it serves **two**
 # audiences — a signed-in caller gets their own explanation, an anonymous caller gets the
 # public facts and nothing personal (AD-12). The two handlers apply their own rules.

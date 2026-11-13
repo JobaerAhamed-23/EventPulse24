@@ -3992,6 +3992,180 @@
         "title": "SignUpOut",
         "type": "object"
       },
+      "SourceGroupOut": {
+        "description": "One group of sources — Official, Community, Aggregator or Crawled.\n\n**The four groups are always present, even when empty.** The screen renders a heading\nper group, and a group that appeared and disappeared as the registry changed would\nmake the screen's shape depend on the data.",
+        "properties": {
+          "badge": {
+            "title": "Badge",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "badge",
+          "label"
+        ],
+        "title": "SourceGroupOut",
+        "type": "object"
+      },
+      "SourceListOut": {
+        "description": "Every source in the registry, grouped.\n\n**`groups` is the whole registry**, in the order the screen shows it. A registry with\nno sources answers with four empty groups rather than an error — an empty registry is\nan answer, and the screen has a quiet empty state for it.",
+        "properties": {
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "title": "SourceListOut",
+        "type": "object"
+      },
+      "SourceMuteResultOut": {
+        "description": "The outcome of setting one source's mute state.\n\n**`changed` says whether the call did anything.** Setting the state a source was\nalready in is a success, not an error — but a response claiming a change when none\nhappened would make the screen redraw something that did not move.",
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "mute",
+              "show_less",
+              "default"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "state",
+          "changed"
+        ],
+        "title": "SourceMuteResultOut",
+        "type": "object"
+      },
+      "SourceMuteSetIn": {
+        "description": "The request body for setting one source's mute state.",
+        "properties": {
+          "state": {
+            "enum": [
+              "mute",
+              "show_less",
+              "default"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "SourceMuteSetIn",
+        "type": "object"
+      },
+      "SourceOut": {
+        "description": "One source in the registry, as the screen shows it.\n\n**`id` is the catalog Source's id, by value.** The mute is keyed on it, and the\nclient sends it back on the write — so the id the screen shows and the id the mute\nuses are the same one.\n\n**`mute_state` is this user's state for this source**, and it is `\"default\"` for a\nsource the user has never touched. It is not `None`: the control has three\npositions, and \"no preference\" is one of them.",
+        "properties": {
+          "city": {
+            "default": "",
+            "title": "City",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_paused": {
+            "default": false,
+            "title": "Is Paused",
+            "type": "boolean"
+          },
+          "mute_state": {
+            "default": "default",
+            "enum": [
+              "mute",
+              "show_less",
+              "default"
+            ],
+            "title": "Mute State",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_badge": {
+            "title": "Source Badge",
+            "type": "string"
+          },
+          "trust": {
+            "$ref": "#/components/schemas/SourceTrustOut"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source_badge",
+          "trust"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "SourceRestoreDefaultsOut": {
+        "description": "The outcome of the bulk reset.\n\n**`removed` is how many preferences were cleared**, so the screen can say what\nhappened rather than just that it happened.",
+        "properties": {
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "title": "SourceRestoreDefaultsOut",
+        "type": "object"
+      },
+      "SourceTrustOut": {
+        "description": "One source's trust, as the screen renders it.\n\n**`band` is the 1–5 count the dots draw**, and it is the server's number. The client\ndraws `band` filled dots and `5 - band` empty ones; it does not compute the band from\n`score`, because the boundaries are the server's rule and a client that recomputed\nthem would be a second opinion about what a score means.\n\n**`score` is the raw FR-16 posterior**, in [0, 1]. It is here for the client's own\ntooltips and for a future \"why is this source low?\" — not for the dots.\n\n**`band` is never a delta.** A week-over-week drop is provably impossible\n(`domain/reliability.py`), so there is no \"down\" state to render.",
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "integer"
+          },
+          "score": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Score",
+            "type": "string"
+          }
+        },
+        "required": [
+          "band",
+          "score"
+        ],
+        "title": "SourceTrustOut",
+        "type": "object"
+      },
       "SubscriptionOut": {
         "description": "The caller's entitlement: one bool and nothing else.\n\n**The minimum, on purpose.** This answers exactly one question — *may this person buy\na plan?* — and the answer is a bool. There is no plan name, no renewal date and no\nstatus here, because the fuller subscription record belongs to the account-and-billing\nsurface, which needs a wider read and builds it there. A field here would be a field\ntwo callers could disagree about.\n\n**It is a read of the caller's own entitlement.** There is no user id in the request\nand none in the response: the user comes from the session, so a caller cannot ask\nabout somebody else.",
         "properties": {
@@ -7495,6 +7669,156 @@
           }
         },
         "summary": "Save the signed-in user's notification settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/sources": {
+      "get": {
+        "description": "Every source in the registry, grouped by how its facts were obtained — Official, Community, Aggregator, Crawled — with each source's trust and the caller's mute state.\n\n**The groups are the Source Badge types.** The server names the type; the client owns the label and the glyph.\n\n**A muted source is still listed.** The screen's job is transparency — the user is told what is informing their timeline *and* what they have turned off. A muted source that disappeared would be a preference they could not see or undo.",
+        "operationId": "apps_personalization_source_mutes_api_list_sources",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceListOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "The source registry, grouped, with the caller's visibility settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/sources/restore-defaults": {
+      "post": {
+        "description": "Reset every source to its default visibility, clearing both the mutes and the \"show less\" preferences in one action.\n\n**The screen asks before it calls this.** The endpoint is a single idempotent delete; the confirmation belongs to the client, because the safeguard is that the destructive action is confirmed before it completes.",
+        "operationId": "apps_personalization_source_mutes_api_restore_defaults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRestoreDefaultsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Clear every custom visibility setting",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/sources/{source_id}": {
+      "put": {
+        "description": "Set one source's state to `mute`, `show_less` or `default`.\n\n**`mute` excludes the source's events** — they are not shown at all. **`show_less` deprioritises them** — they are still shown, but ordered lower. **`default` restores the source** to how it was before any preference.\n\nThe state is idempotent: setting a source to the state it already has is a success, and `changed` says whether anything actually moved.\n\n**There is no 404.** The endpoint does not read the catalog (AD-3), so a source that is not in the registry is accepted like any other: the preference excludes nothing and is purged with the user's data.",
+        "operationId": "apps_personalization_source_mutes_api_set_source_mute_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceMuteSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceMuteResultOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set one source's visibility",
         "tags": [
           "settings"
         ]

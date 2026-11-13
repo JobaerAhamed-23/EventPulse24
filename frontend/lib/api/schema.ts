@@ -1365,6 +1365,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The source registry, grouped, with the caller's visibility settings
+         * @description Every source in the registry, grouped by how its facts were obtained — Official, Community, Aggregator, Crawled — with each source's trust and the caller's mute state.
+         *
+         *     **The groups are the Source Badge types.** The server names the type; the client owns the label and the glyph.
+         *
+         *     **A muted source is still listed.** The screen's job is transparency — the user is told what is informing their timeline *and* what they have turned off. A muted source that disappeared would be a preference they could not see or undo.
+         */
+        get: operations["apps_personalization_source_mutes_api_list_sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/sources/restore-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear every custom visibility setting
+         * @description Reset every source to its default visibility, clearing both the mutes and the "show less" preferences in one action.
+         *
+         *     **The screen asks before it calls this.** The endpoint is a single idempotent delete; the confirmation belongs to the client, because the safeguard is that the destructive action is confirmed before it completes.
+         */
+        post: operations["apps_personalization_source_mutes_api_restore_defaults"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set one source's visibility
+         * @description Set one source's state to `mute`, `show_less` or `default`.
+         *
+         *     **`mute` excludes the source's events** — they are not shown at all. **`show_less` deprioritises them** — they are still shown, but ordered lower. **`default` restores the source** to how it was before any preference.
+         *
+         *     The state is idempotent: setting a source to the state it already has is a success, and `changed` says whether anything actually moved.
+         *
+         *     **There is no 404.** The endpoint does not read the catalog (AD-3), so a source that is not in the registry is accepted like any other: the preference excludes nothing and is purged with the user's data.
+         */
+        put: operations["apps_personalization_source_mutes_api_set_source_mute_state"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/webhooks/billing": {
         parameters: {
             query?: never;
@@ -3973,6 +4045,145 @@ export interface components {
             status: string;
         };
         /**
+         * SourceGroupOut
+         * @description One group of sources — Official, Community, Aggregator or Crawled.
+         *
+         *     **The four groups are always present, even when empty.** The screen renders a heading
+         *     per group, and a group that appeared and disappeared as the registry changed would
+         *     make the screen's shape depend on the data.
+         */
+        SourceGroupOut: {
+            /** Badge */
+            badge: string;
+            /** Label */
+            label: string;
+            /**
+             * Sources
+             * @default []
+             */
+            sources: components["schemas"]["SourceOut"][];
+        };
+        /**
+         * SourceListOut
+         * @description Every source in the registry, grouped.
+         *
+         *     **`groups` is the whole registry**, in the order the screen shows it. A registry with
+         *     no sources answers with four empty groups rather than an error — an empty registry is
+         *     an answer, and the screen has a quiet empty state for it.
+         */
+        SourceListOut: {
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["SourceGroupOut"][];
+        };
+        /**
+         * SourceMuteResultOut
+         * @description The outcome of setting one source's mute state.
+         *
+         *     **`changed` says whether the call did anything.** Setting the state a source was
+         *     already in is a success, not an error — but a response claiming a change when none
+         *     happened would make the screen redraw something that did not move.
+         */
+        SourceMuteResultOut: {
+            /** Changed */
+            changed: boolean;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "mute" | "show_less" | "default";
+        };
+        /**
+         * SourceMuteSetIn
+         * @description The request body for setting one source's mute state.
+         */
+        SourceMuteSetIn: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "mute" | "show_less" | "default";
+        };
+        /**
+         * SourceOut
+         * @description One source in the registry, as the screen shows it.
+         *
+         *     **`id` is the catalog Source's id, by value.** The mute is keyed on it, and the
+         *     client sends it back on the write — so the id the screen shows and the id the mute
+         *     uses are the same one.
+         *
+         *     **`mute_state` is this user's state for this source**, and it is `"default"` for a
+         *     source the user has never touched. It is not `None`: the control has three
+         *     positions, and "no preference" is one of them.
+         */
+        SourceOut: {
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Paused
+             * @default false
+             */
+            is_paused: boolean;
+            /**
+             * Mute State
+             * @default default
+             * @enum {string}
+             */
+            mute_state: "mute" | "show_less" | "default";
+            /** Name */
+            name: string;
+            /** Source Badge */
+            source_badge: string;
+            trust: components["schemas"]["SourceTrustOut"];
+        };
+        /**
+         * SourceRestoreDefaultsOut
+         * @description The outcome of the bulk reset.
+         *
+         *     **`removed` is how many preferences were cleared**, so the screen can say what
+         *     happened rather than just that it happened.
+         */
+        SourceRestoreDefaultsOut: {
+            /** Removed */
+            removed: number;
+        };
+        /**
+         * SourceTrustOut
+         * @description One source's trust, as the screen renders it.
+         *
+         *     **`band` is the 1–5 count the dots draw**, and it is the server's number. The client
+         *     draws `band` filled dots and `5 - band` empty ones; it does not compute the band from
+         *     `score`, because the boundaries are the server's rule and a client that recomputed
+         *     them would be a second opinion about what a score means.
+         *
+         *     **`score` is the raw FR-16 posterior**, in [0, 1]. It is here for the client's own
+         *     tooltips and for a future "why is this source low?" — not for the dots.
+         *
+         *     **`band` is never a delta.** A week-over-week drop is provably impossible
+         *     (`domain/reliability.py`), so there is no "down" state to render.
+         */
+        SourceTrustOut: {
+            /** Band */
+            band: number;
+            /** Score */
+            score: string;
+        };
+        /**
          * SubscriptionOut
          * @description The caller's entitlement: one bool and nothing else.
          *
@@ -6529,6 +6740,126 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_source_mutes_api_list_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceListOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_source_mutes_api_restore_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRestoreDefaultsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_source_mutes_api_set_source_mute_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceMuteSetIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceMuteResultOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

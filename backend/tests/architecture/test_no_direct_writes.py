@@ -39,7 +39,8 @@ def test_surface_files_include_every_app_admin_and_api():
     # FR-49: the collections endpoints are a surface file like any other.
     assert "apps/personalization/collections_api.py" in names
     # 6 admins + 6 api.py + 9 *_api.py + config/api.py + config/health.py = 23
-    assert len(names) == 23
+    # 6 admins + 6 api.py + 10 *_api.py + config/api.py + config/health.py = 24
+    assert len(names) == 24
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

@@ -44,10 +44,12 @@ from apps.ingestion.services.catalog_read import (
 )
 from apps.personalization.models import DigestPreference, Interest, SavedEvent
 from apps.personalization.services.save_cap import SaveQuota, read_save_quota
+from apps.personalization.services.source_mutes import read_source_visibility
 from domain.lifecycle import EventStatus
 from domain.ranking import (
     RankingInputs,
     apply_hysteresis,
+    apply_show_less,
     city_band,
     interest_overlap,
     recency_band,
@@ -283,17 +285,34 @@ def read_browse_page(
         event_ids=[candidate.id for candidate in candidates],
     )
 
+    # **The user's source preferences, and the mute filter.** One query, and it is on the
+    # personal side. A muted source's events are **absent** — not ranked lower, absent —
+    # because a mute is an exclusion and "show less" is the control that ranks lower.
+    #
+    # **Browse and the Digest must agree.** A source the user muted in Settings cannot
+    # reappear in Browse, and a "show less" orders lower in both. They read the same
+    # service helper, so they cannot drift.
+    visibility = read_source_visibility(user_id=user_id)
+    eligible = [
+        candidate for candidate in candidates if candidate.source_id not in visibility.muted
+    ]
+
     scored: list[tuple[Decimal, datetime, UUID, PublicEventCandidate, RankingInputs]] = []
-    for candidate in candidates:
+    for candidate in eligible:
         inputs = _inputs_for(
             candidate=candidate,
             user_chip_keys=user_chip_keys,
             user_city=city,
             now=now,
         )
-        scored.append(
-            (relevance_score(inputs), candidate.start_time_utc, candidate.id, candidate, inputs)
+        # **The show-less penalty, after the formula and before the ordering.** See
+        # `domain.ranking.apply_show_less` for why it is not a sixth term in FR-22's
+        # formula.
+        score = apply_show_less(
+            relevance_score(inputs),
+            show_less=candidate.source_id in visibility.show_less,
         )
+        scored.append((score, candidate.start_time_utc, candidate.id, candidate, inputs))
 
     # **A total order, or paging lies.** Score descending, then the sooner event, then the id.
     # Without the id the order is only partial, and two events with the same score and start

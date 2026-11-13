@@ -64,6 +64,10 @@ REQUEST_MODULES = (
     # asks of a request handler.
     "apps/personalization/collections_api.py",
     "apps/personalization/detail_api.py",
+    # FR-13, FR-16. It reads the registry through `ingestion`'s published service and
+    # writes the caller's own visibility state through `personalization`'s — the shape
+    # AD-11 asks of a request handler.
+    "apps/personalization/source_mutes_api.py",
     "config/api.py",
     "config/health.py",
 )
