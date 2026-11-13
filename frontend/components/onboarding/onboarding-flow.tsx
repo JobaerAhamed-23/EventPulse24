@@ -21,6 +21,27 @@
  *
  * Saving is independent of position: the interests and digest `PUT`s address their own
  * resources, so they still work from a revisited step.
+ *
+ * ---
+ *
+ * ## What the digest step sends, and what it does not
+ *
+ * **The digest step sends the delivery time and the timezone, and nothing else.**
+ *
+ * **The personal-events opt-out is not one of the fields this flow owns.** It lives at
+ * `/settings/digest` — a settings control, linked from the quiet-hours page's "Pulse
+ * Digest" section.
+ *
+ * **Why it is not here.** The PRD caps onboarding at three steps and names their
+ * contents (FR-1), and says the flow is *"skip most steps, get immediate value,
+ * configure later"* (§4.1) — the opt-out is configuration. No design document gives
+ * onboarding an opt-out, and every opt-out the design corpus *does* specify is
+ * Settings-scoped. **The onboarding flow's job is the schedule; the opt-out governs the
+ * digest's contents.**
+ *
+ * **So the digest `PUT`'s body is exactly two fields.** The endpoint treats an omitted
+ * field as "leave it alone", so omitting the opt-out here is not a loss — it is the
+ * server keeping the user's stored preference, which is what the user asked for.
  */
 
 import { useRouter } from "next/navigation";

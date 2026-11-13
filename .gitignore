@@ -30,6 +30,13 @@ out/
 # FIRE tooling dependencies
 .specsmd/fire/node_modules/
 
+# Playwright's run artifacts. A failed run keeps a trace, a screenshot and a DOM
+# snapshot under test-results/ — evidence for the walk-through, and evidence nobody
+# should commit. The directory is written at the repo root when the runner's cwd is
+# the root, and under frontend/ when it is the frontend.
+test-results/
+playwright-report/
+
 # Local agent worktrees (tool artifacts, not project source)
 .puku-cli/worktrees/
 

@@ -43,8 +43,20 @@ function state(step: number | null, extra: Record<string, unknown> = {}) {
     current_step: step,
     step_name: null,
     interests: [],
-    // The three fields the digest preference grew: the home city, how it was arrived
-    // at, and the personal-events opt-out (which defaults to included).
+    /**
+     * **The server's stored digest preference — the whole block, as the server sends
+     * it.**
+     *
+     * **This is the server's state, not the flow's body.** The flow reads the delivery
+     * time and the timezone from here and sends those two back; it reads nothing else
+     * and sends nothing else.
+     *
+     * **The opt-out is here because the server has it, not because the flow owns it.**
+     * The personal-events opt-out lives at `/settings/digest` — a settings control, not
+     * an onboarding one. This mock keeps the field so that it stays faithful to the
+     * server's response; a mock that hid a field the server really sends would be its
+     * own kind of false signal.
+     */
     digest: {
       delivery_time: null,
       timezone: null,
@@ -328,7 +340,7 @@ describe("saving", () => {
     });
   });
 
-  it("sends the delivery time and zone from the digest step", async () => {
+  it("sends the delivery time and zone from the digest step, and nothing else", async () => {
     POST.mockResolvedValue(stepped(null));
     renderFlow(3);
 
@@ -341,10 +353,61 @@ describe("saving", () => {
     fireEvent.click(continueButton());
 
     await vi.waitFor(() => {
+      /**
+       * **The whole body, asserted exactly.**
+       *
+       * **This is the assertion that makes an omission visible.** Add a field to the
+       * body and this test fails until someone says why — which is the whole reason the
+       * exact-body form is kept rather than loosened into a subset check.
+       */
       expect(PUT).toHaveBeenCalledWith("/api/personal/onboarding/digest-preference", {
         body: { delivery_time: "07:30", timezone: "America/New_York" },
       });
     });
+  });
+
+  it("does not send the personal-events opt-out, which lives in Settings", async () => {
+    POST.mockResolvedValue(stepped(null));
+    renderFlow(3);
+
+    fireEvent.change(screen.getByLabelText("Pulse Digest delivery time"), {
+      target: { value: "07:30" },
+    });
+    fireEvent.change(screen.getByLabelText("Timezone"), {
+      target: { value: "America/New_York" },
+    });
+    fireEvent.click(continueButton());
+
+    await vi.waitFor(() => expect(PUT).toHaveBeenCalled());
+
+    /**
+     * **The omission, named.**
+     *
+     * **The exact-body assertion above already proves the body has two keys.** This
+     * says *which* two, in words — so that a reader knows the missing field was left
+     * out on purpose rather than forgotten, and so that a flow which started sending it
+     * would fail here with a message that says why.
+     *
+     * **Every call to the endpoint, not just the first.**
+     *
+     * **`find` would have taken the first matching call and stopped.** A flow that
+     * sent a *second* `PUT` to the same path — one carrying the opt-out — would have
+     * left the first, clean, call satisfying both assertions, and the offending one
+     * invisible. The exact-body assertion above has the same blind spot: it matches
+     * *any* call. So this asserts over the whole list.
+     *
+     * **The opt-out is a settings control** (`/settings/digest`). The onboarding flow
+     * owns the *schedule*; the opt-out governs the digest's *contents*.
+     */
+    const bodies = PUT.mock.calls
+      .filter((call) => call[0] === "/api/personal/onboarding/digest-preference")
+      .map((call) => call[1]?.body);
+
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const body of bodies) {
+      expect(Object.keys(body).sort()).toEqual(["delivery_time", "timezone"]);
+      expect(body).not.toHaveProperty("include_personal_events");
+    }
   });
 
   it("does not advance when the save is refused", async () => {

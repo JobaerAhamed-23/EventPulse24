@@ -133,11 +133,29 @@ export default defineConfig({
    * **The web server.**
    *
    * `reuseExistingServer` is `!process.env.CI`, so a developer with `make dev` already
-   * running uses that stack, and CI starts a fresh one. The command is `pnpm dev` from
-   * the frontend directory, which is what `make dev` runs too.
+   * running uses that stack, and CI starts a fresh one.
+   *
+   * **The command binds to `127.0.0.1`, and that is not incidental.** `make web` starts
+   * the same server with `--hostname 127.0.0.1 --port $WEB_PORT`, and `BASE_URL` is
+   * `http://127.0.0.1:$WEB_PORT` — so a server started *without* the hostname flag
+   * binds to `localhost`, and on a machine where `localhost` resolves to IPv6 first the
+   * browser and the server end up on different addresses.
+   *
+   * **What that costs is not a connection error — it is a silent loss of hydration.**
+   * Next.js's dev client reaches the server over a WebSocket for HMR, and that socket
+   * is what the client-side runtime waits on. **When the socket cannot be made, the page
+   * still renders — the server sends the HTML — but React never takes over.** The
+   * sign-in form's inputs are controlled React state (`signin-form.tsx:32-33`), so
+   * without hydration the form has no `onSubmit` handler, and the browser falls back to
+   * **a native GET submit**: the address and the password end up in the query string of
+   * `/signin?email=...&password=...`, no session is established, and the URL never
+   * leaves `/signin`.
+   *
+   * **So a walk-through that silently never signed in would have proved nothing.** The
+   * same command as `make web` is what makes the sign-in a real one.
    */
   webServer: {
-    command: "pnpm dev",
+    command: `pnpm dev --hostname 127.0.0.1 --port ${WEB_PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
