@@ -218,6 +218,7 @@ async function runCompose(
   expect(marker).toBeGreaterThanOrEqual(0);
   return JSON.parse(stdout.slice(marker + "@@RESULT@@".length).trim()) as {
     local_date: string;
+    personal_qualifying_count: number;
     cards: { slot: string; event_kind: string }[];
   };
 }
