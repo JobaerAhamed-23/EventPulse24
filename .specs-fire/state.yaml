@@ -9,6 +9,9 @@ workspace:
   run_scope_preference: wide
   run_scope_history:
     - choice: wide
+      items_count: 6
+      timestamp: 2026-11-13T01:09:47Z
+    - choice: wide
       items_count: 15
       timestamp: 2026-11-11T07:05:37Z
     - choice: wide
@@ -1227,6 +1230,63 @@ intents:
         run_id: run-eventpulse24-029
         completed_at: 2026-11-12T17:08:29.744Z
     completed_at: 2026-11-12T17:08:29.744Z
+  - id: digest-personal-events-control
+    title: The Control That Was Deferred — Personal Events in the Pulse Digest
+    status: completed
+    created: 2026-11-13
+    work_items:
+      - id: digest-preference-read-helper
+        status: completed
+        complexity: low
+        mode: autopilot
+        depends_on: []
+        run_id: run-eventpulse24-030
+        completed_at: 2026-11-13T02:40:31.286Z
+      - id: personal-events-digest-toggle
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-preference-read-helper
+        run_id: run-eventpulse24-030
+        completed_at: 2026-11-13T02:40:31.286Z
+      - id: digest-settings-route
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-preference-read-helper
+          - personal-events-digest-toggle
+        run_id: run-eventpulse24-030
+        completed_at: 2026-11-13T02:40:31.286Z
+      - id: onboarding-opt-out-decision
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - personal-events-digest-toggle
+        run_id: run-eventpulse24-030
+        completed_at: 2026-11-13T02:40:31.286Z
+      - id: digest-composition-proof
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-preference-read-helper
+          - personal-events-digest-toggle
+          - digest-settings-route
+        run_id: run-eventpulse24-030
+        completed_at: 2026-11-13T02:40:31.286Z
+      - id: browser-walkthrough-and-trace
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - digest-composition-proof
+          - onboarding-opt-out-decision
+        run_id: run-eventpulse24-030
+        completed_at: 2026-11-13T02:40:31.286Z
+    completed_at: 2026-11-13T02:39:46.363Z
 runs:
   active: []
   completed:
@@ -1774,3 +1834,26 @@ runs:
           mode: confirm
       started: 2026-11-12T06:53:06.076Z
       completed: 2026-11-12T17:08:29.744Z
+    - id: run-eventpulse24-030
+      scope: wide
+      work_items:
+        - id: digest-preference-read-helper
+          intent: digest-personal-events-control
+          mode: autopilot
+        - id: personal-events-digest-toggle
+          intent: digest-personal-events-control
+          mode: confirm
+        - id: digest-settings-route
+          intent: digest-personal-events-control
+          mode: confirm
+        - id: onboarding-opt-out-decision
+          intent: digest-personal-events-control
+          mode: confirm
+        - id: digest-composition-proof
+          intent: digest-personal-events-control
+          mode: confirm
+        - id: browser-walkthrough-and-trace
+          intent: digest-personal-events-control
+          mode: confirm
+      started: 2026-11-13T01:09:47.717Z
+      completed: 2026-11-13T02:40:31.286Z
