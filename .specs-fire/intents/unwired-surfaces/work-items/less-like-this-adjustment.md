@@ -4,7 +4,7 @@ title: FR-25 "Less like this" — Unbuilt on Both Sides
 intent: unwired-surfaces
 complexity: high
 mode: validate
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-13
 ---

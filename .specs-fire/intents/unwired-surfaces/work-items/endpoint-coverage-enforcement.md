@@ -4,9 +4,11 @@ title: The Check That Would Have Caught All of This
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-031
+completed_at: 2026-11-13T07:36:25.915Z
 ---
 
 # Work Item: The Check That Would Have Caught All of This

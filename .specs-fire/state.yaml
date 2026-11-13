@@ -1332,12 +1332,14 @@ intents:
         run_id: run-eventpulse24-031
         completed_at: 2026-11-13T07:32:45.724Z
       - id: endpoint-coverage-enforcement
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-031
+        completed_at: 2026-11-13T07:36:25.915Z
       - id: less-like-this-adjustment
-        status: pending
+        status: in_progress
         complexity: high
         mode: validate
         depends_on: []
@@ -1409,17 +1411,18 @@ runs:
         - id: endpoint-coverage-enforcement
           intent: unwired-surfaces
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-13T07:36:25.915Z
+        - id: less-like-this-adjustment
+          intent: unwired-surfaces
+          mode: validate
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: less-like-this-adjustment
-          intent: unwired-surfaces
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: settings-sources-surface
           intent: unwired-surfaces
           mode: validate
@@ -1441,7 +1444,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: endpoint-coverage-enforcement
+      current_item: less-like-this-adjustment
       started: 2026-11-13T06:41:58.698Z
   completed:
     - id: run-eventpulse24-001

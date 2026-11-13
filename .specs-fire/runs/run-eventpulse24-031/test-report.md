@@ -363,3 +363,65 @@ exercising a surface the user could not reach. They now exercise the one they ca
 Two tests asserted WCAG 1.4.1's colour-plus-label pairing on `PersonalEventRow`. The rule
 is still proven, on the conflict sheet's cards and the Timeline's event blocks — surfaces
 a user reaches. Recorded so the deletion is not read as dropping an accessibility check.
+
+---
+
+## Work Item: endpoint-coverage-enforcement
+
+### Test Results
+
+| Category | Passed | Failed |
+|----------|--------|--------|
+| `tests/endpoint-coverage.test.ts` (new) | 4 | 0 |
+| **Full frontend suite** | **2378** | **0** |
+
+### The proof that matters
+
+Run against the codebase **as it was before this intent** (worktree at `03ca5bb`), the test
+fails and names:
+
+```
+DELETE /api/personal/calendars/{connection_id}
+POST   /api/events/{event_id}/opened
+POST   /api/personal/calendars/{connection_id}/reconnect
+PUT    /api/personal/collections/{collection_id}/events/{saved_event_id}
+```
+
+**Exactly the four gaps the manual audit found. Not three, not five.** The audit took a
+morning; the test takes 380ms.
+
+### Mutation Probes
+
+| Probe | Result |
+|---|---|
+| Break a real call site (the `DELETE` this run built) | ⚠️ **0 failed** → matcher fixed → ✅ 1 failed |
+| Declare a called endpoint uncalled (stale exemption) | ✅ 1 failed |
+| Break the variable-path module | ✅ 1 failed |
+
+### Findings
+
+#### 1. The first matcher was worthless, and a probe proved it in one run
+
+The first version counted an endpoint called when the method **and** the path literal both
+appeared anywhere in one file. `personal-events-panel.tsx` calls `PATCH` and `DELETE` on
+the *same* path — so breaking the `DELETE` call left the file still containing `.DELETE(`
+and the path literal, and the check reported the endpoint covered.
+
+**The check could not see the gap it exists to find.** Tightened to match the call
+expression itself: `.DELETE(` immediately followed by the exact path literal, with the
+path regex-escaped because it contains `{` and `}`.
+
+#### 2. The variable-path loophole is small, named and still enforced
+
+`onboarding-flow.tsx` declares a union of two endpoint strings and calls `advance(path)`.
+No call-expression matcher can see that, and a strict matcher reports two false gaps. So
+`CALLED_VIA_VARIABLE` names the two endpoints **and the module**, and the module is checked
+to still contain the path literal — a probe that broke it fails the file. The loophole
+cannot be used to silence an endpoint without naming where it is used.
+
+#### 3. What this test deliberately cannot see
+
+A *called* endpoint is not a *reachable* feature. Before this run, `SavedEventsSection`
+called `GET /api/personal/saved-events` from a component nothing rendered, and this test
+would have counted it covered. Reachability is Section C's claim, and the limit is stated
+in the test's own docstring rather than discovered later.
