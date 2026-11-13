@@ -322,6 +322,93 @@ describe("PersonalEventForm", () => {
     });
   });
 
+  /**
+   * The danger zone (FR-18, `personal-event-edit-desktop.html`).
+   *
+   * The mockup's own line is "A user can edit **or delete** a Personal Event", and the
+   * deletion is confirmed before it completes — the rule FR-58 states for the conflict
+   * prompt's delete, and the reason is the same here: nothing restores the event.
+   */
+  describe("the danger zone", () => {
+    it("is not offered while creating — there is no event to delete yet", () => {
+      renderForm({ mode: "create", onDelete: vi.fn() });
+
+      expect(screen.queryByRole("button", { name: "Delete event →" })).not.toBeInTheDocument();
+    });
+
+    it("is not offered in edit mode when the caller gave no delete", () => {
+      renderForm({ mode: "edit" });
+
+      expect(screen.queryByRole("button", { name: "Delete event →" })).not.toBeInTheDocument();
+    });
+
+    it("does not delete on the first press — it asks first", () => {
+      const onDelete = vi.fn();
+      renderForm({ mode: "edit", onDelete, initial: { name: "Dinner with Rahul" } });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete event →" }));
+
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(screen.getByText("Delete \u201cDinner with Rahul\u201d?")).toBeInTheDocument();
+    });
+
+    it("deletes once the confirmation is pressed", () => {
+      const onDelete = vi.fn();
+      renderForm({ mode: "edit", onDelete, initial: { name: "Dinner with Rahul" } });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete event →" }));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Delete Dinner with Rahul. This cannot be undone.",
+        }),
+      );
+
+      expect(onDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the event when the confirmation is declined, and offers the control again", () => {
+      const onDelete = vi.fn();
+      renderForm({ mode: "edit", onDelete, initial: { name: "Dinner with Rahul" } });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete event →" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Keep Dinner with Rahul. The event is not deleted." }),
+      );
+
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Delete event →" })).toBeInTheDocument();
+    });
+
+    it("names the event as it is stored, not as the name field has been retyped", () => {
+      // The user may rename the event and then decide to delete it instead. The
+      // question is about the event that exists, so it uses the seeded name — a
+      // question naming an unsaved edit would be asking about something that is not
+      // there.
+      const onDelete = vi.fn();
+      renderForm({ mode: "edit", onDelete, initial: { name: "Dinner with Rahul" } });
+
+      fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "Supper" } });
+      fireEvent.click(screen.getByRole("button", { name: "Delete event →" }));
+
+      expect(screen.getByText("Delete \u201cDinner with Rahul\u201d?")).toBeInTheDocument();
+      expect(screen.queryByText("Delete \u201cSupper\u201d?")).not.toBeInTheDocument();
+    });
+
+    it("does not submit the form — the zone's buttons are not submit buttons", () => {
+      // The zone sits inside the sheet's <form>, where a button with no type submits.
+      const onDelete = vi.fn();
+      const { onSubmit } = renderForm({
+        mode: "edit",
+        onDelete,
+        initial: { name: "Dinner with Rahul" },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete event →" }));
+
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
+
   it("closes without saving when the close button is used", () => {
     const onClose = vi.fn();
     renderForm({ onClose });

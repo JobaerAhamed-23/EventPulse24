@@ -14,6 +14,7 @@ import { PersonalEventsPanel } from "@/components/personal-events-panel";
 
 const POST = vi.fn();
 const PATCH = vi.fn();
+const DELETE = vi.fn();
 
 /** The panel refreshes the route after every successful write; the spy says it did. */
 const refresh = vi.fn();
@@ -25,6 +26,7 @@ vi.mock("@/lib/backend-client", () => ({
   api: {
     POST: (...args: unknown[]) => POST(...args),
     PATCH: (...args: unknown[]) => PATCH(...args),
+    DELETE: (...args: unknown[]) => DELETE(...args),
   },
 }));
 
@@ -67,6 +69,7 @@ const CONFLICT_DETAILS = {
 beforeEach(() => {
   POST.mockReset();
   PATCH.mockReset();
+  DELETE.mockReset();
   refresh.mockReset();
 });
 
@@ -386,6 +389,101 @@ describe("PersonalEventsPanel", () => {
           params: { path: { event_id: CONFLICT_DETAILS.event_id } },
         }),
       );
+    });
+  });
+
+  /**
+   * The ordinary delete (FR-18) — the edit sheet's danger zone, not the conflict
+   * prompt's "delete the new one". It reaches `DELETE /api/personal/events/{event_id}`,
+   * which the UI had no caller for at all before this.
+   */
+  describe("deleting a personal event", () => {
+    /** Open the row's edit sheet and press through the danger-zone confirmation. */
+    async function confirmDelete(): Promise<void> {
+      fireEvent.click(screen.getByRole("button", { name: `Edit ${EVENT.name}` }));
+      await waitFor(() =>
+        expect(screen.getByRole("dialog", { name: "Edit personal event" })).toBeInTheDocument(),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete event \u2192" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: `Delete ${EVENT.name}. This cannot be undone.` }),
+      );
+    }
+
+    it("deletes the event the sheet is open on, and refreshes the list", async () => {
+      DELETE.mockResolvedValue({ data: undefined, error: undefined });
+      render(<PersonalEventsPanel events={[EVENT]} />);
+
+      await confirmDelete();
+
+      await waitFor(() => expect(DELETE).toHaveBeenCalledTimes(1));
+      expect(DELETE).toHaveBeenCalledWith("/api/personal/events/{event_id}", {
+        params: { path: { event_id: EVENT.id } },
+      });
+      await waitFor(() => expect(refresh).toHaveBeenCalled());
+      expect(await screen.findByText(`"${EVENT.name}" was deleted.`)).toBeInTheDocument();
+      // The sheet is gone: the deletion closed it.
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Edit personal event" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it("asks before it deletes — no request leaves on the first press", async () => {
+      DELETE.mockResolvedValue({ data: undefined, error: undefined });
+      render(<PersonalEventsPanel events={[EVENT]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: `Edit ${EVENT.name}` }));
+      await waitFor(() =>
+        expect(screen.getByRole("dialog", { name: "Edit personal event" })).toBeInTheDocument(),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete event \u2192" }));
+
+      expect(DELETE).not.toHaveBeenCalled();
+    });
+
+    it("keeps the sheet open and says so when the delete is refused", async () => {
+      DELETE.mockResolvedValue({
+        data: undefined,
+        error: { code: "server_error", message: "nope" },
+      });
+      render(<PersonalEventsPanel events={[EVENT]} />);
+
+      await confirmDelete();
+
+      await waitFor(() => expect(DELETE).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText("We couldn't delete that. Try again.")).toBeInTheDocument();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog", { name: "Edit personal event" })).toBeInTheDocument();
+    });
+
+    it("reports a refused delete to a caller that shows the message itself", async () => {
+      DELETE.mockResolvedValue({
+        data: undefined,
+        error: { code: "server_error", message: "nope" },
+      });
+      const onFailed = vi.fn();
+      render(<PersonalEventsPanel events={[EVENT]} onFailed={onFailed} />);
+
+      await confirmDelete();
+
+      await waitFor(() =>
+        expect(onFailed).toHaveBeenCalledWith("We couldn't delete that. Try again."),
+      );
+    });
+
+    it("offers no danger zone in the create sheet", async () => {
+      render(<PersonalEventsPanel events={[EVENT]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Add event" }));
+      await waitFor(() =>
+        expect(screen.getByRole("dialog", { name: "Add personal event" })).toBeInTheDocument(),
+      );
+
+      expect(
+        screen.queryByRole("button", { name: "Delete event \u2192" }),
+      ).not.toBeInTheDocument();
     });
   });
 });
