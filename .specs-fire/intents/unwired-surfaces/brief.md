@@ -2,8 +2,9 @@
 id: unwired-surfaces
 title: The Controls That Were Never Wired — Endpoints Without Callers, Features
   Without Surfaces
-status: in_progress
+status: completed
 created: 2026-11-13
+completed_at: 2026-11-13T07:56:11.483Z
 ---
 
 # Intent: The Controls That Were Never Wired

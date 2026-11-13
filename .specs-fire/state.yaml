@@ -1293,7 +1293,7 @@ intents:
   - id: unwired-surfaces
     title: The Controls That Were Never Wired — Endpoints Without Callers, Features
       Without Surfaces
-    status: in_progress
+    status: completed
     created: 2026-11-13
     work_items:
       - id: collection-assign-control
@@ -1302,42 +1302,42 @@ intents:
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:09:19.402Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: calendar-connection-controls
         status: completed
         complexity: high
         mode: validate
         depends_on: []
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:16:04.817Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: detail-open-signal
         status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:21:52.478Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: personal-event-reminder-plan
         status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:27:39.768Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: personal-events-list-surface
         status: completed
         complexity: low
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:32:45.724Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: endpoint-coverage-enforcement
         status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:36:25.915Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: traceability-implementation-section
         status: completed
         complexity: medium
@@ -1345,9 +1345,9 @@ intents:
         depends_on:
           - endpoint-coverage-enforcement
         run_id: run-eventpulse24-031
-        completed_at: 2026-11-13T07:41:45.596Z
+        completed_at: 2026-11-13T07:56:11.438Z
       - id: e2e-proof-and-contract-tests
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
@@ -1355,6 +1355,9 @@ intents:
           - calendar-connection-controls
           - detail-open-signal
           - personal-event-reminder-plan
+        run_id: run-eventpulse24-031
+        completed_at: 2026-11-13T07:56:11.438Z
+    completed_at: 2026-11-13T07:56:11.438Z
   - id: relevance-feedback-loop
     title: The Relevance Feedback Loop — FR-25's Dismissal, Clustering and Mute
     status: pending
@@ -1378,92 +1381,7 @@ intents:
         mode: validate
         depends_on: []
 runs:
-  active:
-    - id: run-eventpulse24-031
-      scope: wide
-      work_items:
-        - id: collection-assign-control
-          intent: unwired-surfaces
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:09:19.402Z
-        - id: calendar-connection-controls
-          intent: unwired-surfaces
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:16:04.817Z
-        - id: detail-open-signal
-          intent: unwired-surfaces
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:21:52.478Z
-        - id: personal-event-reminder-plan
-          intent: unwired-surfaces
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:27:39.768Z
-        - id: personal-events-list-surface
-          intent: unwired-surfaces
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:32:45.724Z
-        - id: endpoint-coverage-enforcement
-          intent: unwired-surfaces
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:36:25.915Z
-        - id: less-like-this-adjustment
-          outcome: split-into-relevance-feedback-loop
-          intent: unwired-surfaces
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:38:04.994Z
-        - id: settings-sources-surface
-          intent: unwired-surfaces
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:40:01.737Z
-        - id: traceability-implementation-section
-          intent: unwired-surfaces
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-13T07:41:45.596Z
-        - id: e2e-proof-and-contract-tests
-          intent: unwired-surfaces
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-      current_item: e2e-proof-and-contract-tests
-      started: 2026-11-13T06:41:58.698Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2032,3 +1950,38 @@ runs:
           mode: confirm
       started: 2026-11-13T01:09:47.717Z
       completed: 2026-11-13T02:40:31.286Z
+    - id: run-eventpulse24-031
+      scope: wide
+      work_items:
+        - id: collection-assign-control
+          intent: unwired-surfaces
+          mode: validate
+        - id: calendar-connection-controls
+          intent: unwired-surfaces
+          mode: validate
+        - id: detail-open-signal
+          intent: unwired-surfaces
+          mode: confirm
+        - id: personal-event-reminder-plan
+          intent: unwired-surfaces
+          mode: confirm
+        - id: personal-events-list-surface
+          intent: unwired-surfaces
+          mode: confirm
+        - id: endpoint-coverage-enforcement
+          intent: unwired-surfaces
+          mode: confirm
+        - id: less-like-this-adjustment
+          intent: unwired-surfaces
+          mode: validate
+        - id: settings-sources-surface
+          intent: unwired-surfaces
+          mode: validate
+        - id: traceability-implementation-section
+          intent: unwired-surfaces
+          mode: confirm
+        - id: e2e-proof-and-contract-tests
+          intent: unwired-surfaces
+          mode: confirm
+      started: 2026-11-13T06:41:58.698Z
+      completed: 2026-11-13T07:56:11.438Z

@@ -552,3 +552,88 @@ Section C `MISSING` (no user surface), and the row says so.
 
 This item changes two Markdown documents and a skill. There is nothing to assert that would
 not be asserting on prose.
+
+---
+
+## Work Item: e2e-proof-and-contract-tests
+
+### Results — run against the real stack, twice
+
+```
+RUN A   5 passed (18.1s)
+RUN B   5 passed (17.6s)   ← no reseed between runs
+```
+
+Postgres, Redis and Mailpit in Docker; the real API on `127.0.0.1:8010`; the real
+Next.js server. No mocked client anywhere.
+
+**Run B is the one that matters.** A walkthrough that only passes against a freshly seeded
+database is a walkthrough that cannot be repeated, and three separate defects in this file
+were found only by running it a second time.
+
+| Category | Result |
+|----------|--------|
+| `e2e/unwired-surfaces.spec.ts` | **5 passed, 0 failed, 0 skipped** |
+| Full frontend suite | **2378 passed** across 137 files |
+| `make client` | **no diff** — the contract is unchanged, as every item in this intent promised |
+
+### Acceptance Criteria Validation
+
+- ✅ **Collections**: a Pro user saves an event from Browse, creates a collection, opens the
+  picker, assigns the save, and the collection's contents are non-empty afterwards.
+- ✅ **Calendar**: `/settings/quiet-hours` → the link → `/settings/calendars`, reached the
+  way a user reaches it, with either a Disconnect control or the honest empty state.
+- ✅ **Detail open**: opening a Detail Screen writes an `EventDetailOpen` row **for that
+  event**.
+- ✅ **Personal-event reminders**: the event is created in the browser, its Timeline block
+  opens the edit sheet, and the sheet's link reaches `/personal-events/:id/reminders`.
+- ✅ **The `.catch` no unit test could cover** — `pageerror` is empty on a real detail view.
+- ✅ **Contract**: `make client` produces no diff.
+- ⚠️ **Collections tier gate for a Free user**: **not covered.** The Free account cannot
+  reach `CollectionManager` at all, so there is no control to assert on; the gate is held
+  by the unit suite and by the page's own test. Stated rather than claimed.
+
+### Findings — five defects, four found only by the second run
+
+#### 1. The detail-open assertion was wrong, and only a re-run could show it
+
+It asserted the **row count increased**. The endpoint is idempotent per `(user, event)` —
+its own description says *"opening the screen again refreshes the timestamp rather than
+adding a row"* — so a second run opens the same event and the count does not move. The test
+passed once and then failed forever.
+
+Now it clears the table, captures the event id from the URL, and asserts a row exists **for
+that event**. A count can never prove a write that is idempotent.
+
+#### 2. `from config.db import PERSONAL` does not exist
+
+The alias lives in `shared.db` (`PERSONAL = "default"`). Found by running it.
+
+#### 3. Saving is a toggle, so a re-run un-saved what the previous run saved
+
+`clearSavedEvents` cleared the rows, but the already-rendered Browse page still showed the
+card as saved — so the click *un*-saved it and the picker had nothing to offer. Fixed with
+a reload after clearing.
+
+#### 4. A conflict sheet blocked the page on every run after the first
+
+The walkthrough creates a 19:30 personal event. The second run's create **overlaps the
+first run's**, so the server answers 409 — the event is written and a prompt is pending —
+and the conflict dialog covers the Timeline. The test timed out clicking a block behind an
+open modal.
+
+**This is correct product behaviour**, so the walkthrough answers the prompt the way a user
+would ("Keep both"). It was the test that was wrong, not the product.
+
+#### 5. The Timeline renders the week twice
+
+Desktop grid and mobile day view are both in the DOM, so an unscoped match on the event
+name is a strict-mode violation — and `.first()` can land on the copy the viewport has
+hidden, which is not clickable. Scoped to `[aria-label="Week grid"]`.
+
+### Three conditional skips were removed
+
+The first version skipped when the seeded account had no saves, no personal event, or an
+empty digest. **A skip proves nothing**, and all three would have reported "passed" for
+precisely the surfaces this intent built. Each test now creates what it needs: the save,
+the personal event, and a Detail Screen reached from Browse rather than the digest.
