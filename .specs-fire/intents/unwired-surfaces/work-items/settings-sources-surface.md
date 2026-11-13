@@ -4,7 +4,7 @@ title: Settings → Sources — A Designed Screen With No Endpoints
 intent: unwired-surfaces
 complexity: high
 mode: validate
-status: pending
+status: in_progress
 depends_on: []
 created: 2026-11-13
 ---

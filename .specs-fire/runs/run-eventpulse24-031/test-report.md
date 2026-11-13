@@ -425,3 +425,41 @@ A *called* endpoint is not a *reachable* feature. Before this run, `SavedEventsS
 called `GET /api/personal/saved-events` from a component nothing rendered, and this test
 would have counted it covered. Reachability is Section C's claim, and the limit is stated
 in the test's own docstring rather than discovered later.
+
+---
+
+## Work Item: less-like-this-adjustment — SPLIT, not implemented
+
+**No code was written. No tests were added.** The design checkpoint's job was to decide
+whether FR-25 belongs in this intent, and it decided no. The brief authorised exactly this
+outcome at exactly this point.
+
+### The evidence
+
+| Check | Result |
+|---|---|
+| A model storing a dismissal | **none** |
+| A persisted embedding anywhere | **none** — `grep "embedding" backend/apps/*/models.py` returns nothing |
+| A migration creating a vector column or enabling pgvector | **none** |
+| A production caller of `EmbeddingPort` | **none** — only `FakeEmbeddingAdapter` and the registry |
+
+`less-like-this-mute-prompt-desktop.html` requires *"3 clustered dismissals (embedding
+cosine ≥0.7)"*. The port is declared and registered; **nothing in the product has ever
+embedded anything**, and the pgvector image is unused by any migration.
+
+**And AD-4 forbids the use as written**: *"embeddings only route editorial review
+candidates; they never decide identity."* Driving what a user is shown is a new use, and
+the constitution says deviating from an AD *"requires amending the spine first"*.
+
+### Outcome
+
+New intent **`relevance-feedback-loop`**, carrying the full finding so nothing is
+re-derived. Its first work item is the AD question in writing — not code, and not a
+migration added on the way past, which would be the spine amended by accident.
+
+This is not a deferral or a scope cut. `unwired-surfaces` is about endpoints that exist and
+have no caller; FR-25 has no endpoint, no model, no column and no production use of the
+port it would need. Measuring it as a wiring gap would misdescribe it to whoever picks it
+up.
+
+`detail-actions.tsx:7` already states the correct current behaviour and is unchanged.

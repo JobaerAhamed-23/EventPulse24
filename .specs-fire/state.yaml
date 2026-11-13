@@ -1338,13 +1338,8 @@ intents:
         depends_on: []
         run_id: run-eventpulse24-031
         completed_at: 2026-11-13T07:36:25.915Z
-      - id: less-like-this-adjustment
-        status: in_progress
-        complexity: high
-        mode: validate
-        depends_on: []
       - id: settings-sources-surface
-        status: pending
+        status: in_progress
         complexity: high
         mode: validate
         depends_on: []
@@ -1363,6 +1358,17 @@ intents:
           - calendar-connection-controls
           - detail-open-signal
           - personal-event-reminder-plan
+  - id: relevance-feedback-loop
+    title: The Relevance Feedback Loop — FR-25's Dismissal, Clustering and Mute
+    status: pending
+    created: 2026-11-13
+    split_from: unwired-surfaces
+    work_items:
+      - id: less-like-this-adjustment
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
 runs:
   active:
     - id: run-eventpulse24-031
@@ -1417,19 +1423,24 @@ runs:
           current_checkpoint: plan
           completed_at: 2026-11-13T07:36:25.915Z
         - id: less-like-this-adjustment
+          # Closed by its design checkpoint with a SPLIT decision, not an
+          # implementation. The work item now lives in the relevance-feedback-loop
+          # intent; see unwired-surfaces/work-items/less-like-this-adjustment-design.md.
+          outcome: split-into-relevance-feedback-loop
+          intent: unwired-surfaces
+          mode: validate
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-13T07:38:04.994Z
+        - id: settings-sources-surface
           intent: unwired-surfaces
           mode: validate
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: settings-sources-surface
-          intent: unwired-surfaces
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: traceability-implementation-section
           intent: unwired-surfaces
           mode: confirm
@@ -1444,7 +1455,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: less-like-this-adjustment
+      current_item: settings-sources-surface
       started: 2026-11-13T06:41:58.698Z
   completed:
     - id: run-eventpulse24-001
