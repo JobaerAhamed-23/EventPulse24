@@ -61,18 +61,18 @@ work_items:
   - id: traceability-implementation-section
     intent: unwired-surfaces
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: e2e-proof-and-contract-tests
     intent: unwired-surfaces
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
-current_item: traceability-implementation-section
+    current_checkpoint: plan
+current_item: e2e-proof-and-contract-tests
 status: in_progress
 started: 2026-11-13T06:41:58.698Z
 completed: null
@@ -92,12 +92,12 @@ wide (10 work items)
 6. **endpoint-coverage-enforcement** (confirm) — completed
 7. **less-like-this-adjustment** (validate) — completed
 8. **settings-sources-surface** (validate) — completed
-9. **traceability-implementation-section** (confirm) — in_progress
-10. **e2e-proof-and-contract-tests** (confirm) — pending
+9. **traceability-implementation-section** (confirm) — completed
+10. **e2e-proof-and-contract-tests** (confirm) — in_progress
 
 
 ## Current Item
-traceability-implementation-section (confirm)
+e2e-proof-and-contract-tests (confirm)
 
 ## Files Created
 (none yet)

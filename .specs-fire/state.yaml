@@ -1339,13 +1339,15 @@ intents:
         run_id: run-eventpulse24-031
         completed_at: 2026-11-13T07:36:25.915Z
       - id: traceability-implementation-section
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - endpoint-coverage-enforcement
+        run_id: run-eventpulse24-031
+        completed_at: 2026-11-13T07:41:45.596Z
       - id: e2e-proof-and-contract-tests
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -1448,18 +1450,19 @@ runs:
         - id: traceability-implementation-section
           intent: unwired-surfaces
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-13T07:41:45.596Z
+        - id: e2e-proof-and-contract-tests
+          intent: unwired-surfaces
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: e2e-proof-and-contract-tests
-          intent: unwired-surfaces
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: traceability-implementation-section
+      current_item: e2e-proof-and-contract-tests
       started: 2026-11-13T06:41:58.698Z
   completed:
     - id: run-eventpulse24-001

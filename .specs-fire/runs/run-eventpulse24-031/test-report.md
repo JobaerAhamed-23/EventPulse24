@@ -501,3 +501,54 @@ New intent **`source-transparency-and-mute`**, carrying all three questions plus
 precedent for where a per-user mute lives (`SavedEvent` holds `event_id` by value with no
 foreign key). It also records that FR-25's reversal surface may be the same 3-state mute —
 to be decided once, there, rather than built twice.
+
+---
+
+## Work Item: traceability-implementation-section
+
+### What was delivered
+
+1. **`doc-trace` skill — new Step 4b** defining Section C, so a regeneration reproduces the
+   section instead of deleting it. The skill's opening line now promises **three**
+   alignment sections, and its write order, memlog line and user report all carry
+   Implementation counts.
+2. **`TRACEABILITY.md` — Section C**, between Section B and the Amendment Ledger.
+3. **`.memlog.md`** — one line, in the existing format.
+
+### Counts
+
+**9 FULL · 0 PARTIAL · 3 MISSING · 33 UNASSESSED** (45 MVP FRs).
+
+### The scores that make the case
+
+Five FRs carried `FULL` in **both** existing sections while being unreachable, and this run
+is what changed that:
+
+| FR | Was | Fixed by |
+|---|---|---|
+| FR-18 delete | MISSING | `2ba0073` |
+| FR-49 assign | MISSING | `da924ca` |
+| FR-50 disconnect/reconnect | MISSING | `2dc7432` |
+| FR-24 open signal | PARTIAL | `d064713` |
+| FR-20 personal reminders | MISSING | `63a9535` |
+
+Three remain MISSING with intents of their own: FR-25, FR-16, FR-13.
+
+### Why 33 are UNASSESSED rather than scored
+
+They were not checked against the code in this pass. Inferring them from Section A is
+**exactly the error this section exists to correct** — a guessed `FULL` would make Section C
+as blind as the two above it on its first day. The skill names `UNASSESSED` as honest and
+preferred.
+
+### The matrix's own rule was respected
+
+Open item #1: *"editing a document to improve the score in the same pass that measures it
+is how a matrix stops being trustworthy."* No Section A or B score was touched. FR-16's
+Section A `PARTIAL` (no design citation) is left alone — it is a different claim from its
+Section C `MISSING` (no user surface), and the row says so.
+
+### No tests
+
+This item changes two Markdown documents and a skill. There is nothing to assert that would
+not be asserting on prose.

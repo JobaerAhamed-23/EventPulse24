@@ -4,7 +4,7 @@ title: The Proof — Every Reconnected Surface, Walked End to End
 intent: unwired-surfaces
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - collection-assign-control
   - calendar-connection-controls
