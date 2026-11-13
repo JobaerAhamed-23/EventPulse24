@@ -191,7 +191,9 @@ export function FakeCheckoutPanel({ session, plan, next }: FakeCheckoutParams) {
         To make this user Pro, post the fake webhook:{" "}
         <code className="font-mono text-ink-secondary">POST /api/webhooks/billing</code> with the
         body <code className="font-mono text-ink-secondary">fake-signature</code> and a{" "}
-        <code className="font-mono text-ink-secondary">subscription_started</code> event.
+        <code className="font-mono text-ink-secondary">subscription_started</code> event. The{" "}
+        <code className="font-mono text-ink-secondary">make grant-pro EMAIL=…</code> command does
+        exactly that for you.
       </p>
     </main>
   );

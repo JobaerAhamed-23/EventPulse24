@@ -111,4 +111,62 @@ def read_billing_account(*, user_id: UUID) -> BillingAccount:
     )
 
 
-__all__ = ["BillingAccount", "read_billing_account"]
+@dataclass(frozen=True)
+class LiveSubscriptionRefs:
+    """The provider's references for a user's live subscription.
+
+    **Why these are readable at all.** A cancellation arrives as a provider event that
+    names the *subscription*, not the user — `BillingEvent`'s docstring says so: *"Every
+    later event names the subscription and not the user, which is why the change and end
+    commands look a subscription up by reference."* So anything that has to cancel a
+    subscription needs its reference, and a reference nobody can read is a reference only
+    the webhook can use.
+
+    **The live row, not the newest row.** `record_subscription_ended` looks a subscription
+    up by reference alone, so the reference has to name the *live* one. A user who has
+    subscribed, cancelled and subscribed again holds a cancelled row and a live one; the
+    cancelled row's reference would cancel nothing and leave the user Pro.
+
+    **`None` when there is no live subscription.** That is the ordinary case, and it is
+    what a caller needs to know: there is nothing to cancel.
+    """
+
+    #: The provider's customer reference.
+    customer_ref: str
+    #: The provider's subscription reference. `None` when the row carries none.
+    subscription_ref: str | None
+
+
+def read_live_subscription_refs(*, user_id: UUID) -> LiveSubscriptionRefs | None:
+    """This user's live subscription's provider references, or `None` if there is none.
+
+    **It returns the live row's refs and nothing else.** No status, no plan, no dates: the
+    only question it answers is "which subscription reference names the subscription this
+    user currently holds", and a caller handed more could start mapping states it has no
+    business mapping.
+
+    **It reads the live row first**, by the same `LIVE_SUBSCRIPTION_STATUSES` the
+    entitlement read uses — so "live" means one thing across the app. Ordered by
+    `created_at` descending, so a user with more than one live row (which the partial
+    unique constraint should prevent, but a restored backup might not) gets the newest.
+    """
+    live = (
+        Subscription.objects.using(PERSONAL)
+        .filter(user_id=user_id, status__in=LIVE_SUBSCRIPTION_STATUSES)
+        .order_by("-created_at")
+        .first()
+    )
+    if live is None:
+        return None
+    return LiveSubscriptionRefs(
+        customer_ref=live.stripe_customer_ref,
+        subscription_ref=live.stripe_subscription_ref,
+    )
+
+
+__all__ = [
+    "BillingAccount",
+    "LiveSubscriptionRefs",
+    "read_billing_account",
+    "read_live_subscription_refs",
+]

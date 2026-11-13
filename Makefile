@@ -11,7 +11,8 @@ API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 .DEFAULT_GOAL := help
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
-        web web-install lint-web test-web test-e2e openapi client dev coverage-backend seed-browse seed-browse-for-test
+        web web-install lint-web test-web test-e2e openapi client dev coverage-backend seed-browse seed-browse-for-test \
+        grant-pro revoke-pro
 
 UV_BACKEND := uv run --directory backend
 
@@ -129,6 +130,23 @@ seed-browse: ## Seed the Browse catalog (city, week of events, four accounts)
 # nothing to do with the code under test.
 seed-browse-for-test: ## Seed the Browse catalog and clear the accounts' saved events
 	$(UV_BACKEND) python manage.py seed_browse_catalog --reset-saves
+
+# Pro entitlement, locally. **It posts the fake billing webhook** rather than writing the
+# `Subscription` row, because the webhook is the only thing that grants Pro in this
+# product and a command that wrote the row directly would be a back door around the rule
+# the e2e proof asserts. Needs the API running (`make api`) and `ADAPTER_MODE=fake`.
+#
+# The account is created if it does not exist yet. The password is only ever set on
+# creation, so an existing account keeps whatever password it already had.
+grant-pro: ## Grant Pro locally: make grant-pro EMAIL=you@example.test [PLAN=monthly]
+	$(UV_BACKEND) python manage.py grant_pro $(EMAIL) --plan $(or $(PLAN),monthly) \
+		--api-base-url $(API_BASE_URL)
+
+# Cancel the subscription. **This is a transition, not a deletion** — the row becomes
+# CANCELED and is kept, and nothing the user saved or configured is touched.
+revoke-pro: ## Cancel local Pro: make revoke-pro EMAIL=you@example.test
+	$(UV_BACKEND) python manage.py grant_pro $(EMAIL) --revoke \
+		--api-base-url $(API_BASE_URL)
 
 test-e2e: seed-browse-for-test ## Run the Browse end-to-end tests (Playwright); needs `make up` and the API running
 	pnpm --dir frontend exec playwright test

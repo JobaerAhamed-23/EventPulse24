@@ -144,6 +144,52 @@ registered URL.
 **CI never does this.** The end-to-end suite (`backend/tests/e2e/`) runs the same chain —
 seed, tick, ingest, catalog API, tick again — entirely against the recorded fixtures.
 
+## Pro entitlement, locally
+
+Pro is not a flag you flip. Entitlement is a `Subscription` row, and the **only** thing
+that writes one is the inbound billing webhook (`POST /api/webhooks/billing`) from the
+provider's signed event — a completed checkout grants nothing on its own, because
+granting on a redirect the client controls is the open-redirect bug in a checkout flow.
+`backend/tests/e2e/test_pro_tier_proof.py` asserts that rule, and it is worth keeping.
+
+So the local command **posts the fake webhook** rather than writing the row:
+
+```bash
+make grant-pro EMAIL=you@example.test      # grant
+make revoke-pro EMAIL=you@example.test      # cancel
+```
+
+Both need the API running (`make api`) and `ADAPTER_MODE=fake` (the default). The account
+is created if it does not exist yet, with the password `localpro123`; an existing
+account's password is never changed. `PLAN=yearly` grants the yearly plan.
+
+**What it does.** `make grant-pro` mints a checkout session at `/dev/fake-billing` and
+posts the provider's `subscription_started` event; `make revoke-pro` posts
+`subscription_ended`. The entitlement arrives through the real receiver — signature
+verification, event translation, the ordering guard, the audit write — so the local
+environment is a rehearsal of the real one rather than a shortcut around it. The audit
+row records `stripe_webhook` as the actor, exactly as a payment would.
+
+**A cancellation is a transition, not a deletion.** The row becomes `CANCELED` and is
+kept, as `BILLING_RECORDS` retention requires. Nothing you saved, built or configured is
+touched: a lapse removes the effect of your Pro features, not the rows behind them.
+
+**Two things that bite.** `past_due` counts as Pro — a failed payment leaves someone
+entitled while they fix it in the portal — so only `CANCELED` (or no row at all) means
+Free. And the webhook's `occurred_at` is stamped *now* on every run, because
+`Subscription.last_event_at` is the ordering guard and a stale timestamp is declined.
+
+The same path is available by hand, if you want to see the wire format:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/webhooks/billing \
+  -H 'Content-Type: application/json' \
+  -H 'Stripe-Signature: fake-signature' \
+  -d '{"kind":"subscription_started","event_id":"evt_1","occurred_at":'$(date +%s)',
+       "customer_ref":"cus_local","subscription_ref":"sub_local",
+       "user_id":"<USER_UUID>","plan":"monthly"}'
+```
+
 ## Repository layout
 
 | Path | What |
