@@ -4,9 +4,11 @@ title: The Assign Control — Making a Collection Fillable
 intent: unwired-surfaces
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-031
+completed_at: 2026-11-13T07:09:19.402Z
 ---
 
 # Work Item: The Assign Control — Making a Collection Fillable
