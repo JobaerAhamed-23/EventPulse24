@@ -57,7 +57,14 @@ from shared.ids import uuid7
 #: `tests/identity/test_local_pro_grant.py`, so the copy cannot drift unnoticed.
 FAKE_SIGNATURE = "fake-signature"
 
-#: The header the webhook receiver reads the signature from (`webhooks_api.SIGNATURE_HEADER`).
+#: The wire header the signature travels in.
+#:
+#: **The receiver's own constant is a different spelling of the same thing.**
+#: `webhooks_api.SIGNATURE_HEADER` is `"HTTP_STRIPE_SIGNATURE"` — a Django `request.META`
+#: key, not a header name. Django builds that key from an incoming `Stripe-Signature`
+#: header by prefixing `HTTP_` and upper-casing it. So this is what goes on the wire and
+#: that is what the receiver looks up; HTTP header names are case-insensitive, so
+#: `urllib`'s capitalisation of it as `Stripe-signature` lands in the same place.
 SIGNATURE_HEADER = "Stripe-Signature"
 
 #: The endpoint the provider posts to (`config/api.py` mounts it at `/webhooks/billing`).

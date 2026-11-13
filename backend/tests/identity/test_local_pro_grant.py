@@ -70,12 +70,20 @@ class TestTheCommandSpeaksTheFakeProvidersLanguage:
         assert FAKE_SIGNATURE == adapter_sentinel
 
     def test_the_signature_header_is_the_one_the_receiver_reads(self):
-        """The receiver reads `request.META["HTTP_STRIPE_SIGNATURE"]`, which Django builds
-        from this header name. A renamed header is a 400 on every delivery.
-        """
-        from apps.identity.webhooks_api import SIGNATURE_HEADER as receiver_header
+        """**The receiver's constant is a Django `request.META` key, not a wire header
+        name.** It reads `request.META["HTTP_STRIPE_SIGNATURE"]`, and Django builds that
+        key from an incoming `Stripe-Signature` header — prefixing it with `HTTP_` and
+        upper-casing it. So the command's wire header and the receiver's META key are
+        different spellings of the same thing, and this is what connects them.
 
-        assert SIGNATURE_HEADER == receiver_header
+        A renamed header is a 400 on every delivery, and the two spellings drifting apart
+        is how that would happen.
+        """
+        from apps.identity.webhooks_api import SIGNATURE_HEADER as receiver_meta_key
+
+        assert receiver_meta_key == "HTTP_STRIPE_SIGNATURE"
+        assert SIGNATURE_HEADER == "Stripe-Signature"
+        assert receiver_meta_key == f"HTTP_{SIGNATURE_HEADER.upper().replace('-', '_')}"
 
     def test_the_path_is_the_one_the_receiver_is_mounted_at(self):
         """The command builds its own URL rather than being handed one, so the path it
@@ -180,17 +188,20 @@ class TestTheLiveSubscriptionRead:
 
         assert read_live_subscription_refs(user_id=user_id) is None
 
-    def test_it_prefers_the_newest_live_row(self):
-        """A restored backup could leave more than one live row. The newest is the one the
-        user is paying for.
+    def test_the_live_row_wins_over_an_older_cancelled_one(self):
+        """**The case that made the bug.** A user who subscribed, cancelled and subscribed
+        again holds a cancelled row and a live one. The read must name the *live* one,
+        because a revoke that named the cancelled one would cancel nothing and leave the
+        user Pro.
         """
         user_id = uuid7()
-        SubscriptionFactory(
+        cancelled = SubscriptionFactory(
             user_id=user_id,
+            status=SubscriptionStatus.CANCELED,
             stripe_customer_ref="cus_old",
             stripe_subscription_ref="sub_old",
         )
-        newest = SubscriptionFactory(
+        live = SubscriptionFactory(
             user_id=user_id,
             stripe_customer_ref="cus_new",
             stripe_subscription_ref="sub_new",
@@ -199,7 +210,30 @@ class TestTheLiveSubscriptionRead:
         refs = read_live_subscription_refs(user_id=user_id)
 
         assert refs is not None
-        assert refs.subscription_ref == newest.stripe_subscription_ref
+        assert refs.subscription_ref == live.stripe_subscription_ref
+        assert refs.subscription_ref != cancelled.stripe_subscription_ref
+
+    def test_the_database_forbids_two_live_rows(self):
+        """**Why the read's ordering is defensive rather than load-bearing.**
+        `subscription_one_live_per_user_uq` is a partial unique constraint over the live
+        statuses, so a second live row for one user cannot be written at all — the
+        database refuses it. That is why the cancel-then-resubscribe sequence leaves a
+        *cancelled* row behind rather than two live ones.
+        """
+        from django.db import IntegrityError, transaction
+
+        user_id = uuid7()
+        SubscriptionFactory(user_id=user_id)
+
+        with pytest.raises(IntegrityError), transaction.atomic():
+            SubscriptionFactory(user_id=user_id)
+
+        assert (
+            Subscription.objects.using(PERSONAL)
+            .filter(user_id=user_id, status=SubscriptionStatus.ACTIVE)
+            .count()
+            == 1
+        )
 
 
 class TestTheRevocationNamesTheLiveSubscription:
@@ -345,7 +379,10 @@ class TestTheCommandGrantsThroughTheWebhook:
 
         assert captured["body"]["kind"] == "subscription_started"
         assert captured["body"]["user_id"] == str(user.pk)
-        assert captured["headers"][SIGNATURE_HEADER] == FAKE_SIGNATURE
+        # Header names are case-insensitive on the wire, and `urllib` capitalises this
+        # one as `Stripe-signature`. See the other header test for why.
+        sent = {name.lower(): value for name, value in captured["headers"].items()}
+        assert sent[SIGNATURE_HEADER.lower()] == FAKE_SIGNATURE
 
         # **And the body the command built is one the real receiver accepts.**
         response = post_webhook(client, captured["body"])
@@ -359,6 +396,11 @@ class TestTheCommandGrantsThroughTheWebhook:
     def test_the_signature_is_sent_in_the_header_the_receiver_reads(self, monkeypatch):
         """Without the header the receiver refuses the delivery with a 400 and grants
         nothing — so a header that is merely *similar* is a command that does nothing.
+
+        **The lookup is case-insensitive**, because HTTP header names are.
+        `urllib` capitalises as `Stripe-signature`, and Django's `request.META` maps that
+        to `HTTP_STRIPE_SIGNATURE` regardless of case. So the assertion has to be
+        case-insensitive too, or it would be asserting a spelling the wire never carries.
         """
         captured: dict = {}
 
@@ -385,9 +427,8 @@ class TestTheCommandGrantsThroughTheWebhook:
 
         call_command("grant_pro", "headers@example.test")
 
-        # Django reads `request.META["HTTP_STRIPE_SIGNATURE"]`, so the header has to
-        # arrive under exactly this name.
-        assert captured["headers"][SIGNATURE_HEADER] == FAKE_SIGNATURE
+        sent = {name.lower(): value for name, value in captured["headers"].items()}
+        assert sent[SIGNATURE_HEADER.lower()] == FAKE_SIGNATURE
 
 
 class TestTheReferenceAProviderWouldMint:
