@@ -177,6 +177,21 @@ export default async function SettingsQuietHoursPage() {
             What&apos;s in your Pulse Digest
           </Link>
         </div>
+
+        {/*
+          **And the one link to calendar sync.** The nav is closed to new rows, so a
+          settings route is reachable only from another settings page. This page already
+          carries the digest link for the same reason; a second link elsewhere would be a
+          second place to keep in sync.
+        */}
+        <div className="mt-3">
+          <Link
+            href="/settings/calendars"
+            className="inline-block text-ink-secondary underline underline-offset-4 [font:var(--type-scale-meta-md)]"
+          >
+            Calendars you&apos;ve connected
+          </Link>
+        </div>
       </div>
     </AppShell>
   );

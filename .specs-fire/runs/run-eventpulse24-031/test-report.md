@@ -93,3 +93,71 @@ before someone adds a `saveFailureMessage` call here and wonders why it never fi
 - **`SavedEventsSection` is dead** — exported, ten passing tests, zero mounts. A second
   instance of the `personal-events-list-surface` failure mode, for that item to decide.
 - **The picker is unpaginated** — the endpoint offers no page size.
+
+---
+
+## Work Item: calendar-connection-controls
+
+### Test Results
+
+| Category | Passed | Failed | Skipped |
+|----------|--------|--------|---------|
+| `calendar-connections.test.tsx` (new) | 13 | 0 | 0 |
+| **Full frontend suite** | **2371** | **0** | **0** |
+
+135 test files, up from 134. +13 tests over the previous item's 2358. No backend change.
+
+### Acceptance Criteria Validation
+
+- ✅ **Connections and their status are visible on a settings screen** — `/settings/calendars`.
+- ✅ **Disconnect calls `DELETE /api/personal/calendars/{id}`** — *"disconnects the
+  connection it was pressed on"* asserts the id, with two rows rendered so the id is what
+  distinguishes them.
+- ✅ **Confirmed before it completes, and the confirmation says what is lost** — *"says the
+  imported events go, and that the user's own events stay"*.
+- ✅ **Reconnect offered for `needs_reconnect`, not for a healthy connection** — two tests,
+  one each way.
+- ✅ **The list reflects a disconnect without a manual reload** — `run()` re-reads.
+- ✅ **The onboarding promise resolves** — `/settings/quiet-hours` carries the one link.
+- ✅ **No secret address is rendered or left behind** — see finding 1.
+- ✅ **Honest empty state, not an error** — *"is honest rather than an error…"*.
+
+### Mutation Probes
+
+| Probe | Result |
+|---|---|
+| Disconnect fires on the first press | ✅ 5 failed |
+| Keep the address in state after the request | ⚠️ **0 failed** — see finding 1 |
+| Offer reconnect for every connection | ✅ 1 failed |
+| Print the raw error slug | ✅ 2 failed |
+| Clear the confirmation even when refused | ✅ 1 failed |
+| Keep the address (re-run, after the test was fixed) | ✅ 1 failed |
+
+### Findings
+
+#### 1. A probe found a test that could not fail
+
+*"leaves no trace of the address in the DOM afterwards"* passed against a build that never
+cleared the address. The reason: after a successful reconnect, `run()` re-reads, and the
+default mock answers with an **active** connection — so the form unmounted because the
+connection had stopped needing a reconnect, not because the credential was cleared. The
+assertion was true for the wrong reason.
+
+Fixed by making the refresh return the connection **still revoked** in that test, so the
+form would persist if the address were not cleared. Re-probed: it now fails.
+
+This is the second probe in this run to catch a false green, after the two in
+`collection-assign-control` that reported passing against an unmodified file. The tests
+would all have shipped green.
+
+#### 2. The calendars endpoint answers an envelope
+
+`GET /api/personal/calendars` returns `{ items: [...] }`, while
+`GET /api/personal/collections` returns the array itself. Caught by `tsc` on the first
+write of the read helper. The two helpers now differ by one line and that line is commented.
+
+#### 3. A failed reconnect costs the user a re-paste, deliberately
+
+The address is cleared whether or not the request succeeded. Holding a credential in memory
+to save a re-paste is the wrong trade; the connection is still `needs_reconnect`, so the
+control is still there and the failure line says what happened.

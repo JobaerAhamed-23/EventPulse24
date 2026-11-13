@@ -60,3 +60,35 @@ It is the component's own formatter, already used for collection contents. Using
 
 **Approved.** No backend change, no migration, no new endpoint. The Pro gate is inherited
 from the page rather than re-implemented, so there is no second gate to drift.
+
+---
+
+# Code Review: calendar-connection-controls
+
+Reviewed: `app/settings/calendars/page.tsx`, `app/settings/calendars/loading.tsx`,
+`components/settings/calendar-connections.tsx`, `lib/calendars-read.ts`,
+`app/settings/quiet-hours/page.tsx`.
+
+## Applied
+
+1. **Unused `ok` in `reconnect`** — flagged by eslint. Not silenced: the result is
+   deliberately not branched on, and the code now says why (the credential is cleared
+   either way).
+2. **Non-null assertion in a test** — replaced with an explicit throw, so a missing second
+   button fails with a sentence rather than a `TypeError`.
+
+## Considered and not changed
+
+- **`display_label: ""` on reconnect.** `CalendarReconnectIn` takes a label and the user is
+  not asked for one — the connection already has its label and reconnecting should not
+  silently rename it. Sending `""` preserves the existing one.
+- **No "Connect a calendar" control.** Connecting lives in onboarding. A second connect
+  surface is its own work item, stated in the design doc so it is not mistaken for an
+  omission.
+- **Provider rows are not hard-coded.** The mockup shows Apple and Outlook as "Pro — Phase
+  2"; rendering disabled rows for providers the backend may not offer would be a UI
+  claiming a roadmap.
+
+## Verdict
+
+**Approved.** No backend change, no migration, no new endpoint, no nav change.
