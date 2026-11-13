@@ -1,7 +1,15 @@
 "use client";
 
 /**
- * The client island that owns the personal-event flow: create → conflict → resolve → edit.
+ * The client island that owns the personal-event flow: create → conflict → resolve →
+ * edit → delete.
+ *
+ * **There are two deletions, and they are not the same one.** The conflict prompt's
+ * "Delete the new one" is an *answer to a pending prompt*: it goes to the resolve
+ * endpoint, which deletes the new event and closes the pair in one act. The edit
+ * sheet's danger zone is the ordinary one (FR-18) — any personal event, at any time,
+ * through `DELETE /api/personal/events/{event_id}`. Routing the second through the
+ * first would require a conflict that does not exist.
  *
  * **The conflict sheet is not opened by the user — it is opened by the server's 409.** The
  * backend writes the event and *then* detects the conflict, leaving the pair `active` as
@@ -328,6 +336,34 @@ export function PersonalEventsPanel({
     router.refresh();
   };
 
+  /**
+   * The edit sheet's danger zone, after the user has confirmed it.
+   *
+   * **It is only ever the event the sheet is open on.** The id comes from `editing`,
+   * which is the event the form was seeded from — there is no other way to name a
+   * target, so a delete cannot be aimed at an event the user is not looking at.
+   */
+  const remove = async (): Promise<void> => {
+    if (!editing) return;
+    const name = editing.name;
+    const response = await api.DELETE("/api/personal/events/{event_id}", {
+      params: { path: { event_id: editing.id } },
+    });
+
+    if (response.error) {
+      // **The sheet stays open on a refusal.** Closing it would leave the user with an
+      // event still on the timeline and a line saying something went wrong, with no way
+      // back to the control they just used.
+      setMessage("We couldn't delete that. Try again.");
+      onFailed?.("We couldn't delete that. Try again.");
+      return;
+    }
+
+    setMessage(`"${name}" was deleted.`);
+    closeForm();
+    router.refresh();
+  };
+
   /** The user's choice on the conflict prompt. */
   const resolve = async (resolution: Resolution, pair: Conflict): Promise<void> => {
     if (!conflict || !pending) return;
@@ -405,6 +441,8 @@ export function PersonalEventsPanel({
         highlightStartTime={highlight}
         onClose={closeForm}
         onSubmit={submit}
+        // **Only an edit can delete**, and the form renders no danger zone without this.
+        onDelete={editing ? remove : undefined}
       />
 
       <ConflictResolution

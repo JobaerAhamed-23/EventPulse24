@@ -47,6 +47,15 @@ export type PersonalEventFormProps = {
   highlightStartTime?: boolean;
   /** Called when the sheet closes without saving. */
   onClose: () => void;
+  /**
+   * Called when the user confirms the deletion of the event being edited.
+   *
+   * **Given only in edit mode, and only by a caller that can delete.** A create has no
+   * event to delete, and the danger zone is rendered only when this is given — so a
+   * caller that cannot delete shows no control that would fail if pressed, rather than
+   * one that is merely disabled.
+   */
+  onDelete?: () => void;
   /** Called with the API's body when the form is submitted. */
   onSubmit: (body: {
     name: string;
@@ -92,6 +101,7 @@ export function PersonalEventForm({
   highlightStartTime = false,
   onClose,
   onSubmit,
+  onDelete,
 }: PersonalEventFormProps) {
   // **The field ids are per instance.** The sheet is mounted by the sidenav, the
   // bottom-tab bar, the digest header's quick-add and the personal-events list, so one
@@ -110,6 +120,17 @@ export function PersonalEventForm({
     ...initial,
   }));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // **The deletion is a two-step, like the conflict prompt's (FR-58).** The first press
+  // asks; the deletion does not complete until the second one. The step is local to this
+  // mount, and the parent gives a fresh key per opening, so a sheet reopened after a
+  // cancelled deletion asks again from the start rather than reopening mid-question.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // **The name in the question is the event's stored name, not the field's.** The user
+  // may have typed a new name they have not saved; "Delete 'X'?" must name the event as
+  // it exists, which is the name the sheet was seeded with. `initial` is fixed for this
+  // mount, so the question cannot drift as the form is typed into.
+  const storedName = initial?.name?.trim() ?? "";
 
   const set =
     (field: keyof PersonalEventFormValues) =>
@@ -323,6 +344,15 @@ export function PersonalEventForm({
               className="w-full rounded-control border border-border-subtle bg-surface-subtle px-3 py-2"
             />
           </Field>
+          {mode === "edit" && onDelete ? (
+            <DangerZone
+              eventName={storedName}
+              confirming={confirmingDelete}
+              onAsk={() => setConfirmingDelete(true)}
+              onCancel={() => setConfirmingDelete(false)}
+              onConfirm={onDelete}
+            />
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-3 border-t border-border-subtle px-6 py-4">
@@ -342,6 +372,85 @@ export function PersonalEventForm({
         </div>
       </form>
     </Sheet>
+  );
+}
+
+/**
+ * The edit sheet's danger zone — "Delete this event" (FR-18, `personal-event-edit-desktop.html`).
+ *
+ * **The deletion is confirmed before it completes**, the rule FR-58 states for the
+ * conflict prompt's delete and which holds here for the same reason: the event and its
+ * reminders are gone, and nothing restores them. The first press replaces the zone with
+ * the question rather than opening a second dialog over the sheet — a dialog inside a
+ * dialog has two Escape targets and the wrong one closes the whole sheet.
+ *
+ * **Every button here is `type="button"`.** The zone sits inside the sheet's `<form>`,
+ * where a button with no type is a submit button — pressing "Delete event" would have
+ * saved the event instead of asking about deleting it.
+ */
+function DangerZone({
+  eventName,
+  confirming,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  /** The event's stored name, used in the question. */
+  eventName: string;
+  confirming: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  // The name is part of a sentence, so an unnamed event needs a phrase that still reads
+  // as one. It is the seeded name that is missing here, not the user's input.
+  const subject = eventName || "this event";
+  return (
+    <div className="rounded-card border border-accent-terracotta/20 bg-accent-terracotta/5 p-4">
+      {confirming ? (
+        <>
+          <p className="[font:var(--type-scale-body-md)]">Delete “{subject}”?</p>
+          <p className="mt-1 [font:var(--type-scale-body-sm)] text-ink-muted">
+            This can&apos;t be undone.
+          </p>
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={onConfirm}
+              aria-label={`Delete ${subject}. This cannot be undone.`}
+              className="rounded-control bg-accent-terracotta px-4 py-2 [font:var(--type-scale-meta-md)] text-ink-inverse"
+            >
+              Delete it
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              aria-label={`Keep ${subject}. The event is not deleted.`}
+              className="rounded-control border border-border-subtle px-4 py-2 [font:var(--type-scale-meta-md)] text-ink-secondary"
+            >
+              Keep it
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <h3 className="[font:var(--type-scale-meta-md)] text-accent-terracotta">
+            Delete this event
+          </h3>
+          <p className="mt-1 [font:var(--type-scale-body-sm)] text-ink-muted">
+            Permanently removes the event and any reminders. Pulse Ping history won&apos;t
+            reference it again. This cannot be undone.
+          </p>
+          <button
+            type="button"
+            onClick={onAsk}
+            className="mt-3 [font:var(--type-scale-meta-md)] text-accent-terracotta underline-offset-[3px] hover:underline"
+          >
+            Delete event →
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
