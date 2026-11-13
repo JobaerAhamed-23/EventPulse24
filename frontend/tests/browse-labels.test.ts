@@ -110,6 +110,43 @@ describe("the quota note", () => {
 
     expect(note.text).toContain("1 of 1 save used today");
   });
+
+  it("claims no countdown when there is no open window", () => {
+    // **A zero reset is not "a countdown of zero seconds".**
+    //
+    // The port's contract: `resets_in_seconds=0` means nothing is spent in the window
+    // that is open *now* — the window never opened, or it has closed. **The allowance's
+    // window is 24 hours and it starts with the first save**, so before the reader has
+    // saved anything there is no window to count down to.
+    //
+    // **This is the state every Free account sees on its first visit.** The note said
+    // "resets in 0s", which announces a countdown that is already over, on the first
+    // thing above the fold.
+    const note = quotaNote({
+      used: 0,
+      cap: 1,
+      is_pro: false,
+      resets_in_seconds: 0,
+    });
+
+    expect(note.text).not.toContain("0s");
+    expect(note.text).not.toContain("resets in");
+    expect(note.text).toContain("0 of 1 save used today");
+    expect(note.text).toContain("allowance full");
+  });
+
+  it("still counts down once the window is open", () => {
+    // **The fix must not swallow a real countdown.** Once a save has landed, the window
+    // exists and carries a TTL, and the note must say when it frees up.
+    const note = quotaNote({
+      used: 1,
+      cap: 1,
+      is_pro: false,
+      resets_in_seconds: 86400,
+    });
+
+    expect(note.text).toBe("Free plan: 1 of 1 save used today · resets in 24h");
+  });
 });
 
 describe("the event count", () => {

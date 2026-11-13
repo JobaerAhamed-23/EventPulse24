@@ -9,6 +9,31 @@ port states and the Redis adapter implements. The fake exists to stand in for th
 adapter, so it must not answer a differently-shaped question: a window that slid from the
 last attempt would let the fake and the real adapter disagree about the same call, and a
 test written against the fake would then be pinning behaviour production does not have.
+
+**The counters live in a store, not in the adapter — and the default store is shared.**
+
+This is the whole point of the split, and it is not a refactor for its own sake. The Redis
+adapter keeps its counters in **Redis**: a server outside the process, shared by every
+client that talks to it. The in-memory fake stands in for that server, so its counters
+have to be shared the same way — by every adapter instance in the process.
+
+**They were not, and the throttle did nothing.** `ports.registry.get_adapter` builds a
+fresh adapter per call, so each call got a brand-new counter dict and the window always
+read empty. The consequence was not a display bug but a **missing gate**: the Free
+account's one-save-a-day cap was inert under `ADAPTER_MODE=fake` (the default), so a second
+save was granted instead of refused, and the quota read `0 of 1` after a save. The real
+Redis adapter was always correct — which is why this hid for so long: production behaved
+and local did not.
+
+**The rule is one line, and it is about the clock.** An adapter built **with** a clock owns
+its own store, because the clock and the counters have to agree — a shared store written
+by two adapters with different clocks would mix timestamps from two timelines. An adapter
+built **without** a clock uses the **process-wide store**, which is the one the registry
+builds, and it is the one that counts across requests the way Redis does.
+
+So a test that injects a clock gets an isolated counter set and the real clock, and the
+suite's isolation is unchanged; a run that goes through the registry gets the shared
+counters, which is what the product needs.
 """
 
 import time
@@ -17,8 +42,13 @@ from collections.abc import Callable
 from ports.throttle import ThrottleDecision, ThrottlePort, ThrottleState
 
 
-class InMemoryThrottleAdapter(ThrottlePort):
-    """Counts attempts per key in a fixed window.
+class InMemoryThrottleStore:
+    """The counters, and the clock that dates them.
+
+    **This is the fake's stand-in for Redis.** It holds the same thing Redis holds — a
+    count per key, with a window — and it is deliberately separate from the adapter so the
+    adapter can be rebuilt without losing the counts, exactly as a Redis client can be
+    rebuilt without losing the keys.
 
     Args:
         now: Returns the current time as a monotonic float. Tests replace it to control
@@ -31,6 +61,13 @@ class InMemoryThrottleAdapter(ThrottlePort):
         self._attempts: dict[str, list[float]] = {}
 
     def check(self, key: str, *, limit: int, window_seconds: int) -> ThrottleDecision:
+        """Count one attempt against `key` and say whether it is within `limit`.
+
+        **The attempt is counted even when it is refused.** That is the port's contract
+        and the Redis adapter's behaviour — `INCR` happens before the limit is read — and
+        it is what makes a refusal cost the user no extra time: the window is anchored at
+        the first attempt, so a refusal does not move the anchor.
+        """
         moment = self._now()
         attempts = self._attempts.get(key, ())
         # **The window is fixed, and it is anchored at the first attempt in it.** The port
@@ -86,3 +123,87 @@ class InMemoryThrottleAdapter(ThrottlePort):
         key that was never there is not an error.
         """
         self._attempts.pop(key, None)
+
+    def clear(self) -> None:
+        """Forget every key's window.
+
+        **This is the store's own blunt instrument**, for the case where a caller cannot
+        enumerate the keys it wants gone — the test suite's isolation, mostly.
+        """
+        self._attempts.clear()
+
+
+#: The process-wide store, shared by every adapter built without a clock.
+#:
+#: **It is module-level rather than class-level** so that a store is one object with one
+#: identity — the same way Redis is one server — and so that `reset_default_store` has a
+#: single, unambiguous thing to clear.
+_DEFAULT_STORE = InMemoryThrottleStore()
+
+
+def default_store() -> InMemoryThrottleStore:
+    """The store every clockless adapter shares.
+
+    **It is the fake's Redis.** Everything the fake counts is counted here, so a counter
+    spent by one request is visible to the next one — which is what makes the Free save
+    cap a cap rather than a decoration.
+    """
+    return _DEFAULT_STORE
+
+
+def reset_default_store() -> None:
+    """Clear every key in the shared store.
+
+    **This exists for the test suite's isolation, not for the product.** A test that
+    wants a full allowance without reaching for a key of its own can clear the lot
+    first, rather than guessing which keys a previous test spent.
+    """
+    _DEFAULT_STORE.clear()
+
+
+class InMemoryThrottleAdapter(ThrottlePort):
+    """Counts attempts per key in a fixed window.
+
+    **Which store it counts in depends on the clock.** Built **with** a clock, it owns a
+    store of its own — the clock and the counters have to agree, so an adapter with a
+    pinned clock cannot write into a shared store another adapter reads with a different
+    clock. Built **without** a clock, it counts in the **shared store**, which is what
+    the registry builds and what the product needs.
+
+    Args:
+        now: Returns the current time as a monotonic float. Tests replace it to control
+            the window; by default it is `time.monotonic`.
+        store: The store to count in. Defaults to a store of its own when `now` is
+            given, and to the process-wide store otherwise.
+    """
+
+    def __init__(
+        self,
+        now: Callable[[], float] | None = None,
+        store: InMemoryThrottleStore | None = None,
+    ) -> None:
+        if store is not None:
+            self._store = store
+        elif now is not None:
+            # A pinned clock and a shared store cannot be mixed: the shared store's
+            # timestamps were written by whatever clock wrote them last.
+            self._store = InMemoryThrottleStore(now=now)
+        else:
+            self._store = default_store()
+
+    def check(self, key: str, *, limit: int, window_seconds: int) -> ThrottleDecision:
+        return self._store.check(key, limit=limit, window_seconds=window_seconds)
+
+    def peek(self, key: str, *, window_seconds: int) -> ThrottleState:
+        return self._store.peek(key, window_seconds=window_seconds)
+
+    def reset(self, key: str) -> None:
+        self._store.reset(key)
+
+
+__all__ = [
+    "InMemoryThrottleAdapter",
+    "InMemoryThrottleStore",
+    "default_store",
+    "reset_default_store",
+]

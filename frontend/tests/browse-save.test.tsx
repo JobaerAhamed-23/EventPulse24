@@ -565,6 +565,49 @@ describe("the quota wall", () => {
     expect(button().textContent).toBe("Saved ✓");
     expect(button()).not.toBeDisabled();
   });
+
+  it("shows the upgrade copy inline, without the reader having to press anything", () => {
+    // **The wall has to say so, because the button cannot.**
+    //
+    // The design says the spent allowance renders the button muted and disabled, and
+    // that "tapping a disabled Save button does nothing" — so there is no request, no
+    // refusal, and nothing for a handler to render. The design's own way out is a
+    // `title` tooltip, and **a tooltip is unreachable by keyboard and invisible to
+    // touch**: a reader who cannot hover would sit in front of a closed gate with no
+    // mention of upgrading anywhere.
+    //
+    // **So the wall renders the same inline line the refusal renders** — the same
+    // sentence and the same Upgrade link, in the normal flow, under the button. The
+    // line is the sign above the gate, and a closed gate is exactly when the sign
+    // matters most.
+    renderSave({ quota: SPENT_QUOTA });
+
+    const line = screen.getByText(/You've used your 1 free save today\./);
+    expect(line).toBeVisible();
+    // **The link is the way out, and it is a real link.**
+    const link = line.querySelector("a");
+    expect(link?.getAttribute("href")).toBe("/pricing");
+    // **And it is not an interruption.** The line is in the normal flow.
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
+  });
+
+  it("shows no cap line while the allowance is still open", () => {
+    // **A live button carries no cap line.** The line is the sign of a closed gate, and
+    // a sign on an open gate is a warning about nothing.
+    renderSave({ quota: FREE_QUOTA });
+
+    expect(document.querySelector("[data-browse-save-cap]")).toBeNull();
+  });
+
+  it("shows no cap line on a Pro account's card", () => {
+    // **A Pro account has no wall, so it has no line.** `cap` is `null`, so there is
+    // no ceiling to be against and no sentence to say.
+    renderSave({ quota: PRO_QUOTA });
+
+    expect(document.querySelector("[data-browse-save-cap]")).toBeNull();
+    expect(button().textContent).toBe("Save");
+  });
 });
 
 describe("the Pro exemption", () => {

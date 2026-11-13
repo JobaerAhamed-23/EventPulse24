@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { BrowseHero } from "@/components/browse/browse-hero";
+import { BrowseQuotaProvider } from "@/components/browse/browse-quota-provider";
 import { BrowseSearch } from "@/components/browse/browse-search";
 import { BrowseEmpty, BrowseError } from "@/components/browse/browse-states";
 import { AppShell } from "@/components/shell/app-shell";
@@ -113,9 +114,20 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
          the whole difference between a public page and a signed-in one.
          */
         <div className="px-2">
-          <BrowseHero browse={browse} />
-
           {/*
+            **The live allowance, held for the whole surface.**
+
+            **The hero's note and the cards' buttons read the same number, and that
+            number moves.** One save spends the Free allowance, so the note in the hero
+            and the wall on every other card have to move with it — and the hero is a
+            server component while the cards are a client island, so the shared number
+            cannot be a prop. The provider holds the server's last answer and asks again
+            after a save. See `browse-quota-provider.tsx`.
+          */}
+          <BrowseQuotaProvider quota={browse.quota}>
+            <BrowseHero browse={browse} />
+
+            {/*
             **The search, the grid and the soft cap's way through, as one island.**
             *
             **Amendment A-11's search filters the loaded set**, and a filter that
@@ -127,18 +139,19 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
             **The anchor appears only when the server says there is more** — `has_more`
             * is the server's statement, not the client's arithmetic on `total`.
           */}
-          <BrowseSearch
-            cards={browse.cards}
-            tierTwoStartsAt={browse.tier_2_starts_at}
-            total={browse.total}
-            hasMore={browse.has_more}
-            quota={browse.quota}
-            offset={offset}
-            limit={PAGE_SIZE}
-            city={browse.city}
-            windowFrom={browse.window_from}
-            timezone={browse.timezone}
-          />
+            <BrowseSearch
+              cards={browse.cards}
+              tierTwoStartsAt={browse.tier_2_starts_at}
+              total={browse.total}
+              hasMore={browse.has_more}
+              quota={browse.quota}
+              offset={offset}
+              limit={PAGE_SIZE}
+              city={browse.city}
+              windowFrom={browse.window_from}
+              timezone={browse.timezone}
+            />
+          </BrowseQuotaProvider>
         </div>
       )}
     </AppShell>

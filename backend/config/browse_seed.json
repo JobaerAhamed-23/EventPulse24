@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "The Browse surface's local seed data: one city, a week of events, and the two",
+    "The Browse surface's local seed data: one city, a week of events, and the four",
     "accounts the walk-through signs in as.",
     "",
     "The event times are RELATIVE — 'day 0', 'hour 19', 'minute 30' — and the command",
@@ -22,7 +22,22 @@
     "The 'reviewer' below is the person the seeded source's terms-of-service review is",
     "attributed to. The ingestion services refuse a system actor for a review — a review",
     "is a human saying 'I read the terms and they permit this' — so the seed signs it with",
-    "a named account rather than with the system. It is a fixture, like everything here."
+    "a named account rather than with the system. It is a fixture, like everything here.",
+    "",
+    "The 'no-city' account has a null city, and that is the point of it. Browse has two",
+    "emptinesses, and they are different facts: 'nothing matched' is the query's fault and",
+    "'nothing nearby tonight' is the city's. The second one needs a user whose city is",
+    "absent — which no browser flow can produce, because the API treats a null city as",
+    "'leave it alone' and never clears one. So the seed writes the account directly, and",
+    "it is a THIRD account rather than an emptied one: emptying the free account's city",
+    "would change what every other test sees.",
+    "",
+    "The 'free-saver' account is a SECOND Free account, and the reason is the save",
+    "allowance. The allowance is one save per user per day, and it lives in a throttle",
+    "window that outlives any single test. So two tests that each need to save once",
+    "cannot share one account: the first test spends the allowance, and the second finds",
+    "the wall already up and fails for a reason that has nothing to do with the code",
+    "under test. Separate accounts have separate allowances, so each test spends its own."
   ],
   "city": {
     "name": "Fixtureville",
@@ -609,6 +624,15 @@
       "timezone": "America/New_York"
     },
     {
+      "key": "free-saver",
+      "email": "free-saver@browse.example.test",
+      "password": "browse-free-saver-local",
+      "plan": "free",
+      "chips": ["arts_culture", "tech_meetups", "outdoors_nature"],
+      "delivery_time": "09:00",
+      "timezone": "America/New_York"
+    },
+    {
       "key": "pro",
       "email": "pro@browse.example.test",
       "password": "browse-pro-local",
@@ -616,6 +640,16 @@
       "chips": ["arts_culture", "sports_fitness", "community_volunteering"],
       "delivery_time": "09:00",
       "timezone": "America/New_York"
+    },
+    {
+      "key": "no-city",
+      "email": "no-city@browse.example.test",
+      "password": "browse-no-city-local",
+      "plan": "free",
+      "chips": ["arts_culture"],
+      "delivery_time": "09:00",
+      "timezone": "America/New_York",
+      "city": null
     }
   ]
 }

@@ -43,6 +43,8 @@ const SURFACE_FILES = [
   "components/browse/browse-card.tsx",
   "components/browse/browse-grid.tsx",
   "components/browse/browse-more.tsx",
+  "components/browse/browse-quota-note.tsx",
+  "components/browse/browse-quota-provider.tsx",
   "components/browse/browse-save.tsx",
   "components/browse/browse-search.tsx",
   "components/browse/browse-states.tsx",
@@ -274,8 +276,8 @@ describe("the surface reaches the backend only through the generated client", ()
   });
 });
 
-describe("the surface is a server component except for the two islands", () => {
-  it("marks only browse-search.tsx and browse-save.tsx as client modules", () => {
+describe("the surface is a server component except for the four islands", () => {
+  it("marks only the four islands as client modules", () => {
     // The route, the hero, the grid, the card and the states all render on the server.
     // Only the search island needs the browser, because Amendment A-11's filter runs
     // client-side over the loaded set — and a filter that reached only part of the
@@ -286,15 +288,29 @@ describe("the surface is a server component except for the two islands", () => {
     // loaded set the moment it lands and the query has to reach it. The loader is the
     // island's presentational half.
     //
-    // **The Save button is the second island, and the only other one.** It holds a state
-    // machine and talks to the API, so it cannot be a server component — but the
-    // **card** stays one, and an island can be mounted inside a server component's
-    // markup. A third client module would mean a third thing that could reach for the
-    // server, and this assertion is what says there are only two.
+    // **The Save button is the second island.** It holds a state machine and talks to
+    // the API, so it cannot be a server component — but the **card** stays one, and an
+    // island can be mounted inside a server component's markup.
+    //
+    // **The allowance is the third and fourth, and they are one thing in two files.**
+    // The hero's quota note and the cards' Save buttons read the *same* number, and
+    // that number moves: one save spends the Free allowance, so the note in the hero
+    // and the wall on every other card have to move with it. **The hero is a server
+    // component and the cards are a client island, so a prop cannot carry it** — a
+    // shared number needs a shared owner, and the owner is a client context. So the
+    // provider is a client module (it holds the number and asks the server again), and
+    // the note that reads it is one too (it has to re-render when the number moves).
+    //
+    // **The count is not the point; the list is.** The rule says *which* modules reach
+    // across the client/server boundary, so a new client module cannot be added
+    // without this assertion being updated — which is the point: a surface that grows
+    // an island should say so, in the place that says what the surface is.
     const clients = [...code.entries()]
       .filter(([, source]) => source.trimStart().startsWith('"use client"'))
       .map(([file]) => file);
     expect(clients).toEqual([
+      "components/browse/browse-quota-note.tsx",
+      "components/browse/browse-quota-provider.tsx",
       "components/browse/browse-save.tsx",
       "components/browse/browse-search.tsx",
     ]);
@@ -402,5 +418,103 @@ describe("the surface decides nothing the server decided", () => {
     // The loader draws none.
     expect(more).not.toMatch(/<BrowseCard/);
     expect(more).not.toMatch(/data-browse-appended/);
+  });
+});
+
+/**
+ * `EXPERIENCE.md` §`Component.Surface.Browse`, "Anti-patterns (explicitly forbidden on
+ * this surface)".
+ *
+ * **Five of those locks had no enforcement anywhere.** The stripe cap, the chip rail,
+ * the discovery stripe and the pre-auth CTA leakage each had a rule in this file — and
+ * these five had none. A lock with no enforcement is a sentence in a document, and the
+ * document is not the product.
+ *
+ * **Each rule is asserted on the surface's own markup, not on the libraries.** The
+ * libraries are vocabularies that legitimately name things the surface must not render,
+ * and a scan that read them would cry wolf. A rule that cries wolf gets disabled, and a
+ * disabled rule is worse than no rule because it looks like coverage.
+ *
+ * **And each rule names a phrase, not a word.** The anti-patterns are about *copy* and
+ * about *specific components* — "X people going", "saved 7", a streak popup. The word
+ * "badge" is **legitimate vocabulary on this surface**: `Badge.Source` is part of
+ * `component.card.pulse.digest`'s anatomy and Browse borrows it, and so is the event
+ * state badge. A rule that banned the word "badge" would fail on correct markup.
+ */
+describe("the anti-pattern list — the five locks with no enforcement", () => {
+  it("has no social proof", () => {
+    // **"No 'X people going' social proof. No '234 attending' counters."**
+    //
+    // The phrases are what the lock names, so the phrases are what the rule matches.
+    // The surface's *own* counts — "147 events this week" in the city-meta pill, "144
+    // events" in the section head's meta — are the pool's own size, which the reader can
+    // page to, and they are not social proof. The lock is about **other people**.
+    const source = surfaceCode();
+    expect(source).not.toMatch(/people\s+(going|interested|attending|joining)/i);
+    expect(source).not.toMatch(/\bgoing\b/i);
+    expect(source).not.toMatch(/\battending\b/i);
+    expect(source).not.toMatch(/others?\s+(are\s+)?(going|interested|saved)/i);
+  });
+
+  it("has no count badges on a card", () => {
+    // **"No count badges anywhere. No 'saved 7' or '47 nearby' or any numeric tag."**
+    //
+    // **The word "badge" is not the subject — the numeric counter is.** `Badge.Source`
+    // and the event state badge are `component.card.pulse.digest`'s anatomy and Browse
+    // borrows them; what the lock forbids is a *number* worn as a badge.
+    //
+    // **The surface's own counts are not count badges.** "147 events this week" is the
+    // pool's size, and the section head's "144 events · scroll for more" is the tier's
+    // size — both are the same fact the design puts there, and neither is a badge.
+    const source = surfaceCode();
+    expect(source).not.toMatch(/saved\s+\d+/i);
+    expect(source).not.toMatch(/\d+\s+nearby/i);
+    expect(source).not.toMatch(/\d+\s+(going|attending|interested|booked)/i);
+    expect(source).not.toMatch(/\b\d+\s+saved\b/i);
+  });
+
+  it("has no gamification chrome", () => {
+    // **"No gamification chrome. No streaks, no 'you saved 5 days in a row!', no
+    // badges."**
+    //
+    // The Surface's own vocabulary is checked too: a component named after a streak
+    // would be the chrome, whatever copy it carried.
+    const source = allCode();
+    expect(source).not.toMatch(/\bstreak/i);
+    expect(source).not.toMatch(/days?\s+in\s+a\s+row/i);
+    expect(source).not.toMatch(/you\s+saved\s+\d+/i);
+    expect(source).not.toMatch(/\blevel\s*\d/i);
+    expect(source).not.toMatch(/\bpoints?\s+(earned|balance)/i);
+  });
+
+  it("has no upsell carousel", () => {
+    // **"No upsell carousels. The single Pro upsell (`component.card.pro.upsell`)
+    // lives only on `/digest` and `/settings/plan`; it does not migrate to Browse."**
+    //
+    // The carousel is a component, so the rule is on the component's name — and on the
+    // routes it is allowed to live on, so the rule cannot be satisfied by renaming.
+    const source = allCode();
+    expect(source).not.toMatch(/carousel/i);
+    expect(source).not.toMatch(/pro[\s_-]?upsell/i);
+    expect(source).not.toMatch(/upsell[\s_-]?card/i);
+  });
+
+  it("has no 'you might also like' rail", () => {
+    // **"No 'you might also like' rails beyond the section-head grouping."**
+    //
+    // The surface has exactly two sections, and both are section heads — the tier
+    // split, which the server decides. A third grouping would be the rail.
+    const source = surfaceCode();
+    expect(source).not.toMatch(/might\s+also\s+like/i);
+    expect(source).not.toMatch(/you\s+might\s+like/i);
+    expect(source).not.toMatch(/related\s+events/i);
+    expect(source).not.toMatch(/recommended\s+for\s+you/i);
+
+    // **And there are exactly two sections.** The grid's sections are the server's tier
+    // split, and the split is two — a third section would be a rail wearing a
+    // different name.
+    const grid = code.get("components/browse/browse-grid.tsx") ?? "";
+    const sections = grid.match(/data-browse-section/g) ?? [];
+    expect(new Set(sections).size).toBeLessThanOrEqual(2);
   });
 });

@@ -7,6 +7,7 @@ import { spentQuotaLabel } from "@/lib/browse-labels";
 import type { BrowseQuota } from "@/lib/browse-read";
 import { readCapDetails } from "@/lib/cap-details";
 import { UPGRADE_HREF } from "@/components/upgrade/upgrade-prompt";
+import { useBrowseQuota } from "@/components/browse/browse-quota-provider";
 import { api } from "@/lib/backend-client";
 
 /**
@@ -31,6 +32,15 @@ import { api } from "@/lib/backend-client";
  * | 409 `scheduling_conflict` | **The save row was written, and the pair is active.** The event *is* saved; there is a choice waiting at the detail screen. | "Saved ✓", plus a conflict line |
  * | 409 `save_cap_reached` | **The save did not happen.** The gate refused before any row existed. | "Save", plus an upgrade line |
  * | anything else | The request failed. | "Save", plus a quiet failure line |
+ *
+ * **A wall that is already up shows the upgrade line too, and never has to be pressed.**
+ * The design says the spent allowance renders every Save button muted and disabled —
+ * *"tapping a disabled Save button does nothing"* — so there is no request and no
+ * refusal to render. **But the reader still needs a way out, and the design's own way
+ * out is a `title` tooltip, which is unreachable by keyboard and invisible to touch.**
+ * So the wall renders the same inline line the refusal renders: the same sentence and
+ * the same Upgrade link, in the normal flow, under the button. **The line is the sign
+ * above the gate, and the gate being closed is exactly when the sign matters most.**
  *
  * **A 409 clash is not a failed save.** The server writes the row and *then* finds the
  * clash (`api.py:398` — "the save row exists, the pair is active, and the flow is
@@ -105,6 +115,17 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
   const [cap, setCap] = useState<number | null>(null);
   const [conflict, setConflict] = useState(false);
   const [failed, setFailed] = useState(false);
+  /**
+   * **The live allowance, when there is one.**
+   *
+   * The provider holds what the server last said, and asks again after a save — so the
+   * wall appears on every card the moment it is spent, not on the next page load. The
+   * prop is the fallback: a Save button rendered outside the provider (a detail screen,
+   * a test) has no live allowance to read, and the payload it was handed is still the
+   * server's last word.
+   */
+  const live = useBrowseQuota();
+  const quotaNow = live?.quota ?? quota;
   // **The lockout is a flag, not a timestamp read during render.** `Date.now()` in a
   // render is a lie waiting to happen: the component does not re-render when the clock
   // passes the deadline, so the button would stay disabled forever. A flag, cleared by
@@ -132,9 +153,9 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
    * arriving by two routes. `quotaNote()` in `lib/browse-labels.ts` reads the same two
    * facts the same way; two rules for one fact would be a rule that could drift.
    */
-  const isPro = quota.is_pro || quota.cap === null || quota.cap === undefined;
-  const capValue = quota.cap ?? 0;
-  const spent = !isPro && quota.used >= capValue;
+  const isPro = quotaNow.is_pro || quotaNow.cap === null || quotaNow.cap === undefined;
+  const capValue = quotaNow.cap ?? 0;
+  const spent = !isPro && quotaNow.used >= capValue;
 
   /**
    * **The button's label, and its colour.**
@@ -179,7 +200,7 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
    * **The label is the payload's numbers.** `1 of 1 save used today` — the ceiling and
    * the count, as the API states them.
    */
-  const spentLabel = spentQuotaLabel({ used: quota.used, cap: quota.cap });
+  const spentLabel = spentQuotaLabel({ used: quotaNow.used, cap: quotaNow.cap });
 
   /**
    * **The lockout.**
@@ -200,6 +221,29 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
       timer.current = null;
     }, SAVED_LOCKOUT_MS);
   }
+
+  /**
+   * **Ask the server what the allowance stands at now.**
+   *
+   * **A save spends the allowance, and the page has to show that.** Without this the
+   * hero's note and every other card's button keep the number the page was rendered
+   * with — "0 of 1 save used today", and a live "Save" button on a card whose save the
+   * server is about to refuse. The surface would be offering a press it knew was going
+   * to be refused.
+   *
+   * **It asks; it does not compute.** The client does not add one to `used` and does not
+   * assume a save happened — a save the server *refused* spends nothing, and a client
+   * that counted its own presses would show a wall the server is not enforcing. The
+   * number comes from the same endpoint, under the same session, as the first paint.
+   *
+   * **A failed refresh is not a failure the reader sees.** The provider keeps the last
+   * known number, and the server's gate is still the gate — so the cost of a failed
+   * refresh is a refused press, never a wrong save.
+   */
+  const refreshQuota = useCallback(async (): Promise<void> => {
+    if (live === null) return;
+    await live.refresh();
+  }, [live]);
 
   const onSave = useCallback(async () => {
     // **The in-flight guard is here, in the handler.** A `<button disabled>` is not a
@@ -258,6 +302,7 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
       if (status >= 200 && status < 300) {
         setState("saved");
         beginLockout();
+        await refreshQuota();
         return;
       }
 
@@ -271,6 +316,10 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
         setState("saved");
         setConflict(true);
         beginLockout();
+        // **A save that landed also spends the allowance.** The conflict was found
+        // *after* the row was written, so the gate counted it — and the wall may now be
+        // up on the other cards.
+        await refreshQuota();
         return;
       }
 
@@ -290,7 +339,7 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
       setState("idle");
       setFailed(true);
     }
-  }, [blocked, eventId, locked, state]);
+  }, [blocked, eventId, locked, refreshQuota, state]);
 
   /**
    * **`Esc` abandons an in-flight save.**
@@ -380,14 +429,34 @@ export function BrowseSave({ eventId, eventName, slug, saved, quota }: BrowseSav
         *
         **They are not modals and they are not toasts.** They render in the normal flow,
         in the card, under the button — no overlay, no portal, no dismissal.
-      */}
-      {cap !== null ? (
+        *
+        **The wall shows the line too, and that is the point of the line.** There are two
+        ways to meet a spent allowance, and the reader needs a way out in both:
+        *
+        * - **The server refused a save** — the payload said there was allowance and the
+        *   server disagreed. The line appears, under the button, with the upgrade copy.
+        * - **The payload already said the allowance was spent** — the button is muted and
+        *   disabled (EXPERIENCE.md §`Component.Button.Save.Inline`: *"they are still
+        *   visible … but disabled. Tapping a disabled Save button does nothing; the
+        *   disabled state carries a `title="Upgrade for unlimited saves"` tooltip."*).
+        *
+        * **A tooltip is not a way out.** It is unreachable by keyboard and invisible to
+        * touch, so a wall that carried only a tooltip would lock a reader who cannot
+        * hover into a page that never mentions upgrading. The line's **Upgrade link** is
+        * the reachable way out, and it is a link — a `Text.Meta` link, not a button,
+        * because the refusal is information and the link is the way out of it.
+        *
+        * So the wall renders the same line the refusal renders. The reader who spends
+        * their allowance sees the same sentence and the same link whether the server
+        * refused the press or the button was already closed.
+        */}
+      {cap !== null || spent ? (
         <p
           role="status"
           className="max-w-[260px] text-right text-ink-muted [font:var(--type-scale-meta-sm)]"
           data-browse-save-cap
         >
-          {`You've used your ${cap} free save today. `}
+          {`You've used your ${cap ?? capValue} free save today. `}
           {/*
             **The "Upgrade" link.** `Text.Meta` — a meta-sized link, not a button. The
             refusal is information and the link is the way out of it; a filled button

@@ -1001,3 +1001,144 @@ pnpm format:check  # clean (was 14 files; auto-fixed)
 **Mutation probes** (in `test-report.md`): seven distinct tests fire across two mutations —
 the More sheet's Browse row reverted to an inert `<span>`, and the bar's Digest slot
 reverted to no `href`. The source-level sweep fires under both.
+
+---
+
+# Code Review: e2e-proof-and-contract-tests
+
+**Run**: run-eventpulse24-029 · **Intent**: browse-surface · **Reviewed**: 2026-11-12
+**Files reviewed**: 37 changed (34 modified, 3 new)
+
+## Scope
+
+The item's own words: *e2e-proof-and-contract-tests*. It added the proof — a Playwright
+suite for the Browse surface, a contract test for the OpenAPI schema, and a repeatable
+seed for the catalog the tests sign in against — and, by walking the surface in a real
+browser, it found nine defects, six of which it fixed.
+
+**This review reads the item's own diff as carefully as the item read the product.** The
+item's claim was that the surface was proven; the review's job was to ask *what was not
+proven*.
+
+## The diff, by layer
+
+| Layer | Files | What the review found |
+|---|---|---|
+| **Product — backend** | `adapters/throttle/memory.py`, `apps/identity/services/throttle.py`, `config/adapters.py`, `config/env.py`, `config/settings.py`, `config/management/commands/seed_browse_catalog.py` | 1 real gap (the `--reset-saves` path had no unit test), now closed |
+| **Product — frontend** | `lib/browse-labels.ts`, `components/browse/*` (5 files), `app/browse/page.tsx` | 1 docstring that claimed a behaviour the code did not implement; 1 new surface file missing from the structural rules |
+| **Tests** | 8 backend test files, 6 frontend test files, 3 Playwright specs | 1 stale assertion (the "two islands" rule) that the item's own change had invalidated |
+| **Tooling** | `Makefile`, `.env.example`, `.gitignore`, `frontend/.gitignore`, `frontend/.prettierignore` | 1 stray artefact (`backend/.coverage 2`) — already removed and ignored before this review |
+
+## Standards compliance
+
+| Rule | Source | Status |
+|---|---|---|
+| "Fake at the **port** boundary; never mock the ORM or the database" | testing-standards, "Mock Strategy" | **kept** — the new fixture patches `get_throttle_port` at the port, never the database. The in-memory throttle *is* the fake for a Redis port |
+| "Freeze time explicitly. Never depend on wall-clock" | testing-standards, "Mock Strategy" | **kept** — `THROTTLE_CLOCK = 1_000_000.0`, injected. No `time.sleep` anywhere in the diff |
+| "Never raise a bare `Exception`" | coding-standards, "Error Handling" | **kept** — the provider's `catch` returns `false`, it does not re-raise |
+| "Explicit domain exception types, mapped to HTTP once" | coding-standards, "Error Handling" | **kept** — the 409 path reads `error.code === "save_cap_reached"`; no new HTTP shaping in the client |
+| "Only `apps.personalization` imports `apps.personalization.models`" | coding-standards, `models-<app>` | **kept** — the seed's `--reset-saves` goes through `unsave_event`, not a direct `delete()`. `make lint-imports`: 19 kept, 0 broken |
+| "No direct writes from surfaces" | coding-standards, AD-5/AD-14 | **kept** — the new seed code calls published services only |
+| "Browser → API goes through Next.js" | coding-standards, "Backend calls" | **kept** — the provider calls `api.GET` from `@/lib/backend-client`; the browser's `baseUrl` is `""`, so it hits `/api/…` and `proxy.ts` forwards it. `GET` is safe, so no CSRF token is needed |
+| "Hand-editing `frontend/lib/api/`" | coding-standards, AD-19 | **kept** — `make client` regenerated both files and `git diff --stat -- frontend/lib/api/` is **empty**: zero drift |
+| "Namespaces: no `os.environ` outside `backend/config/`" | coding-standards, Ruff `TID251` | **kept** — the one `os.environ.get("E2E_CLIENT_IP", …)` is in `backend/config/management/commands/`, which the rule permits |
+| "Test naming: `test_<unit>_<condition>_<expected>`" | testing-standards, "Test Naming" | **kept** — every new test follows it |
+| "Frontend files: kebab-case" | coding-standards, "File Organization" | **kept** — `browse-quota-note.tsx`, `browse-quota-provider.tsx` |
+
+## Findings
+
+### Auto-fixed (mechanical, non-semantic)
+
+| # | Category | Finding | Fix |
+|---|---|---|---|
+| 1 | **Architecture** | The two files this item created — `browse-quota-note.tsx` and `browse-quota-provider.tsx` — were **not in `SURFACE_FILES`**, so the anti-pattern rules did not scan them. A lock with no enforcement is a sentence in a document, and these two files *are* the surface now | Added both to `SURFACE_FILES` in `tests/browse-boundary.test.ts` |
+| 2 | **Code quality** | `browse-quota-provider.tsx`'s docstring claimed *"The refresh is a refetch of the whole payload, not of the quota alone… a reader who saved a card and then looked at another card that was already saved should see the truth about both."* The code does `setCurrent(response.data.quota)` — it keeps **only** the quota and discards the cards. **The docstring described a behaviour the code does not implement** | Rewrote the paragraph to say what the code does, and why dropping the cards loses nothing: each card's `is_saved` was true at first paint, and the only card whose saved state can have changed is the one the reader just saved — which updates its own state |
+| 3 | **Code quality** | `tests/browse-quota-live.test.tsx` used `as unknown as typeof FREE_QUOTA` to fit a **Pro** quota through a Free-shaped type. `BrowseQuotaOut.cap` is `number \| null`, so the Pro shape *is* expressible — the cast said otherwise, and a reader who believed it would not trust the Pro test | Typed the fixtures as the server's own `BrowseQuota` and hoisted `PRO_QUOTA` to module scope. **No casts remain** |
+
+### Confirmed before acting (a change to an assertion, not a formatting fix)
+
+| # | Category | Finding | Why it needed confirmation | Outcome |
+|---|---|---|---|---|
+| 4 | **Testing** | `tests/browse-boundary.test.ts` asserted the Browse surface has **exactly two** client modules (`browse-search.tsx`, `browse-save.tsx`) — "A third client module would mean a third thing that could reach for the server." **The item itself added two more**, so the rule was stale and the suite was failing | An assertion is a *claim*, not a format. Changing what the product is allowed to be is a judgment call, and the review does not make that call silently | Updated to the four islands that exist, with the reasoning recorded in the test: the note and the buttons read the *same* number, the number moves, and a prop cannot cross the server/client boundary — so the shared owner is a client context. **The rule's intent survives; only its count changed** |
+| 5 | **Testing** | The `--reset-saves` flag's code path (`_clear_saved_events`, `seed_browse_catalog.py:766-774`) had **no unit test**. It was exercised only by the Playwright suite, which is not one of CI's backend gates | A new flag with no unit test is a coverage gap, and the item's own criterion says a defect is either fixed or recorded as a named follow-up | Added `test_the_reset_saves_flag_clears_the_saved_rows`. **Mutation-verified**: neutering the flag (`if False:`) makes the test fail; restoring it makes it pass |
+
+### Reviewed and accepted
+
+| # | What | Why it is right |
+|---|---|---|
+| 1 | **The shared throttle store is the right shape.** | `ports.registry.get_adapter` builds a *new* adapter per call, so the counters had to move out of the adapter and into a store — the fake's stand-in for Redis. **An adapter built with a clock owns its store; one built without a clock shares the process-wide one.** That single rule gives a test an isolated counter *and* gives the product a counter that survives between requests. Verified at runtime: two clockless adapters share one store, and a refused attempt is counted (matching Redis's `INCR`-before-decide). |
+| 2 | **`THROTTLE_ADAPTER` as a per-port override.** | The throttle is the one port whose state the whole stack shares — the API reads it, the API spends it, the seed clears it, and those are three processes. An in-process fake gives each its own copy. The override is the same shape `SOURCE_FETCH` already uses, and the local stack now uses the **real** Redis adapter, so the local stack and production count the same way. |
+| 3 | **The seed's sign-in reset clears counters, not rules.** | `reset_sign_in_throttle` clears the per-IP and per-account windows for the sign-in operation only. `AUTH_THROTTLE_SIGN_IN_IP` is still 10 and `AUTH_THROTTLE_SIGN_IN_ACCOUNT` is still 5, and the eleventh sign-in in an hour is still refused. The test asserts this explicitly: after the reset, ten are still allowed and the eleventh is still refused. |
+| 4 | **The seed's `--reset-saves` goes through `unsave_event`, not a model delete.** | Two reasons, and the second is the better one. AD-2's `models-personalization` contract forbids the direct import. But going through the service is also *more correct*: `unsave_event` closes the conflict pairs the save took part in and removes the reminder plans and their pending sends with it. A row deleted behind the service's back would leave a held send addressed to an event that is gone. |
+| 5 | **The refusal path does not refresh the quota, and should not.** | A refused save was refused *because* the counter was already at the limit, so the counter did not move. Refreshing would be a wasted request that returns the same number. The client's rule — "the client asks; it does not compute" — is kept on this path too. |
+| 6 | **The wall's cap number prefers the refusal's cap over the quota's.** | `cap ?? capValue` reads the 409's own `cap` first. The refusal is the more specific statement — it is the server naming the ceiling in the very response that refused — and both are `1` for a Free account anyway. `setCap(null)` runs at the top of every press, so a stale refusal cap cannot linger. |
+| 7 | **The seed command has no production guard — and neither does any other seed command here.** | `seed_local_stack.py` has none either. The house pattern is that seeding is a local-stack operation, and adding a guard to one command and not the others would be an inconsistency, not a safety. **Not a finding.** |
+| 8 | **The in-memory store's `time.monotonic` and Redis's wall-clock TTL are different time bases.** | The in-memory store only ever compares its *own* timestamps against its *own* window, so it is internally consistent. The two adapters agree on the *shape* of the answer — the count, and a window anchored at the first attempt — which is what the port contract requires of a test double. **Not a finding.** |
+| 9 | **The identity package re-declares the `throttle_adapter` fixture.** | It shadows the root `autouse` fixture for `tests/identity/`, but both build an equivalent adapter and patch the same two modules through the same `sys.modules` resolution. The identity one exists so the package's docstring can say what the fixture is *for*. **Redundant, not wrong.** Removing it is a structural change for no behavioural gain — recorded, not done. |
+
+### Open — recorded, not fixed
+
+| # | Finding | Severity | Why not fixed |
+|---|---|---|---|
+| 1 | `tests/adapters/test_throttle.py`'s shared-store tests write into the process-wide `_DEFAULT_STORE` and are not isolated from one another | low | They use distinct keys (`"shared"`, `"rebuilt"`, `"isolated"`, `"a"`/`"b"`), so they cannot collide today, and `reset_default_store()` clears the lot — so a *future* test in that file that wrote to the default store before `test_reset_default_store_clears_every_key` would become order-dependent. **No other test file touches the default store** (the root fixture gives every test a clocked adapter with its own store), so the blast radius is one file. Worth a fixture-scoped reset; not worth a structural change to the shared-store design in an item about proving the surface |
+| 2 | `browse-quota-provider.tsx`'s `refresh()` asks for `limit: 1` | informational | It wants the quota, and the quota is in the payload whatever the page size. The `limit: 1` is deliberate and now documented. **Not a finding — recorded so a reader does not "fix" it** |
+
+## The thing worth saying plainly
+
+**A rule that was written before the item was true of the item, and the item broke it without noticing.**
+
+`tests/browse-boundary.test.ts` says the Browse surface has **exactly two** client modules, and gives the reason: *"A third client module would mean a third thing that could reach for the server, and this assertion is what says there are only two."*
+
+That assertion was **already failing** when this review started — because the item had added a provider and a note. It had been failing since the item's own code landed, and the item's test suite was green anyway.
+
+**That is the failure mode this item exists to prevent, reproduced inside the item.** The item's whole thesis is that a lock with no enforcement is a sentence in a document — and it wrote a lock, then made it false, then did not notice because the rule that *would* have noticed it was itself part of the code under change rather than a gate.
+
+It was found by **adding the two new files to the scan list** — the fix for a different finding. The scan immediately failed, and the failure was not the one that was being looked for: it was a *neighbouring* rule that had gone stale. **Two findings, one edit, and the second was the more valuable one** — because the first was found by asking "is this covered?" and the second was found by asking "what does covering it *break*?"
+
+That is also why finding 4 was treated as a CONFIRM-class change rather than an auto-fix. The rule said "two"; the code said "four"; **the review did not get to decide which of them was right by fiat** — it had to find out *why* there are four (the hero's note and the cards' buttons read one number, and that number moves) and write that reason down where the next reader would find it. A rule changed to match the code, with no reason recorded, is how a rule dies quietly.
+
+## Verification
+
+```
+make test-backend      # 6867 passed
+make test-web          # 2276 passed (131 files)
+make lint-backend      # 19 kept, 0 broken
+make lint-web          # clean — eslint, typecheck, prettier
+make coverage-backend  # 98.60% overall · domain/ 100%
+make test-e2e          # 6 passed
+make client            # zero drift in frontend/lib/api/
+```
+
+**Mutation probes** (all reverted; the tree was verified clean afterwards):
+
+| Mutation | What it proves |
+|---|---|
+| `--reset-saves` neutered to `if False:` | `test_the_reset_saves_flag_clears_the_saved_rows` fails |
+| `browse-hero.tsx` given `"use client"` | the four-islands assertion fails with five |
+| `browse-quota-provider.tsx` drops `setCurrent(...)` | the live-allowance tests fail |
+
+**No auto-fix caused a test failure. No test was weakened to make a fix pass.**
+
+### One more auto-fix, caught by the final gate sweep
+
+**`make lint-backend` failed after the review's own last change.** The
+`test_the_reset_saves_flag_clears_the_saved_rows` test the review added was written with
+hand-wrapped assertion lines, and `ruff format --check` rejected it: the wrapped form is
+not what the formatter produces for those expressions.
+
+**This is the smallest possible finding and it is worth stating anyway, because it says
+something about the shape of the work.** The review had run the backend suite, the
+frontend suite, the e2e suite and the lints — and the backend lint failed **only after**
+the review's own edit landed. **The gates are not a thing you ran; they are a thing you
+run again after your last change.** A green gate list is a statement about the tree at
+one instant, and the review's own edit moved that instant.
+
+**Fixed** by running `ruff format` on the file — a mechanical, formatting-only change with
+no behaviour in it — and the file's tests were re-run afterwards (43 passed). **The
+coverage number moved with it**: `seed_browse_catalog.py` went from 93% to **95%** and
+the overall total from 98.56% to **98.60%**, because the added test is the one that
+covers the `--reset-saves` branch.
+
+**No test was weakened to make a fix pass, and no assertion was edited to satisfy a
+formatter.** The formatter changed the *layout*; the test's *claims* are the same two as
+before.

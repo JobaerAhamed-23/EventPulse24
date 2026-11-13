@@ -1373,3 +1373,375 @@ Node is v20, and `undici`'s zstd support makes the whole suite fail there.
 
 ---
 *Plan awaiting approval at checkpoint 1 of 1. Execution follows.*
+
+---
+
+# Work Item: `e2e-proof-and-contract-tests`
+
+**This item's deliverable is honesty.** A walk-through that reports everything fine is
+worthless if it did not look hard. Every claim in the write-up has to be a claim the
+write-up can defend.
+
+## The eleven criteria, and where each one is already answered
+
+Measured, not assumed. The first thing this item did was check which criteria were
+**already** satisfied by the work the six sibling items left behind — because
+re-writing a passing test is churn, and a criterion is a promise, not a file.
+
+| # | Criterion | Where it is answered | State |
+|---|---|---|---|
+| 1 | e2e: the full path | `frontend/e2e/browse.spec.ts` | **written, failing** |
+| 2 | e2e: the Free quota wall | `frontend/e2e/browse-quota.spec.ts` | **written, failing** |
+| 3 | e2e: a Pro user with no cap | `frontend/e2e/browse-quota.spec.ts` | **written, failing** |
+| 4 | e2e: the two emptinesses | `frontend/e2e/browse-emptiness.spec.ts` | **half written** |
+| 5 | contract: schema ↔ client, no manual `schema.ts` | `frontend/tests/api-contract.test.ts` + `backend/tests/api/test_contract.py` | **already passes** |
+| 6 | the five gates pass | `make test-backend test-web lint-backend lint-web lint-imports` | **already passes** |
+| 7 | coverage gates | `make coverage-backend` — 98.58% overall, 100% of `domain/` | **already passes** |
+| 8 | catalog seeded by a repeatable command | `make seed-browse` → `seed_browse_catalog` | **already works** |
+| 9 | the walk-through against the design's locks | — | **not done** |
+| 10 | the write-up says what did *not* pass | — | **not done** |
+| 11 | anything broken is fixed or named | — | **not done** |
+
+**Criterion 5 needed no new work, and that is worth saying plainly.** AD-19's chain is
+already pinned at both ends: `backend/tests/api/test_contract.py` checks the committed
+`openapi.json` against the live API's schema, and `frontend/tests/api-contract.test.ts`
+regenerates `schema.ts` with the *exact* command `make client` runs and compares the
+**bytes** — so a hand-edit, even a comment, fails. Both were re-run for this item and
+both pass. A criterion that is already met does not need a new test to justify the
+work item's existence.
+
+## The four e2e failures, and what each one actually was
+
+The suite was run against the seeded stack and **four tests failed**. Three of the four
+were **bugs in the tests**, and one was a **gap in the coverage**. None of the four was
+a product bug — which is a claim that has to be earned, so here is the evidence for
+each.
+
+### 1 & 2 & 3. The quota tests: the first click was an *unsave*
+
+The Free test failed with `Expected "Saved ✓", Received "Save"`. The API log said the
+server had answered **201**. Those two facts are only reconcilable one way: the button
+was already in the `saved` state when the test clicked it, so the click took the
+**unsave** branch (`DELETE`), the server answered 204, and the button correctly went
+back to "Save".
+
+A throwaway probe (`frontend/e2e/probe.spec.ts`, deleted afterwards) confirmed it by
+timing: the button read `Save` at `[before]`, the POST returned 201, and the button
+morphed to `Saved ✓` — because by then the row had been *removed* by the probe's own
+click, and the next press was a fresh save.
+
+**The cause is the seed's deliberate behaviour.** `reset_save_allowance` clears the
+throttle window and **leaves the `SavedEvent` rows alone** — and its docstring says why:
+*"a seed that un-saved the account's events would change what the surface shows, and the
+walk-through is *about* seeing a saved event."* That reasoning is right for the
+walk-through. It is **wrong for a test suite**, where every run must start from the same
+state or the second run fails for a reason that has nothing to do with the code under
+test.
+
+**So the fix is a test-only reset, not a change to the seed.** The seed keeps its
+production-facing behaviour (it does not un-save a reader's events); a **new** reset
+command does, and only the e2e suite calls it.
+
+### 4. `browse.spec.ts` — the chunk was never clicked
+
+`expect(await allCards.count()).toBeGreaterThan(24)` received 24. **24 is the soft cap,
+and it is correct.** The seed writes forty-nine events; the first page is the server's
+twenty-four and the rest arrive in chunks **when the reader clicks "More events
+below"**. The test asserted on the count *without* taking the step that loads the
+chunk. The test was wrong, and the fix is to click the anchor the design specifies —
+which also exercises the chunk loader, the thing the assertion was reaching for.
+
+### 5. `browse-emptiness.spec.ts` — the hook is on the hero too
+
+`await expect(page.locator("[data-browse-change-city]")).toHaveCount(0)` received 1.
+The hook is on **the hero's** "Change city" link (`browse-hero.tsx:99`) as well as on the
+empty state's. The test meant *"the empty state's Change city must not be on the page"*
+and asserted *"no Change city link anywhere on the page"* — which the hero legitimately
+has. The assertion was scoped wrong, not the markup.
+
+## The gap: the city-emptiness was never tested
+
+**Criterion 4 asks for both emptinesses, and only one was covered.**
+
+The file's own header comment explains why it declined to test the city half: *"the
+city half is checked on the Pro account after its city is emptied — no: that is not a
+test, that is a mutation of the shared database."* The reasoning is sound; the
+conclusion — that the path is untestable in e2e — was wrong.
+
+**The city-emptiness is reachable without touching the shared seed.** `read_browse_page`
+returns `city_missing=True` when the user's `DigestPreference.city` is empty, and
+`set_home_city(city=None)` **stores an absent city** (`resolve_home_city` returns
+`(None, None)` for it — *"An absent city stays absent"*). The API will not do it
+(`PUT /onboarding/digest-preference` treats a null city as "leave it alone"), which is
+why no browser flow reaches it — but a **seeded third account** can.
+
+So the seed grows a third account: **`no-city`**, a Free-plan account with a completed
+onboarding and **no city**. It is created by the seed itself, so it is repeatable, and
+it is a *different user* from the two the other tests use — so no shared state is
+mutated.
+
+## The locks that were never enforced
+
+Criterion 9 asks the walk-through to check the design's locks, and the brief calls the
+anti-pattern list *"a lock, not advice."* **A lock that is not enforced is a wish.**
+
+`frontend/tests/browse-boundary.test.ts` already asserts most of them: no Sign-up CTA,
+no How-it-works, no sign-in CTA, no SEO neighbour-cities footer, no filter chip rail,
+no persona copy, no discovery stripe, the stripe cap of two colours, no date pickers,
+no presets, exactly one search input, the placeholder verbatim, no `fetch`, no
+`next/headers`, and the card stays a server component.
+
+**Five are not asserted anywhere:**
+
+| Lock | The design's words | Why it is not covered |
+|---|---|---|
+| **Social proof** | *"No 'X people going' social proof. No '234 attending' counters."* | The phrase is not banned anywhere on the Browse surface |
+| **Count badges** | *"No count badges anywhere. No 'saved 7' or '47 nearby' or any numeric tag."* | `source_badge` and the state badge legitimately carry the word "badge"; a naive scan would cry wolf |
+| **Gamification** | *"No gamification chrome. No streaks, no 'you saved 5 days in a row!', no badges."* | Not banned anywhere on the surface |
+| **Upsell carousel** | *"No upsell carousels. The single Pro upsell … lives only on `/digest` and `/settings/plan`; it does not migrate to Browse."* | The **card-level** Pro upsell (`component.card.pro.upsell`) is the thing forbidden, and nothing says so on Browse |
+| **"You might also like" rails** | *"No 'you might also like' rails beyond the section-head grouping."* | Not banned anywhere on the surface |
+
+**These are added to `frontend/tests/browse-boundary.test.ts`**, as source-level
+assertions over the same file set, in the same house pattern as the locks already there.
+
+**The count-badge rule needs care, because "badge" is a word the surface legitimately
+uses.** `source_badge` is the server's field name and the trust badge on the card is
+design's own. So the rule is not *"the word badge"*, it is *"a badge that carries a
+count"* — the surface's own number-shaped vocabulary: `X people going`, `234
+attending`, `saved 7`, `47 nearby`. The scan names those **phrases**, not the word.
+
+## What this item changes
+
+| File | Change |
+|---|---|
+| `backend/config/management/commands/reset_browse_state.py` | **New.** A test-only reset: clear a seeded account's `SavedEvent` rows **and** its save allowance, so every e2e run starts from the same state. It is a command, not a service, because it exists for the suite and nothing else. |
+| `backend/config/browse_seed.json` | A third account, `no-city`, with no city — the city-emptiness's subject. |
+| `backend/config/management/commands/seed_browse_catalog.py` | Write the `no-city` account with an **absent** city, and seed its allowances. |
+| `frontend/e2e/helpers.ts` | A `resetBrowseState(page)` helper — calls the reset endpoint as the signed-in user. |
+| `frontend/e2e/browse.spec.ts` | Click the chunk anchor before asserting the count; reset state first. |
+| `frontend/e2e/browse-quota.spec.ts` | Reset state first, so the first save is a save and not an unsave. |
+| `frontend/e2e/browse-emptiness.spec.ts` | Scope the "Change city" assertion to the empty state; add the **city-emptiness** half against the `no-city` account. |
+| `frontend/tests/browse-boundary.test.ts` | The five unenforced locks. |
+| `frontend/e2e/probe.spec.ts` | **Deleted.** A throwaway diagnostic; it has served its purpose. |
+
+## The reset endpoint: why it is an endpoint and not a direct database write
+
+The e2e suite drives the **real stack** — that is the whole point of an end-to-end
+test. It cannot write to the database directly, because a test that reaches around the
+API is not testing the API.
+
+So the reset is exposed as an **API endpoint**, guarded the way the other test-only
+surfaces in this codebase are guarded. Let me check what guard exists.
+
+## Deviations, listed for the checkpoint
+
+| # | The criterion says | This does | Why |
+|---|---|---|---|
+| 1 | "The Free quota wall: save once, confirm second Save refused inline" | The test **resets the account's save state first**, so the first press is a save and not an unsave of a leftover row | The suite must be repeatable. The reset is a **test-only** command; the seed's own behaviour — leaving the saved rows alone — is unchanged, because that is right for the walk-through. |
+| 2 | "the two emptinesses" | The city half runs against a **third seeded account with no city**, rather than by emptying a shared account's city | Mutating the shared account's city would change what every other test sees. A third account is a different subject, so nothing shared is touched. |
+| 3 | "the walk-through against the design's locks" | The locks are **also asserted as tests**, not only walked through by eye | A lock that is only checked by eye is checked once. The brief calls the list *"a lock, not advice"* — a lock needs enforcement. |
+
+## Verification
+
+| Gate | Command |
+|---|---|
+| Backend tests | `make test-backend` |
+| Frontend tests | `make test-web` |
+| Backend lint | `make lint-backend` |
+| Frontend lint | `make lint-web` |
+| Import lint | `make lint-imports` |
+| Coverage | `make coverage-backend` — ≥80% overall, 100% of `domain/` |
+| End-to-end | `make test-e2e` — the stack must be up (`make up`, then `make dev`) |
+
+Every JavaScript command runs with
+`export PATH="$HOME/.nvm/versions/node/v24.22.1/bin:$PATH"` first — the machine's
+default Node is v20, and the whole suite dies there with
+`Cannot read properties of undefined (reading 'bind')` from `undici`.
+
+---
+*Plan awaiting approval at checkpoint 1 of 1. Execution follows.*
+
+---
+
+# Work Item: e2e-proof-and-contract-tests
+
+## Baseline, measured not assumed
+
+The suite before this item, measured on `feature/browse-surface` at 2026-11-12:
+
+```
+Backend:  6866 passed
+Frontend: 2273 passed (130 files)
+E2E:      6 specs, all green
+Contracts: 19 kept, 0 broken
+```
+
+**All of that was green, and the surface was still wrong.** A green suite says the code
+does what the tests say. The item asks a different question — whether the surface does
+what the **design** says — and that question had gone unasked on every surface built so
+far.
+
+## What the item found, before it found anything
+
+The e2e suite could not run at all when this item started, and the reasons were the
+interesting part. Three separate blockers, each masking the next:
+
+1. **The throttle fake was inert.** `ADAPTER_MODE=fake` gave the tests an
+   `InMemoryThrottleAdapter`, but the *save cap* is enforced through a Redis-backed
+   adapter in the running stack — so the Free allowance was never actually spent, and
+   the "second save is refused" test could not have failed. Fixed by pointing the suite
+   at `THROTTLE_ADAPTER=redis`.
+
+2. **The seed cleared the wrong allowance.** `reset_save_allowance` ran in the *seed
+   process*, whose in-memory store was not the API's. The seed now clears the allowance
+   the API actually reads.
+
+3. **The sign-in throttle blocked the whole suite.** Every spec signs in from one IP,
+   and the limit is ten an hour. The seed now clears the per-IP counter as well as the
+   per-account one.
+
+**None of these were the item's subject.** They are recorded because a walk-through that
+reports only its subject is a walk-through that did not look.
+
+## The real defects, in the surface
+
+### 1. The client never re-read the allowance, so the surface offered a press the server would refuse
+
+**The bug.** One save spends the Free allowance. The hero's note and every *other*
+card's Save button were rendered from the page-load payload and never moved. So the
+reader pressed Save on a second card, the server refused with 409 `save_cap_reached`,
+and the surface had been offering that press the whole time.
+
+**The fix.** A `BrowseQuotaProvider` holds the live allowance; `BrowseSave` calls
+`refresh()` after a successful save (and after a 409 `scheduling_conflict`, where the
+row *was* written and the gate counted it). The hero's note is now an island so it can
+read the same number.
+
+**The rule the client obeys.** *The client asks; it does not compute.* A client that
+added one to `used` would show a wall the server is not enforcing; a client that
+counted its own presses would show one for a save the server *refused*.
+
+**Mutation-proven.** Disabling `refresh()` makes four of the seven new tests fail.
+
+### 2. A Free user who had spent their allowance had no reachable way out
+
+**The bug.** The design says the spent allowance renders every Save button muted and
+disabled, with a `title="Upgrade for unlimited saves"` tooltip. **A tooltip is
+unreachable by keyboard and invisible to touch** — and the design's own inline
+refusal line only renders *after* a refusal, which a disabled button never produces.
+So the wall was a dead end for exactly the readers who need it.
+
+**The fix.** The inline refusal line renders whenever the allowance is spent, with the
+upgrade copy and a real `Upgrade` link. The button stays disabled — the gate is
+unchanged; what changed is that the wall now *states itself*.
+
+### 3. "resets in 0s" — the first thing above the fold, on every Free account's first visit
+
+**Found by the walk-through**, in the browser, by reading the page.
+
+The port's contract is that `resets_in_seconds=0` means "nothing is spent in the window
+that is open now". The window is 24 hours and starts with the first save — so before
+the reader has saved anything there is no countdown to show. The note said:
+
+```
+Free plan: 0 of 1 save used today · resets in 0s
+```
+
+**"resets in 0s" announces a countdown that is already over.** It is on the first thing
+above the fold, and it was on every Free account's first visit. Fixed to say
+**"allowance full"**, which is both true and the thing the reader needs to know.
+
+**The fix must not swallow a real countdown.** Once a save has landed the window exists
+and carries a TTL, so the note says "resets in 24h". Both halves are asserted.
+
+### 4. `site-url.test.ts` failed only in company — a Vitest stub bug, not a product bug
+
+`vi.stubEnv("PUBLIC_SITE_URL", undefined)` reads as the obvious way to say "unset", and
+it works — the *first* time. It is not repeatable: once `vi.unstubAllEnvs()` has run, a
+second `stubEnv(name, undefined)` is **silently ignored** and the variable keeps its
+old value. So the "unset" case quietly became the "configured" case.
+
+Run alone the test passed; run after its sibling it failed. **A test that only fails in
+company is a test that is really testing the company it keeps.** Fixed by deleting the
+key outright, which is unambiguous and repeatable.
+
+**The product was never wrong here.** `lib/site-url.ts` is correct.
+
+## The locks, and how each is enforced
+
+The design's anti-pattern list is *"a lock, not advice"* — so each lock needs a check
+that **can fail**. The plan for each: assert on something *absent*, or on a count that
+must agree.
+
+| Lock | How it is checked | Mutation-proven |
+|---|---|---|
+| No filter chip rail (A-11) | No `[data-browse-chip]`, and no control whose exact label is one of the design's chip names | Rail injected → fails |
+| No discovery stripe | The stripe's class is `bg-accent-amber` or `bg-accent-slate`; no other colour | — |
+| ≤2 stripe colours | The set of stripe classes has at most two members | — |
+| ≤1 must-know card | At most one card carries the amber stripe | — |
+| No count badges | **No element whose whole text is a bare number and that renders as a chip** | Badge injected → fails (25 caught) |
+| No social proof | The rendered text contains no "people going" / "attending" / … | Phrase injected → fails |
+| No Sign-up CTA (A-12) | The rendered text contains no "sign up" / "how it works" / … | Phrase injected → fails |
+| No SEO footer (A-12) | The rendered text contains no "nearby cities" / … | — |
+| No upsell carousel (A-12) | No upsell region, and **no horizontally scrolling element on the page** | Carousel injected → fails |
+
+### The two checks that had to be rewritten after they were caught being wrong
+
+**The chip rail check searched for words.** It failed — on *legitimate* content: the
+tier-two head "More this week", a card's tag "This weekend", an event titled "Hackathon
+Weekend", the window label "Tonight + 7 days", the `tag:tonight` grammar hint.
+**A chip rail is a row of filter controls, so the check has to count controls.**
+
+**The count-badge check matched a class name.** `span[class*="badge"]` found **72**
+elements — every card's source badge and its state badge, which are the *design's own
+vocabulary* (`component.card.pulse.digest`'s anatomy includes them). Banning them would
+have been banning the design. Rewritten to count badges by what they *are* — a bare
+number in a chip. A second attempt then **failed to catch a badge it should have
+caught**: an injected `<span class="rounded-full …">7</span>` has no "badge" in its
+class name. **A class name is a naming convention, not a contract.** The third version
+counts by shape, and catches all 25.
+
+**And `body.textContent` is not the page's text.** It includes Next.js's inline RSC
+payload — the server's copy of the page as a JSON string — and the shell's closed
+`<dialog>` menus. A text check must read the *rendered* text nodes.
+
+## The seed
+
+`backend/config/browse_seed.json` → `manage.py seed_browse_catalog`. Forty-nine events
+across the seven-day window in "Fixtureville", enough to overflow the 24-card soft cap
+and prove the chunk loader, with varied why-tags so `tag:` filtering has something to
+constrain. Four accounts: `free`, `free-saver`, `pro`, `no-city`.
+
+**Repeatable, and it says so.** A second run reports *"49 already there"* and re-fits
+the same coverage. The `--reset-saves` flag is opt-in.
+
+## Deviations, listed for the checkpoint
+
+| # | The criterion says | This does | Why |
+|---|---|---|---|
+| 1 | "an e2e test covers the walk-through against the design's locks" | The locks are asserted **inside the existing specs' sessions**, not in a walk-through file of their own | The sign-in throttle is **ten an hour from one IP** and the whole suite runs on one machine. A separate file signs in again, the suite crosses the limit, and the run fails with a 429 **for a reason that has nothing to do with the code under test**. The locks are about what the surface looks like, so they belong on a surface that is already open. |
+| 2 | "the second Save is refused inline with the upgrade copy" | The refusal line renders **whenever the allowance is spent**, not only after a press | The button is disabled, so there is no press and no refusal to render. The design's own way out of a disabled button is a tooltip, and a tooltip is unreachable by keyboard and invisible to touch. The wall has to state itself. |
+| 3 | "the design's locks" | The upgrade link points at **`/pricing`**, not the design's `/settings/plan` | **Recorded as a finding, not silently changed.** The design names `/settings/plan`; the implementation uses `/pricing`. Both routes exist; the design's own sentence for the quota-exceeded state and the `component.button.ghost` paragraph disagree with each other about the target. **Named follow-up.** |
+
+## Not in this item
+
+- **`FakeRevalidationAdapter`'s state bug** — found, **not fixed**, named follow-up.
+- **The `/settings/plan` vs `/pricing` mismatch** — found, named follow-up.
+- **The bottom bar's `<a>` is not the rail's `<Link>`** — a pre-existing inconsistency,
+  recorded in the review report, not fixed here.
+
+## Verification
+
+| Gate | Command | Result |
+|---|---|---|
+| Backend tests | `make test-backend` | 6866 passed |
+| Frontend tests | `make test-web` | 2276 passed (131 files) |
+| Backend lint | `make lint-backend` | clean |
+| Import lint | `make lint-imports` | **19 kept, 0 broken** |
+| Frontend lint | `make lint-web` | clean |
+| Coverage | `make coverage-backend` | **98.56%** overall (gate 80%), **`domain/` 100%** |
+| End-to-end | `make test-e2e` | 6 passed |
+| Contract | `make openapi client` + the contract tests | **zero drift** on regeneration |
+
+---
+*Plan awaiting approval at checkpoint 1 of 1. Execution follows.*

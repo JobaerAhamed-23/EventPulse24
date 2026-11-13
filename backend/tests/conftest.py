@@ -12,10 +12,65 @@ from django.core.management import call_command
 from django.db import connections
 from django.test.utils import setup_databases, teardown_databases
 
+from adapters.throttle.memory import InMemoryThrottleAdapter
 from shared.db import CATALOG, PERSONAL
 from tests.fixture_ics_server import FixtureIcsServer
 
 PROJECT_ROLES = ("ep_owner", "ep_catalog", "ep_personal")
+
+#: The clock every test's throttle starts at. A fixed instant, so a test that pins the
+#: window boundary does not depend on when the suite ran.
+THROTTLE_CLOCK = 1_000_000.0
+
+#: The modules that resolve the throttle port by name. **The port is reached through two
+#: of them**, and both have to be patched: the auth limits are counted by
+#: `apps.identity.services.throttle`, and the save cap by
+#: `apps.personalization.services.save_cap`. Patching one and not the other would leave a
+#: gate reading the shared counter while the test believed it had isolated it.
+THROTTLE_CONSUMERS = (
+    "apps.identity.services.throttle",
+    "apps.personalization.services.save_cap",
+)
+
+
+@pytest.fixture(autouse=True)
+def throttle_adapter(monkeypatch):
+    """One in-memory throttle adapter per test, with a clock the test can move.
+
+    **Every test starts from a full allowance.** The counters the *registry* builds are
+    shared — that is what makes the Free save cap a cap rather than a decoration, and the
+    same is true of the sign-in limits. So without this fixture a test would spend its
+    allowance on the tests that ran before it, and the tenth sign-in in a session would be
+    refused with a 429 for no reason the test could see. **Isolation has to mean something
+    once the gate actually works.**
+
+    The adapter is built **with** a clock, so it owns a store of its own and cannot write
+    into the shared one the registry uses. The clock is injected, so a test pins the
+    window boundary exactly instead of sleeping.
+    """
+    clock = {"now": THROTTLE_CLOCK}
+    adapter = InMemoryThrottleAdapter(now=lambda: clock["now"])
+    for module_path in THROTTLE_CONSUMERS:
+        _patch_throttle_port(monkeypatch, module_path, adapter)
+    adapter.test_clock = clock  # type: ignore[attr-defined]
+    return adapter
+
+
+def _patch_throttle_port(monkeypatch, module_path: str, adapter) -> None:
+    """Point one module's `get_throttle_port` at `adapter`.
+
+    **The module is resolved through `sys.modules`, not through a dotted path.** For
+    `apps.identity.services.throttle`, a dotted path would reach the *package's*
+    attribute — and `apps.identity.services` imports `is_throttled` into its `__init__`,
+    so the name on the package is the function, not the module. Only `sys.modules` holds
+    the module object itself.
+    """
+    import importlib
+    import sys
+
+    if module_path not in sys.modules:
+        importlib.import_module(module_path)
+    monkeypatch.setattr(sys.modules[module_path], "get_throttle_port", lambda: adapter)
 
 
 @pytest.fixture

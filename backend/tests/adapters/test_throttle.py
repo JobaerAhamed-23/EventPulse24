@@ -28,7 +28,11 @@ are why it does not any more.
 
 import pytest
 
-from adapters.throttle.memory import InMemoryThrottleAdapter
+from adapters.throttle.memory import (
+    InMemoryThrottleAdapter,
+    InMemoryThrottleStore,
+    reset_default_store,
+)
 from adapters.throttle.redis import KEY_PREFIX, RedisThrottleAdapter
 
 #: A window long enough to walk through without arithmetic drifting.
@@ -425,3 +429,75 @@ def test_the_two_adapters_agree_about_reset(clock):
             memory.peek(key, window_seconds=WINDOW).used
             == real.peek(key, window_seconds=WINDOW).used
         ), f"the adapters disagree about `reset` for {key}"
+
+
+# ── The shared store: the fake's Redis ───────────────────────────────────────────
+#
+# The counters have to survive between adapter instances, because the Redis adapter's
+# counters survive between requests — Redis is a server outside the process, and the fake
+# stands in for it. They used not to: every adapter got a brand-new counter dict, so the
+# window always read empty and **the throttle did nothing at all**. The Free account's
+# one-save-a-day cap was granted on every save, and the quota read `0 of 1` after one.
+
+
+def test_two_adapters_without_a_clock_share_their_counters():
+    """**The counters live in the store, not in the adapter.**
+
+    This is the whole regression: two adapters built the way the registry builds them
+    must see the same window, or the gate is inert between requests.
+    """
+    first = InMemoryThrottleAdapter()
+    second = InMemoryThrottleAdapter()
+
+    assert first.check("shared", limit=LIMIT, window_seconds=WINDOW).allowed is True
+    assert second.check("shared", limit=LIMIT, window_seconds=WINDOW).allowed is False
+
+
+def test_the_shared_store_survives_the_adapter_being_rebuilt():
+    """**The adapter is the client; the store is the server.**
+
+    Rebuilding the adapter is what the registry does on every call, and it must not lose
+    the count — the same way a new Redis client does not lose the key.
+    """
+    InMemoryThrottleAdapter().check("rebuilt", limit=LIMIT, window_seconds=WINDOW)
+
+    assert InMemoryThrottleAdapter().peek("rebuilt", window_seconds=WINDOW).used == 1
+
+
+def test_an_adapter_with_a_clock_keeps_its_own_counters():
+    """**A pinned clock and a shared store cannot be mixed.**
+
+    The clock dates the timestamps, and the timestamps are in the store — so an adapter
+    with a test's clock cannot write into a store another adapter reads with a different
+    clock. It gets a store of its own, which is what keeps the suite's isolation intact.
+    """
+    pinned = InMemoryThrottleAdapter(now=lambda: 0.0)
+
+    assert pinned.check("isolated", limit=LIMIT, window_seconds=WINDOW).allowed is True
+    assert pinned.check("isolated", limit=LIMIT, window_seconds=WINDOW).allowed is False
+    # **And the shared store knows nothing about it.**
+    assert InMemoryThrottleAdapter().peek("isolated", window_seconds=WINDOW).used == 0
+
+
+def test_an_explicit_store_is_used_verbatim():
+    """**A caller can hand the adapter a store of its own**, which is how a test that
+    wants the shared counters but a controlled clock can have both."""
+    store = InMemoryThrottleStore(now=lambda: 0.0)
+    adapter = InMemoryThrottleAdapter(store=store)
+
+    adapter.check("explicit", limit=LIMIT, window_seconds=WINDOW)
+
+    assert store.peek("explicit", window_seconds=WINDOW).used == 1
+
+
+def test_reset_default_store_clears_every_key():
+    """**The suite's isolation lever.** A test that wants a full allowance without
+    reaching for a key of its own can clear the lot first."""
+    first = InMemoryThrottleAdapter()
+    first.check("a", limit=LIMIT, window_seconds=WINDOW)
+    first.check("b", limit=LIMIT, window_seconds=WINDOW)
+
+    reset_default_store()
+
+    assert InMemoryThrottleAdapter().peek("a", window_seconds=WINDOW).used == 0
+    assert InMemoryThrottleAdapter().peek("b", window_seconds=WINDOW).used == 0

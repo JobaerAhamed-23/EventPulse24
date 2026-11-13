@@ -12,6 +12,10 @@
 
 # testing
 /coverage
+# Playwright's output: the run's results, traces and screenshots. They are a build
+# artefact, and `format:check` must not trip over the JSON a run leaves behind.
+test-results/
+playwright-report/
 
 # next.js
 /.next/

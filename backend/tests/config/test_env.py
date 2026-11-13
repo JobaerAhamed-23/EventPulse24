@@ -18,6 +18,7 @@ ENV_KEYS = [
     "SMTP_PORT",
     "ADAPTER_MODE",
     "SOURCE_FETCH",
+    "THROTTLE_ADAPTER",
     "SOURCE_FETCH_ALLOWED_PORTS",
     "SOURCE_FETCH_MAX_REDIRECTS",
     "SOURCE_FETCH_MAX_BYTES",
@@ -172,6 +173,30 @@ def test_source_fetch_allowed_ports_comma_separated(clean_env):
 )
 def test_source_fetch_invalid_values_rejected(clean_env, key, value):
     clean_env.setenv(key, value)
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_the_throttle_adapter_defaults_to_following_the_mode(clean_env):
+    assert Settings(_env_file=None).throttle_adapter is None  # follow ADAPTER_MODE
+
+
+@pytest.mark.parametrize("value", ["memory", "redis"])
+def test_the_throttle_adapter_accepts_the_two_stores(clean_env, value):
+    clean_env.setenv("THROTTLE_ADAPTER", value)
+
+    assert Settings().throttle_adapter == value
+
+
+def test_the_throttle_adapter_rejects_an_unknown_store(clean_env):
+    """A misspelled store must fail at boot, not fall back to a working one.
+
+    Silently falling back to the in-memory store would be the worst outcome: the stack
+    would boot, the counters would go back to being per-process, and the seed's reset
+    would stop reaching the API — with nothing in the logs to say why.
+    """
+    clean_env.setenv("THROTTLE_ADAPTER", "redisx")
 
     with pytest.raises(ValidationError):
         Settings()

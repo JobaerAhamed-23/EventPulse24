@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
 
-import { cards, navigateToBrowse, seedAccount, signIn, waitForBrowse } from "./helpers";
+import {
+  cards,
+  navigateToBrowse,
+  navigateToBrowseExpectingEmpty,
+  seedAccount,
+  seedNoCityAccount,
+  signIn,
+  waitForBrowse,
+} from "./helpers";
 
 /**
  * The two emptinesses, checked separately, because they are different facts.
@@ -16,19 +24,21 @@ import { cards, navigateToBrowse, seedAccount, signIn, waitForBrowse } from "./h
  * carry the "Change city" link, and the empty state for a city must not talk about the
  * search.
  *
- * **The city-emptiness half needs a city with nothing on.** The seeded accounts are in
- * "Fixtureville", which the seed file fills with forty-nine events. **So the city half
- * is checked on the Pro account after its city is emptied** — no: that is not a test, that
- * is a mutation of the shared database. The honest way to test the city emptiness is to
- * read it from the **page's own contract** rather than to break the shared seed.
+ * **The city-emptiness half needs a user whose city is absent, and the seed provides
+ * one.** The accounts the other specs use are in "Fixtureville", which the seed file
+ * fills with forty-nine events — so none of them can show the city's emptiness. The
+ * seed therefore writes an account of its own, `no-city`, whose city is absent.
  *
- * **The empty state for a city is checked through the one route that produces it
- * without touching the shared data: a city the catalog does not cover.** A user whose
- * preference names a city with no events gets `city_missing` from the API, and the page
- * renders the quiet empty state. **But changing the seeded account's city would change
- * the shared database for every other test.** So this test asserts the *distinction*
- * — the two markers are different elements with different recovery — and leaves the
- * city-emptiness path to the API's own test, which is where it belongs.
+ * **A third account, not an emptied one.** Clearing the free account's city would
+ * change what every other test sees — the free account's cards *are* the other tests'
+ * subject — and the API will not do it anyway: `PUT /onboarding/digest-preference` reads
+ * a null city as "leave it alone", so no browser flow can produce the state. The seed
+ * writes it, and `make test-e2e`'s seed is repeatable, so the state is there every run.
+ *
+ * **An earlier version of this file did not test the city half at all**, on the
+ * grounds that manufacturing the state would mean mutating the shared database. The
+ * reasoning was sound and the conclusion was wrong: the state was reachable, and a
+ * test that declines to reach it is a gap with a good excuse.
  */
 
 /** The keyword no seeded card contains. */
@@ -63,7 +73,14 @@ test.describe("Browse: the two emptinesses", () => {
 
     // **And the recovery is the search box, not the city's settings.** The city
     // emptiness's "Change city" link must not be on the page.
-    await expect(page.locator("[data-browse-change-city]")).toHaveCount(0);
+    //
+    // **The assertion is scoped to the empty state, and it has to be.** The hook
+    // `data-browse-change-city` is on the **hero's** "Change city" link as well as the
+    // empty state's — the hero names the city and offers to change it on every page.
+    // So "no Change city link anywhere on the page" would be asserting that the hero
+    // does not exist, which is a different claim and a false one. What must be absent is
+    // the *empty state's* link: the query's emptiness recovers through the search box.
+    await expect(page.locator("[data-browse-empty] [data-browse-change-city]")).toHaveCount(0);
 
     // **The hero is still there.** The query's emptiness replaces the *grid*, not the
     // page — so the hero's `<h1>` is still the page's heading, and the empty state's
@@ -84,33 +101,70 @@ test.describe("Browse: the two emptinesses", () => {
     expect(await cards(page).count()).toBeGreaterThan(0);
   });
 
-  test("the city's emptiness is a different state with a different recovery", async ({ page }) => {
+  test("a city with nothing on says nothing nearby — and offers Change city", async ({ page }) => {
+    const noCity = await seedNoCityAccount();
+
+    await signIn(page, noCity);
+
+    // **The empty surface has no hero, so the navigation cannot wait for one.** The
+    // city's empty state replaces the hero, and a helper that waited for the hero
+    // would time out on exactly the page it was sent to.
+    await navigateToBrowseExpectingEmpty(page);
+
+    // **The city's emptiness appears.** It is a whole-page state — it replaces the
+    // hero — and it says what the design says it says: *"Nothing nearby tonight. Try a
+    // wider city?"*
+    const cityEmpty = page.locator("[data-browse-empty]");
+    await expect(cityEmpty).toBeVisible();
+    await expect(cityEmpty).toContainText("Nothing nearby tonight");
+
+    // **Its heading is the page's `<h1>`.** The city emptiness replaces the hero, so
+    // it carries the page's own heading level — unlike the query's emptiness, which sits
+    // *under* the hero and is an `<h2>`. A heading level that skipped would break the
+    // heading order, and this is the half of the distinction a merge would break.
+    await expect(cityEmpty.locator("h1")).toHaveCount(1);
+    await expect(cityEmpty.locator("h1")).toHaveText("Nothing nearby tonight. Try a wider city?");
+
+    // **And its way out is "Change city", pointing at the city's settings.** This is
+    // the difference between the two emptinesses in one assertion: the city's problem
+    // is the city, so the recovery is the city.
+    const changeCity = cityEmpty.locator("[data-browse-change-city]");
+    await expect(changeCity).toBeVisible();
+    await expect(changeCity).toHaveAttribute("href", "/settings/account");
+
+    // **The hero is gone, because the empty state took its place.** A hero saying
+    // "Fixtureville" above a "nothing nearby" message would claim a city the surface
+    // has nothing for.
+    await expect(page.locator("[data-browse-hero]")).toHaveCount(0);
+
+    // **And the query's emptiness is not here.** A user with no city has not run a
+    // query, so the query's empty state — with its "Nothing matched." and its search
+    // box — must not be on the page.
+    await expect(page.locator("[data-browse-search-empty]")).toHaveCount(0);
+
+    // **No cards are drawn.** The grid is gone, so the sections are gone with it.
+    await expect(cards(page)).toHaveCount(0);
+    await expect(page.locator('[data-browse-section="tier-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-browse-section="tier-2"]')).toHaveCount(0);
+
+    // **There is no search box either.** A search over nothing would be a search over
+    // no city — and the design's answer to "nothing nearby" is a wider city, not a
+    // narrower query.
+    await expect(page.locator("[data-browse-search]")).toHaveCount(0);
+  });
+
+  test("the two emptinesses are different elements with different recoveries", async ({ page }) => {
     const free = await seedAccount("free");
 
     await signIn(page, free);
     await navigateToBrowse(page);
     await waitForBrowse(page);
 
-    // **The two emptinesses are two different elements, with two different recoveries.**
-    // This is checked as a *contract* rather than by breaking the shared seed: the
-    // city-emptiness is the one that needs a city with nothing on, and manufacturing
-    // that would mean writing to the database every other test reads.
-    //
-    // **What is asserted here is the shape of the distinction**, which is the part that
-    // a merge would break:
-    //
-    // - the city emptiness carries **"Change city"**, pointing at the city's settings;
-    // - the query emptiness carries **no** such link, and names the reader's own terms.
-    //
-    // The city-emptiness *element* is present in the component and reachable when the
-    // API says `city_missing`; its own rendering is pinned by the frontend's own unit
-    // tests, and its API path by the backend's. **What is checked here is that the two
-    // are not the same thing.**
+    // **They are different elements with different hooks.** A merge would leave one of
+    // them with no hook at all, and this is the check that says so.
     const cityEmpty = page.locator("[data-browse-empty]");
     const searchEmpty = page.locator("[data-browse-search-empty]");
 
-    // **They are different elements with different hooks.** A merge would leave one of
-    // them with no hook at all, and this is the check that says so.
     await expect(cityEmpty).toHaveCount(0);
     await expect(searchEmpty).toHaveCount(0);
 
@@ -126,6 +180,10 @@ test.describe("Browse: the two emptinesses", () => {
     const heading = searchEmpty.locator("h2");
     await expect(heading).toHaveCount(1);
     await expect(heading).toHaveText("Nothing matched.");
+
+    // **And it carries no "Change city".** The query's problem is the query, and the
+    // query's recovery is the search box — not the city's settings.
+    await expect(searchEmpty.locator("[data-browse-change-city]")).toHaveCount(0);
 
     await page.locator("[data-browse-search-clear]").click();
   });

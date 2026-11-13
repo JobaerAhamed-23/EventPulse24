@@ -27,6 +27,27 @@ afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
 });
 
+/**
+ * **Removes the origin, the way an unconfigured deployment has it.**
+ *
+ * **Why not `vi.stubEnv("PUBLIC_SITE_URL", undefined)`.** That reads as the obvious way
+ * to say "unset", and it works — the *first* time. It is not repeatable: once
+ * `vi.unstubAllEnvs()` has run, a second `stubEnv(name, undefined)` is **silently
+ * ignored**, and the variable keeps the value it had before. So `PUBLIC_SITE_URL` —
+ * which `.env` sets, and which `make` exports into the shell — survived into the next
+ * test, and the "unset" case quietly became the "configured" case.
+ *
+ * **The failure was order-dependent, which is what made it look like a product bug.**
+ * Run alone, the test passed; run after its sibling, it failed. A test that only fails
+ * in company is a test that is really testing the company it keeps.
+ *
+ * **So the key is deleted outright.** `delete` is unambiguous, repeatable, and does not
+ * depend on a stub registry's memory of what it did last time.
+ */
+function unsetOrigin(): void {
+  delete process.env.PUBLIC_SITE_URL;
+}
+
 describe("siteUrl", () => {
   it("reads the configured origin", () => {
     vi.stubEnv("PUBLIC_SITE_URL", "https://eventpulse24.test");
@@ -35,7 +56,7 @@ describe("siteUrl", () => {
   });
 
   it("falls back to the local origin in development", () => {
-    vi.stubEnv("PUBLIC_SITE_URL", undefined);
+    unsetOrigin();
     vi.stubEnv("NODE_ENV", "development");
 
     expect(siteUrl()?.href).toBe("http://127.0.0.1:3000/");
@@ -45,7 +66,7 @@ describe("siteUrl", () => {
     // **An unset origin is a deployment mistake, and it says so.** Next emits its own
     // warning and falls back to `localhost`; returning `undefined` lets that happen
     // loudly rather than shipping a card that points at a loopback address.
-    vi.stubEnv("PUBLIC_SITE_URL", undefined);
+    unsetOrigin();
     vi.stubEnv("NODE_ENV", "production");
 
     expect(siteUrl()).toBeUndefined();

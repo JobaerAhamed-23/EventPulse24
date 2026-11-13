@@ -62,6 +62,23 @@ export function quotaNote(quota: {
   const cap = Math.max(0, quota.cap);
   const saves = cap === 1 ? "save" : "saves";
   const head = `Free plan: ${used} of ${cap} ${saves} used today`;
+
+  // **A zero reset means there is no open window, so there is no countdown to say.**
+  //
+  // The port's contract is explicit: `resets_in_seconds=0` means "nothing is spent in
+  // the window that is open now" — the window never opened, or it has closed. **The
+  // allowance's window is 24 hours, and it starts with the first save.** So before the
+  // reader has saved anything, there is no window to count down to.
+  //
+  // **This was a lie the reader could see.** The note said *"resets in 0s"*, which
+  // announces a countdown that is already over — as though the allowance were resetting
+  // this instant. It was the first thing on the surface, above the fold, on every first
+  // visit by every Free account. **"Full" is the true statement**, and it is the one the
+  // reader needs: the allowance is there to be spent, not one second from returning.
+  if (quota.resets_in_seconds <= 0) {
+    return { text: `${head} · allowance full`, isPro: false };
+  }
+
   return { text: `${head} · resets in ${resetPhrase(quota.resets_in_seconds)}`, isPro: false };
 }
 

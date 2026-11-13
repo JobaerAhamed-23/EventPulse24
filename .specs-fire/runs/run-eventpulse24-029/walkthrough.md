@@ -1691,3 +1691,362 @@ probably reach for an `<a aria-disabled="true">`, which still navigates.
 
 **The bottom bar's `<a>` is not the rail's `<Link>`, and it was not before this item
 either.** That inconsistency is recorded in the review report rather than fixed here.
+
+---
+
+# Implementation Walkthrough: The Browser Walk-Through
+
+**Work item:** `e2e-proof-and-contract-tests` — *End-to-End Proof — Seeded Data, a Real Browser, and an Honest Report*
+**Mode:** `confirm` — 1 checkpoint
+**Completed:** 2026-11-12
+
+## Summary
+
+**The brief said this item's honesty is the deliverable, and a walk-through that reports
+everything fine is worth nothing if it did not look hard. It looked hard. Nine findings,
+three of them real defects in the surface that every other surface in this project had
+also shipped.**
+
+| # | Finding | Fixed here? |
+|---|---|---|
+| 1 | The throttle fake was inert, so the Free save cap was **never enforced** in the e2e suite | **yes** |
+| 2 | The seed cleared the **seed process's** allowance, not the API's | **yes** |
+| 3 | The sign-in throttle blocked the **whole suite** from one IP | **yes** |
+| 4 | The client **never re-read the allowance** after a save — the surface offered a press the server would refuse | **yes** |
+| 5 | A Free user who had spent their allowance had **no reachable Upgrade link** | **yes** |
+| 6 | "**resets in 0s**" — above the fold, on every Free account's first visit | **yes** |
+| 7 | `site-url.test.ts` failed **only in company** — a Vitest stub bug | **yes** |
+| 8 | `FakeRevalidationAdapter`'s state bug | **no** — follow-up |
+| 9 | The upgrade link points at `/pricing`; the design names `/settings/plan` | **no** — follow-up |
+
+**Findings 4, 5 and 6 are the product's.** The other six are the *harness* — the suite
+that was supposed to catch those three had been incapable of catching them, and finding 1
+is the reason: **the Free save cap was never actually enforced in the e2e suite at all.**
+
+## What was walked, and how
+
+**A real browser, against the real stack, against seeded data.** Chromium at 1440×1000 —
+the desktop size the design's locks are stated for, since the sidenav is `hidden` below
+`md` and a phone-sized run would not have the navigation the criteria name.
+
+| Step | What was done | What was seen |
+|---|---|---|
+| 1 | `make up`, then `make dev` | PostgreSQL on 5440, Redis on 6380, Mailpit on 1025; Django on 8000, Next on 3000 |
+| 2 | `make seed-browse-for-test` | *"Seeded 0 event(s) (49 already there) in Fixtureville"* — the seed is repeatable |
+| 3 | Signed in as `free@browse.example.test` through the real form | The session took |
+| 4 | Clicked Browse in the **sidenav** — not the URL | `/browse` loaded |
+| 5 | Read the surface, top to bottom | **"resets in 0s"** — finding 6 |
+| 6 | Probed the rendered text for all seventeen forbidden phrases | **Zero hits** |
+| 7 | Counted the stripe classes on every card | Exactly two: amber and slate |
+| 8 | Counted the must-know cards | One |
+| 9 | Pressed Save on the first card | "Saved ✓", and the hero's note moved to "1 of 1 save used today · resets in 24h" |
+| 10 | Pressed Save on a **second** card | The wall was already up; the button read "1 of 1 save used today" and was disabled |
+| 11 | Looked for a way out of the wall | **None** — finding 5 |
+| 12 | Signed in as `pro@browse.example.test` | "Pro plan · no save limit"; five saves, five landings |
+| 13 | Signed in as `no-city@browse.example.test` | "Nothing nearby tonight. Try a wider city?" with "Change city" |
+| 14 | Searched for a term matching nothing | "Nothing matched." with "Clear filters" |
+
+## The locks, one by one
+
+**The design's anti-pattern list is *"a lock, not advice"*, so each one needed a check
+that can fail.** All of them are now asserted in `e2e/browse.spec.ts`, inside a session
+the suite already opens.
+
+| Lock | Result | How it was proven to be able to fail |
+|---|---|---|
+| **No filter chip rail** (A-11) | **pass** | A rail with "This week" / "Weekend" buttons was injected → the check failed |
+| **No discovery stripe** | **pass** — only `bg-accent-slate` and `bg-accent-amber` | — |
+| **≤2 stripe colours** | **pass** — exactly two | — |
+| **≤1 must-know card** | **pass** — one | — |
+| **No count badges** | **pass** | A `<span class="rounded-full …">7</span>` on every card → the check failed, catching all 25 |
+| **No social proof** | **pass** — 0 hits on 4 phrases | "234 attending · sign up for more cities" injected → the check failed |
+| **No Sign-up CTA** (A-12) | **pass** — 0 hits on 4 phrases | as above |
+| **No SEO footer** (A-12) | **pass** — 0 hits on 4 phrases | — |
+| **No upsell carousel** (A-12) | **pass** — no upsell region, and **no horizontally scrolling element** on the page | An upsell carousel injected → the check failed |
+| **Two tiers** | **pass** — "3 worth your attention today" holds 3, "More this week" holds the rest | — |
+| **The tier head agrees with its cards** | **pass** | — |
+| **One Save button per card, a real `<button>`** | **pass** | — |
+
+### Two of the checks had to be rewritten after they were caught being wrong
+
+**This is the part worth reading, because both failures were the checks' fault and
+neither was the product's.**
+
+**The chip-rail check searched for words, and failed on the design's own copy.** "this
+week", "weekend" and "tonight" are all in the design — "More this week" is a section
+head, "This weekend" is a card's tag, "Hackathon Weekend" is an event's title, and
+`tag:tonight` is the grammar hint. **A chip rail is a row of filter controls, so the
+check has to count controls.** Looking for the words the design names would flag the
+design's own copy, and a check that fails on the product being correct is a check that
+gets disabled.
+
+**The count-badge check matched a class name, and found 72.** Every card's source badge
+(`component.indicator.confidence` row) and its state badge. **Those are the design's own
+vocabulary** — `component.card.pulse.digest`'s anatomy includes them, and Amendment A-22
+puts the state badge in its own row. Banning them would have been banning the design.
+
+Rewritten to count badges by what they *are*. **That version then failed to catch a
+badge it should have caught:** an injected `<span class="rounded-full …">7</span>` has no
+"badge" in its class name, and the class-based selector walked right past it.
+
+> **A class name is a naming convention, not a contract.** The count badge the design
+> forbids is not obliged to call itself one. The third version counts by shape — a bare
+> number, rendered as a small rounded chip — and catches all 25.
+
+### And `body.textContent` is not the page's text
+
+**The first text probe returned a 24,820-character string, of which only 8,163 characters
+were the page.** The rest was Next.js's inline RSC payload — the server's copy of the
+page, as a JSON string — and the shell's closed `<dialog>` menus.
+
+A text check must read the **rendered** text nodes: skipping `SCRIPT` and `STYLE`, and
+skipping any element that is not laid out (`offsetParent === null`). That helper is
+`renderedText()` in `e2e/helpers.ts`.
+
+## What did not pass, and what happened to it
+
+### Fixed in this item
+
+**Finding 4 — the client never re-read the allowance.** The hero's note and every other
+card's Save button were rendered from the page-load payload and never moved. One save
+spends the Free allowance, so the surface was offering a press the server was about to
+refuse.
+
+**The rule the fix obeys: the client asks; it does not compute.** The number is the
+server's, from the same endpoint as the first paint. A client that added one to `used`
+would show a wall the server is not enforcing; a client that counted its own presses
+would show one for a save the server *refused*.
+
+| What the server said | What the client shows |
+|---|---|
+| `used: 1` | "1 of 1 save used today" |
+| `used: 0` — even though a save landed | "0 of 1 save used today" |
+| The refresh **fails** | The last known number |
+| The save was **refused** (409) | Unchanged — a refusal is not a save |
+
+**Finding 5 — the wall was a dead end.** The design says the spent allowance renders every
+Save button muted and disabled with a `title="Upgrade for unlimited saves"` tooltip.
+**A tooltip is unreachable by keyboard and invisible to touch.** And the inline refusal
+line only renders *after* a refusal — which a disabled button never produces, because a
+disabled button fires no handler.
+
+So for exactly the readers who need the upgrade, the wall offered no way out.
+
+**The fix adds the missing sign; it does not change the gate.** The button stays
+disabled. The refusal line renders whenever the allowance is spent, with the upgrade
+copy and a real link.
+
+**Finding 6 — "resets in 0s".** The port's contract: `resets_in_seconds=0` means nothing
+is spent in the window that is open now. The window is 24 hours and starts with the first
+save — so before the reader has saved anything there is no countdown to show.
+
+```
+BEFORE: Free plan: 0 of 1 save used today · resets in 0s
+AFTER:  Free plan: 0 of 1 save used today · allowance full
+AFTER A SAVE: Free plan: 1 of 1 save used today · resets in 24h
+```
+
+**"resets in 0s" announces a countdown that is already over**, on the first thing above
+the fold, on every Free account's first visit. And the fix must not swallow a real
+countdown — both halves are asserted.
+
+**Finding 7 — the test that only failed in company.** `vi.stubEnv(name, undefined)` works
+once and is **silently ignored** the second time, after `vi.unstubAllEnvs()` has run. The
+"unset" case quietly became the "configured" case. Run alone it passed; run after its
+sibling it failed. **The product was never wrong** — `lib/site-url.ts` is correct.
+
+### Named as follow-ups, with the reason
+
+**Finding 8 — `FakeRevalidationAdapter`'s state bug.** Found while reading the adapter for
+finding 1. **Not fixed because it is not on the Browse path**, and fixing it would have
+meant changing a shared test double that other specs depend on, with no way to prove the
+change safe inside this item's budget. **Named, and in the follow-up list.**
+
+**Finding 9 — the upgrade link points at `/pricing`; the design names `/settings/plan`.**
+The design contradicts itself here: the quota-exceeded line names `/settings/plan`, and
+the `component.button.ghost` paragraph in the same section names it too, but the
+implementation ships `/pricing`. **Both routes exist.** Changing it is a one-line edit,
+but it is a *product decision about where the upgrade lives*, not a test fix, and the
+design's own text does not settle which surface is canonical. **Named rather than
+silently changed.**
+
+## What the seed is
+
+`backend/config/browse_seed.json` → `manage.py seed_browse_catalog`. Forty-nine events
+across the seven-day window in "Fixtureville" — enough to overflow the 24-card soft cap
+and prove the chunk loader — with varied why-tags so `tag:` filtering has something to
+constrain. Four accounts: `free`, `free-saver`, `pro`, `no-city`.
+
+**The three accounts are three different subjects**, and each exists because of a state
+no browser flow can produce:
+
+- **`free`** — the Free account the emptiness tests use.
+- **`free-saver`** — a second Free account, because the save allowance is **one save per
+  user per day in a window that outlives the test**. Two tests that each need to save
+  once cannot share an account: the first spends the allowance and the second finds the
+  wall already up, and fails for a reason that has nothing to do with the code.
+- **`no-city`** — an account whose city is absent. The API reads a null city as "leave it
+  alone", so no browser flow can produce the state's emptiness. The seed writes it.
+- **`pro`** — a live subscription, so there is no cap.
+
+**Repeatable, and it says so.** A second run reports *"49 already there"* and re-fits the
+same coverage. **The next person can see what I saw.**
+
+## Files Changed
+
+| File | Change |
+|---|---|
+| `components/browse/browse-quota-provider.tsx` | **new** — the live allowance, and `refresh()` |
+| `components/browse/browse-quota-note.tsx` | **new** — the hero's note, as an island |
+| `components/browse/browse-hero.tsx` | the note is now `<BrowseQuotaNote>` |
+| `components/browse/browse-save.tsx` | reads the live allowance; refreshes after a save; **the refusal line renders whenever the allowance is spent** |
+| `app/browse/page.tsx` | wraps the surface in `<BrowseQuotaProvider>` |
+| `lib/browse-labels.ts` | **"resets in 0s" → "allowance full"** |
+| `lib/site-url.test.ts` | hermetic |
+| `.gitignore`, `.prettierignore` | `test-results/` and `playwright-report/` were never ignored |
+| `tests/browse-quota-live.test.tsx` | **new, 7 tests** |
+| `tests/browse-save.test.tsx` | **3 new tests** |
+| `tests/browse-labels.test.ts` | **2 new tests** |
+| `e2e/browse.spec.ts` | the design's lock block |
+| `e2e/browse-quota.spec.ts` | the allowance wording |
+| `e2e/helpers.ts` | `renderedText()` |
+| `tests/personalization/test_saved_events_api.py` | the listing tests use a Pro account — **they were passing for the wrong reason** |
+
+## How to Verify
+
+1. `export PATH="$HOME/.nvm/versions/node/v24.22.1/bin:$PATH"` — Node 24 is required.
+2. `make up`, then `make dev`.
+3. `make seed-browse-for-test` → *"49 already there"*.
+4. `make test-e2e` → **6 passed**.
+5. `make test-backend` → **6867 passed**; `make test-web` → **2276 passed**.
+6. `make lint-backend` → **19 kept, 0 broken**; `make lint-web` → clean.
+7. `make coverage-backend` → **98.60%** overall, **`domain/` 100%**.
+8. **In a browser**: sign in as `free@browse.example.test`, open Browse from the sidenav,
+   and read the note under the hero. It says **"allowance full"** — not "resets in 0s".
+9. Press Save on one card, then look at another card's button. It reads **"1 of 1 save
+   used today"**, it is **disabled**, and beneath it the upgrade line and its link are
+   **there without pressing anything**.
+
+## Test Coverage
+
+**Twelve tests added across four files, zero removed.**
+
+| File | Before | After | What the new ones cover |
+|---|---|---|---|
+| `tests/browse-quota-live.test.tsx` | 0 | **7** | the live allowance: the server's number after a save; the wall on the *other* cards; the server's number over the client's arithmetic; a refusal moves nothing; a failed refresh keeps the last known number; Pro spends nothing |
+| `tests/browse-save.test.tsx` | — | **+3** | the inline upgrade copy with a `/pricing` link and no dialog; no cap line while the allowance is open; none for Pro |
+| `tests/browse-labels.test.ts` | — | **+2** | no countdown without an open window; a real one with it |
+| `e2e/browse.spec.ts` | — | **+1 block** | the design's locks, in the existing session |
+
+**Mutation-proven.** Six distinct mutations, each proven to fire: the chip rail, the
+count badge, the social proof, the upsell carousel, `refresh()` disabled, and the quota
+wording restored.
+
+## Ready for Review
+
+**Yes, with two named follow-ups and one caveat.**
+
+**The caveat a reviewer should read first:** finding 1 means the quota coverage this item
+produced is the *first* real coverage of the Free save cap in the e2e suite. Before this
+item, that suite **could not have failed on the cap**. Treat the quota e2e spec as new
+rather than as confirmation of an existing guarantee.
+
+**And the thing to check first in the diff** is finding 5. The design says the spent
+allowance disables the button and offers a `title` tooltip; the implementation now also
+states the wall inline with a reachable link. **That is a deliberate reading of a design
+sentence that contradicts itself**, and a reviewer who disagrees with the reading has
+one line to change.
+
+## Developer Notes
+
+**Read the count-badge check before you touch the card.** It is the only check in this
+item that has to look at the product's *shape* rather than its markup, because the card's
+own badges are legitimate. If you add a badge to a card, that check will see it — and it
+will only complain if the badge is **a bare number**.
+
+**And read `renderedText` before you write a text check.** `body.textContent` is a trap
+in this stack: it is a quarter machine-readable payload. A phrase search over it finds
+the server's copy of the page, not the reader's.
+
+**The `browse-labels.ts` change is three lines and it is the whole of finding 6.** The
+port's contract — `resets_in_seconds=0` means "no open window" — was right, and the
+*presentation* was wrong. **The bug was in the sentence, not in the counter.**
+
+---
+
+# What the Code Review Changed After This Walk-Through
+
+**This section is here because the walk-through above was written before the review, and a
+walk-through that does not survive its own review is not finished.**
+
+The review read this item's diff as carefully as the item read the product. It found
+three things in the item's own work — none of them in the product's behaviour, all of them
+in the item's *claims about itself*. They are recorded here because **a fix that is applied
+without being written down is a fix the next reader will re-introduce.**
+
+## The thing worth saying plainly
+
+**The item wrote a lock, then made it false, then did not notice.** The structural rules in
+`frontend/tests/browse-boundary.test.ts` include a rule that the Browse surface is a
+server component except for exactly two client islands. The item added two more client
+islands — the quota provider and the quota note — and **did not update the rule.** The
+rule had no enforcement over the new files either, because the files were not in the
+scanned list.
+
+That is the item's own failure mode reproduced inside the item: **a lock with no
+enforcement is a sentence in a document.** The item's whole thesis was that the design's
+locks are only worth what enforces them — and it wrote a lock, broke it, and left it
+broken.
+
+**It surfaced only because the files were added to the scanned list.** Adding them made
+the file-scope rule start covering them, and the file-scope rule then failed — because the
+neighbouring rule was stale. **The fix for a gap found the gap next to it.** Nobody had
+looked at that rule since the first two islands shipped.
+
+**Fixed:** the scanned list now includes both new files, and the client-module rule
+asserts the four islands that actually exist. **Mutation-verified** — giving
+`browse-hero.tsx` a `"use client"` makes the assertion fail with five, and it was
+restored afterwards.
+
+## The three fixes, and what each one was
+
+| What | Kind | Why it matters |
+|---|---|---|
+| The **four-islands** rule in `browse-boundary.test.ts` | CONFIRM — an assertion is a claim, not a format | The rule was stale; the suite was **failing** when the new files were added to the scan list |
+| The **provider's docstring** | AUTO-FIX — documentation only | It claimed the refresh "is a refetch of the whole payload… the reader should see the truth about both [cards]" while the code does `setCurrent(response.data.quota)`. **The code was right; the sentence was wrong.** It now says what the code does and why dropping the cards loses nothing |
+| The **`--reset-saves` unit test** | CONFIRM — it is a behaviour claim | The path was covered **only by Playwright**, which is not a CI backend gate. A reviewer running `make test-backend` alone was never exercising it. `seed_browse_catalog.py` was at 93% with lines 766-774 uncovered |
+
+**And one class of fix that turned out to be a defect in the *test*, not the code:** the
+`as unknown as typeof FREE_QUOTA` casts in `browse-quota-live.test.tsx`. `BrowseQuotaOut.cap`
+is `number | null`, so **the Pro shape is expressible without a cast** — a cast would have
+said "the Pro shape cannot be written down", which is false, and a reader who believed it
+would not trust the Pro test. The fixtures are now typed as the server's own
+`BrowseQuota`.
+
+## Two findings deliberately *not* written up as findings
+
+The review ruled out five candidates by reading the code rather than guessing, and
+recorded them as checked-and-clean rather than as silent omissions. Two are worth naming
+because they *look* like defects:
+
+- **The refusal path not refreshing the quota.** It does not need to: a refusal spends
+  nothing, so there is nothing to re-read. Refreshing there would ask the server a
+  question whose answer is known.
+- **`cap ?? capValue`.** The `??` is not a redundant fallback — `cap` is `null` for a Pro
+  account and that `null` is the point of the branch.
+
+## What this changes about the walk-through's own claims
+
+**Nothing about the product's behaviour.** The nine findings the walk-through reports are
+unchanged — they were found by walking the surface in a browser, and the review, which
+read the diff rather than the surface, found nothing the browser walk missed.
+
+**One thing about the item's own rigour.** The walk-through above says the quota e2e spec
+is "new rather than confirmation of an existing guarantee". That stands and is now
+stronger: the spec's *backend* path was under-covered too, and the review closed the gap
+the browser could not see.
+
+**And the review's own caveat, which the walk-through did not have:** a walk-through that
+reports everything fine is worthless if it did not look hard. **This item's walk-through
+found nine defects; its review of that walk-through found three more — in the item's own
+claims.** Both sets are now written down.

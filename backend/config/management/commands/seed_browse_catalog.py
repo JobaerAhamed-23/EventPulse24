@@ -1,4 +1,4 @@
-"""Seed the Browse surface's local catalog: a city, a week of events, and two accounts.
+"""Seed the Browse surface's local catalog: a city, a week of events, and four accounts.
 
 **The point of this command is reproducibility.** The Browse walk-through — the one that
 checks the surface against the design's own locks, in a real browser — is only worth
@@ -55,15 +55,44 @@ cancelled one and one is a postponed one, because those are the must-know stripe
 surface's one amber card — and a walk-through that has never seen one has not seen the
 surface.
 
-**The two accounts are the two halves of the save cap.** The Free user spends the one
-save a day and is refused the second; the Pro user has no cap at all. A walk-through
-that only tested one of them would have tested half the gate.
+**The Free and Pro accounts are the two halves of the save cap.** The Free user spends
+the one save a day and is refused the second; the Pro user has no cap at all. A
+walk-through that only tested one of them would have tested half the gate.
+
+**A third account has no city, and that is the city-emptiness's subject.** Browse has
+two emptinesses, and only one of them is reachable through the API. A user's city can
+never be *cleared*: `PUT /onboarding/digest-preference` reads a null city as "leave it
+alone", and `set_home_city(None)` — which does clear it — is on no browser path. So the
+seed writes the city itself, and the account's Browse shows the quiet empty state with
+"Change city". It is a **third** account rather than an emptied one, because clearing
+the Free account's city would change what every other test sees.
+
+**A fourth account is a second Free account, and the reason is the save allowance.** The
+allowance is one save per user per day, and it lives in a throttle window that outlives
+any single test. So two tests that each need to save once cannot share one account — the
+first test spends the allowance, and the second finds the wall already up, failing for a
+reason that has nothing to do with the code under test. **Separate accounts have
+separate allowances**, so each test spends its own.
 
 **The Free account's allowance is put back on every run.** The allowance is a throttle
 window in Redis, and it outlives the command — so a second run would find the quota
 already spent, the wall would be up before the walk-through had pressed anything, and
 the test that exercises the wall would fail for the wrong reason. The seed clears the
 window and **leaves the saved rows alone**: the allowance is the counter, not the saves.
+
+**The sign-in allowance is put back too, and for the same reason.** The sign-in limits
+are ten an hour per IP and five an hour per account, and the walk-through signs in
+several times — from one address, because it runs against one stack on one machine. So
+the seed clears the sign-in windows as well, and the reader of a seeded run starts with
+a full allowance. **The limits themselves are not touched**: ten sign-ins an hour are
+still ten, and the eleventh is still refused.
+
+**`--reset-saves` clears the saved rows too, and it is opt-in.** The default must not
+un-save a reader's events — the walk-through is *about* seeing a saved event. But a
+**test** run must start from the same state every time: a leftover row puts the Save
+button in the `saved` state, so the suite's *first* press takes the unsave branch and
+the button correctly goes back to "Save" — a failure that has nothing to do with the
+code under test. So the flag says "this is a test run" and the flag is what clears it.
 
 **The order of the writes is load-bearing, and it is not obvious.** The seed writes the
 events, then the **Event Fit** rows, and only then the accounts' city — and each of
@@ -85,6 +114,7 @@ had to be built before this command existed.
 """
 
 import json
+import os
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -93,6 +123,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.identity.services import ensure_account, record_subscription_started
+from apps.identity.services.throttle import reset_sign_in_throttle
 from apps.ingestion.event_fit.writes import backfill_event_fits
 from apps.ingestion.services.catalog_read import find_event_by_source_item, list_source_events
 from apps.ingestion.services.chip_matching import chip_keys_for
@@ -110,6 +141,7 @@ from apps.personalization.services.onboarding import (
     set_interests,
 )
 from apps.personalization.services.save_cap import reset_save_allowance
+from apps.personalization.services.saved_events import list_saved_events, unsave_event
 from domain.dedup import title_fingerprint
 from domain.errors import OnboardingAlreadyCompleteError
 from domain.lifecycle import EventStatus
@@ -142,6 +174,12 @@ SEED_TZ_CONFIDENCE = TZ_INFERENCE_CONFIDENCE_DIGEST
 #: FR-14 staleness bound has one TTL to reason about, and the Source Badge on every card
 #: is the same one.
 SEED_SOURCE_EVENT_PREFIX = "browse-seed:"
+
+#: The address the seeded run signs in from, and so the address the sign-in throttle's
+#: per-IP counter is keyed on. The frontend proxies to the API over loopback, so the API
+#: records the loopback address — the same one the `auth:sign_in:ip:` key names. The
+#: environment variable overrides it, for a stack reached on another address.
+SEED_CLIENT_IP = "127.0.0.1"
 
 #: The states an event may be seeded in. `superseded` is not among them: a superseded
 #: event can only be made by superseding a live one (`make_superseded_pair`), and a seed
@@ -198,7 +236,7 @@ def retirement_reason(entry: tuple[str, str]) -> str:
 
 
 class Command(BaseCommand):
-    help = "Seed the Browse surface's local catalog: a city, a week of events, two accounts."
+    help = "Seed the Browse surface's local catalog: a city, a week of events, four accounts."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -211,6 +249,15 @@ class Command(BaseCommand):
             "--list",
             action="store_true",
             help="Print what the file says — the city, the counts, the accounts — then exit.",
+        )
+        parser.add_argument(
+            "--reset-saves",
+            action="store_true",
+            help=(
+                "Clear the seeded accounts' saved events, so a test run starts from an "
+                "empty Pulse. The save ALLOWANCE is always reset; this flag also clears "
+                "the saved rows themselves."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -238,7 +285,8 @@ class Command(BaseCommand):
                 data, source=source, venues=venues, zone=zone, local_today=local_today, now=now
             )
             fitted = self._event_fits(now=now)
-            accounts = self._users(data, now=now)
+            accounts = self._users(data, now=now, reset_saves=options["reset_saves"])
+            self._reset_auth_throttle(data)
         except CommandError:
             raise
         except ValueError as exc:
@@ -605,8 +653,20 @@ class Command(BaseCommand):
 
     # --- the accounts ---------------------------------------------------------------------------
 
-    def _users(self, data: dict, *, now: datetime) -> list[str]:
-        """The accounts, each with a completed onboarding and a saved city."""
+    def _users(self, data: dict, *, now: datetime, reset_saves: bool = False) -> list[str]:
+        """The accounts, each with a completed onboarding and a saved city.
+
+        **The `no-city` account has no city, and that is what it is for.** Browse has two
+        emptinesses, and only one of them is reachable through the API: a user's city can
+        never be *cleared*, because `PUT /onboarding/digest-preference` reads a null city
+        as "leave it alone" and `set_home_city(None)` is not on any browser path. So the
+        seed writes the city directly — `city: null` in the file means "no city at all",
+        and the account's Browse shows the quiet empty state with "Change city".
+
+        **It is a third account, not an emptied one.** Clearing the free account's city
+        would change what every other test sees — the free account's cards *are* the
+        other tests' subject.
+        """
         city = data["city"]["name"]
         lines: list[str] = []
 
@@ -642,7 +702,7 @@ class Command(BaseCommand):
                 timezone_name=spec.get("timezone", data["city"]["tz"]),
                 actor=user_actor,
                 now=now,
-                city=city,
+                city=spec.get("city", city),
             )
 
             state = self._complete_onboarding(user_id=user_id, actor=user_actor, now=now)
@@ -654,10 +714,35 @@ class Command(BaseCommand):
             # exercises the wall would fail for the wrong reason. **A seed that could only
             # be run once would not be a seed.**
             #
-            # **The saved rows are untouched.** The allowance is the throttle's counter,
-            # not the `SavedEvent` rows: clearing the counter gives the account its one
-            # save back while leaving what it has saved where it is.
+            # **The saved rows are untouched by default.** The allowance is the throttle's
+            # counter, not the `SavedEvent` rows: clearing the counter gives the account
+            # its one save back while leaving what it has saved where it is. That is right
+            # for the walk-through — a seed that un-saved the account's events would
+            # change what the surface shows, and the walk-through is *about* seeing a
+            # saved event.
             reset_save_allowance(user_id=user_id)
+
+            # **A test run starts from an empty Pulse.** `--reset-saves` is the flag that
+            # says so, and it is **opt-in** precisely because the default must not un-save
+            # a reader's events. The end-to-end suite needs it: the Free test's *first*
+            # press has to be a save and not the unsave of a row a previous run left
+            # behind — a leftover row puts the button in the `saved` state, so the press
+            # takes the delete branch and the button correctly goes back to "Save". The
+            # test would then fail for a reason that has nothing to do with the code it
+            # is testing.
+            #
+            # **The saves are removed through the published service, not through the
+            # model.** AD-2's `models-personalization` contract says only
+            # `apps.personalization` may import `apps.personalization.models`, and this
+            # command lives in `config` — so a direct `SavedEvent.objects...delete()`
+            # would break that contract. Going through `unsave_event` is also *more*
+            # correct, not merely allowed: the service closes the conflict pairs the save
+            # took part in and removes the reminder plans and their pending sends with
+            # it. A row deleted behind the service's back would leave a held send
+            # pointing at an event that is gone.
+            if reset_saves:
+                cleared = self._clear_saved_events(user_id=user_id, now=now)
+                lines.append(f"  {spec['key']}: cleared {cleared} saved event(s)")
 
             verb = "created" if account.created else "already had"
             lines.append(
@@ -665,6 +750,54 @@ class Command(BaseCommand):
                 f"onboarding {state})"
             )
         return lines
+
+    def _clear_saved_events(self, *, user_id, now: datetime) -> int:
+        """Remove every saved event this account has, and say how many.
+
+        **Through the service, because the service is the rule.** `unsave_event` closes
+        the conflict pairs the save took part in and removes the reminder plans and their
+        pending sends with it. A row deleted behind the service's back would leave a held
+        send addressed to an event that is gone, and the delivery report would then trip
+        on a send nothing can release.
+
+        **The saves are listed through the service too**, for the same reason: the list is
+        the account's own, and it is the list the surface reads.
+        """
+        saved = list_saved_events(user_id=user_id)
+        for snapshot in saved:
+            unsave_event(
+                user_id=user_id,
+                event_id=snapshot.event_id,
+                actor=SEED_ACTOR,
+                now=now,
+            )
+        return len(saved)
+
+    def _reset_auth_throttle(self, data: dict) -> None:
+        """Give the sign-in allowance back, so a seeded run can sign in.
+
+        **The sign-in limits are ten an hour per IP and five an hour per account, and the
+        end-to-end suite signs in six times — from one IP, because the whole suite runs
+        against one stack on one machine.** So the suite spends the very allowance a
+        reader would spend, and a second run inside the hour finds the window already up:
+        the sign-in is refused with a 429 and the test fails for a reason that has nothing
+        to do with the code under test.
+
+        **This clears the counters, not the rules.** The limits are still ten and five, and
+        a reader who signs in ten times in an hour is still refused the eleventh. What
+        changes is that a *seeded* run starts from a full allowance instead of from
+        whatever the previous run left behind.
+
+        **The address cleared is the loopback the suite signs in from.** The API records
+        the caller's `REMOTE_ADDR`, and the frontend proxies to the API over loopback, so
+        the address the counter is keyed on is `127.0.0.1` — the same one the
+        `throttle:auth:sign_in:ip:127.0.0.1` key names. It is read from the environment
+        rather than hard-coded, so a stack reached on another address clears that one.
+        """
+        reset_sign_in_throttle(
+            ip_address=os.environ.get("E2E_CLIENT_IP", SEED_CLIENT_IP),
+            emails=[spec["email"] for spec in data["users"]],
+        )
 
     def _complete_onboarding(self, *, user_id, actor: Actor, now: datetime) -> str:
         """Finish the onboarding flow, so `/browse` is not a redirect to `/onboarding`.

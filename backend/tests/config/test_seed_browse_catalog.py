@@ -44,15 +44,39 @@ def _data():
 # --- the data file ---------------------------------------------------------------------------
 
 
-def test_the_data_file_names_a_city_a_source_and_two_accounts():
+def test_the_data_file_names_a_city_a_source_and_four_accounts():
+    """**Four accounts, and the extra two each earn their place.**
+
+    The `no-city` account is what the city's emptiness needs, and no browser flow can
+    produce that state — the API reads a null city as "leave it alone" and never clears
+    one — so the seed writes it. It is a **third** account rather than an emptied one:
+    emptying the Free account's city would change what every other test sees.
+
+    The `free-saver` account is a **second Free account**, and the reason is the save
+    allowance: it is one save per user per day, in a window that outlives a test, so
+    two tests that each save once cannot share one account.
+    """
     data = _data()
 
     assert data["city"]["name"]
     assert data["city"]["tz"]
     assert data["source"]["url"].startswith("https://")
     assert data["source"]["tos"]["decision"] == "approved"
-    assert len(data["users"]) == 2
+    assert len(data["users"]) == 4
     assert {user["plan"] for user in data["users"]} == {"free", "pro"}
+
+    # **The third account is the one with no city**, and it is named by its key — it is a
+    # Free account, so "the one Free account" would now be two.
+    no_city = [user for user in data["users"] if user["key"] == "no-city"]
+    assert len(no_city) == 1
+    assert no_city[0]["city"] is None
+
+    # **And the fourth is the second Free account**, which carries a city like every
+    # other account except the one above.
+    free_saver = [user for user in data["users"] if user["key"] == "free-saver"]
+    assert len(free_saver) == 1
+    assert free_saver[0]["plan"] == "free"
+    assert free_saver[0].get("city", "Fixtureville") == "Fixtureville"
 
 
 def test_the_data_file_has_more_events_than_one_page_holds():
@@ -599,6 +623,58 @@ def test_the_seed_puts_the_free_accounts_save_allowance_back(monkeypatch):
     check_save_allowed(user_id=free.pk)
 
 
+def test_the_seed_puts_the_sign_in_allowance_back(monkeypatch):
+    """**The sign-in limit is a throttle window too, and it outlives the seed.**
+
+    The sign-in limits are ten an hour per IP and five an hour per account, and the
+    end-to-end suite signs in six times — from one IP, because the whole suite runs
+    against one stack on one machine. So the suite spends the very allowance a reader
+    would spend, and a second run inside the hour finds the window already up: the
+    sign-in is refused with a 429 and the test fails for a reason that has nothing to do
+    with the code under test.
+
+    **The seed gives the allowance back**, so a seeded run starts from a full allowance
+    instead of from whatever the previous run left behind. **The limits are not
+    touched** — the last assertion below is the one that matters: after the reset, ten
+    sign-ins from one address are still allowed and the eleventh is still refused.
+    """
+    from adapters.throttle.memory import InMemoryThrottleAdapter
+    from apps.identity.services import throttle as throttle_service
+    from apps.identity.services.throttle import is_throttled
+    from shared.constants import AUTH_THROTTLE_SIGN_IN_IP
+
+    throttle = InMemoryThrottleAdapter()
+    monkeypatch.setattr(throttle_service, "get_throttle_port", lambda: throttle)
+
+    _seed()
+
+    # **Spend the allowance.** Ten sign-ins from one address fill the per-IP bucket.
+    for _ in range(AUTH_THROTTLE_SIGN_IN_IP):
+        is_throttled("sign_in", ip_address="127.0.0.1", normalised_email="free@browse.example.test")
+    assert (
+        is_throttled("sign_in", ip_address="127.0.0.1", normalised_email="other@example.com")
+        is True
+    )
+
+    # **The second run puts it back.**
+    _seed()
+
+    assert (
+        is_throttled("sign_in", ip_address="127.0.0.1", normalised_email="other@example.com")
+        is False
+    )
+
+    # **And the limit itself is unchanged.** Ten are still allowed; the eleventh is
+    # still refused. A reset that changed the rule would be the rate limit quietly
+    # becoming a suggestion.
+    for _ in range(AUTH_THROTTLE_SIGN_IN_IP):
+        is_throttled("sign_in", ip_address="127.0.0.1", normalised_email="free@browse.example.test")
+    assert (
+        is_throttled("sign_in", ip_address="127.0.0.1", normalised_email="other@example.com")
+        is True
+    )
+
+
 def test_the_seed_does_not_unsave_what_the_free_account_saved():
     """**The allowance is the throttle's counter, not the saved rows.**
 
@@ -634,6 +710,46 @@ def test_the_seed_does_not_unsave_what_the_free_account_saved():
             event_id=event_id,
         )
         .exists()
+    )
+
+
+def test_the_reset_saves_flag_clears_the_saved_rows():
+    """**The opt-in flag is the half that makes a test run repeatable.**
+
+    The default seed leaves the saved rows alone — the walk-through is *about* seeing a
+    saved event, and a seed that un-saved the account's events would change what the
+    surface shows. **A test suite needs the opposite**: a leftover row puts the Save
+    button in the `saved` state, so the suite's *first* press takes the unsave branch,
+    the button correctly goes back to "Save", and the test fails for a reason that has
+    nothing to do with the code under test.
+
+    So `--reset-saves` is the flag that says "this is a test run", and this test says
+    it does what it says: the saved row is gone afterwards.
+    """
+    from apps.identity.models import User
+    from apps.personalization.models import SavedEvent
+    from apps.personalization.services.browse_read import read_browse_page
+    from apps.personalization.services.saved_events import save_event
+    from shared.actor import Actor
+
+    _seed()
+
+    free = User.objects.using(PERSONAL).get(email="free@browse.example.test")
+    page = read_browse_page(user_id=free.pk, now=datetime.now(UTC))
+    event_id = page.cards[0].event_id
+
+    save_event(
+        user_id=free.pk,
+        event_id=event_id,
+        actor=Actor.user(free.pk),
+        now=datetime.now(UTC),
+    )
+    assert SavedEvent.objects.using(PERSONAL).filter(user_id=free.pk, event_id=event_id).exists()
+
+    call_command("seed_browse_catalog", reset_saves=True)
+
+    assert (
+        not SavedEvent.objects.using(PERSONAL).filter(user_id=free.pk, event_id=event_id).exists()
     )
 
 

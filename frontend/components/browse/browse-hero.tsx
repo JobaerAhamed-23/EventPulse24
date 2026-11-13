@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { eventCountLabel, quotaNote } from "@/lib/browse-labels";
+import { BrowseQuotaNote } from "@/components/browse/browse-quota-note";
+import { eventCountLabel } from "@/lib/browse-labels";
 import type { BrowseOut } from "@/lib/browse-read";
 
 /**
@@ -32,7 +33,6 @@ export type BrowseHeroProps = {
 
 export function BrowseHero({ browse }: BrowseHeroProps) {
   const city = browse.city;
-  const quota = quotaNote(browse.quota);
 
   return (
     <section aria-label={`Events in ${city}`} data-browse-hero>
@@ -110,13 +110,14 @@ export function BrowseHero({ browse }: BrowseHeroProps) {
         `resets_in_seconds`, so the note says "resets in 24h". The mockup's "resets 8:00
         AM" is a wall-clock claim from a persona, and it would be wrong for every user
         but that persona.
+
+        **It is an island, because the allowance moves while the reader is on the page.**
+        One save spends it, and the hero is a server component whose payload was true
+        when it was rendered. The note reads the live allowance from the provider, and
+        the provider asks the server again after a save — so the line says what the
+        server says *now*. See `browse-quota-note.tsx` for why only this one line moved.
       */}
-      <p
-        className="mt-4 [font-family:var(--type-family-mono)] text-ink-muted [font:var(--type-scale-meta-sm)]"
-        data-browse-quota
-      >
-        {quota.text}
-      </p>
+      <BrowseQuotaNote fallback={browse.quota} />
     </section>
   );
 }

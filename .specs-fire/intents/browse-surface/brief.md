@@ -1,8 +1,9 @@
 ---
 id: browse-surface
 title: Browse — the Discovery Surface, and an Honest Test Baseline
-status: in_progress
+status: completed
 created: 2026-11-12
+completed_at: 2026-11-12T17:08:29.755Z
 ---
 
 # Intent: Browse — the Discovery Surface, and an Honest Test Baseline

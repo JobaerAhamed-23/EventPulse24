@@ -41,7 +41,7 @@ export type SeedAccount = {
   plan: string;
 };
 
-/** The seed file's two accounts, read from the file itself. */
+/** The seed file's accounts, read from the file itself. */
 export async function seedAccounts(): Promise<SeedAccount[]> {
   const raw = await readSeedFile();
   return raw.users as SeedAccount[];
@@ -61,13 +61,62 @@ async function readSeedFile(): Promise<{
  * **It fails loudly when the file does not name exactly one.** A helper that returned
  * `undefined` would let a test carry on and fail somewhere else, and the message would
  * point at the symptom rather than at the cause.
+ *
+ * **The accounts that are addressed by their key are excluded here.** `no-city` is a
+ * Free account and `free-saver` is a Free account, so "the Free account" would match
+ * three of them — and each of the three is a *different* subject for a *different*
+ * test. See `seedNoCityAccount` and `seedFreeSaverAccount`.
  */
 export async function seedAccount(plan: "free" | "pro"): Promise<SeedAccount> {
   const accounts = await seedAccounts();
-  const matches = accounts.filter((account) => account.plan === plan);
+  const matches = accounts.filter(
+    (account) => account.plan === plan && account.key !== "no-city" && account.key !== "free-saver",
+  );
   if (matches.length !== 1) {
     throw new Error(
       `The seed file names ${matches.length} ${plan} account(s); exactly one is needed.`,
+    );
+  }
+  return matches[0];
+}
+
+/**
+ * The second Free account — the one whose **save allowance** the full-path test spends.
+ *
+ * **The allowance is one save per user per day, and it outlives a test.** So two tests
+ * that each need to save once cannot share an account: the first test spends the
+ * allowance, and the second one finds the wall already up — and it fails for a reason
+ * that has nothing to do with the code under test. **Separate accounts have separate
+ * allowances**, so each test spends its own.
+ *
+ * **The account is addressed by its key**, because it is a Free account and there are
+ * now three of those.
+ */
+export async function seedFreeSaverAccount(): Promise<SeedAccount> {
+  const accounts = await seedAccounts();
+  const matches = accounts.filter((account) => account.key === "free-saver");
+  if (matches.length !== 1) {
+    throw new Error(
+      `The seed file names ${matches.length} free-saver account(s); exactly one is needed.`,
+    );
+  }
+  return matches[0];
+}
+
+/**
+ * The account with **no city** — the city's emptiness's subject.
+ *
+ * **It is a separate account, and it has to be.** Browse has two emptinesses, and the
+ * city one needs a user whose city is absent. No browser flow can produce that: the API
+ * reads a null city as "leave it alone" and never clears one, so the seed writes it.
+ * Emptying the free account's city instead would change what every other test sees.
+ */
+export async function seedNoCityAccount(): Promise<SeedAccount> {
+  const accounts = await seedAccounts();
+  const matches = accounts.filter((account) => account.key === "no-city");
+  if (matches.length !== 1) {
+    throw new Error(
+      `The seed file names ${matches.length} no-city account(s); exactly one is needed.`,
     );
   }
   return matches[0];
@@ -111,6 +160,25 @@ export async function navigateToBrowse(page: Page): Promise<void> {
   await sidenav.getByRole("link", { name: "Browse" }).click();
   await page.waitForURL(/\/browse/);
   await expect(page.locator("[data-browse-hero]")).toBeVisible();
+}
+
+/**
+ * Go to Browse through the sidenav, for a surface that may be **empty**.
+ *
+ * **The hero is not the signal here, because the hero is what an empty surface does not
+ * have.** The city's empty state *replaces* the hero — it is a whole-page state — so a
+ * helper that waited for the hero would time out on exactly the page it was sent to.
+ *
+ * **So the signal is "the surface has finished loading", which is the same signal
+ * `waitForBrowse` gives.** The skeleton is the loading state and the only marker of it,
+ * so waiting for it to clear is what says the server read is done — whichever way the
+ * surface turned out.
+ */
+export async function navigateToBrowseExpectingEmpty(page: Page): Promise<void> {
+  const sidenav = page.getByRole("navigation", { name: "Main" });
+  await sidenav.getByRole("link", { name: "Browse" }).click();
+  await page.waitForURL(/\/browse/);
+  await waitForBrowse(page);
 }
 
 /**
@@ -161,4 +229,95 @@ export function saveButton(card: Locator): Locator {
  */
 export async function waitForBrowse(page: Page): Promise<void> {
   await expect(page.locator("[data-browse-skeleton]")).toHaveCount(0, { timeout: 20_000 });
+}
+
+/**
+ * The page's **rendered** text, lower-cased.
+ *
+ * **`body.textContent` is not the page's text.** It includes every `<script>` element's
+ * body — including Next.js's inline RSC payload, which carries the *server's* copy of
+ * the page as a JSON string — and it includes the text inside `<dialog>` elements that
+ * were never opened. So a naive text search for a forbidden phrase finds the phrase in
+ * the machine's copy of the page rather than in the reader's.
+ *
+ * **So this walks the rendered text nodes only**, skipping `SCRIPT` and `STYLE`, and
+ * skipping any node whose element is not actually laid out (`offsetParent === null`
+ * means an ancestor is `display: none`). **What survives is what a person could read.**
+ *
+ * **The shell's closed menus are excluded too, and deliberately.** The Account menu and
+ * the More menu each render a native `<dialog>`, closed on a page nobody has opened them
+ * on. A closed `<dialog>` takes no space and is not visible, so `offsetParent` is `null`
+ * for its contents and they are skipped — which is right, because a check that failed on
+ * the shell's own markup would be a check that cries wolf.
+ */
+export async function renderedText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const chunks: string[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const element = node.parentElement as HTMLElement | null;
+      const tag = element?.tagName ?? "";
+      if (tag !== "SCRIPT" && tag !== "STYLE" && element?.offsetParent !== null) {
+        const text = (node.textContent ?? "").trim();
+        if (text) chunks.push(text);
+      }
+      node = walker.nextNode();
+    }
+    return chunks.join(" ").toLowerCase();
+  });
+}
+
+/**
+ * Clear the signed-in user's saved events, so a test starts from an empty Pulse.
+ *
+ * **This is the browser's own API, not a test-only backdoor.** The suite drives the real
+ * stack, and a test that reached around the API to write to the database would not be
+ * testing the API at all — so the reset goes through the endpoints the product already
+ * has: `GET /api/personal/saved-events` lists what is saved, and
+ * `DELETE /api/personal/saved-events/{catalog_event_id}` removes each one.
+ *
+ * **The delete carries the CSRF token, because the backend checks it.** Django Ninja
+ * marks every view it builds `csrf_exempt`, so the backend makes Django's own check
+ * itself, on every unsafe request. `page.request` does not go through the app's
+ * `csrfOnRequest` middleware — it is Playwright's own client, not the app's — so the
+ * token has to be read from the browser's cookie and echoed in the `X-CSRFToken`
+ * header, which is exactly what `lib/csrf.ts` does for the app's own requests.
+ *
+ * **Why it is needed at all.** The seed clears the save *allowance* on every run, but it
+ * deliberately leaves the *saved rows* alone — a seed that un-saved a reader's events
+ * would change what the surface shows, and the walk-through is about seeing a saved
+ * event. That is right for the seed and wrong for a test suite: a leftover row puts the
+ * Save button in the `saved` state, so the suite's **first** press takes the unsave
+ * branch, the button correctly goes back to "Save", and the test fails for a reason that
+ * has nothing to do with the code under test.
+ *
+ * **The allowance is not reset here.** It is the throttle's counter and it lives
+ * server-side behind a 24-hour window; only the server can clear it, and the seed does
+ * that. **This helper clears the rows the button's initial state is derived from** — the
+ * half that would otherwise make a test's first press an unsave.
+ */
+export async function clearSavedEvents(page: Page): Promise<void> {
+  const listed = await page.request.get("/api/personal/saved-events");
+  expect(listed.ok()).toBeTruthy();
+
+  const body = (await listed.json()) as {
+    items?: { event_id: string }[];
+  };
+
+  if ((body.items ?? []).length === 0) return;
+
+  // **The token is read from the browser's own cookie.** Django rotates it on sign-in,
+  // so a token captured before the form was submitted would be the wrong one — and
+  // `lib/csrf.ts` says the same thing for the same reason.
+  const cookies = await page.context().cookies();
+  const token = cookies.find((cookie) => cookie.name === "csrftoken")?.value;
+  expect(token, "the browser holds no csrftoken cookie").toBeTruthy();
+
+  for (const item of body.items ?? []) {
+    const removed = await page.request.delete(`/api/personal/saved-events/${item.event_id}`, {
+      headers: { "X-CSRFToken": token as string },
+    });
+    expect(removed.ok()).toBeTruthy();
+  }
 }
