@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CalendarConnections } from "@/components/settings/calendar-connections";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readCalendars } from "@/lib/calendars-read";
@@ -48,6 +49,8 @@ export default async function SettingsCalendarsPage() {
   if (read.kind === "unavailable") {
     return (
       <AppShell name={name} email={session.user.email}>
+        <SettingsNav />
+
         <SettingsStates />
       </AppShell>
     );
@@ -55,6 +58,8 @@ export default async function SettingsCalendarsPage() {
 
   return (
     <AppShell name={name} email={session.user.email}>
+      <SettingsNav />
+
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Calendar sync</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">

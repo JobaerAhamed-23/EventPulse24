@@ -13,6 +13,7 @@ import {
   SettingsGlyph,
   TimelineGlyph,
 } from "@/components/shell/nav-glyphs";
+import { isSettingsPath } from "@/lib/settings-sections";
 
 /**
  * `Component.BottomTab` — the mobile navigation (`EXPERIENCE.md` §4).
@@ -91,19 +92,20 @@ export function BottomTabNav({ name, email }: AccountProps) {
           glyph={<ConflictsGlyph />}
         />
         {/*
-          **Settings is a real route now.** The product's first `/settings/*` screens
-          exist — the Default Reminder Plan and the Quiet Hours window — so this slot is
-          a link and not a "Coming soon" label.
+          **Settings points at `/settings`, the index** — the same destination and the
+          same active rule as the desktop rail's row, from the same module constant.
 
-          **The mobile rail gets the same treatment as the desktop one.** Leaving this
-          one inert would mean that on a phone the product says *"You can change these
-          later in Settings"* and then Settings is a row that does nothing. A route that
-          only exists on desktop is not a route.
+          **The mobile rail gets the same treatment as the desktop one.** It used to
+          land on `/settings/reminders`, a screen with no links out, which on a phone
+          meant the product said *"You can change these later in Settings"* and then
+          Settings was one of six screens with no way to the other five. A route that
+          only exists on desktop is not a route, and neither is one you cannot navigate
+          to.
         */}
         <TabSlot
-          href="/settings/reminders"
+          href="/settings"
           label="Settings"
-          active={pathname.startsWith("/settings/")}
+          active={isSettingsPath(pathname)}
           glyph={<SettingsGlyph />}
         />
 

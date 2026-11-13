@@ -15,7 +15,7 @@
  * the other; a second animation would be a second motion in a product that has one; a
  * terracotta fill on a nav row would spend an accent that is rationed to four uses.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -346,14 +346,53 @@ describe("the home's shell", () => {
     expect(digestSlot).toContain('href="/"');
   });
 
-  it("links nowhere that does not exist — the account row included", () => {
+  it("links nowhere that does not exist — resolved against the app directory", () => {
     // The sidenav's own rule: "a link to a 404 is a lie about where the label goes."
-    // The account row broke it by linking to `/settings`, which has no route. It is a
-    // button onto the account sheet now, and this pins it: no shell file may link to a
-    // route that is not built, and `/settings` is the one that was.
+    //
+    // **This used to be a deny-list of one string.** It asserted that no shell file
+    // contained `href="/settings"`, because the account row had linked there and
+    // `/settings` had no route. A deny-list only ever catches the 404 somebody already
+    // found: `/settings/billing` sat in the dev billing panel and in three backend
+    // config defaults for weeks, so every completed checkout returned the payer to a
+    // 404, and this test was green throughout.
+    //
+    // So the rule is now resolved rather than listed — every literal internal `href` in
+    // these files must have a `page.tsx` behind it. `/settings` passes today because
+    // the settings index exists; delete that route and this fails.
+    // **The one link that is knowingly ahead of its route.** `digest-empty.tsx` offers
+    // "Suggest an event" and `/suggest` has never been built — a pre-existing dead link
+    // this rule found the moment it started resolving instead of matching strings. It is
+    // named here rather than quietly allowed, and the assertion below checks it is
+    // *still* unbuilt, so shipping the route fails this test until the exception goes.
+    const UNBUILT = new Set(["/suggest"]);
+    expect(
+      [...UNBUILT].filter((route) =>
+        existsSync(path.join(ROOT, "app", route.slice(1), "page.tsx")),
+      ),
+    ).toEqual([]);
+
+    const missing: string[] = [];
+
     for (const [file, source] of code) {
-      expect(source, file).not.toContain('href="/settings"');
+      for (const match of source.matchAll(/href="(\/[^"#?]*)/g)) {
+        const route = match[1];
+        // A dynamic segment is a template, not a destination: these files hold none,
+        // and one would need the params to resolve.
+        if (route.includes("[")) continue;
+
+        const segments = route.split("/").filter(Boolean);
+        const candidates = [
+          path.join(ROOT, "app", ...segments, "page.tsx"),
+          path.join(ROOT, "app", ...segments, "route.ts"),
+        ];
+        if (UNBUILT.has(route)) continue;
+        if (!candidates.some((candidate) => existsSync(candidate))) {
+          missing.push(`${file} → ${route}`);
+        }
+      }
     }
+
+    expect(missing).toEqual([]);
   });
 
   it("keeps sign out reachable at both breakpoints", () => {

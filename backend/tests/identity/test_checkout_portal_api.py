@@ -184,7 +184,7 @@ def test_the_success_and_cancel_urls_come_from_configuration():
     url = response.json()["url"]
     # The fake adapter carries the success URL as `next`, percent-encoded.
     assert "next=http" in url
-    assert "settings%2Fbilling" in url
+    assert "settings%2Faccount" in url
 
 
 def test_both_urls_are_handed_to_the_port(monkeypatch):
@@ -219,9 +219,9 @@ def test_both_urls_are_handed_to_the_port(monkeypatch):
 
     assert response.status_code == 200
     assert seen["success_url"].startswith("http://")
-    assert seen["success_url"].endswith("/settings/billing?checkout=complete")
+    assert seen["success_url"].endswith("/settings/account?checkout=complete")
     assert seen["cancel_url"].startswith("http://")
-    assert seen["cancel_url"].endswith("/settings/billing?checkout=cancelled")
+    assert seen["cancel_url"].endswith("/settings/account?checkout=cancelled")
     assert seen["plan"] == ProPlan.YEARLY
 
 

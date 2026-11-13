@@ -612,14 +612,16 @@ describe("the shell", () => {
     expect(sidenav().querySelector("[aria-disabled='true']")).toBeNull();
   });
 
-  it("makes Settings a real route, because the settings screens exist", async () => {
+  it("points Settings at the index, because the settings index exists", async () => {
     render(await HomePage(props()));
 
     const item = [...sidenav().querySelectorAll("li")].find((li) =>
       [...li.querySelectorAll("span")].some((span) => span.textContent?.trim() === "Settings"),
     );
     expect(item).not.toBeUndefined();
-    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/settings/reminders");
+    // It pointed at `/settings/reminders` while there was no index, and that screen has
+    // no links out — so the rail landed the user on one settings screen out of six.
+    expect(item?.querySelector("a")?.getAttribute("href")).toBe("/settings");
     // "Coming soon" is gone — the route is here.
     expect(item?.textContent).not.toContain("Coming soon");
   });
@@ -705,9 +707,15 @@ describe("the shell", () => {
     expect(within(sheet).getByText("maya@example.test")).toBeInTheDocument();
   });
 
-  it("links the account row nowhere, because /settings does not exist", async () => {
-    const { container } = render(await HomePage(props()));
+  it("keeps the account row a control, even though /settings exists now", async () => {
+    // The row was demoted from a link to a button because `/settings` 404'd. The index
+    // exists now, and the row stays a button anyway: the sheet it opens is the only
+    // surface mounting Sign out at both breakpoints, and the rail's own Settings row
+    // already carries the destination. The sheet links there instead.
+    render(await HomePage(props()));
 
-    expect(container.querySelector('a[href="/settings"]')).toBeNull();
+    const row = screen.getByRole("button", { name: "Account: Maya" });
+    expect(row.tagName).toBe("BUTTON");
+    expect(row.closest("a")).toBeNull();
   });
 });

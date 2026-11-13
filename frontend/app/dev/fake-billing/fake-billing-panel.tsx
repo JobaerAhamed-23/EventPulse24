@@ -72,7 +72,7 @@ function planPrice(plan: string | undefined): string {
  * this project has been careful to refuse it.
  *
  * So the value is honoured only when it names a path on this origin. The backend's own
- * success URL is an absolute one (`http://localhost:3000/settings/billing?…`), so it is
+ * success URL is an absolute one (`http://localhost:3000/settings/account?…`), so it is
  * reduced to its path and query here rather than rejected — the point is *where it
  * points*, not *how it is spelled*.
  *
@@ -180,7 +180,7 @@ export function FakeCheckoutPanel({ session, plan, next }: FakeCheckoutParams) {
           settings route with a different flag.
           */}
         <Link
-          href="/settings/billing?checkout=cancelled"
+          href="/settings/account?checkout=cancelled"
           className="inline-flex min-h-[44px] items-center rounded-control border border-border-strong px-4 py-2 font-semibold text-ink-secondary [font:var(--type-scale-meta-md)]"
         >
           Cancel
@@ -220,13 +220,13 @@ export function FakePortalPanel({ next }: FakeCheckoutParams) {
 
       <div className="mt-8 flex flex-wrap gap-3">
         <Link
-          href="/settings/billing?portal=closed"
+          href="/settings/account?portal=closed"
           className="inline-flex min-h-[44px] items-center rounded-control border border-border-strong px-4 py-2 font-semibold text-ink-secondary [font:var(--type-scale-meta-md)]"
         >
           Close the portal
         </Link>
         <Link
-          href="/settings/billing?portal=cancelled"
+          href="/settings/account?portal=cancelled"
           className="inline-flex min-h-[44px] items-center rounded-control bg-accent-terracotta px-4 py-2 font-semibold text-ink-inverse [font:var(--type-scale-meta-md)]"
         >
           Cancel the subscription

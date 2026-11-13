@@ -144,8 +144,18 @@ test.describe("unwired-surfaces: the controls are reachable in a browser", () =>
     const free = await seedAccount("free");
     await signIn(page, free);
 
-    await page.goto("/settings/quiet-hours");
-    const link = page.getByRole("link", { name: "Calendars you've connected" });
+    // **From the rail, through the index, to the screen** — the whole path a user walks.
+    // This used to click a hand-written "Calendars you've connected" link that lived on
+    // `/settings/quiet-hours` because there was no settings index and no sub-nav. Both
+    // exist now, so the route is reached the way every settings route is.
+    await page.goto("/");
+    await page
+      .getByRole("complementary", { name: "Primary" })
+      .getByRole("link", { name: "Settings" })
+      .click();
+    await expect(page).toHaveURL(/\/settings$/);
+
+    const link = page.getByRole("link", { name: "Calendars" });
     await expect(link, "nothing in Settings links to the calendar screen").toBeVisible();
     await link.click();
 

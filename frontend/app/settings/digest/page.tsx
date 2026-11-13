@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { DigestPersonalEvents } from "@/components/settings/digest-personal-events";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readDigestPreference } from "@/lib/digest-preference-read";
@@ -75,6 +76,8 @@ export default async function SettingsDigestPage() {
   if (read.kind === "unavailable") {
     return (
       <AppShell name={displayName(session.user.email)} email={session.user.email}>
+        <SettingsNav />
+
         <SettingsStates />
       </AppShell>
     );
@@ -94,6 +97,8 @@ export default async function SettingsDigestPage() {
 
   return (
     <AppShell name={displayName(session.user.email)} email={session.user.email}>
+      <SettingsNav />
+
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Pulse Digest</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">

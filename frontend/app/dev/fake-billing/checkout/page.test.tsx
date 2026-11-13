@@ -79,7 +79,7 @@ describe("DevFakeBillingCheckoutPage", () => {
         searchParams: Promise.resolve({
           session: "fake_cs_1",
           plan: "monthly",
-          next: "http://localhost:3000/settings/billing?checkout=complete",
+          next: "http://localhost:3000/settings/account?checkout=complete",
         }),
       }),
     );
@@ -96,7 +96,7 @@ describe("DevFakeBillingCheckoutPage", () => {
         searchParams: Promise.resolve({
           session: "fake_cs_1",
           plan: "monthly",
-          next: "http://localhost:3000/settings/billing?checkout=complete",
+          next: "http://localhost:3000/settings/account?checkout=complete",
         }),
       }),
     );
@@ -134,13 +134,13 @@ describe("DevFakeBillingCheckoutPage", () => {
         searchParams: Promise.resolve({
           session: "fake_cs_1",
           plan: "monthly",
-          next: "http://localhost:3000/settings/billing?checkout=complete",
+          next: "http://localhost:3000/settings/account?checkout=complete",
         }),
       }),
     );
 
     const link = panel.getByText("Complete checkout");
-    expect(link.getAttribute("href")).toBe("/settings/billing?checkout=complete");
+    expect(link.getAttribute("href")).toBe("/settings/account?checkout=complete");
   });
 
   it("shows a plan it does not recognise rather than hiding it", async () => {
