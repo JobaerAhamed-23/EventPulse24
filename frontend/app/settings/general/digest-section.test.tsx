@@ -13,8 +13,30 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import SettingsDigestPage from "@/app/settings/digest/page";
+import SettingsGeneralPage from "@/app/settings/general/page";
 import { redirect } from "next/navigation";
+
+const readNotificationSettings = vi.fn();
+
+vi.mock("@/lib/notification-settings-read", () => ({
+  readNotificationSettings: () => readNotificationSettings(),
+}));
+
+const readIsPro = vi.fn();
+
+vi.mock("@/lib/entitlement-read", () => ({
+  readIsPro: () => readIsPro(),
+}));
+
+/** The notification settings, as the server sends them. */
+function settings(overrides: Record<string, unknown> = {}) {
+  return {
+    default_reminder_slots: ["1d", "1hr"],
+    quiet_hours: { start: "22:00:00", end: "08:00:00" },
+    digest: { delivery_time: "09:00:00", timezone: "America/New_York" },
+    ...overrides,
+  };
+}
 
 const readDigestPreference = vi.fn();
 const getSession = vi.fn();
@@ -34,7 +56,7 @@ vi.mock("@/lib/session", async () => {
 });
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/settings/digest",
+  usePathname: () => "/settings/general",
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
   /**
    * **The real `redirect` throws, and so does this one.**
@@ -67,6 +89,10 @@ function preference(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  readNotificationSettings.mockReset();
+  readIsPro.mockReset();
+  readNotificationSettings.mockResolvedValue({ kind: "found", settings: settings() });
+  readIsPro.mockResolvedValue(false);
   readDigestPreference.mockReset();
   getSession.mockReset();
   PUT.mockReset();
@@ -107,7 +133,7 @@ function sidenavAccountName(): string {
 
 describe("the route", () => {
   it("renders the toggle with the server's stored value", async () => {
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     // **The server's answer, not a local default.** The server says personal events are
     // in, so the control reads pressed.
@@ -121,7 +147,7 @@ describe("the route", () => {
       preference: preference({ include_personal_events: false }),
     });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(toggle()).toHaveAttribute("aria-pressed", "false");
     expect(toggle()).toHaveTextContent("Personal events are not in your Pulse Digest");
@@ -133,7 +159,7 @@ describe("the route", () => {
       preference: preference(),
     });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     // **The toggle is enabled, because the schedule is complete.** A control that is
     // disabled on a user who *has* a delivery time would be a control that could never
@@ -162,7 +188,7 @@ describe("the route", () => {
       preference: preference({ delivery_time: null, timezone: null }),
     });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     // **A user with no `DigestPreference` row.** The endpoint requires the delivery
     // time and the zone, so there is nothing this control could send — and a control
@@ -181,7 +207,7 @@ describe("the route", () => {
       preference: preference({ timezone: null }),
     });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(toggle()).toBeDisabled();
     // **The same sentence as the no-schedule case, asserted exactly.** A
@@ -200,7 +226,7 @@ describe("the route", () => {
       preference: preference({ delivery_time: null }),
     });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(toggle()).toBeDisabled();
     expect(document.querySelector("[data-no-schedule]")?.textContent).toBe(
@@ -208,15 +234,31 @@ describe("the route", () => {
     );
   });
 
-  it("has a heading and a lede that say what the screen is for", async () => {
-    render(await SettingsDigestPage());
+  it("gives the digest its own heading and lede inside the page", async () => {
+    render(await SettingsGeneralPage());
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Pulse Digest");
-    expect(screen.getByText("What's in your Pulse Digest.")).toBeInTheDocument();
+    // **The digest is a section now, not a screen.** The page is `General`; the digest
+    // is one `<h2>` on it, carrying both of its settings — the delivery time, which used
+    // to live on the quiet-hours page, and the opt-out, which had a page of its own.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("General");
+    expect(screen.getByRole("heading", { level: 2, name: "Pulse Digest" })).toBeInTheDocument();
+    expect(
+      screen.getByText("When your daily brief arrives, and what's in it."),
+    ).toBeInTheDocument();
+  });
+
+  it("labels the digest section with its own heading, for a screen reader", async () => {
+    // The sub-nav rows used to be how a screen reader moved between these settings. On
+    // one page that job belongs to the headings, so each section is labelled by its own.
+    render(await SettingsGeneralPage());
+
+    const section = document.getElementById("digest");
+    expect(section).not.toBeNull();
+    expect(section?.getAttribute("aria-labelledby")).toBe("digest-heading");
   });
 
   it("marks Settings as the active sidenav item", async () => {
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     // **The prefix rule.** The sidenav needs no change for this route.
     const settingsLink = within(sidenav()).getByRole("link", { name: "Settings" });
@@ -224,13 +266,13 @@ describe("the route", () => {
   });
 
   it("has no page-level Save button, because the save is inline", async () => {
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.queryByRole("button", { name: /^save/i })).toBeNull();
   });
 
   it("keeps the topbar brand-only", async () => {
-    const { container } = render(await SettingsDigestPage());
+    const { container } = render(await SettingsGeneralPage());
 
     const header = container.querySelector("header");
     expect(header?.textContent).toContain("EventPulse24");
@@ -239,18 +281,31 @@ describe("the route", () => {
     expect(header?.querySelector("nav")).toBeNull();
   });
 
-  it("carries exactly one status region", async () => {
-    render(await SettingsDigestPage());
+  it("carries exactly one status region in the digest section", async () => {
+    render(await SettingsGeneralPage());
 
-    // **One page, one status region** (`detail-mute-control.tsx:215-228`). The toggle's
-    // `SaveFeedback` is it — the route adds no second.
-    expect(screen.getAllByRole("status")).toHaveLength(1);
+    // **One control, one status region** (`detail-mute-control.tsx:215-228`). The rule
+    // used to read "one page, one region" because the page held one control. Merged, the
+    // digest holds its two — the delivery time and the opt-out — so the count is two,
+    // and the rule is restated at the level it was always about: **a region belongs to a
+    // control, and the route adds none of its own.**
+    const section = document.getElementById("digest");
+    expect(section).not.toBeNull();
+
+    for (const control of ["[data-digest-delivery-time]", "[data-digest-personal-events]"]) {
+      const element = (section as HTMLElement).querySelector(control);
+      expect(element, control).not.toBeNull();
+      expect(within(element as HTMLElement).getAllByRole("status"), control).toHaveLength(1);
+    }
+
+    // Two controls, two regions: nothing in the section owns a region but a control.
+    expect(within(section as HTMLElement).getAllByRole("status")).toHaveLength(2);
   });
 
   it("shows the unavailable state when the read fails", async () => {
     readDigestPreference.mockResolvedValue({ kind: "unavailable" });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(document.querySelector("[data-settings-unavailable]")).not.toBeNull();
     expect(screen.getByRole("link", { name: "Back to Pulse Digest" })).toBeInTheDocument();
@@ -270,7 +325,7 @@ describe("who gets to be here", () => {
    * test sees what the route did *instead of* serving the page.
    */
   async function renderUntilRedirect(): Promise<void> {
-    await expect(SettingsDigestPage()).rejects.toThrow("NEXT_REDIRECT");
+    await expect(SettingsGeneralPage()).rejects.toThrow("NEXT_REDIRECT");
   }
 
   it("redirects an anonymous visitor to the preview instead of serving the page", async () => {
@@ -305,7 +360,7 @@ describe("who gets to be here", () => {
     // signed-in user is not anonymous because a request failed. So the route renders.
     getSession.mockResolvedValue({ kind: "unavailable" });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(redirect).not.toHaveBeenCalled();
     expect(document.querySelector("[data-settings-unavailable]")).not.toBeNull();
@@ -321,7 +376,7 @@ describe("who gets to be here", () => {
     // the same `SettingsStates`.
     readDigestPreference.mockResolvedValue({ kind: "unavailable" });
 
-    render(await SettingsDigestPage());
+    render(await SettingsGeneralPage());
 
     expect(document.querySelector("[data-settings-unavailable]")).not.toBeNull();
     expect(sidenavAccountName()).toBe("Maya");

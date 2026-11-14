@@ -1,83 +1,28 @@
 import { redirect } from "next/navigation";
 
-import { DefaultReminderSlots } from "@/components/settings/default-reminder-slots";
-import { SettingsNav } from "@/components/settings/settings-nav";
-import { SettingsStates } from "@/components/settings/settings-states";
-import { AppShell } from "@/components/shell/app-shell";
-import { displayName } from "@/lib/display-name";
-import { readNotificationSettings } from "@/lib/notification-settings-read";
-import { getSession, homeRoute } from "@/lib/session";
+import { SETTINGS_GENERAL_ANCHORS } from "@/lib/settings-sections";
 
 /**
- * `/settings/reminders` — the **Default Reminder Plan** editor.
+ * `/settings/reminders` — **a redirect to its section of `/settings/general`.**
  *
- * **The first `/settings/*` route the product has had.** The sidenav's Settings entry
- * has said "Coming soon" since the shell was built, and the onboarding flow tells the
- * user *"You can change these later in Settings."* This route makes that true.
+ * This route used to be the Default reminders screen. The preferences were three routes, one
+ * per work item, and each cost a row in the sub-nav every settings screen carries — so
+ * the navigation grew by one every time a switch was added. They are now three sections
+ * of one page, and the nav rows that remain are *things* a user owns rather than switches
+ * they set.
  *
- * **It sets a default, and it says so.** The server does not rewrite the plans that
- * already exist — `notification-preferences-api` proves that — but the user has to be
- * told, or the setting looks like it does something it does not. The sentence is above
- * the chips.
+ * **The route stays because the URL is out in the world.** It has been linked from
+ * onboarding copy and is in people's history; deleting it would turn those into 404s to
+ * save a file. It forwards to the anchor rather than to the top of the page, so the
+ * visitor lands on the setting they asked for.
  *
- * **The chips are the per-event picker's chips.** `ReminderChip` is reused rather than
- * copied, so the ink-inversion treatment is the picker's by construction. There is no
- * target event here, so there are no delivery times and **no chip dims** — the dimming
- * belongs to a plan that knows when it will send.
- *
- * **The save is inline.** There is no Save button: the work item rules one out, and a
- * settings screen that asks for a confirmation of a control the user just pressed is a
- * screen that asks for something it does not need.
- *
- * **It is an authed surface.** `homeRoute` has already sent an anonymous visitor to
- * the preview and a half-onboarded one to `/onboarding`; what is left is a signed-in
- * user, or a session the API could not answer.
+ * It reads no session: `/settings/general` runs `homeRoute` itself, so an anonymous
+ * visitor is still sent to `/preview`. Checking here as well would be a second copy of
+ * the same rule, free to disagree with the first.
  */
 export const dynamic = "force-dynamic";
 
-export default async function SettingsRemindersPage() {
-  const session = await getSession();
-  const destination = homeRoute(session);
+export default async function SettingsRemindersRedirectPage(): Promise<never> {
   // `redirect` throws, so it is called outside any try/catch.
-  if (destination !== null) redirect(destination);
-
-  // **Settings are a signed-in surface.** A settings screen that renders for somebody
-  // who is not signed in would offer to change a plan that is not theirs.
-  if (session.kind !== "signed-in") {
-    return (
-      <AppShell name="" email="">
-        <SettingsStates />
-      </AppShell>
-    );
-  }
-
-  const read = await readNotificationSettings();
-
-  if (read.kind === "unavailable") {
-    return (
-      <AppShell name={displayName(session.user)} email={session.user.email}>
-        <SettingsNav />
-
-        <SettingsStates />
-      </AppShell>
-    );
-  }
-
-  return (
-    <AppShell name={displayName(session.user)} email={session.user.email}>
-      <SettingsNav />
-
-      <header className="flex flex-col gap-1">
-        <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Default reminders</h1>
-        <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          What we suggest when you save an event.
-        </p>
-      </header>
-
-      <div className="mt-8 max-w-(--layout-container-reading)">
-        <DefaultReminderSlots initialSlots={read.settings.default_reminder_slots} />
-      </div>
-    </AppShell>
-  );
+  redirect(SETTINGS_GENERAL_ANCHORS.reminders);
 }
-

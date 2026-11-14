@@ -19,6 +19,11 @@ import { resetSignInThrottle, seedAccount, signIn } from "./helpers";
  * the reason the first six were: **a hand-written list is a list somebody has to
  * remember to update**, and this spec fails when they do not.
  *
+ * **There are seven rows now, not nine.** The three preferences screens — reminders,
+ * quiet hours, digest — are sections of `/settings/general`, so a new toggle costs no nav
+ * row and the rows that remain are things a user owns. The old URLs still resolve, and
+ * `RETIRED` walks them.
+ *
  * **Nothing caught it**, because nothing was looking. The page tests rendered each route
  * directly and the e2e specs reached them with `page.goto()` — a deep link is not a
  * click, and a route tested only by deep link is a route whose reachability is untested
@@ -67,15 +72,26 @@ function subnav(page: import("@playwright/test").Page) {
  * between them, a new settings route cannot ship unreachable.
  */
 const SECTIONS = [
-  { label: "Default reminders", path: "/settings/reminders", heading: "Default reminders" },
-  { label: "Quiet hours", path: "/settings/quiet-hours", heading: "Quiet hours" },
-  { label: "Pulse Digest", path: "/settings/digest", heading: "Pulse Digest" },
+  { label: "General", path: "/settings/general", heading: "General" },
   { label: "Calendars", path: "/settings/calendars", heading: "Calendar sync" },
   { label: "Collections", path: "/settings/collections", heading: "Collections" },
   { label: "Sources", path: "/settings/sources", heading: "Sources" },
   { label: "Taste", path: "/settings/taste", heading: "Taste" },
   { label: "Account", path: "/settings/account", heading: "Account" },
   { label: "Profile", path: "/settings/profile", heading: "Profile" },
+];
+
+/**
+ * The three routes that were screens before the preferences were merged.
+ *
+ * They are **not** sections: they have no nav row and render nothing. Each forwards to
+ * its own anchor on `/settings/general`, and the spec walks them because their URLs are
+ * in people's history and a silent 404 is exactly what this file exists to catch.
+ */
+const RETIRED = [
+  { path: "/settings/reminders", anchor: "reminders" },
+  { path: "/settings/quiet-hours", anchor: "quiet-hours" },
+  { path: "/settings/digest", anchor: "digest" },
 ];
 
 test.describe("the settings surface is navigable", () => {
@@ -174,11 +190,26 @@ test.describe("the settings surface is navigable", () => {
     const account = await seedAccount("free");
     await signIn(page, account);
 
+    await page.goto("/settings/calendars");
+
+    const current = subnav(page).locator("[aria-current='page']");
+    await expect(current).toHaveCount(1);
+    await expect(current).toHaveText("Calendars");
+  });
+
+  test("a retired URL marks the section it lands in, not the one it names", async ({ page }) => {
+    const account = await seedAccount("free");
+    await signIn(page, account);
+
+    // This used to be the Quiet hours *screen*, and the pill used to read "Quiet hours".
+    // It is a section of General now, so the pill reads General — which is the honest
+    // answer to "where am I", and the thing that would have been quietly wrong if the
+    // redirect had been added without touching the nav.
     await page.goto("/settings/quiet-hours");
 
     const current = subnav(page).locator("[aria-current='page']");
     await expect(current).toHaveCount(1);
-    await expect(current).toHaveText("Quiet hours");
+    await expect(current).toHaveText("General");
   });
 
   test("the rail stays on Settings across the whole surface", async ({ page }) => {
@@ -195,6 +226,36 @@ test.describe("the settings surface is navigable", () => {
         "aria-current",
         "page",
       );
+    }
+  });
+  test("every retired preferences URL still lands on its setting", async ({ page }) => {
+    const account = await seedAccount("free");
+    await signIn(page, account);
+
+    // **The URLs are in people's history**, and onboarding's "you can change these later
+    // in Settings" pointed at one of them. A 404 here is the failure this file is for.
+    for (const retired of RETIRED) {
+      await page.goto(retired.path);
+
+      await expect(page, `${retired.path} did not forward`).toHaveURL(
+        new RegExp(`/settings/general(#${retired.anchor})?$`),
+      );
+      await expect(page.getByRole("heading", { level: 1, name: "General" })).toBeVisible();
+      // The section it names is on the page, which is what makes the anchor meaningful.
+      await expect(page.locator(`#${retired.anchor}`)).toBeAttached();
+    }
+  });
+
+  test("the three merged preferences sit on one page", async ({ page }) => {
+    const account = await seedAccount("free");
+    await signIn(page, account);
+
+    // **The merge, asserted where it is visible.** Three headings, one screen, one nav
+    // row — and the digest's two settings together, which they never were before.
+    await page.goto("/settings/general");
+
+    for (const heading of ["Default reminders", "Quiet hours", "Pulse Digest"]) {
+      await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
     }
   });
 });

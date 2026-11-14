@@ -12,7 +12,29 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import SettingsQuietHoursPage from "@/app/settings/quiet-hours/page";
+import SettingsGeneralPage from "@/app/settings/general/page";
+
+const readDigestPreference = vi.fn();
+
+vi.mock("@/lib/digest-preference-read", () => ({
+  readDigestPreference: () => readDigestPreference(),
+}));
+
+const PUT = vi.fn();
+
+vi.mock("@/lib/backend-client", () => ({
+  api: { PUT: (...args: unknown[]) => PUT(...args) },
+}));
+
+/** The digest preference, as the server sends it. */
+function preference(overrides: Record<string, unknown> = {}) {
+  return {
+    delivery_time: "09:00:00",
+    timezone: "America/New_York",
+    include_personal_events: true,
+    ...overrides,
+  };
+}
 
 const readNotificationSettings = vi.fn();
 const getSession = vi.fn();
@@ -32,7 +54,7 @@ vi.mock("@/lib/session", async () => {
 });
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/settings/quiet-hours",
+  usePathname: () => "/settings/general",
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
   redirect: vi.fn(),
 }));
@@ -55,6 +77,10 @@ function settings(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  readDigestPreference.mockReset();
+  PUT.mockReset();
+  readDigestPreference.mockResolvedValue({ kind: "found", preference: preference() });
+  PUT.mockResolvedValue({ data: { digest: { include_personal_events: false } }, error: null });
   readNotificationSettings.mockReset();
   getSession.mockReset();
   readIsPro.mockReset();
@@ -72,14 +98,14 @@ function sidenav(): HTMLElement {
 
 describe("the route", () => {
   it("shows the window's two clocks, at the server's default", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.getByLabelText("Starts")).toHaveValue("22:00");
     expect(screen.getByLabelText("Ends")).toHaveValue("08:00");
   });
 
   it("shows the locked label", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     // **The label is the work item's own words.**
     expect(document.querySelector("[data-quiet-hours-label]")?.textContent).toBe(
@@ -88,7 +114,7 @@ describe("the route", () => {
   });
 
   it("shows the delivery time, and the zone it belongs to", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.getByLabelText("Delivery time")).toHaveValue("09:00");
   });
@@ -102,29 +128,41 @@ describe("the route", () => {
       settings: settings({ quiet_hours: null }),
     });
 
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.getByLabelText("Starts")).toHaveValue("22:00");
     expect(screen.getByLabelText("Ends")).toHaveValue("08:00");
   });
 
-  it("reaches the digest and calendar screens through the sub-nav", async () => {
-    render(await SettingsQuietHoursPage());
+  it("carries no hand-written link, because the sub-nav and the page carry everything", async () => {
+    render(await SettingsGeneralPage());
 
-    // **This page used to carry the only links to those two routes**, written because
-    // there was no settings index and no sub-nav. Both exist now, so the hand-written
-    // links are gone and the sub-nav carries the destinations — which is what keeps
-    // them reachable from all six screens rather than from this one.
+    // **This page used to carry the only links to the digest and calendar routes**,
+    // written because there was no settings index and no sub-nav. Then the sub-nav took
+    // them. Now the digest is not even a route — it is a section of *this* page — so the
+    // nav names `General` and `Calendars`, and the digest needs no link at all.
     const nav = screen.getByRole("navigation", { name: "Settings sections" });
     const hrefs = [...nav.querySelectorAll("a")].map((a) => a.getAttribute("href"));
 
-    expect(hrefs).toContain("/settings/digest");
+    expect(hrefs).toContain("/settings/general");
     expect(hrefs).toContain("/settings/calendars");
+    expect(hrefs).not.toContain("/settings/digest");
     expect(screen.queryByRole("link", { name: "What's in your Pulse Digest" })).toBeNull();
   });
 
+  it("puts the digest's own settings on this page, both of them", async () => {
+    // **The split this merge existed to end.** The delivery time was on Quiet hours and
+    // the opt-out on a separate Digest page — two pages, one feature, because each
+    // arrived with its own work item.
+    render(await SettingsGeneralPage());
+
+    expect(screen.getByRole("heading", { level: 2, name: "Pulse Digest" })).toBeInTheDocument();
+    expect(document.querySelector("[data-digest-delivery-time]")).not.toBeNull();
+    expect(document.querySelector("[data-digest-personal-events]")).not.toBeNull();
+  });
+
   it("marks Settings as the active sidenav item", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     // **The prefix rule.** The user has not left Settings.
     const settingsLink = within(sidenav()).getByRole("link", { name: "Settings" });
@@ -132,7 +170,7 @@ describe("the route", () => {
   });
 
   it("keeps the topbar brand-only", async () => {
-    const { container } = render(await SettingsQuietHoursPage());
+    const { container } = render(await SettingsGeneralPage());
 
     const header = container.querySelector("header");
     expect(header?.textContent).toContain("EventPulse24");
@@ -142,13 +180,13 @@ describe("the route", () => {
   });
 
   it("has no page-level Save button, because the save is inline", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.queryByRole("button", { name: /^save/i })).toBeNull();
   });
 
   it("does not offer per-day-of-week windows to a Free user", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     // **FR-51 and Pro own them.** No locked row, no carousel — a row the user can
     // neither use nor remove is worse than no row, which is why
@@ -165,7 +203,7 @@ describe("the route", () => {
   it("shows the unavailable state when the read fails", async () => {
     readNotificationSettings.mockResolvedValue({ kind: "unavailable" });
 
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(document.querySelector("[data-settings-unavailable]")).not.toBeNull();
     expect(screen.getByRole("link", { name: "Back to Pulse Digest" })).toBeInTheDocument();
@@ -198,7 +236,7 @@ describe("the tiers", () => {
   ];
 
   it("offers a Free user the Pro variant, inline and once", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     // **The sentence is the backend's `QUIET_HOURS_PRO_UPGRADE_HINT`, verbatim.** It is
     // spelled on the client because a Free user is never refused and so never receives
@@ -210,7 +248,7 @@ describe("the tiers", () => {
   });
 
   it("leaves a Free user's single window exactly where it was", async () => {
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.getByLabelText("Starts")).toHaveValue("22:00");
     expect(screen.getByLabelText("Ends")).toHaveValue("08:00");
@@ -220,7 +258,7 @@ describe("the tiers", () => {
   it("gives a Pro user the seven-row picker", async () => {
     readIsPro.mockResolvedValue(true);
 
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(within(picker()).getAllByRole("listitem")).toHaveLength(7);
     // The base window is still there — the picker sits beside it, not instead of it.
@@ -234,7 +272,7 @@ describe("the tiers", () => {
       settings: settings({ quiet_hours_overrides: WEEK }),
     });
 
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(screen.queryByText("Set a different window for each day with Pro.")).toBeNull();
   });
@@ -248,7 +286,7 @@ describe("the tiers", () => {
       settings: settings({ quiet_hours_overrides: WEEK }),
     });
 
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     expect(within(picker()).getAllByRole("listitem")).toHaveLength(7);
     expect(screen.getByText("Set a different window for each day with Pro.")).toBeTruthy();
@@ -261,7 +299,7 @@ describe("the tiers", () => {
       settings: settings({ quiet_hours_overrides: WEEK }),
     });
 
-    render(await SettingsQuietHoursPage());
+    render(await SettingsGeneralPage());
 
     fireEvent.click(screen.getByRole("button", { name: /^Monday/ }));
     expect(screen.getByLabelText("Monday starts")).toBeDisabled();
