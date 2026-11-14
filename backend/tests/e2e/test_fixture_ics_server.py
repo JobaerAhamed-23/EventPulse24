@@ -23,6 +23,8 @@ from tests.fixture_ics_server import (
     STATUS_NOT_MODIFIED,
     STATUS_OK,
     FixtureIcsServer,
+    fixture_today,
+    rebased_ics,
 )
 
 
@@ -66,12 +68,23 @@ def adapter(server):
 
 
 def test_the_server_serves_the_fixture_feed(adapter, server):
+    """The fixture's contents, **rebased onto the running week**.
+
+    The file's dates are fixed; `rebased_ics` shifts the events by whole weeks so they
+    always sit inside the import window. The server serves that, so this compares against
+    the same transformation rather than against the bytes on disk.
+    """
     result = adapter.fetch(server.url("/feed.ics"))
 
     assert result.status == STATUS_OK
-    assert result.body == FIXTURE_ICS.read_bytes()
+    assert result.body == rebased_ics(FIXTURE_ICS.read_bytes(), today=fixture_today())
     assert result.etag == ETAG
     assert result.last_modified == LAST_MODIFIED
+
+
+def test_the_served_feed_keeps_the_fixture_untouched_on_disk():
+    """Rebasing happens on the way out; the fixture file is never rewritten."""
+    assert b"20261112T180000" in FIXTURE_ICS.read_bytes()
 
 
 def test_the_server_records_what_it_was_asked_for(adapter, server):

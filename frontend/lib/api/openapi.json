@@ -6358,6 +6358,70 @@
         ]
       }
     },
+    "/api/personal/calendars/{connection_id}/sync": {
+      "post": {
+        "description": "Asks for one of the user's calendars to be synced now. **202, not 200**: the sync is queued, not performed here. The connection is marked due and the dispatcher claims it on its next tick, so the response comes back immediately and the import lands within about a minute. The body is the connection as it stands; a following read reports `sync_in_progress` while the job runs, and a new `last_synced_at` when it has finished.\n\n**It does not fetch inline**, deliberately: the request would otherwise wait on the user's calendar provider, and a manual sync that fetched for itself would be a second implementation of the hourly one.\n\nOne sync per calendar per minute. A second request inside that window answers 429 with `retry_after_seconds` — the window matches the dispatcher's tick, so being allowed again and the previous request having actually run coincide. The limit is per **connection**, so a Pro account can refresh each of its calendars.\n\nA calendar that is not active answers 409: a revoked credential cannot be fetched with, and the remedy is to reconnect rather than to ask again.",
+        "operationId": "apps_personalization_api_post_calendar_sync",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectionOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Sync one calendar now, instead of waiting for its next hourly poll",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
     "/api/personal/collections": {
       "get": {
         "description": "This user's collections in the order they arranged, each with how many saves it holds.\n\n**Open on every tier.** A lapsed Pro user's collections do not vanish — the brief forbids deleting a downgraded account's data, and a list that hid them would be that deletion as far as the user could tell.",

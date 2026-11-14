@@ -53,6 +53,7 @@ up. It binds to `127.0.0.1:0` — an ephemeral port, so parallel test runs canno
 """
 
 import datetime
+import re
 import ssl
 import tempfile
 import threading
@@ -69,6 +70,89 @@ from cryptography.x509.oid import NameOID
 #: The feed the server serves. Read from disk so the fixture file stays the single
 #: source of truth for the calendar's contents.
 FIXTURE_ICS = Path(__file__).resolve().parent / "fixtures" / "calendars" / "google.ics"
+
+#: The date the fixture's own events are written around — the earliest `DTSTART` in it.
+#:
+#: The file's dates are fixed, and `rebased_ics` moves them onto the week the test is
+#: actually running in. See that function for why they cannot simply stay as written.
+FIXTURE_ANCHOR = datetime.date(2026, 11, 12)
+
+#: The properties whose values carry a date. **Only these lines are rebased.**
+#:
+#: `VTIMEZONE`'s own `DTSTART`s are excluded by the VEVENT check in `rebased_ics`, not by
+#: this tuple: they are the anchors of the zone's DST rules, not events, and shifting them
+#: would move the moment the clocks change.
+_DATE_PROPERTIES = ("DTSTART", "DTEND", "DUE", "EXDATE", "RECURRENCE-ID", "RRULE")
+
+_DATE_IN_LINE = re.compile(r"(?<!\d)(\d{8})(?=T|$|;|,)")
+
+
+def fixture_today() -> datetime.date:
+    """Today, in UTC — the date the fixture's events are rebased onto.
+
+    UTC rather than the machine's zone so the server and anything asserting against it
+    agree on which day it is, whatever the developer's clock is set to.
+    """
+    return datetime.datetime.now(datetime.UTC).date()
+
+
+def rebased_ics(source: bytes, *, today: datetime.date) -> bytes:
+    """`source` with its event dates moved onto the week `today` falls in.
+
+    ## Why the fixture cannot keep its written dates
+
+    `CALENDAR_IMPORT_WINDOW` means the sync imports only what overlaps the next seven
+    days. A fixture with dates written in November 2026 therefore imports everything while
+    those dates are ahead of the clock, and **nothing at all** once they are behind it —
+    so a proof that passes today fails next month for a reason that has nothing to do with
+    the code it is proving. That is not a test aging badly; it is a test whose outcome
+    depends on the date it is run.
+
+    Rebasing makes the feed mean the same thing on every run: *"a calendar with four
+    events spread across the coming week"*.
+
+    ## It shifts by whole weeks
+
+    `RRULE:FREQ=WEEKLY;BYDAY=TH` names a weekday, and an arbitrary shift would move
+    `DTSTART` off Thursday and leave the rule contradicting the event it belongs to.
+    Shifting by a multiple of seven days keeps every weekday exactly as written.
+
+    The multiple is rounded **up**, so the anchor lands between today and six days ahead —
+    which puts the first event inside the import window on every run, whatever day of the
+    week the suite happens to run on.
+
+    ## It rewrites only VEVENT date properties
+
+    Dates live in `VTIMEZONE` too, where they anchor the DST rules rather than events, so
+    only lines inside a `VEVENT` are touched, and only those naming a date property. A UID
+    or a DESCRIPTION that happened to contain eight digits is left alone.
+    """
+    days_ahead = (today - FIXTURE_ANCHOR).days
+    weeks = -(-days_ahead // 7)  # ceil, for ints
+    shift = datetime.timedelta(days=weeks * 7)
+    if not shift:
+        return source
+
+    def move(match: re.Match[str]) -> str:
+        raw = match.group(1)
+        # Built field by field rather than parsed: an ICS date is a *calendar* date, with
+        # any zone carried separately in `TZID`, so there is no offset to interpret here.
+        stamp = datetime.date(int(raw[:4]), int(raw[4:6]), int(raw[6:8])) + shift
+        return stamp.strftime("%Y%m%d")
+
+    out: list[str] = []
+    in_event = False
+    for line in source.decode("utf-8").splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped == "BEGIN:VEVENT":
+            in_event = True
+        elif stripped == "END:VEVENT":
+            in_event = False
+        if in_event and stripped.split(";")[0].split(":")[0] in _DATE_PROPERTIES:
+            line = _DATE_IN_LINE.sub(move, line)
+        out.append(line)
+    return "".join(out).encode("utf-8")
+
 
 #: The ETag the server hands out. A fixed value, so a test can assert the connection
 #: stored exactly this validator.
@@ -169,7 +253,9 @@ class FixtureIcsServer:
 
     def __post_init__(self) -> None:
         if not self.body:
-            self.body = FIXTURE_ICS.read_bytes()
+            # Rebased onto the running week: see `rebased_ics` for why the fixture's
+            # written dates cannot be served as they stand.
+            self.body = rebased_ics(FIXTURE_ICS.read_bytes(), today=fixture_today())
 
     # --- The lifecycle ------------------------------------------------------------------------
 

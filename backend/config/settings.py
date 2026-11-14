@@ -195,7 +195,14 @@ STATIC_URL = "static/"
 # Which adapter implements each port (resolved by ports.registry); ADAPTER_MODE=fake by default.
 # THROTTLE_ADAPTER names the throttle's counter store on its own, because that port's state
 # is shared by every process in the stack and a per-process fake cannot serve it.
-ADAPTERS = adapter_paths(env.adapter_mode, env.source_fetch, env.throttle_adapter)
+# CALENDAR_ADAPTER names the calendar importer on its own, so a local run can import a real
+# ICS feed while every other adapter stays fake; unset, it follows the mode.
+ADAPTERS = adapter_paths(
+    env.adapter_mode,
+    env.source_fetch,
+    env.throttle_adapter,
+    env.calendar_adapter,
+)
 
 # Source fetch limits (adapters.crawl.http.FetchLimits) and the fake adapter's fixtures.
 SOURCE_FETCH = {

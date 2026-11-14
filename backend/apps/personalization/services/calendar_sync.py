@@ -62,6 +62,7 @@ from ports.calendar import (
 from shared.actor import Actor
 from shared.constants import (
     CALENDAR_CLAIM_TTL,
+    CALENDAR_IMPORT_WINDOW,
     CALENDAR_POLL_INTERVAL,
     CALENDAR_SYNC_BATCH,
 )
@@ -169,6 +170,19 @@ def _same_content(existing: PersonalEvent, entry: _Entry) -> bool:
     )
 
 
+def in_import_window(entry: CalendarEntry, *, now: datetime) -> bool:
+    """Does `entry` overlap the import window `[now, now + CALENDAR_IMPORT_WINDOW]`?
+
+    **Overlap, not "starts inside".** An event that began this morning and ends tonight is
+    happening now; a rule that asked only where it *started* would drop it at the moment it
+    matters most, and today's timeline would empty itself at lunchtime.
+
+    The bounds are inclusive at both ends so a zero-length entry — which an all-day event
+    can become once it is resolved to an instant — is not excluded by arithmetic alone.
+    """
+    return entry.ends_at >= now and entry.starts_at <= now + CALENDAR_IMPORT_WINDOW
+
+
 def _entry_by_uid(entries: list[CalendarEntry]) -> dict[str, _Entry]:
     """The feed's entries, keyed by uid.
 
@@ -205,15 +219,32 @@ def _fetch(
     `ports.calendar.Credential`, whose `repr` and `str` are redacted, and it is handed
     straight to the port.
 
-    The stored cache validators are sent back as conditional headers, so an unchanged
-    feed costs one 304 instead of a full download.
+    ## The fetch is unconditional, and the import window is why
+
+    The stored validators are deliberately **not** sent. Conditional fetching rests on an
+    assumption — *"the feed has not changed, therefore neither has what we should store"* —
+    and `CALENDAR_IMPORT_WINDOW` breaks it. What we import is a function of the feed **and
+    of `now`**, so an unchanged feed still means a changed answer:
+
+    - an event that has ended drops out of the window and should be deleted;
+    - an event eight days out crosses into the window and should be imported.
+
+    A 304 shows us neither. A calendar nobody edits for a fortnight — which is most
+    calendars — would freeze its imported set on the day it last changed, and a meeting
+    booked a month ahead would never arrive, because the feed carrying it never changes
+    again. That failure is silent: the connection reads healthy and simply stops telling
+    the truth.
+
+    The cost of giving up the 304 is one full feed per poll: a few kilobytes an hour per
+    connection (the first real local calendar measured 2,237 bytes). That is a small price
+    for the window being correct, and it is the window — not bandwidth — that the product
+    promised.
+
+    `_store_validators` still records what the provider sent, so reinstating conditional
+    fetching is a one-line change if the window ever goes away.
     """
     credential = reveal_credential(connection=connection)
-    feed = CalendarFeed(
-        url=credential,
-        etag=connection.etag,
-        last_modified=connection.last_modified,
-    )
+    feed = CalendarFeed(url=credential)
     return port.fetch_entries(feed)
 
 
@@ -452,6 +483,11 @@ def sync_calendar(
 
     if result.not_modified:
         # A 304 is a success: the feed has not changed and the caller keeps what it has.
+        #
+        # **Defensive, not expected.** `_fetch` sends no validators, so a well-behaved
+        # provider has nothing to answer 304 to. The branch stays because the port allows
+        # the answer and because the safe response to "no entries" is to keep what we have:
+        # reconciling against an empty feed would delete every imported event.
         with transaction.atomic(using=PERSONAL):
             _mark_synced(connection=connection, now=now)
             _store_validators(connection=connection, result=result)
@@ -529,7 +565,12 @@ def _reconcile(
     length of the diff and would roll back a correct update because an unrelated event
     failed to write.
     """
-    entries = _entry_by_uid(result.entries)
+    # **The window is applied here, to the feed, and that is what makes it self-cleaning.**
+    # An entry outside it is simply not in the feed as far as the diff is concerned, so a
+    # row that has aged out takes the ordinary "in the database, not in the feed" branch and
+    # is deleted. No separate pruning pass, and no second rule about which rows may be
+    # removed — there is one definition of "what this calendar currently means".
+    entries = _entry_by_uid([entry for entry in result.entries if in_import_window(entry, now=now)])
     existing_rows = _imported_rows(connection)
 
     created = updated = deleted = unchanged = 0

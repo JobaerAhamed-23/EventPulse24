@@ -25,6 +25,13 @@ import { getSession, homeRoute } from "@/lib/session";
  * **It is not Pro-gated.** FR-50 is "Calendar Provider Read-Only Sync (Free + Pro)", and
  * disconnecting is how a user withdraws access to their own calendar. Gating the exit from
  * a data-sharing arrangement would be the wrong thing on its own terms.
+ *
+ * **Connecting lives here as well as in onboarding.** `POST /api/personal/calendars` used
+ * to have one caller — onboarding step 1 — so a user who skipped that step, or who wanted a
+ * second calendar afterwards, had no way to add one: the only route to the feature ran
+ * through a flow that cannot be re-entered. The tier cap (one calendar on Free, three on
+ * Pro) stays the server's to enforce; this screen renders the refusal, it does not predict
+ * it.
  */
 export const dynamic = "force-dynamic";
 
@@ -64,7 +71,7 @@ export default async function SettingsCalendarsPage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Calendar sync</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          Calendars you&apos;ve connected, and how to disconnect them. Access is read-only.
+          Connect a calendar, sync it on demand, or disconnect it. Access is read-only.
         </p>
       </header>
 

@@ -19,6 +19,7 @@ ENV_KEYS = [
     "ADAPTER_MODE",
     "SOURCE_FETCH",
     "THROTTLE_ADAPTER",
+    "CALENDAR_ADAPTER",
     "SOURCE_FETCH_ALLOWED_PORTS",
     "SOURCE_FETCH_MAX_REDIRECTS",
     "SOURCE_FETCH_MAX_BYTES",
@@ -152,7 +153,10 @@ def test_settings_owner_role_with_owner_url_accepted(clean_env):
 
 
 def test_source_fetch_defaults(clean_env):
-    settings = Settings()
+    # `_env_file=None`, like every other defaults test here: this asserts the *code's*
+    # defaults, and reading the repository's `.env` would instead assert whatever the
+    # developer has configured — `SOURCE_FETCH=http` is a supported local choice.
+    settings = Settings(_env_file=None)
 
     assert settings.source_fetch is None  # follow ADAPTER_MODE
     assert settings.source_fetch_allowed_ports == [80, 443]
@@ -205,3 +209,63 @@ def test_the_throttle_adapter_rejects_an_unknown_store(clean_env):
 
     with pytest.raises(ValidationError):
         Settings()
+
+
+# --- CALENDAR_ADAPTER ---------------------------------------------------------------------------
+
+
+def test_the_calendar_adapter_is_unset_by_default(clean_env):
+    """Unset: follow ADAPTER_MODE. The default local stack keeps the fake importer."""
+    settings = Settings(_env_file=None)
+
+    assert settings.calendar_adapter is None
+
+
+def test_the_calendar_adapter_accepts_ics_with_a_real_fetch(clean_env):
+    clean_env.setenv("CALENDAR_ADAPTER", "ics")
+    clean_env.setenv("SOURCE_FETCH", "http")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.calendar_adapter == "ics"
+
+
+def test_ics_without_a_real_fetch_is_refused(clean_env):
+    """**The configuration that would silently keep faking.**
+
+    The ICS adapter never opens a socket — it fetches through the shared source-fetch
+    port, so a fake one answers with fixture data for every calendar address. A stack
+    configured this way would say `ics` and behave exactly like the fake, which is the
+    confusion this whole override exists to end. So it is refused at boot, with the
+    variable to set.
+    """
+    clean_env.setenv("CALENDAR_ADAPTER", "ics")
+    clean_env.delenv("SOURCE_FETCH", raising=False)
+
+    with pytest.raises(ValidationError, match="SOURCE_FETCH=http"):
+        Settings(_env_file=None)
+
+
+def test_ics_with_an_explicitly_fake_fetch_is_refused(clean_env):
+    """The same refusal when the fake fetch is named rather than merely defaulted to."""
+    clean_env.setenv("CALENDAR_ADAPTER", "ics")
+    clean_env.setenv("SOURCE_FETCH", "fake")
+
+    with pytest.raises(ValidationError, match="SOURCE_FETCH=http"):
+        Settings(_env_file=None)
+
+
+def test_the_fake_calendar_adapter_needs_no_real_fetch(clean_env):
+    """The guard is about `ics` only: faking the calendar asks nothing of the fetch port."""
+    clean_env.setenv("CALENDAR_ADAPTER", "fake")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.calendar_adapter == "fake"
+
+
+def test_an_unknown_calendar_adapter_is_refused(clean_env):
+    clean_env.setenv("CALENDAR_ADAPTER", "google")
+
+    with pytest.raises(ValidationError, match="calendar_adapter"):
+        Settings(_env_file=None)

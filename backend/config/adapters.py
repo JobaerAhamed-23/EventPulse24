@@ -40,6 +40,21 @@ THROTTLE_ADAPTERS = {
 
 CALENDAR_ADAPTER = "adapters.calendar.ics.IcsCalendarAdapter"
 
+#: The calendar importer, chosen by `CALENDAR_ADAPTER` rather than by `ADAPTER_MODE`.
+#:
+#: **The fake here is unusually convincing, and that is the problem it solves.** Every other
+#: fake announces itself — a canned LLM reply reads as canned, a fake invoice is obviously
+#: not Stripe. The calendar fake returns two well-formed events for *any* address, so a
+#: developer who connects their own Google calendar sees a healthy connection, a recent
+#: `last_polled_at`, no error, and two events that are simply not theirs. Nothing in the UI
+#: distinguishes that from a working import.
+#:
+#: `ADAPTER_MODE=real` cannot be the remedy, because it does not boot yet (`llm` and `email`
+#: have no real adapter). So the calendar is overridable on its own, for the same reason the
+#: fetch and the throttle are: a local run may need one port's real behaviour without
+#: claiming real behaviour for the ports that need credentials.
+CALENDAR_ADAPTERS = {"fake": FAKE_ADAPTERS["calendar"], "ics": CALENDAR_ADAPTER}
+
 HEADER_GEO_ADAPTER = "adapters.geo.header.HeaderGeoAdapter"
 
 # Filled in by the intents that build the real gateway and email provider. The Stripe, ICS and
@@ -76,20 +91,27 @@ def adapter_paths(
     mode: str,
     fetch: str | None = None,
     throttle: str | None = None,
+    calendar: str | None = None,
 ) -> dict[str, str]:
     """The adapter table for `mode`.
 
-    **`fetch` (SOURCE_FETCH) and `throttle` (THROTTLE_ADAPTER) each override one port.**
-    Neither changes the mode: they name the adapter for a single port and leave every
-    other port on the table the mode chose. The throttle is overridable for the same
-    reason the fetch is — it is a port whose behaviour a local run may need to change
-    without changing the mode's meaning for the ports that need credentials.
+    **`fetch` (SOURCE_FETCH), `throttle` (THROTTLE_ADAPTER) and `calendar`
+    (CALENDAR_ADAPTER) each override one port.** None of them changes the mode: they name
+    the adapter for a single port and leave every other port on the table the mode chose.
+    Each is overridable for the same reason — it is a port whose behaviour a local run may
+    need to change without changing the mode's meaning for the ports that need credentials.
+
+    **An override left unset follows the mode**, so the default local stack is unchanged:
+    `ADAPTER_MODE=fake` with no `CALENDAR_ADAPTER` still imports the fake's two events, and
+    nothing a developer has today starts behaving differently.
     """
     paths = _mode_paths(mode)
     if fetch is not None:
         paths["fetch"] = FETCH_ADAPTERS[fetch]
     if throttle is not None:
         paths["throttle"] = THROTTLE_ADAPTERS[throttle]
+    if calendar is not None:
+        paths["calendar"] = CALENDAR_ADAPTERS[calendar]
     return paths
 
 

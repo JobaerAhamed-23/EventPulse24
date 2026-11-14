@@ -553,6 +553,40 @@ CALENDAR_SYNC_BATCH = 100
 # poll interval, so a lost claim is recovered well before the next scheduled poll.
 CALENDAR_CLAIM_TTL = timedelta(minutes=15)
 
+# FR-50: how far ahead a calendar import reaches. An entry is imported only if it overlaps
+# the window `[now, now + CALENDAR_IMPORT_WINDOW]`.
+#
+# **A connected calendar is a mirror, not an archive.** Without a window the import copies
+# the feed entire, and a Google calendar carries years of it: the first real import in local
+# testing brought in a written-test invitation from the previous November. Those rows are not
+# wrong, they are simply not what the product is for — the Pulse is about what is coming up,
+# and every one of them costs a row, a conflict check and a line in the timeline's past.
+#
+# **Seven days, matching the timeline's own week.** The timeline shows a week at a time, so
+# the window is the horizon the user actually looks at.
+#
+# **An ongoing event counts as inside.** The test is interval overlap, not "does it start in
+# the window": an event that began this morning and ends tonight is happening now, and a
+# rule that dropped it would empty today's timeline at lunchtime.
+CALENDAR_IMPORT_WINDOW = timedelta(days=7)
+
+# FR-50: how often one connection may be synced **on demand**, from the "Sync now" button.
+#
+# **This is honesty, not provider protection.** A manual sync does not fetch anything
+# itself: it marks the connection due (`next_poll_at = now`) and the 60-second tick picks
+# it up, holding the claim while it runs. So the real outbound rate is already bounded at
+# roughly one fetch per tick per connection, no matter how often the button is pressed.
+#
+# What the cooldown buys is a truthful control. Without it the button would accept every
+# press and appear to do something each time, while the second press within a tick changes
+# nothing — a control that lies about having worked. One minute matches the tick, so
+# "allowed again" and "the previous request has actually run" line up.
+CALENDAR_MANUAL_SYNC_COOLDOWN_SECONDS = 60
+
+# One manual sync per cooldown window. Named rather than inlined as `limit=1`, because the
+# limit and the window are one rule and a reader should not have to infer the pair.
+CALENDAR_MANUAL_SYNC_LIMIT = 1
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Saved events (FR-49)
 #
