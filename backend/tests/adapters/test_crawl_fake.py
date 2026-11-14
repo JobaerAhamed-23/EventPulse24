@@ -171,8 +171,18 @@ def test_default_fixtures_dir_from_settings_is_valid():
     assert result.status == 200 and b"<rss" in result.body
 
 
-def test_registry_builds_the_fake_fetch_adapter_by_default():
+def test_registry_builds_the_fake_fetch_adapter_by_default(settings):
+    """**The fake table is pinned, not inherited from the developer's `.env`.**
+
+    `SOURCE_FETCH` overrides this port on its own, and a developer who has set it — to
+    crawl real feeds, or because `CALENDAR_ADAPTER=ics` requires it — would otherwise see
+    this fail for a configuration choice rather than for a defect. What the test means is
+    "fake mode builds the fake adapter", so it states fake mode.
+    """
+    from config.adapters import FAKE_ADAPTERS
     from ports.registry import get_fetch_port
+
+    settings.ADAPTERS = dict(FAKE_ADAPTERS)
 
     assert isinstance(get_fetch_port(), FakeFetchAdapter)
 

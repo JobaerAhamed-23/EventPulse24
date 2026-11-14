@@ -7,6 +7,7 @@ from django.utils.module_loading import import_string
 from config.adapters import (
     CALENDAR_ADAPTERS,
     FAKE_ADAPTERS,
+    FETCH_ADAPTERS,
     REAL_ADAPTERS,
     THROTTLE_ADAPTERS,
     adapter_paths,
@@ -57,17 +58,31 @@ def test_the_real_embedding_adapter_implements_the_port():
     assert issubclass(adapter, EmbeddingPort)
 
 
-def test_settings_use_the_fake_table_by_default(settings):
-    """The settings carry the fake table — unless an override names another port.
+#: The ports a developer's `.env` may redirect without changing the mode.
+#:
+#: Each has its own variable — `THROTTLE_ADAPTER`, `SOURCE_FETCH`, `CALENDAR_ADAPTER` —
+#: and the local `.env` genuinely sets some of them: `THROTTLE_ADAPTER=redis` always, and
+#: `CALENDAR_ADAPTER=ics` with `SOURCE_FETCH=http` on a machine importing a real calendar.
+OVERRIDABLE = {
+    "throttle": THROTTLE_ADAPTERS,
+    "fetch": FETCH_ADAPTERS,
+    "calendar": CALENDAR_ADAPTERS,
+}
 
-    The local `.env` sets `THROTTLE_ADAPTER=redis`, so the *whole* table is not
-    necessarily the fake one. What the test means is "the mode's table, with any
-    per-port override applied" — so it compares against the table the mode would
-    produce, with the overrides the environment actually names.
+
+def test_settings_use_the_fake_table_by_default(settings):
+    """The settings carry the fake table — except for ports an override names.
+
+    The *whole* table is not necessarily the fake one, because three ports are
+    individually redirectable and the local `.env` uses that. What the test means is "the
+    mode's table, with any per-port override applied": every overridable port holds one of
+    its own legal values, and every other port is exactly what fake mode says.
     """
-    assert settings.ADAPTERS["throttle"] in THROTTLE_ADAPTERS.values()
-    assert {k: v for k, v in settings.ADAPTERS.items() if k != "throttle"} == {
-        k: v for k, v in FAKE_ADAPTERS.items() if k != "throttle"
+    for port, choices in OVERRIDABLE.items():
+        assert settings.ADAPTERS[port] in choices.values(), port
+
+    assert {k: v for k, v in settings.ADAPTERS.items() if k not in OVERRIDABLE} == {
+        k: v for k, v in FAKE_ADAPTERS.items() if k not in OVERRIDABLE
     }
 
 

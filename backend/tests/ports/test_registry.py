@@ -28,7 +28,17 @@ from ports.registry import (
         (get_calendar_port, FakeCalendarAdapter),
     ],
 )
-def test_default_fake_mode_returns_local_adapter(getter, expected):
+def test_default_fake_mode_returns_local_adapter(getter, expected, settings):
+    """**Fake mode is stated, not inherited from the developer's `.env`.**
+
+    `SOURCE_FETCH`, `THROTTLE_ADAPTER` and `CALENDAR_ADAPTER` each override one port
+    without changing the mode, so the ambient table is not necessarily the fake one. This
+    test is about what fake mode builds, so it pins fake mode and asks.
+    """
+    from config.adapters import FAKE_ADAPTERS
+
+    settings.ADAPTERS = dict(FAKE_ADAPTERS)
+
     assert type(getter()) is expected
 
 

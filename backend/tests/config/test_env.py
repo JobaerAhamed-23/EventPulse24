@@ -153,7 +153,10 @@ def test_settings_owner_role_with_owner_url_accepted(clean_env):
 
 
 def test_source_fetch_defaults(clean_env):
-    settings = Settings()
+    # `_env_file=None`, like every other defaults test here: this asserts the *code's*
+    # defaults, and reading the repository's `.env` would instead assert whatever the
+    # developer has configured — `SOURCE_FETCH=http` is a supported local choice.
+    settings = Settings(_env_file=None)
 
     assert settings.source_fetch is None  # follow ADAPTER_MODE
     assert settings.source_fetch_allowed_ports == [80, 443]
