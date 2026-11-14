@@ -287,22 +287,46 @@ describe("what the control shows", () => {
     expect(screen.queryByText("Personal events are in your Pulse Digest")).toBeNull();
   });
 
-  it("says the state in words, never in colour alone", () => {
+  it("says the state in words, never in colour or a knob's position alone", () => {
     renderToggle({ initialIncludePersonalEvents: true });
 
-    // **The state is in the words the button shows.** The button's visible text is the
-    // sentence that says which state it is in — the same shape as
-    // `detail-mute-control.tsx`, where the visible text flips with the state.
-    //
-    // **There is no colour-only indicator.** The button carries no state in its
-    // background or its border; the sentence is the claim, which is what WCAG 1.4.1
-    // asks for.
+    // **WCAG 1.4.1, restated for a switch.** The sentence used to be the button's own
+    // text. The control is a switch now and the mockup's row puts the words on the
+    // left — so the sentence is the row's description instead. What matters is
+    // unchanged and is what this asserts: the state is a **real element containing
+    // words**, so it survives a stylesheet being stripped, a colour being
+    // indistinguishable, and a reader who has never seen the knob's other position.
     const text = screen.getByText("Personal events are in your Pulse Digest");
     expect(text).toBeInTheDocument();
-    // **The sentence is the button's own text**, so it is what a sighted reader reads
-    // and what a reader with the stylesheet stripped reads.
-    expect(text.tagName).toBe("BUTTON");
-    expect(button()).toHaveTextContent("Personal events are in your Pulse Digest");
+
+    // Not a pseudo-element and not an attribute: real text, in the document.
+    expect(text.textContent).toBe("Personal events are in your Pulse Digest");
+
+    // **And it is not inside the control**, which is the part that changed. The
+    // button's accessible name stays fixed and its state rides on `aria-pressed`, so a
+    // sentence inside it would be a second, competing name.
+    expect(button()).not.toHaveTextContent("Personal events are in your Pulse Digest");
+    expect(button()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("draws the switch, and says which way it is set beside it", () => {
+    renderToggle({ initialIncludePersonalEvents: true });
+
+    // The visual state the mockup draws, plus the word that keeps it from being
+    // colour-only. `data-state` is what the track's fill is driven from, so asserting
+    // it is asserting what is painted.
+    expect(button()).toHaveAttribute("data-state", "on");
+    expect(screen.getByText("On")).toBeInTheDocument();
+  });
+
+  it("flips the switch's painted state with the setting", async () => {
+    PUT.mockResolvedValue(answer({ include_personal_events: false }));
+    renderToggle({ initialIncludePersonalEvents: true });
+
+    fireEvent.click(button());
+
+    await waitFor(() => expect(button()).toHaveAttribute("data-state", "off"));
+    expect(screen.getByText("Off")).toBeInTheDocument();
   });
 
   it("takes the server's answer after a save, not the user's guess", async () => {

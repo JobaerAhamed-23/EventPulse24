@@ -137,8 +137,13 @@ describe("the route", () => {
 
     // **The server's answer, not a local default.** The server says personal events are
     // in, so the control reads pressed.
+    //
+    // The sentence is the row's description now rather than the control's own text —
+    // the control is a switch — so it is asserted on the page, which is where a reader
+    // finds it.
     expect(toggle()).toHaveAttribute("aria-pressed", "true");
-    expect(toggle()).toHaveTextContent("Personal events are in your Pulse Digest");
+    expect(toggle()).toHaveAttribute("data-state", "on");
+    expect(screen.getByText("Personal events are in your Pulse Digest")).toBeInTheDocument();
   });
 
   it("renders the server's stored opt-out, when the user turned it off", async () => {
@@ -150,7 +155,8 @@ describe("the route", () => {
     render(await SettingsGeneralPage());
 
     expect(toggle()).toHaveAttribute("aria-pressed", "false");
-    expect(toggle()).toHaveTextContent("Personal events are not in your Pulse Digest");
+    expect(toggle()).toHaveAttribute("data-state", "off");
+    expect(screen.getByText("Personal events are not in your Pulse Digest")).toBeInTheDocument();
   });
 
   it("gives the toggle the stored schedule, so it can be sent back unchanged", async () => {

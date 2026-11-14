@@ -75,6 +75,8 @@
 import { useCallback, useState } from "react";
 
 import { SaveFeedback } from "@/components/settings/save-feedback";
+import { SettingRow } from "@/components/settings/setting-row";
+import { SwitchControl } from "@/components/settings/switch-control";
 import { saveFailureMessage } from "@/components/settings/save-failure";
 import { api } from "@/lib/backend-client";
 
@@ -263,43 +265,53 @@ export function DigestPersonalEvents({
 
   return (
     <section aria-label="Personal events" data-digest-personal-events>
-      <button
-        type="button"
-        onClick={() => {
-          void onToggle();
-        }}
-        disabled={busy || !canSave}
+      <SettingRow
+        label="Personal events"
         /**
-         * **`aria-pressed` carries the state to assistive technology.** The visible text
-         * already says it in words; the attribute is what makes the button's *state*
-         * announceable, which is the WCAG 4.1.2 rule this control is subject to.
+         * **The sentence moved out of the button, and it is still a sentence.**
+         *
+         * It used to be the button's own text, so that the state was readable as words
+         * rather than as a colour (WCAG 1.4.1). The control is a switch now, and the
+         * mockup's row puts the words on the left — so the sentence lives here, where it
+         * is still a real element that a sighted reader and a screen reader both get.
+         * What it must never become is a pseudo-element or a title attribute.
          */
-        aria-pressed={included}
-        /**
-         * **The accessible name is stable, and the state is `aria-pressed`'s.** See
-         * `ACCESSIBLE_NAME` above.
-         */
-        aria-label={ACCESSIBLE_NAME}
-        className="min-h-[44px] text-ink-secondary underline underline-offset-4 [font:var(--type-scale-meta-md)] disabled:cursor-default"
-      >
-        {included ? VISIBLE.included : VISIBLE.excluded}
-      </button>
+        description={included ? VISIBLE.included : VISIBLE.excluded}
+        control={
+          <SwitchControl
+            checked={included}
+            onToggle={() => {
+              void onToggle();
+            }}
+            disabled={busy || !canSave}
+            /**
+             * **The accessible name is stable, and the state is `aria-pressed`'s.** See
+             * `ACCESSIBLE_NAME` above.
+             */
+            label={ACCESSIBLE_NAME}
+            testAttribute="data-personal-events-switch"
+          />
+        }
+        footer={
+          <>
+            {/*
+              The line under the control, when the control cannot be used.
 
-      {/*
-        The line under the control, when the control cannot be used.
+              **It is a real element in the DOM**, not a pseudo-element — a helper a
+              sighted user reads has to be one a screen reader reads too.
+            */}
+            {canSave ? null : (
+              <p className="text-ink-muted [font:var(--type-scale-meta-sm)]" data-no-schedule>
+                {NO_SCHEDULE}
+              </p>
+            )}
 
-        **It is a real element in the DOM**, not a pseudo-element — a helper a sighted
-        user reads has to be one a screen reader reads too.
-      */}
-      {canSave ? null : (
-        <p className="text-ink-muted [font:var(--type-scale-meta-sm)]" data-no-schedule>
-          {NO_SCHEDULE}
-        </p>
-      )}
-
-      <div className="mt-4">
-        <SaveFeedback busy={busy} saved={saved} failure={failure} />
-      </div>
+            <div className="mt-4">
+              <SaveFeedback busy={busy} saved={saved} failure={failure} />
+            </div>
+          </>
+        }
+      />
     </section>
   );
 }

@@ -152,7 +152,10 @@ export function SourceMuteControl({
       <span
         role="group"
         aria-label={`Mute controls for ${sourceName}`}
-        className="inline-flex gap-1"
+        // `flex-wrap`: at phone width the three buttons do not fit beside the trust
+        // dots, and a row that cannot wrap is a row whose last button is clipped by the
+        // list's rounded edge — unreachable rather than merely ugly.
+        className="inline-flex flex-wrap justify-end gap-1"
         data-source-mute={sourceId}
       >
         {OPTIONS.map((option) => {

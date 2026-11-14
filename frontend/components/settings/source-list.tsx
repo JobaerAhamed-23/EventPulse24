@@ -28,6 +28,7 @@
  */
 import { useCallback, useState } from "react";
 
+import { SourceGlyph } from "@/components/settings/source-glyph";
 import { SourceMuteControl } from "@/components/settings/source-mute-control";
 import type { SourceMuteState } from "@/components/settings/source-mute-control";
 import { SourceTrustDots } from "@/components/settings/source-trust-dots";
@@ -136,35 +137,67 @@ export function SourceList({ groups }: SourceListProps) {
                 // depend on which groups happen to have sources in them.
                 <p className="mt-2 text-ink-muted [font:var(--type-scale-body-sm)]">None yet.</p>
               ) : (
-                <ul className="mt-3 flex flex-col gap-3">
+                // **Hairline-separated rows, not a stack of cards** — the mockup's
+                // shape. A card per source gives every row its own border and its own
+                // elevation, so twenty sources read as twenty objects competing for
+                // attention. A single bounded list with rules between the rows reads as
+                // one table of sources, which is what it is.
+                <ul className="mt-3 overflow-hidden rounded-card border border-border-subtle bg-surface-elevated">
                   {group.sources.map((source) => (
                     <li
                       key={source.id}
-                      className="rounded-card border border-border-subtle bg-surface-elevated px-4 py-3"
+                      className="flex flex-wrap items-center justify-between gap-4 border-t border-border-subtle px-4 py-3 first:border-t-0"
                       data-source={source.id}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                      {/*
+                        **`flex-1 min-w-0` is what keeps the controls in a column.**
+                        Without it a long source name pushes the trust dots and the mute
+                        buttons onto a line of their own, left-aligned, and the right-hand
+                        column the eye was following simply stops — which is exactly what
+                        the registry's longest names did. With it the name truncates and
+                        the controls hold their place.
+                      */}
+                      <span className="flex min-w-0 flex-1 items-center gap-4">
+                        {/*
+                          The monogram tile. Decorative — the name is right beside it.
+                        */}
+                        <SourceGlyph name={source.name} badge={group.badge} />
+
                         <span className="min-w-0">
                           <span className="block truncate text-ink-primary [font:var(--type-scale-meta-md)]">
                             {source.name}
                           </span>
                           {sourceSub(source) ? (
-                            <span className="block text-ink-muted [font:var(--type-scale-body-sm)]">
+                            <span
+                              // A stable hook, so a test does not have to encode the
+                              // row's nesting — which is what broke when the rows
+                              // stopped being cards.
+                              data-source-sub
+                              className="block text-ink-muted [font:var(--type-scale-body-sm)]"
+                            >
                               {sourceSub(source)}
                             </span>
                           ) : null}
                         </span>
+                      </span>
 
-                        <span className="flex flex-wrap items-center gap-4">
-                          <SourceTrustDots band={source.trust.band} />
-                          <SourceMuteControl
-                            sourceId={source.id}
-                            sourceName={source.name}
-                            state={source.mute_state}
-                            onStateChange={(next) => setState(source.id, next)}
-                          />
-                        </span>
-                      </div>
+                      {/*
+                        **`sm:shrink-0`, not `shrink-0`.** From `sm` up the controls hold
+                        their width and the name truncates, which is what keeps the
+                        right-hand column straight. At phone width there is no room for
+                        both, so the controls are allowed to shrink and wrap instead —
+                        refusing to would clip the last button against the list's rounded
+                        edge, where it cannot be tapped at all.
+                      */}
+                      <span className="flex flex-wrap items-center gap-4 sm:shrink-0">
+                        <SourceTrustDots band={source.trust.band} />
+                        <SourceMuteControl
+                          sourceId={source.id}
+                          sourceName={source.name}
+                          state={source.mute_state}
+                          onStateChange={(next) => setState(source.id, next)}
+                        />
+                      </span>
                     </li>
                   ))}
                 </ul>
