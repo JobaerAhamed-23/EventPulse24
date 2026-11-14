@@ -151,6 +151,13 @@ def put_category_mute(request, payload: CategoryMuteIn) -> CategoryMuteResultOut
     except UnknownCategoryError as error:
         raise HttpError(422, str(error)) from error
     except UnknownDurationError as error:
+        # **The two 422s mean different things, and this one is the *value* refusal.**
+        # The duration set is a `Literal` in the request schema, so over HTTP a bad
+        # duration is refused earlier — as a *shape* (`invalid_request`), by Ninja,
+        # before this handler runs. This branch is the service's own defence, for the
+        # callers that are not the HTTP endpoint; the service is where the closed set
+        # of durations is the rule, and a rule that lived only in a request schema
+        # would not be a rule at all.
         raise HttpError(422, str(error)) from error
     return CategoryMuteResultOut(
         category_key=result.category_key,

@@ -1699,6 +1699,18 @@ CategoryKey = str
 #:
 #: **The set is closed.** Seven, thirty, ninety, or "until I change it". A mute that
 #: outlived the user's patience by a typo is a mute the user has to find a screen to undo.
+#:
+#: **The `Literal` is the published contract, and it is why a bad duration is a
+#: *shape* refusal.** The request schema refuses a duration outside the set before the
+#: handler runs, so the endpoint never sees it — and a refusal that happens before the
+#: command is `invalid_request`, where a refusal by the command is `invalid_input`.
+#: (`tests/identity/test_profile_api.py` pins the same distinction for the profile
+#: write.) The service refuses the same set in its own right, for the callers that are
+#: not this endpoint.
+#:
+#: **The category key is open here on purpose** — it is `str`, not a `Literal` — because
+#: the vocabulary is the server's and the schema should not be a second copy of it. So
+#: a bad category reaches the command and is refused as a value.
 CategoryMuteDuration = Literal[7, 30, 90] | None
 
 

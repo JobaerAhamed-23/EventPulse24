@@ -45,6 +45,26 @@ class TestTheEmbedCommand:
 
         assert embed_event(event_id=uuid7(), adapter=FakeEmbeddingAdapter()) is False
 
+    def test_it_writes_nothing_when_the_provider_returns_no_vector(self):
+        """**A provider that answers with nothing is not a vector.** Storing an empty
+        one would leave the event looking embedded — the backfill would skip it, and
+        the cluster would compare it against nothing.
+
+        **So the event keeps no vector, and the command says it did nothing.**
+        """
+
+        class _EmptyAdapter:
+            def embed(self, texts, *, dimensions):
+                from ports.embedding import EmbeddingResult
+
+                return EmbeddingResult(vectors=(), model="fake", input_tokens=0, cost_micros=0)
+
+        event = EventFactory(title="Rooftop jazz night")
+
+        assert embed_event(event_id=event.pk, adapter=_EmptyAdapter()) is False
+
+        assert Event.objects.using(CATALOG).get(pk=event.pk).embedding is None
+
     def test_the_text_is_the_title_then_the_description(self):
         text = event_embedding_text(title="Jazz night", description="Live at eight.")
 

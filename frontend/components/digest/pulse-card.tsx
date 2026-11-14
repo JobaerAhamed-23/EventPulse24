@@ -33,6 +33,7 @@
 import Link from "next/link";
 
 import { ConflictIndicator } from "@/components/conflicts/conflict-indicator";
+import { SwipeDismiss } from "@/components/digest/swipe-dismiss";
 import { ShareControl } from "@/components/share/share-control";
 import { EventStateBadge } from "@/components/state/event-state-badge";
 import type { components } from "@/lib/api/schema";
@@ -64,6 +65,25 @@ export type PulseCardProps = {
    * control falls back to the browser's own origin when it is absent.
    */
   shareOrigin?: string | null;
+  /**
+   * Called when the user swipes the card away (FR-25).
+   *
+   * **It is optional, and a card without it renders no swipe affordance at all** —
+   * not a disabled one. The preview (`/preview`) is session-free (AD-12) and its cards
+   * are a different component, but the digest's *public* read path has no session
+   * either, and a card that offers "Show me less of this" to a visitor the server will
+   * refuse to record a dismissal for is a control that cannot do anything — which
+   * `EXPERIENCE.md` §`Component.Badge.SoldOut` calls worse than no control at all.
+   */
+  onDismiss?: (eventId: string) => void;
+  /**
+   * Called when the server says the "less of this" prompt is due (FR-25).
+   *
+   * **The prompt's copy is the server's.** The card passes the server's `prompt`
+   * object upward and writes none of it — the title names a chip in the backend's
+   * vocabulary, and a scraped title must never reach the user's screen (AD-9).
+   */
+  onPromptDue?: (prompt: components["schemas"]["MutePromptOut"]) => void;
 };
 
 /** The confidence indicator's five positions, always (`DESIGN.md` `component.indicator.confidence`). */
@@ -107,7 +127,13 @@ export function categoryFor(card: DigestCard): Category {
   return { label: "Public event", stripe: "bg-accent-slate", discovery: false };
 }
 
-export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardProps) {
+export function PulseCard({
+  card,
+  explanation,
+  shareOrigin = null,
+  onDismiss,
+  onPromptDue,
+}: PulseCardProps) {
   const category = categoryFor(card);
   const tags = card.tags.slice(0, MAX_WHY_THIS_TAGS);
 
@@ -179,7 +205,16 @@ export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardPr
    */
   const shareable = publicSlug !== null;
 
-  return (
+  /**
+   * **The card itself, as a value.**
+   *
+   * **It is a value because the swipe wraps it.** FR-25's gesture has to be *around*
+   * the card — the card is what moves — and the wrapper also renders the
+   * keyboard-reachable button that does the same thing. So the card is built first and
+   * then either returned bare or handed to the wrapper, depending on whether the
+   * caller wired a dismissal at all.
+   */
+  const cardSurface = (
     <article
       className={[
         "fade-in group relative flex flex-col gap-3 rounded-card border border-border-subtle",
@@ -355,6 +390,27 @@ export function PulseCard({ card, explanation, shareOrigin = null }: PulseCardPr
         className="absolute inset-0 z-0 rounded-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-terracotta"
       />
     </article>
+  );
+
+  /**
+   * **A card with no dismissal wired renders bare.**
+   *
+   * **Not a disabled swipe — no swipe.** A control that offers an action the server
+   * will refuse is a control that cannot do anything, and `EXPERIENCE.md`
+   * §`Component.Badge.SoldOut` says such a control is worse than none: it asks the
+   * reader to believe in an outcome that will not happen.
+   */
+  if (onDismiss === undefined) return cardSurface;
+
+  return (
+    <SwipeDismiss
+      eventId={card.event_id}
+      title={title}
+      onDismissed={onDismiss}
+      onPromptDue={onPromptDue ?? (() => {})}
+    >
+      {cardSurface}
+    </SwipeDismiss>
   );
 }
 

@@ -184,6 +184,35 @@ def test_an_unknown_duration_is_refused():
     assert CategoryMute.objects.filter(user_id=client.user_id).count() == 0
 
 
+def test_the_two_refusals_are_the_two_different_422s():
+    """**The house's two 422s, and this endpoint uses both.**
+
+    `invalid_request` is Ninja refusing the *shape* of the body before the handler
+    runs; `invalid_input` is the command refusing the *value*. The frontend branches on
+    the code, so the two are deliberately distinguishable — see
+    `tests/identity/test_profile_api.py`, which pins the same distinction for the
+    profile write.
+
+    **Here the split falls where the rule falls.** The duration set is a `Literal` in
+    the request schema, so a bad duration is refused as a shape — `invalid_request`.
+    The category vocabulary is the server's and is open in the schema (`str`), so a
+    bad category reaches the command and is refused as a value — `invalid_input`.
+
+    **A test that asserted only the status would pass even if one of the two refusal
+    paths were entirely broken**, because the other would satisfy it. So both codes are
+    asserted.
+    """
+    client = signed_in()
+
+    bad_category = put_mute(client, "jazz_clubs", 30)
+    bad_duration = put_mute(client, "arts_culture", 45)
+
+    assert bad_category.status_code == 422, bad_category.content
+    assert bad_duration.status_code == 422, bad_duration.content
+    assert body_of(bad_category)["code"] == "invalid_input"
+    assert body_of(bad_duration)["code"] == "invalid_request"
+
+
 def test_setting_the_same_mute_again_refreshes_the_window():
     """**The expiry runs from `now`, not from the mute's creation.** Asking for 30 days
     again is a request for thirty more days from now, so the expiry moves — and

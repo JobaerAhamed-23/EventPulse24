@@ -91,6 +91,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Where your events come from, and how much of each you see.",
   },
   {
+    href: "/settings/taste",
+    label: "Taste",
+    description: "Categories you've asked us to show less of.",
+  },
+  {
     href: "/settings/account",
     label: "Account",
     description: "Your plan, and your data.",

@@ -10,6 +10,9 @@ workspace:
   run_scope_history:
     - choice: single
       items_count: 1
+      timestamp: 2026-11-14T07:34:11.000Z
+    - choice: single
+      items_count: 1
       timestamp: 2026-11-13T17:02:13.327Z
     - choice: wide
       items_count: 10
@@ -1366,18 +1369,21 @@ intents:
     completed_at: 2026-11-13T07:56:11.438Z
   - id: relevance-feedback-loop
     title: The Relevance Feedback Loop — FR-25's Dismissal, Clustering and Mute
-    status: pending
+    status: completed
     created: 2026-11-13
+    completed_at: 2026-11-14T07:34:11.000Z
     split_from: unwired-surfaces
     work_items:
       - id: less-like-this-adjustment
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         design_doc: less-like-this-adjustment-design.md
         checkpoint_1: approved
         checkpoint_1_at: 2026-11-13T21:40:00Z
         depends_on: []
+        run_id: run-eventpulse24-034
+        completed_at: 2026-11-14T07:34:11.000Z
   - id: source-transparency-and-mute
     title: Source Transparency & Mute — Settings → Sources, and What the Dots Mean
     status: completed
@@ -1450,19 +1456,7 @@ intents:
         completed_at: 2026-11-13T13:17:34.101Z
     completed_at: 2026-11-13T13:17:30.478Z
 runs:
-  active:
-    - id: run-eventpulse24-034
-      scope: single
-      work_items:
-        - id: less-like-this-adjustment
-          intent: relevance-feedback-loop
-          mode: validate
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: approved
-          current_checkpoint: plan
-      current_item: less-like-this-adjustment
-      started: 2026-11-13T17:03:56.431Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2097,3 +2091,11 @@ runs:
           mode: validate
       started: 2026-11-13T15:57:14.606Z
       completed: 2026-11-13T17:02:13.327Z
+    - id: run-eventpulse24-034
+      scope: single
+      work_items:
+        - id: less-like-this-adjustment
+          intent: relevance-feedback-loop
+          mode: validate
+      started: 2026-11-13T17:03:56.431Z
+      completed: 2026-11-14T07:34:11.000Z
