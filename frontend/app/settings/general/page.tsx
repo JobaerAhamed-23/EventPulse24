@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { DefaultReminderSlots } from "@/components/settings/default-reminder-slots";
 import { DigestDeliveryTime } from "@/components/settings/digest-delivery-time";
 import { DigestPersonalEvents } from "@/components/settings/digest-personal-events";
+import { DigestTimezone } from "@/components/settings/digest-timezone";
 import { QuietHoursWindow } from "@/components/settings/quiet-hours-window";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
@@ -152,6 +153,30 @@ export default async function SettingsGeneralPage() {
       </header>
 
       {/*
+        **The zone comes first, because everything under it is read in that zone.**
+        Quiet hours are local wall clocks, the digest's "today" is a local day, and the
+        timeline draws a local week. A reader who does not know which zone they are in
+        cannot interpret any of the rows below — so it is stated before they are asked.
+
+        It had no home at all before this: the zone was set once in onboarding, defaulted
+        to `UTC` for anyone who skipped that step, and `DigestDeliveryTime` sent it
+        straight back unchanged. An account on the wrong zone had no way to discover it.
+      */}
+      <section
+        id="timezone"
+        aria-labelledby="timezone-heading"
+        className="mt-8 max-w-(--layout-container-reading) scroll-mt-8"
+      >
+        <h2 id="timezone-heading" className="sr-only">
+          Timezone
+        </h2>
+        <DigestTimezone
+          initialTimezone={settings.digest.timezone}
+          deliveryTime={settings.digest.delivery_time}
+        />
+      </section>
+
+      {/*
         **Each block is a `<section>` with an id and its own heading.** The id is what the
         redirected old routes target; the heading is what makes the long page navigable by
         a screen reader, which is the same job the sub-nav rows used to do.
@@ -159,7 +184,7 @@ export default async function SettingsGeneralPage() {
       <section
         id="reminders"
         aria-labelledby="reminders-heading"
-        className="mt-8 max-w-(--layout-container-reading) scroll-mt-8"
+        className="mt-12 max-w-(--layout-container-reading) scroll-mt-8"
       >
         <h2
           id="reminders-heading"
