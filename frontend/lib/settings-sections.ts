@@ -117,3 +117,18 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 export function isSettingsPath(pathname: string): boolean {
   return pathname === "/settings" || pathname.startsWith("/settings/");
 }
+
+/**
+ * Where `/settings` sends you — **the first section, by construction.**
+ *
+ * `/settings` used to render an index: one described row per section, and a click on one
+ * of them to reach a screen that then showed the same sections again in its sub-nav. The
+ * index was a step between the nav and the setting, and `SettingsNav` had already made it
+ * redundant. `/settings` now redirects here.
+ *
+ * **It is derived, not declared.** A hard-coded `"/settings/reminders"` would be a second
+ * place the default lives, free to drift from the list and free to name a route that no
+ * longer exists. Reordering `SETTINGS_SECTIONS` moves the default with it, which is the
+ * behaviour the order already implies: the first section is the one you see first.
+ */
+export const SETTINGS_DEFAULT_HREF: string = SETTINGS_SECTIONS[0].href;

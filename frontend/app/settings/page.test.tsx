@@ -1,23 +1,19 @@
 /**
- * `/settings` — the settings index.
+ * `/settings` — the redirect to the first section.
  *
- * **The route that did not exist**, and whose absence made four of six settings screens
- * unreachable by clicking. These assert the two things the index is for: it lists every
- * section, and each row goes to the section it names.
+ * **It used to be an index**, and the index was a click between the nav and the setting:
+ * a list of sections, leading to a screen whose sub-nav lists the same sections again.
+ * These assert what replaced it — that `/settings` renders nothing and forwards to the
+ * first section — and, because the destination is derived rather than typed, that it
+ * cannot drift away from the list.
  */
-import { render, screen, within } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsIndexPage from "@/app/settings/page";
-import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
+import { SETTINGS_DEFAULT_HREF, SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
-const getSession = vi.fn();
 const redirect = vi.fn();
-
-vi.mock("@/lib/session", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/session")>("@/lib/session");
-  return { ...actual, getSession: () => getSession() };
-});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/settings",
@@ -25,87 +21,53 @@ vi.mock("next/navigation", () => ({
   redirect: (destination: string) => redirect(destination),
 }));
 
-const USER = {
-  id: "11111111-1111-1111-1111-111111111111",
-  email: "maya@example.test",
-  name: "",
-  onboarding: { completed: true, current_step: null },
-};
-
 beforeEach(() => {
-  getSession.mockReset();
   redirect.mockReset();
-  getSession.mockResolvedValue({ kind: "signed-in", user: USER });
 });
 
-describe("the index", () => {
-  it("lists every settings section", async () => {
-    render(await SettingsIndexPage());
-
-    for (const section of SETTINGS_SECTIONS) {
-      const link = screen.getAllByRole("link").find((a) => a.getAttribute("href") === section.href);
-      expect(link, section.href).toBeDefined();
-      expect(link?.textContent, section.href).toContain(section.label);
-      expect(link?.textContent, section.href).toContain(section.description);
-    }
-  });
-
-  it("lists the sections in the order the list declares", async () => {
-    render(await SettingsIndexPage());
-
-    const hrefs = screen
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href") ?? "")
-      .filter((href) => href.startsWith("/settings/"));
-
-    expect(hrefs).toEqual(SETTINGS_SECTIONS.map((section) => section.href));
-  });
-
-  it("renders no section twice", async () => {
-    render(await SettingsIndexPage());
-
-    // The index and the sub-nav render the same list, and mounting both here would put
-    // every destination on the screen twice. The index renders the long form only.
-    const hrefs = screen
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href") ?? "")
-      .filter((href) => href.startsWith("/settings/"));
-
-    expect(new Set(hrefs).size).toBe(hrefs.length);
-  });
-
-  it("does not mount the sub-nav, which would be the same six links again", async () => {
-    render(await SettingsIndexPage());
-
-    expect(screen.queryByRole("navigation", { name: "Settings sections" })).toBeNull();
-  });
-
-  it("names itself Settings", async () => {
-    render(await SettingsIndexPage());
-
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Settings");
-  });
-
-  it("sends a visitor who is not signed in away, rather than listing an account", async () => {
-    getSession.mockResolvedValue({ kind: "anonymous" });
-
+describe("the settings index", () => {
+  it("redirects to the first section", async () => {
     await SettingsIndexPage();
 
-    expect(redirect).toHaveBeenCalled();
+    expect(redirect).toHaveBeenCalledWith(SETTINGS_SECTIONS[0].href);
+  });
+
+  it("redirects to the section the list names as the default", async () => {
+    // The destination is derived from the list, so reordering the list moves it. A
+    // hard-coded route here would pass while the real page pointed somewhere else.
+    await SettingsIndexPage();
+
+    expect(redirect).toHaveBeenCalledWith(SETTINGS_DEFAULT_HREF);
+  });
+
+  it("redirects whoever asks, signed in or not", async () => {
+    // It reads no session: the section it forwards to runs `homeRoute` itself, so an
+    // anonymous visitor lands on `/preview` by way of one extra hop rather than by a
+    // second copy of the same rule here.
+    await SettingsIndexPage();
+
+    expect(redirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders no index of its own", async () => {
+    // The sub-nav on the destination *is* the index now. A list here as well would be
+    // the same sections on the screen twice, one click apart.
+    //
+    // `redirect` is mocked, so the component returns instead of throwing, and what it
+    // returns must be nothing.
+    const { container } = render(await SettingsIndexPage());
+
+    expect(container.textContent).toBe("");
+    expect(container.querySelector("a")).toBeNull();
   });
 });
 
-describe("the section list", () => {
-  it("is a list, so a screen reader can count it", async () => {
-    render(await SettingsIndexPage());
+describe("the default section", () => {
+  it("is the first in the list", () => {
+    expect(SETTINGS_DEFAULT_HREF).toBe(SETTINGS_SECTIONS[0].href);
+  });
 
-    const items = screen
-      .getAllByRole("listitem")
-      .filter((item) => item.querySelector('a[href^="/settings/"]') !== null);
-
-    expect(items).toHaveLength(SETTINGS_SECTIONS.length);
-    for (const item of items) {
-      expect(within(item).getAllByRole("link")).toHaveLength(1);
-    }
+  it("is a section, not a route invented for the redirect", () => {
+    expect(SETTINGS_SECTIONS.map((section) => section.href)).toContain(SETTINGS_DEFAULT_HREF);
   });
 });
