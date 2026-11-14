@@ -13,8 +13,10 @@ from django.db import models
 from django.db.models import F, Q
 from django.db.models.expressions import RawSQL
 from django.utils import timezone
+from pgvector.django import VectorField
 
 from shared.constants import (
+    FR25_EMBEDDING_DIMENSIONS,
     HIGH_PRIORITY_CADENCE_MAX,
     HIGH_PRIORITY_METHODS,
     LOW_PRIORITY_CADENCE_MAX,
@@ -356,6 +358,28 @@ class Event(UUIDv7Model):
     )
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_seen_at = models.DateTimeField(default=timezone.now)
+    # FR-25: the event's embedding vector — the thing the dismissal cluster compares.
+    #
+    # **It is nullable, and null means "not embedded yet", not "empty".** The backfill is
+    # a resumable command, not a migration: a migration that backfilled would embed the
+    # whole corpus inside a schema transaction, and a corpus is too big to hold a
+    # transaction open for. So the column is added empty and filled afterwards, and an
+    # event with no vector is simply absent from the cluster's candidates — a missing
+    # vector is not a zero vector, and a zero vector would be a real point that happens
+    # to be at the origin, which is not the same thing at all.
+    #
+    # **The `vector` type lives in `public`, not `catalog`.** The init script installs
+    # `CREATE EXTENSION IF NOT EXISTS vector` in `public`, so the column type is written
+    # `public.vector(256)` and the migration says so explicitly.
+    #
+    # **256 dimensions, because `voyage-4-lite` is a Matryoshka model.** The spine pins
+    # 256 or 512; 256 is half the storage for the same cosine at the same threshold.
+    #
+    # **It is not in `LIFECYCLE_FIELDS`.** The vector is a derived reading of the event's
+    # text, not a fact about the event's identity or schedule — so changing it does not
+    # bump `event_version` and does not supersede the row. The embedding can be
+    # recomputed for the same event any number of times.
+    embedding = VectorField(dimensions=FR25_EMBEDDING_DIMENSIONS, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
