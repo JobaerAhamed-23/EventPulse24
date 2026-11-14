@@ -29,6 +29,16 @@ import { resetSignInThrottle, seedAccount, signIn } from "./helpers";
  * product's home, and from there it is clicks. If a settings screen is unreachable, these
  * fail — which is the only property worth asserting here and the one no unit test can.
  *
+ * ## The index is gone, and these specs are how we know nothing broke with it
+ *
+ * `/settings` used to render the list of sections as described rows. It was a click
+ * between the nav and the setting, and the screen it led to showed the same sections
+ * again in its sub-nav — so `/settings` now redirects to the first section and the
+ * sub-nav *is* the index. **The reachability property is unchanged**: every section is
+ * still reachable from the entry point, in the same number of clicks it took before
+ * (`two clicks from home`), and still reachable from every other section (`through the
+ * sub-nav`). Only the surface that offers the list has moved.
+ *
  * `tests/settings-routes.test.ts` holds the cheap half of the same rule: every directory
  * under `app/settings` is in `SETTINGS_SECTIONS`. That catches a route added without a
  * nav row in milliseconds. This catches the rest — that the rows, the rail and the index
@@ -76,32 +86,56 @@ test.describe("the settings surface is navigable", () => {
     await resetSignInThrottle([free.email]);
   });
 
-  test("the rail reaches the settings index", async ({ page }) => {
+  test("the rail lands on the first section, with no index in between", async ({ page }) => {
     const account = await seedAccount("free");
     await signIn(page, account);
 
     await page.goto("/");
     await rail(page).getByRole("link", { name: "Settings" }).click();
 
-    await expect(page).toHaveURL(/\/settings$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+    // **`/settings` is a redirect now.** It used to render a list of the same sections
+    // the sub-nav below carries, which made every setting two clicks deep: the nav, the
+    // row, the screen. One click lands on a setting.
+    const first = SECTIONS[0];
+    await expect(page).toHaveURL(new RegExp(`${first.path}$`));
+    await expect(page.getByRole("heading", { level: 1, name: first.heading })).toBeVisible();
+
+    // And the section it landed on is marked in the sub-nav, so the screen says which
+    // of the sections this is rather than looking like the only one.
+    const current = subnav(page).locator("[aria-current='page']");
+    await expect(current).toHaveCount(1);
+    await expect(current).toHaveText(first.label);
   });
 
-  test("every settings screen is reachable from the index, by clicking", async ({ page }) => {
+  test("a bookmarked /settings still arrives somewhere", async ({ page }) => {
     const account = await seedAccount("free");
     await signIn(page, account);
 
-    await page.goto("/");
-    await rail(page).getByRole("link", { name: "Settings" }).click();
-    await expect(page).toHaveURL(/\/settings$/);
+    // The index was a real route for a while, so it is in people's history and in their
+    // bookmarks. It must forward, not 404.
+    await page.goto("/settings");
 
+    await expect(page).toHaveURL(new RegExp(`${SECTIONS[0].path}$`));
+  });
+
+  test("every settings screen is two clicks from home", async ({ page }) => {
+    const account = await seedAccount("free");
+    await signIn(page, account);
+
+    // **The property the index used to carry**, now carried by the sub-nav: from the
+    // rail, every section is one further click. It was false for four of the first six
+    // screens, which is why this walks all of them rather than trusting the list.
     for (const section of SECTIONS) {
-      // Back to the index between sections — this asserts the index reaches every
-      // section, which is the property that was false for four of the first six.
-      await page.goto("/settings");
+      // Home between sections, so each section is reached from the entry point rather
+      // than from whichever screen the previous iteration left behind.
+      await page.goto("/");
+      await rail(page).getByRole("link", { name: "Settings" }).click();
 
-      const row = page.getByRole("link", { name: new RegExp(section.label) }).first();
-      await expect(row, `the index does not offer ${section.label}`).toBeVisible();
+      const nav = subnav(page);
+      await expect(nav, "the landing screen carries no settings sub-nav").toBeVisible();
+
+      const row = nav.getByRole("link", { name: section.label, exact: true });
+      await expect(row, `the sub-nav does not offer ${section.label}`).toBeVisible();
       await row.click();
 
       await expect(page, `clicking ${section.label} did not land on ${section.path}`).toHaveURL(
