@@ -51,6 +51,7 @@ assertion is a real search for a secret rather than a match on a constant.
 
 import json
 import re
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -540,16 +541,25 @@ def test_the_whole_onboarding_and_calendar_flow_holds_together(
 
     # === Step 12: an overlapping event produces the CONFLICT_PAIR behaviour ===============
 
-    # The imported feed has "Team sync" at 18:00 in Los Angeles on 2026-11-12. A
-    # personal event at the same instant must produce a conflict pair.
+    # **The instant comes from an imported row, not from a literal.** The fixture's dates
+    # are rebased onto the running week (`rebased_ics`), because `CALENDAR_IMPORT_WINDOW`
+    # imports only the next seven days and a hard-coded date would fall out of that window
+    # as the calendar turned — the proof would then fail for a reason that has nothing to
+    # do with conflicts. Asking the database what was imported also states the property
+    # more honestly: *an imported event conflicts*, rather than *this particular instant
+    # does*.
+    clash = imported.order_by("start_utc").first()
+    assert clash is not None
     overlapping = _post(
         client,
         "/api/personal/events",
         {
             "name": "Team sync",
-            "start_time_utc": "2026-11-13T02:00:00Z",
+            "start_time_utc": clash.start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "start_time_tz": "America/Los_Angeles",
-            "end_time_utc": "2026-11-13T02:30:00Z",
+            "end_time_utc": (clash.start_utc + timedelta(minutes=30)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
         },
     )
     assert overlapping.status_code == 409, (

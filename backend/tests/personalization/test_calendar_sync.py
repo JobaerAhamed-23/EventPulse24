@@ -809,6 +809,7 @@ def test_connecting_requests_a_sync_without_fetching():
 
 
 def test_the_successful_poll_stores_the_cache_validators():
+    """The provider's validators are recorded, so reinstating conditional fetching is cheap."""
     connection = _connection()
     port = StubPort(CalendarResult(entries=[_entry("a@feed")], etag='W/"1"'))
 
@@ -816,8 +817,168 @@ def test_the_successful_poll_stores_the_cache_validators():
 
     connection.refresh_from_db()
     assert connection.etag == 'W/"1"'
-    # The validator goes back on the next fetch, so an unchanged feed costs a 304.
-    [feed] = port.feeds
-    assert feed.etag is None
+
+
+def test_the_fetch_is_unconditional_even_once_a_validator_is_stored():
+    """**The import window and the 304 cannot both be right.**
+
+    A conditional fetch says "the feed has not changed, so neither has your answer". With
+    `CALENDAR_IMPORT_WINDOW` the answer is a function of the feed *and of `now`*: events
+    age out of the window and events cross into it while the bytes stay identical. A
+    calendar nobody edits for a fortnight would freeze its imported set on the day it last
+    changed, and a meeting booked a month ahead would never arrive — silently, with the
+    connection reading healthy.
+
+    So the validator is stored and never sent.
+    """
+    connection = _connection()
+    port = StubPort(CalendarResult(entries=[_entry("a@feed")], etag='W/"1"'))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
     sync_calendar(connection_id=connection.pk, port=port, now=NOW + timedelta(hours=1))
-    assert port.feeds[1].etag == 'W/"1"'
+
+    connection.refresh_from_db()
+    assert connection.etag == 'W/"1"'
+    assert [feed.etag for feed in port.feeds] == [None, None]
+    assert [feed.last_modified for feed in port.feeds] == [None, None]
+
+
+# --- The import window (FR-50) -------------------------------------------------------------------
+#
+# **A connected calendar is a mirror, not an archive.** The first real import in local
+# testing brought in a written-test invitation from the previous November, alongside two
+# meetings from three weeks earlier. Those rows are not wrong; they are simply not what the
+# Pulse is for, and each one costs a row, a conflict check and a line in the timeline's past.
+#
+# The window is `[now, now + CALENDAR_IMPORT_WINDOW]`, applied to the *feed* — so a row that
+# ages out takes the ordinary "in the database, not in the feed" branch and is deleted,
+# with no second rule about which rows may be removed.
+
+
+def test_an_event_in_the_window_is_imported():
+    connection = _connection()
+    port = StubPort(CalendarResult(entries=[_entry("soon@feed", start=NOW + timedelta(days=3))]))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+
+    assert [event.source_uid for event in _imported(connection)] == ["soon@feed"]
+
+
+def test_an_event_that_has_already_ended_is_not_imported():
+    """The year-old written-test invitation, in one assertion."""
+    connection = _connection()
+    port = StubPort(CalendarResult(entries=[_entry("old@feed", start=NOW - timedelta(days=365))]))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+
+    assert list(_imported(connection)) == []
+
+
+def test_an_event_beyond_the_window_is_not_imported():
+    connection = _connection()
+    port = StubPort(CalendarResult(entries=[_entry("far@feed", start=NOW + timedelta(days=8))]))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+
+    assert list(_imported(connection)) == []
+
+
+def test_an_event_happening_right_now_is_imported():
+    """**Overlap, not "starts inside".**
+
+    An event that began this morning and ends tonight is happening now. A rule that asked
+    only where it *started* would drop it at the moment it matters most, and the timeline
+    would empty itself at lunchtime.
+    """
+    connection = _connection()
+    port = StubPort(
+        CalendarResult(entries=[_entry("ongoing@feed", start=NOW - timedelta(hours=1), hours=3)])
+    )
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+
+    assert [event.source_uid for event in _imported(connection)] == ["ongoing@feed"]
+
+
+def test_an_event_that_straddles_the_far_edge_is_imported():
+    """It starts inside the window, so the user will see part of it in the week they are on."""
+    connection = _connection()
+    port = StubPort(
+        CalendarResult(entries=[_entry("straddle@feed", start=NOW + timedelta(days=6), hours=48)])
+    )
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+
+    assert [event.source_uid for event in _imported(connection)] == ["straddle@feed"]
+
+
+def test_the_window_filters_without_disturbing_the_rest_of_the_feed():
+    """One sync, a mixed feed: the near events land and the far ones do not."""
+    connection = _connection()
+    port = StubPort(
+        CalendarResult(
+            entries=[
+                _entry("old@feed", start=NOW - timedelta(days=30)),
+                _entry("near@feed", start=NOW + timedelta(days=1)),
+                _entry("alsonear@feed", start=NOW + timedelta(days=6)),
+                _entry("far@feed", start=NOW + timedelta(days=90)),
+            ]
+        )
+    )
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+
+    assert sorted(event.source_uid for event in _imported(connection)) == [
+        "alsonear@feed",
+        "near@feed",
+    ]
+
+
+def test_an_imported_event_is_deleted_once_it_ages_out_of_the_window():
+    """**The drift rule, and it needs no code of its own.**
+
+    The window is applied to the feed, so an aged-out entry is absent from the diff's
+    "in the feed" side and is removed by the same branch that removes an event deleted in
+    Google. The imported set is always "what the window currently holds".
+    """
+    connection = _connection()
+    entry = _entry("ages-out@feed", start=NOW + timedelta(hours=2))
+    port = StubPort(CalendarResult(entries=[entry]))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+    assert _imported(connection).count() == 1
+
+    # Same unchanged feed, a week later: the event is now in the past.
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW + timedelta(days=2))
+
+    assert list(_imported(connection)) == []
+
+
+def test_an_event_is_imported_once_it_crosses_into_the_window():
+    """The far edge, moving the other way — and the reason the fetch is unconditional.
+
+    The feed never changes here. Only `now` does. A conditional fetch would have answered
+    304 and this event would never have arrived.
+    """
+    connection = _connection()
+    port = StubPort(CalendarResult(entries=[_entry("arrives@feed", start=NOW + timedelta(days=9))]))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+    assert list(_imported(connection)) == []
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW + timedelta(days=3))
+
+    assert [event.source_uid for event in _imported(connection)] == ["arrives@feed"]
+
+
+def test_a_windowed_out_event_does_not_count_as_a_feed_deletion_twice():
+    """Deleting is idempotent: the second sync has nothing left to remove."""
+    connection = _connection()
+    port = StubPort(CalendarResult(entries=[_entry("gone@feed", start=NOW + timedelta(hours=1))]))
+
+    sync_calendar(connection_id=connection.pk, port=port, now=NOW)
+    first = sync_calendar(connection_id=connection.pk, port=port, now=NOW + timedelta(days=3))
+    second = sync_calendar(connection_id=connection.pk, port=port, now=NOW + timedelta(days=4))
+
+    assert first.counts.deleted == 1
+    assert second.counts.deleted == 0

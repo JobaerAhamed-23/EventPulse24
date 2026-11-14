@@ -553,6 +553,23 @@ CALENDAR_SYNC_BATCH = 100
 # poll interval, so a lost claim is recovered well before the next scheduled poll.
 CALENDAR_CLAIM_TTL = timedelta(minutes=15)
 
+# FR-50: how far ahead a calendar import reaches. An entry is imported only if it overlaps
+# the window `[now, now + CALENDAR_IMPORT_WINDOW]`.
+#
+# **A connected calendar is a mirror, not an archive.** Without a window the import copies
+# the feed entire, and a Google calendar carries years of it: the first real import in local
+# testing brought in a written-test invitation from the previous November. Those rows are not
+# wrong, they are simply not what the product is for — the Pulse is about what is coming up,
+# and every one of them costs a row, a conflict check and a line in the timeline's past.
+#
+# **Seven days, matching the timeline's own week.** The timeline shows a week at a time, so
+# the window is the horizon the user actually looks at.
+#
+# **An ongoing event counts as inside.** The test is interval overlap, not "does it start in
+# the window": an event that began this morning and ends tonight is happening now, and a
+# rule that dropped it would empty today's timeline at lunchtime.
+CALENDAR_IMPORT_WINDOW = timedelta(days=7)
+
 # FR-50: how often one connection may be synced **on demand**, from the "Sync now" button.
 #
 # **This is honesty, not provider protection.** A manual sync does not fetch anything
