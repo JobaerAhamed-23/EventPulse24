@@ -27,6 +27,7 @@ decides which cities the preview may offer, and a parameter that could switch th
 list's gates off would put that at risk.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -591,6 +592,42 @@ def get_public_events(*, event_ids: set[UUID]) -> dict[UUID, PublicEvent]:
     return {event.id: _to_public_event(event) for event in events}
 
 
+def read_chip_keys_for_events(*, event_ids: Sequence[UUID]) -> dict[UUID, tuple[str, ...]]:
+    """The interest-chip keys for these events, by value.
+
+    **The chips are computed, not stored.** `chip_keys_for` is a pure function of the
+    event's own text and the keyword table, deliberately not a column: a stored column
+    would be wrong the moment the keyword table changed. So this read computes the same
+    way the candidate read does — one function, one answer.
+
+    **Why this read exists.** FR-25's cluster asks "what do these three events have in
+    common?", and the answer is a chip key. The cluster lives in `personalization`, which
+    may not import `apps.ingestion.models` (AD-3), so it asks here — and gets plain
+    tuples of strings back.
+
+    **An event with no chips is absent from the map.** An event whose text matches no
+    keyword belongs to no category, and "no category" is not the same answer as "a
+    category we have not worked out yet". The caller treats absence as "this event does
+    not speak for any category".
+
+    **The events need not be public.** This read answers a question about the catalog's
+    own text, and the events it is asked about are ones a user has already seen. Gating
+    on `publication_status` would be answering a different question.
+    """
+    if not event_ids:
+        return {}
+
+    rows = (
+        Event.objects.using(CATALOG)
+        .filter(pk__in=list(event_ids))
+        .values_list("id", "title", "description")
+    )
+    return {
+        event_id: chip_keys_for(title=title, description=description)
+        for event_id, title, description in rows
+    }
+
+
 @dataclass(frozen=True)
 class PublicEventDetail:
     """One public event, with the facts the **Detail Screen** shows.
@@ -884,4 +921,5 @@ __all__ = [
     "list_public_candidates",
     "list_public_events",
     "list_source_events",
+    "read_chip_keys_for_events",
 ]

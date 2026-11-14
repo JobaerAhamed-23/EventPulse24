@@ -19,6 +19,7 @@ from apps.personalization.api import router as personal_router
 from apps.personalization.collections_api import router as collections_router
 from apps.personalization.detail_api import router as detail_router
 from apps.personalization.source_mutes_api import router as source_mutes_router
+from apps.personalization.taste_mutes_api import router as taste_mutes_router
 from config.errors import install_error_handlers
 from config.health import router as health_router
 
@@ -78,6 +79,16 @@ api.add_router("/settings", settings_router)
 # sees one `/api/settings` family and never learns the split — the same thing the
 # notifications router does about its own two apps.
 api.add_router("/settings", source_mutes_router)
+# FR-25: the category-mute settings — the muted categories behind `Settings → Taste`. It
+# is a **third router on the same prefix**, for the same reason the source-visibility one
+# is: the settings surface spans two apps, and the client sees one `/api/settings` family
+# and never learns the split.
+#
+# **It is a sibling of the sources screen, not the same screen.** The sources screen mutes
+# *sources*; this one mutes *categories*. The mockup's reversal surface is `Settings →
+# Taste` (`less-like-this-mute-prompt-desktop.html`), so the category mute lives here and
+# nowhere else.
+api.add_router("/settings", taste_mutes_router)
 # FR-24: the Detail Screen. It has no `auth=` of its own, because it serves **two**
 # audiences — a signed-in caller gets their own explanation, an anonymous caller gets the
 # public facts and nothing personal (AD-12). The two handlers apply their own rules.

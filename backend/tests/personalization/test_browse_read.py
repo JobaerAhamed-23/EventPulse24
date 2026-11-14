@@ -511,15 +511,24 @@ def test_scoring_a_full_pool_costs_a_query_and_a_bounded_amount_of_python():
     )
     # **The bound is the number of *user-preference* reads, not a number of cards.** Every
     # query here is one row-set for the user, whatever the pool size: the digest
-    # preference, the entitlement, the interest chips, the saved-event join, and the
-    # source-visibility read (FR-13's mute and show-less). None of them is per candidate,
-    # so the page costs the same at 60 candidates as at 6 — which is the property this
-    # assertion is actually for.
+    # preference, the entitlement, the interest chips, the saved-event join, the
+    # source-visibility read (FR-13's mute and show-less), and the category-mute read
+    # (FR-25's "less of that category"). None of them is per candidate, so the page costs
+    # the same at 60 candidates as at 6 — which is the property this assertion is actually
+    # for.
     #
     # It is a *fixed* bound, so a new per-card query would break it, and a new constant
     # user-preference read would have to raise it deliberately — which is the point: the
     # number is a reviewed decision, not an accident.
-    assert len(personal_queries) <= 5, (
+    #
+    # **The bound was raised from five to six for FR-25's category mute**, and the reason
+    # is on the record. The user now has a second kind of "less of this" — a category,
+    # alongside a source — and the two live in two tables with no relationship to each
+    # other, so one query cannot serve both without a cross join of two unrelated mute
+    # tables. The alternative, folding the category mutes into the source-mute read,
+    # would make one table's shape the other table's business. Six constant reads is
+    # still a constant: the page costs the same at 6 candidates as at 60.
+    assert len(personal_queries) <= 6, (
         "the personal side must not grow with the pool: "
         f"{[q['sql'][:120] for q in personal_queries]}"
     )

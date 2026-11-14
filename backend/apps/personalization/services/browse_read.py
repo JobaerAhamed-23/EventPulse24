@@ -45,6 +45,10 @@ from apps.ingestion.services.catalog_read import (
 from apps.personalization.models import DigestPreference, Interest, SavedEvent
 from apps.personalization.services.save_cap import SaveQuota, read_save_quota
 from apps.personalization.services.source_mutes import read_source_visibility
+from apps.personalization.services.taste_mutes import (
+    is_muted_by_category,
+    read_muted_category_keys,
+)
 from domain.lifecycle import EventStatus
 from domain.ranking import (
     RankingInputs,
@@ -293,8 +297,20 @@ def read_browse_page(
     # reappear in Browse, and a "show less" orders lower in both. They read the same
     # service helper, so they cannot drift.
     visibility = read_source_visibility(user_id=user_id)
+
+    # **The user's muted categories, and the category filter.** One query, on the personal
+    # side. A muted category's events are **absent** — not ranked lower, absent — because
+    # a mute is an exclusion.
+    #
+    # **Browse and the Digest must agree.** A category the user muted in Settings cannot
+    # reappear in Browse, and it cannot appear in the Digest either. They read the same
+    # service helper, so they cannot drift.
+    muted_categories = read_muted_category_keys(user_id=user_id, now=now)
     eligible = [
-        candidate for candidate in candidates if candidate.source_id not in visibility.muted
+        candidate
+        for candidate in candidates
+        if candidate.source_id not in visibility.muted
+        and not is_muted_by_category(chip_keys=candidate.chip_keys, muted_keys=muted_categories)
     ]
 
     scored: list[tuple[Decimal, datetime, UUID, PublicEventCandidate, RankingInputs]] = []

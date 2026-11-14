@@ -38,9 +38,14 @@ def test_surface_files_include_every_app_admin_and_api():
     assert "apps/identity/export_api.py" in names
     # FR-49: the collections endpoints are a surface file like any other.
     assert "apps/personalization/collections_api.py" in names
+    # FR-25: the category-mute endpoints are a surface file like any other. They write
+    # the caller's own mute state, so AD-5 applies to them exactly as it does to every
+    # other endpoint.
+    assert "apps/personalization/taste_mutes_api.py" in names
     # 6 admins + 6 api.py + 9 *_api.py + config/api.py + config/health.py = 23
     # 6 admins + 6 api.py + 10 *_api.py + config/api.py + config/health.py = 24
-    assert len(names) == 24
+    # 6 admins + 6 api.py + 11 *_api.py + config/api.py + config/health.py = 25
+    assert len(names) == 25
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

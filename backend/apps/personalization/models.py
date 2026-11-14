@@ -1331,18 +1331,18 @@ class EventDismissal(UUIDv7Model):
     row is still written: the guard is about what the product *concludes*, not about what
     the user *did*.
 
-    **`slot` is what the card was** — the discovery immunity (FR-25). Slot 3 is the
-    serendipity slot, and the rule for it lives in
-    `apps/personalization/services/dismissals.py`: a slot-3 dismissal is recorded but is
-    never a clustering candidate. The slot is resolved from the user's latest composition
-    at dismissal time, because the candidate itself carries no slot — slot membership is
-    decided at scoring time, and the scoring result is what this row records.
+    **`slot` is what the card was** — the discovery immunity (FR-25). The serendipity slot
+    is the one the product put there deliberately, and the rule for it lives in
+    `apps/personalization/services/dismissals.py`: a serendipity dismissal is recorded but
+    is never a clustering candidate. The slot is resolved from the user's latest
+    composition at dismissal time, because the candidate itself carries no slot — slot
+    membership is decided at scoring time, and the scoring result is what this row records.
 
     **Null slot means "we do not know".** The user may dismiss an event that was never in
     a composition, or dismiss it after the composition rolled over. A null slot is not
-    "slot 0"; it is the absence of the fact, and the clustering rule treats it as "not a
-    discovery card" — an event with no known slot is not one the product deliberately put
-    in the serendipity slot.
+    "the first slot"; it is the absence of the fact, and the clustering rule treats it as
+    "not a discovery card" — an event with no known slot is not one the product
+    deliberately put in the serendipity slot.
 
     **It is `PREFERENCE_SIGNALS`.** Not `ACCOUNT_CONTENT`: this is not the user's own
     content, it is a record of what they chose not to see.
@@ -1363,7 +1363,13 @@ class EventDismissal(UUIDv7Model):
     # Whether this dismissal moved the cluster counter (FR-25's rage-dismiss guard).
     cluster_advanced = models.BooleanField(default=True)
     # Which slot the card was in, when that is known. Null means "no composition says".
-    slot = models.PositiveSmallIntegerField(null=True, blank=True)
+    #
+    # **It is the same vocabulary `DigestComposition.slot` uses** — `must_know`, `nearby`,
+    # `serendipity` — and not a second numbering of the same three things. The slot is
+    # *read from* a composition, so a dismissal that stored `3` would be a number every
+    # reader has to translate back to the row it came from; a dismissal that stores
+    # `serendipity` is the same word the composition used.
+    slot = models.CharField(max_length=16, null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -1377,7 +1383,8 @@ class EventDismissal(UUIDv7Model):
             # `slot` is nullable, so the constraint has to permit null as well as the
             # three values: the check is about a *known* slot being a real slot.
             models.CheckConstraint(
-                condition=models.Q(slot__isnull=True) | models.Q(slot__in=[1, 2, 3]),
+                condition=models.Q(slot__isnull=True)
+                | models.Q(slot__in=["must_know", "nearby", "serendipity"]),
                 name="event_dismissal_slot_ck",
             ),
         ]

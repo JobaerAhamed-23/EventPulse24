@@ -79,6 +79,10 @@ from apps.personalization.services.source_mutes import (
     SourceVisibility,
     read_source_visibility,
 )
+from apps.personalization.services.taste_mutes import (
+    is_muted_by_category,
+    read_muted_category_keys,
+)
 from domain.horizon import local_horizon
 from domain.ranking import (
     RankingInputs,
@@ -491,6 +495,7 @@ def _assign_slots(
     saved_event_ids: set[UUID],
     now: datetime,
     visibility: SourceVisibility | None = None,
+    muted_categories: frozenset[str] = frozenset(),
 ) -> list[_Scored]:
     """Fill the three slots, in order, and return the compositions.
 
@@ -527,6 +532,18 @@ def _assign_slots(
 
     **A personal event has no source**, so the mute never applies to one. The user's own
     agenda is not something a source can be muted away from.
+
+    **A muted category's events are not candidates either.** `Settings → Taste` lets a user
+    mute a *category* — "less rooftop jazz" — and a category mute is an exclusion, exactly
+    as a source mute is. The filter runs on the candidate's own chip keys, before the
+    scorers, because exclusion is a statement about the candidate set and not about an
+    event's rank. It is **not** a sixth term in FR-22's formula: the formula is pinned to
+    five weighted terms that sum to 1.00, and a mute is not a signal about the event's
+    quality — it is the user saying "not these".
+
+    **An event with no chips is never muted.** The chip keys are matched from the event's
+    own text, so an event matching no keyword belongs to no category, and excluding it
+    would be the product deciding what it is on the user's behalf.
     """
     chosen: list[_Scored] = []
     used: set[UUID] = set()
@@ -536,7 +553,15 @@ def _assign_slots(
 
     # **The mute filter, before anything is scored.** Excluded here, the events are not
     # candidates and no slot can take them.
-    eligible = [candidate for candidate in public_candidates if candidate.source_id not in muted]
+    #
+    # **Two filters, one list.** A source mute removes the event outright; a category mute
+    # removes it too, but only when the event's chips intersect the muted categories.
+    eligible = [
+        candidate
+        for candidate in public_candidates
+        if candidate.source_id not in muted
+        and not is_muted_by_category(chip_keys=candidate.chip_keys, muted_keys=muted_categories)
+    ]
 
     # --- Slot 1: must-know -------------------------------------------------------
     if include_personal_events:
@@ -622,6 +647,46 @@ def _existing_digest(*, user_id: UUID, local_date: date) -> PulseDigest | None:
         .filter(user_id=user_id, local_date=local_date)
         .order_by("id")
         .last()
+    )
+
+
+def read_latest_slot(*, user_id: UUID, event_id: UUID) -> str | None:
+    """Which slot this event was in, in the user's most recent digest. `None` if unknown.
+
+    **The most recent digest, not any digest.** The slot is what the card *was* when the
+    user saw it, and the user saw the card in the digest they were looking at. A card
+    that was in a digest last week and is not in today's is not "a serendipity card" —
+    it is an event the user opened directly, and its slot is unknown.
+
+    **A personal event has no slot.** A composition's `event_kind` says whether the card
+    was a catalog event or the user's own, and the user's own agenda has no slot to be
+    in — it is not something the product chose to show.
+
+    **This read lives here, and not in the dismissal service, on purpose.** The
+    composition rows are this module's business — it writes them — and AD-10's test
+    names the *only* two read paths that may serve a composition, because a third one
+    would be a new place an explanation could be served from. The dismissal service
+    needs the slot, and it gets it from here rather than querying the row itself, so the
+    set of composition read paths does not grow.
+
+    **It reads the slot, not the explanation.** The score, the bucket and the tags are
+    not touched: this is the composition's structure, not the user's explanation.
+    """
+    latest = (
+        PulseDigest.objects.using(PERSONAL)
+        .filter(user_id=user_id)
+        .order_by("-local_date")
+        .values_list("id", flat=True)
+        .first()
+    )
+    if latest is None:
+        return None
+
+    return (
+        DigestComposition.objects.using(PERSONAL)
+        .filter(digest_id=latest, event_id=event_id, event_kind=DigestComposition.EventKind.PUBLIC)
+        .values_list("slot", flat=True)
+        .first()
     )
 
 
@@ -726,14 +791,27 @@ def compose_digest(
     # sources are deprioritised when they are scored.
     visibility = read_source_visibility(user_id=user_id)
 
+    # **The user's muted categories, read here with the other reads.** One query, and it
+    # is on the personal side — so it belongs with the reads outside the transaction, not
+    # inside it. The muted categories are excluded from the pool below.
+    muted_categories = read_muted_category_keys(user_id=user_id, now=now)
+
     saved_event_ids = {saved.event_id for saved in saved_candidates}
 
     # **The counts are the pools narrowed to the horizon.** The pools are already in
     # hand — this is a count over what was read, not a second query — and the
     # composition's own gates (confidence, staleness, publication, city) have already
     # been applied by the reads themselves.
+    #
+    # **A muted category's events are not qualifying events.** The counts answer "is
+    # there something for this user", and a muted category is something the user said they
+    # do not want — so counting it would keep a Ping alive for a category the user
+    # muted, and the Ping would then arrive with nothing in it.
     public_qualifying_count = sum(
-        1 for candidate in public_candidates if candidate.start_time_utc <= horizon
+        1
+        for candidate in public_candidates
+        if candidate.start_time_utc <= horizon
+        and not is_muted_by_category(chip_keys=candidate.chip_keys, muted_keys=muted_categories)
     )
     # **An opted-out user's personal events are not qualifying events.** FR-19's opt-out
     # means those events are not in the user's digest, so they cannot be the reason the
@@ -753,6 +831,7 @@ def compose_digest(
         saved_event_ids=saved_event_ids,
         now=now,
         visibility=visibility,
+        muted_categories=muted_categories,
     )
 
     # --- the write, atomic on the personal side -----------------------------------

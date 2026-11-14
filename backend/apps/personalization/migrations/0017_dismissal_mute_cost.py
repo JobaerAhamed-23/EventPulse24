@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 ("event_id", models.UUIDField()),
                 ("dismissed_at", models.DateTimeField(default=django.utils.timezone.now)),
                 ("cluster_advanced", models.BooleanField(default=True)),
-                ("slot", models.PositiveSmallIntegerField(blank=True, null=True)),
+                ("slot", models.CharField(blank=True, max_length=16, null=True)),
             ],
             options={
                 "indexes": [
@@ -61,7 +61,9 @@ class Migration(migrations.Migration):
                     ),
                     models.CheckConstraint(
                         condition=models.Q(
-                            ("slot__isnull", True), ("slot__in", [1, 2, 3]), _connector="OR"
+                            ("slot__isnull", True),
+                            ("slot__in", ["must_know", "nearby", "serendipity"]),
+                            _connector="OR",
                         ),
                         name="event_dismissal_slot_ck",
                     ),

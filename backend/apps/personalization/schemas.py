@@ -1683,3 +1683,121 @@ class SourceRestoreDefaultsOut(Schema):
     """
 
     removed: int
+
+
+# ── FR-25: the dismissal and the category mute ───────────────────────────────────
+
+#: The chip keys a mute may name.
+#:
+#: **The vocabulary is the server's.** The category label the user reads comes from
+#: `shared.constants.INTEREST_CHIPS`, so an unknown key would have no label — and a mute
+#: on a key the server does not recognise would exclude nothing, silently, while the
+#: screen showed a row the user could not make sense of.
+CategoryKey = str
+
+#: The durations a mute may last, in days. `None` means indefinite.
+#:
+#: **The set is closed.** Seven, thirty, ninety, or "until I change it". A mute that
+#: outlived the user's patience by a typo is a mute the user has to find a screen to undo.
+CategoryMuteDuration = Literal[7, 30, 90] | None
+
+
+class DismissalIn(Schema):
+    """The request body for recording one dismissal.
+
+    **Only the event id is needed.** The slot is *read*, not sent: the service resolves
+    it from the user's own composition, so a client cannot claim a dismissal came from a
+    slot it did not come from — and cannot put a serendipity card into the cluster by
+    asserting it did.
+    """
+
+    #: The catalog event the user dismissed.
+    event_id: UUID
+
+
+class MutePromptOut(Schema):
+    """The "less of this" prompt, when the product should show it.
+
+    **The copy is the server's own.** The title names the category the cluster agreed on
+    and the label comes from `INTEREST_CHIPS` — never from the event's title, which is
+    untrusted scraped text (AD-9).
+
+    **`category_key` is `None` for the generic variant**, when no single chip dominates
+    the cluster. The client renders the generic copy in that case, and the mute it
+    creates is a general one rather than a category-specific one.
+    """
+
+    title: str
+    description: str
+    category_key: CategoryKey | None = None
+
+
+class DismissalOut(Schema):
+    """What one dismissal did.
+
+    **`cluster_advanced` says whether this dismissal counted**, and `prompt_due` says
+    whether the product should now ask. Both are separate facts: a dismissal that
+    advanced the counter may still not have completed a cluster, and a dismissal that did
+    not advance can never complete one.
+    """
+
+    event_id: UUID
+    cluster_advanced: bool
+    prompt_due: bool
+    #: The prompt, when one is due. `None` otherwise.
+    prompt: MutePromptOut | None = None
+
+
+class CategoryMuteIn(Schema):
+    """The request body for setting one category mute."""
+
+    #: The chip key to mute.
+    category_key: CategoryKey
+    #: How long the mute lasts. `null` means "until I change it".
+    duration_days: CategoryMuteDuration = None
+
+
+class CategoryMuteOut(Schema):
+    """One active category mute, as the settings screen reads it."""
+
+    #: The chip key.
+    category_key: CategoryKey
+    #: The server's label for the chip — the wording the user reads.
+    label: str
+    #: When the mute ends. `null` means it is indefinite.
+    expires_at: datetime | None = None
+    #: Whether the mute has no end date.
+    is_indefinite: bool = False
+
+
+class CategoryMuteListOut(Schema):
+    """Every active category mute for the signed-in user.
+
+    **An expired mute is not in the list.** The row is still there — it is the user's
+    data — but it no longer mutes anything, so the screen does not list it.
+    """
+
+    mutes: list[CategoryMuteOut] = []
+
+
+class CategoryMuteResultOut(Schema):
+    """The outcome of setting or clearing one category mute.
+
+    **`changed` says whether the call did anything.** Setting a mute that is already set
+    is a success, not an error — but a response claiming a change when none happened
+    would make the screen redraw something that did not move.
+    """
+
+    category_key: CategoryKey
+    expires_at: datetime | None = None
+    changed: bool
+
+
+class CategoryMuteRestoreDefaultsOut(Schema):
+    """The outcome of the bulk reset.
+
+    **`removed` is how many mutes were cleared**, so the screen can say what happened
+    rather than just that it happened.
+    """
+
+    removed: int
