@@ -123,13 +123,14 @@ describe("the registry", () => {
   it("shows the city's name under the source's name", () => {
     const { container } = render(<SourceList groups={GROUPS} />);
 
-    // The sub-line is the second span inside the row's text column — the first is the
-    // source's name. The paused source has no city, so its line is just "paused": a
-    // source with no city is not a local source, and the row says so rather than
-    // showing a separator.
+    // **Selected by its own attribute, not by its nesting.** This used to walk
+    // `> div > span > span:nth-child(2)`, which meant the assertion about *what the row
+    // says* broke the moment the row's layout changed — it was pinning the DOM shape as
+    // a side effect of asking about text. The paused source has no city, so its line is
+    // just "paused": a source with no city is not a local source, and the row says so
+    // rather than showing a separator.
     const subLine = (id: string) =>
-      container.querySelector(`[data-source="${id}"] > div > span > span:nth-child(2)`)
-        ?.textContent;
+      container.querySelector(`[data-source="${id}"] [data-source-sub]`)?.textContent;
 
     expect(subLine("src-paused")).toBe("paused");
     expect(subLine("src-official")).toBe("London");
