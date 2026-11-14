@@ -31,6 +31,22 @@ export function BrandTopbar({ href = "/preview" }: { href?: string }) {
             height={36}
             priority
             className="size-[36px]"
+            /**
+             * Dark Reader (and similar extensions) rewrite the DOM before React hydrates:
+             * they inject `--darkreader-inline-color` into the inline style and a
+             * `data-darkreader-inline-color` attribute onto the element. React then finds
+             * markup that differs from what it rendered on the server and reports a
+             * hydration mismatch.
+             *
+             * The mismatch is in the extension's injected attributes, not in this
+             * component's own markup, and React would only strip them at the cost of a
+             * client re-render of the logo — a visible flash on a surface that is meant to
+             * hold the brand and nothing else.
+             *
+             * `suppressHydrationWarning` is scoped to this element's attributes and
+             * text content; it does not silence hydration warnings from its children.
+             */
+            suppressHydrationWarning
           />
           <span className="flex flex-col">
             <span className="text-ink-primary [font:var(--type-scale-headline-sm)]">
