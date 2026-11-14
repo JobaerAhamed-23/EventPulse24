@@ -27,6 +27,7 @@ decides which cities the preview may offer, and a parameter that could switch th
 list's gates off would put that at risk.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -243,6 +244,19 @@ class PublicEventCandidate:
     status: str
     event_version: int
     source_name: str
+    #: The **catalog Source's id, by value** (OQ-8) — no FK, because AD-3 forbids a
+    #: relation across the schema wall.
+    #:
+    #: **It is here because a per-user preference has to key on it.** The source's *name*
+    #: is not a key: names change, and two sources can share one. `Settings → Sources`
+    #: mutes a source, and a mute that keyed on a name would silently stop applying the
+    #: day the source was renamed — which is exactly the drift AD-10's "the explanation and
+    #: the decision cannot disagree" rule exists to prevent.
+    #:
+    #: **It costs no query.** The candidate read already joins the source
+    #: (`select_related("venue", "source")`), so the id is on the joined row. Carrying it
+    #: here is a field, not a lookup.
+    source_id: UUID
     #: The Source Badge type — the server names the type, the client owns the label.
     source_badge: str
     #: The `Source.source_type` the badge was derived from, kept for the audit trail.
@@ -317,6 +331,7 @@ def _to_public_candidate(event: Event) -> PublicEventCandidate:
         status=event.status,
         event_version=event.event_version,
         source_name=source.name,
+        source_id=source.id,
         source_badge=source_badge_for_type(
             source_type=source.source_type,
             acquisition_method=source.acquisition_method,
@@ -575,6 +590,42 @@ def get_public_events(*, event_ids: set[UUID]) -> dict[UUID, PublicEvent]:
         .select_related("venue", "source")
     )
     return {event.id: _to_public_event(event) for event in events}
+
+
+def read_chip_keys_for_events(*, event_ids: Sequence[UUID]) -> dict[UUID, tuple[str, ...]]:
+    """The interest-chip keys for these events, by value.
+
+    **The chips are computed, not stored.** `chip_keys_for` is a pure function of the
+    event's own text and the keyword table, deliberately not a column: a stored column
+    would be wrong the moment the keyword table changed. So this read computes the same
+    way the candidate read does — one function, one answer.
+
+    **Why this read exists.** FR-25's cluster asks "what do these three events have in
+    common?", and the answer is a chip key. The cluster lives in `personalization`, which
+    may not import `apps.ingestion.models` (AD-3), so it asks here — and gets plain
+    tuples of strings back.
+
+    **An event with no chips is absent from the map.** An event whose text matches no
+    keyword belongs to no category, and "no category" is not the same answer as "a
+    category we have not worked out yet". The caller treats absence as "this event does
+    not speak for any category".
+
+    **The events need not be public.** This read answers a question about the catalog's
+    own text, and the events it is asked about are ones a user has already seen. Gating
+    on `publication_status` would be answering a different question.
+    """
+    if not event_ids:
+        return {}
+
+    rows = (
+        Event.objects.using(CATALOG)
+        .filter(pk__in=list(event_ids))
+        .values_list("id", "title", "description")
+    )
+    return {
+        event_id: chip_keys_for(title=title, description=description)
+        for event_id, title, description in rows
+    }
 
 
 @dataclass(frozen=True)
@@ -870,4 +921,5 @@ __all__ = [
     "list_public_candidates",
     "list_public_events",
     "list_source_events",
+    "read_chip_keys_for_events",
 ]

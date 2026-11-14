@@ -785,6 +785,82 @@ class EventDetailOpen(UUIDv7Model):
         return f"detail open {self.event_id}"
 
 
+class SourceMute(UUIDv7Model):
+    """How one user has asked to see (or not see) one source (FR-13, FR-16).
+
+    **The mute is per-user state over a global catalog object.** A `Source` belongs to
+    everyone; a mute belongs to one person. So the row is on the `personal` side, and the
+    source is held **by value** — `source_id` is a UUID with no FK — because AD-3 forbids a
+    relation across the schema wall.
+
+    **Every relation is by value (OQ-8).** `user_id` is the user's id with no relation to
+    `identity`'s `User`, and `source_id` is the catalog `Source`'s id with no relation to
+    `ingestion`'s model. This is the same shape `EventNoticeMute` and `EventDetailOpen`
+    already use, and the ORM is what enforces the wall.
+
+    **There are two states, not three.** `show_less` and `mute` are stored; `default` is
+    the **absence of a row**. The mockup's control has three positions, but a third
+    stored state saying "default" would be a row that says nothing — and it would make
+    "Restore all defaults" a three-way update instead of the bulk delete it is.
+
+    **`mute` and `show_less` are different promises, and the model keeps them apart.**
+    `mute` means "do not show me this source's events"; `show_less` means "show me fewer",
+    which is a deprioritisation, not an exclusion. A "show less" that hid the events
+    would be indistinguishable from a mute on the wire, and would be a lie to the user.
+
+    **It is `PREFERENCE_SIGNALS`.** Not `ACCOUNT_CONTENT`: this is not the user's own
+    content, it is a record of what they chose to see. Not `SOURCE_REGISTRY`: that
+    category is the registry's own contents, and this row is about a person.
+
+    Design: .specs-fire/intents/source-transparency-and-mute/work-items/
+    settings-sources-surface-design.md (decisions D3, D4).
+    """
+
+    class State(models.TextChoices):
+        """The two states a row can hold. `default` is the absence of a row."""
+
+        SHOW_LESS = "show_less"
+        MUTE = "mute"
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The catalog `Source`'s id, by value. No FK: AD-3 forbids the relation.
+    source_id = models.UUIDField()
+    state = models.CharField(max_length=16, choices=State.choices)
+
+    class Meta:
+        constraints = [
+            # One row per (user, source). Two rows for the same pair would make the
+            # user's preference for that source ambiguous — and the read that applies it
+            # would have to guess which one wins.
+            models.UniqueConstraint(
+                fields=["user_id", "source_id"], name="source_mute_user_source_uq"
+            ),
+            # The two states, enforced in the database. The model's `choices` already
+            # refuse a third value in Python, but a row written by raw SQL or by a future
+            # migration would not go through the model's validation — and a state the
+            # composition path does not understand would be a source whose visibility
+            # silently fell back to the default.
+            models.CheckConstraint(
+                condition=models.Q(state__in=["show_less", "mute"]),
+                name="source_mute_state_ck",
+            ),
+        ]
+        indexes = [
+            # "What has this user muted, and what should they see less of?" — the question
+            # the composition path asks on every read. It is asked about one user, so the
+            # index leads with the user.
+            models.Index(fields=["user_id"], name="source_mute_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The source id and the state. Both are safe: the source's *name* is third-party
+        # text, and this string reaches every log line (AD-9, AD-13).
+        return f"source mute {self.source_id} {self.state}"
+
+
 class PulseDigest(UUIDv7Model):
     """One user's Pulse Digest for one local calendar day (FR-5, FR-8, AD-10).
 
@@ -1234,3 +1310,153 @@ class SavedCollectionItem(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"{self.saved_event_id} in {self.collection_id}"
+
+
+class EventDismissal(UUIDv7Model):
+    """One user's dismissal of one event — the raw material of FR-25's cluster.
+
+    **The dismissal is a fact about the user, held on the `personal` side.** The event is
+    held **by value** — `event_id` is a UUID with no FK — because AD-3 forbids a relation
+    across the schema wall. This is the same shape `EventNoticeMute` and `SourceMute`
+    already use, and the ORM is what enforces the wall.
+
+    **The dismissal is recorded whether or not it advanced the cluster.** A user who
+    dismisses an event has dismissed it; the product does not get to decide that the
+    gesture did not count and decline to remember it. What varies is `cluster_advanced` —
+    whether this dismissal moved the cluster counter — and the two are separate facts
+    about the same row.
+
+    **`cluster_advanced` is the rage-dismiss guard's record** (FR-25). Three dismissals
+    inside five seconds is a flick, not a preference, so the third does not advance. The
+    row is still written: the guard is about what the product *concludes*, not about what
+    the user *did*.
+
+    **`slot` is what the card was** — the discovery immunity (FR-25). The serendipity slot
+    is the one the product put there deliberately, and the rule for it lives in
+    `apps/personalization/services/dismissals.py`: a serendipity dismissal is recorded but
+    is never a clustering candidate. The slot is resolved from the user's latest
+    composition at dismissal time, because the candidate itself carries no slot — slot
+    membership is decided at scoring time, and the scoring result is what this row records.
+
+    **Null slot means "we do not know".** The user may dismiss an event that was never in
+    a composition, or dismiss it after the composition rolled over. A null slot is not
+    "the first slot"; it is the absence of the fact, and the clustering rule treats it as
+    "not a discovery card" — an event with no known slot is not one the product
+    deliberately put in the serendipity slot.
+
+    **It is `PREFERENCE_SIGNALS`.** Not `ACCOUNT_CONTENT`: this is not the user's own
+    content, it is a record of what they chose not to see.
+
+    Design: .specs-fire/intents/relevance-feedback-loop/work-items/
+    less-like-this-adjustment-design.md (decisions D17, D20, D21, D22).
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The catalog Event's id, by value. No FK: AD-3 forbids the relation.
+    event_id = models.UUIDField()
+    # When the user dismissed it. This is the row's own clock — not the digest's, and not
+    # the event's. The cluster's window and decay are measured from here.
+    dismissed_at = models.DateTimeField(default=timezone.now)
+    # Whether this dismissal moved the cluster counter (FR-25's rage-dismiss guard).
+    cluster_advanced = models.BooleanField(default=True)
+    # Which slot the card was in, when that is known. Null means "no composition says".
+    #
+    # **It is the same vocabulary `DigestComposition.slot` uses** — `must_know`, `nearby`,
+    # `serendipity` — and not a second numbering of the same three things. The slot is
+    # *read from* a composition, so a dismissal that stored `3` would be a number every
+    # reader has to translate back to the row it came from; a dismissal that stores
+    # `serendipity` is the same word the composition used.
+    slot = models.CharField(max_length=16, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            # One row per (user, event). The same event dismissed twice is one dismissal:
+            # the product asks "does the user want less of this?", and the answer does not
+            # get stronger by swiping the same card twice.
+            models.UniqueConstraint(
+                fields=["user_id", "event_id"], name="event_dismissal_user_event_uq"
+            ),
+            # The three slots, and no fourth — the same argument `DigestComposition` makes.
+            # `slot` is nullable, so the constraint has to permit null as well as the
+            # three values: the check is about a *known* slot being a real slot.
+            models.CheckConstraint(
+                condition=models.Q(slot__isnull=True)
+                | models.Q(slot__in=["must_know", "nearby", "serendipity"]),
+                name="event_dismissal_slot_ck",
+            ),
+        ]
+        indexes = [
+            # "What has this user dismissed, most recent first?" — the question the
+            # clustering rule asks on every dismissal, and the question the decay reads
+            # to expire old ones. It is asked about one user, so the index leads with the
+            # user, and the time is descending so the newest rows are contiguous.
+            models.Index(fields=["user_id", "-dismissed_at"], name="event_dismissal_user_time_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The event id, and whether it advanced. Both are safe: the event's *title* is
+        # third-party text, and this string reaches every log line (AD-9, AD-13).
+        return f"dismissal {self.event_id} advanced={self.cluster_advanced}"
+
+
+class CategoryMute(UUIDv7Model):
+    """How one user has asked to see less of one category (FR-25).
+
+    **The category is the chip key** — `tech_meetups`, `arts_culture`, … — from
+    `shared.constants.INTEREST_CHIPS`. It is not a new taxonomy: the codebase already
+    computes each event's `chip_keys` at read time, deliberately not as a stored column,
+    and the interest term of FR-22 — the largest weight in the published formula —
+    already reads it. A second category field would be a second opinion about what an
+    event is.
+
+    **`expires_at` nullable means indefinite.** The mockup offers four durations — seven
+    days, thirty, ninety, and "until I change it" — and the fourth is a *state of the
+    same row* rather than a second code path. A null expiry is indefinite; a set expiry
+    is finite.
+
+    **One tap unmutes, and the unmute deletes the row.** There is no `muted` boolean to
+    flip, because there is no "unmuted" state to record: the absence of a row *is* the
+    absence of a mute. This is the same shape `SourceMute` takes — "there are two states,
+    not three; `default` is the absence of a row".
+
+    **`category_key` is stored by value, not as a relation.** The chip vocabulary lives in
+    `shared`, which is below `apps` and holds no tables; a relation is not available.
+
+    **It is `PREFERENCE_SIGNALS`.** Not `ACCOUNT_CONTENT`: this is a record of what they
+    chose not to see.
+
+    Design: .specs-fire/intents/relevance-feedback-loop/work-items/
+    less-like-this-adjustment-design.md (decisions D18, D25).
+    """
+
+    retention_category = RetentionCategory.PREFERENCE_SIGNALS
+
+    # The user, by value (OQ-8): no relation to User.
+    user_id = models.UUIDField()
+    # The chip key — `tech_meetups`, `arts_culture`, … (see `shared.constants.INTEREST_CHIPS`).
+    category_key = models.CharField(max_length=64)
+    # When the mute lifts. Null is *indefinite*, not "unknown".
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            # One row per (user, category). Two rows for the same pair would make the
+            # user's preference for that category ambiguous — and the read that applies
+            # it would have to guess which one wins.
+            models.UniqueConstraint(
+                fields=["user_id", "category_key"], name="category_mute_user_category_uq"
+            ),
+        ]
+        indexes = [
+            # "What has this user muted?" — the question the composition path asks on
+            # every read. It is asked about one user, so the index leads with the user.
+            models.Index(fields=["user_id"], name="category_mute_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # The category key and the expiry. Both are safe: the key is from the server's own
+        # vocabulary, and this string reaches every log line (AD-9, AD-13).
+        return f"category mute {self.category_key} until {self.expires_at}"

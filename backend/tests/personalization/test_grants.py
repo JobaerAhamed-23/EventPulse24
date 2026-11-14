@@ -70,6 +70,7 @@ def test_personal_role_delete_of_digest_composition_denied():
         "personal.personalization_savedevent",
         "personal.personalization_conflictpair",
         "personal.personalization_pulsedigest",
+        "personal.personalization_sourcemute",
     ],
 )
 def test_personal_role_may_insert_and_read(table):
@@ -86,12 +87,15 @@ def test_personal_role_may_insert_and_read(table):
 def test_personal_role_may_write_the_product_tables():
     # The product tables are ordinary DML tables; only the append-only ones are fenced off.
     # `PulseDigest` is one of them: it is a fact about a day, not an append-only history
-    # (D11).
+    # (D11). `SourceMute` is one too: it is a preference the user can change and change
+    # back, and "default" is the *absence* of the row — so the runtime role must be able
+    # to delete it.
     for table in (
         "personal.personalization_personalevent",
         "personal.personalization_savedevent",
         "personal.personalization_conflictpair",
         "personal.personalization_pulsedigest",
+        "personal.personalization_sourcemute",
     ):
         rows = run_as(
             PERSONAL_ROLE,

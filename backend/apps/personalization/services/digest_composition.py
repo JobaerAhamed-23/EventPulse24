@@ -75,10 +75,19 @@ from apps.personalization.services.digest_candidates import (
     list_saved_candidates,
 )
 from apps.personalization.services.digest_dates import local_date_for
+from apps.personalization.services.source_mutes import (
+    SourceVisibility,
+    read_source_visibility,
+)
+from apps.personalization.services.taste_mutes import (
+    is_muted_by_category,
+    read_muted_category_keys,
+)
 from domain.horizon import local_horizon
 from domain.ranking import (
     RankingInputs,
     apply_hysteresis,
+    apply_show_less,
     city_band,
     interest_overlap,
     recency_band,
@@ -352,6 +361,7 @@ def _score_public(
     now: datetime,
     is_saved: bool,
     serendipity: bool,
+    show_less: bool = False,
 ) -> _Scored:
     """Score one public candidate for one slot, and derive its tags from the same inputs.
 
@@ -364,6 +374,28 @@ def _score_public(
     nothing to compare against. Passing `None` is not a shortcut — it is what
     EXPERIENCE.md §4 means by "across days, hysteresis resets... No persistent bucket
     is stored between days".
+
+    **`show_less` subtracts from the score the formula produced, and does not touch the
+    formula.** FR-22's `relevance_score()` is exactly five weighted terms summing to
+    1.00, and `tests/shared/test_constants.py` pins those weights against ADR-0025 — so a
+    sixth term would change a published formula and need a new ADR to authorise it. "Show
+    less" is a preference over the *ordering*, not a property of the event, so it is
+    applied here, to the score the formula produced, before anything is ordered by it.
+
+    **The penalty is applied to the score and not to the bucket.** The bucket is the
+    Confidence Pulse — the score's own 1–5 reading — and FR-22's hysteresis rule compares
+    it across days. A user's preference for one source is not a change in the confidence of
+    an event from it, so the pulse stays true to the score and the *ordering* is what
+    moves.
+
+    **So the bucket is computed from the unpenalised score.** `apply_hysteresis` buckets
+    whatever score it is handed, so handing it the penalised one would quietly lower the
+    *persisted* pulse — an event at 0.90 would read as a 4 because its source is
+    "show less". That is the explanation drifting from the decision (AD-10): the pulse
+    would be reporting a confidence the formula did not produce, and it would be reporting
+    it about an event the user never doubted. The two numbers are therefore computed
+    separately — the pulse from the score, the ordering from the penalised score — and
+    each is used for the thing it actually means.
     """
     inputs = _inputs_for_public(
         candidate=candidate,
@@ -372,11 +404,14 @@ def _score_public(
         now=now,
     )
     score = slot_scorer(inputs=inputs)
+    # **The pulse comes from the formula's score, before the preference.**
     bucket = apply_hysteresis(
         previous_bucket=None,
         previous_score=None,
         new_score=score,
     )
+    # **The ordering comes from the score the preference applied to.**
+    score = apply_show_less(score, show_less=show_less)
     tags = why_this_tags(
         inputs=inputs,
         event_chip_keys=candidate.chip_keys,
@@ -459,6 +494,8 @@ def _assign_slots(
     include_personal_events: bool,
     saved_event_ids: set[UUID],
     now: datetime,
+    visibility: SourceVisibility | None = None,
+    muted_categories: frozenset[str] = frozenset(),
 ) -> list[_Scored]:
     """Fill the three slots, in order, and return the compositions.
 
@@ -481,9 +518,50 @@ def _assign_slots(
     **The saved set only adds a tag.** A save does not change the score and does not
     change the ordering. A saved event in another city is not a candidate — the
     slots are "nearby", and a save is not a statement that the event is nearby.
+
+    **A muted source's events are not candidates at all.** `Settings → Sources` lets a
+    user mute a source, and a mute is an *exclusion*: the events are absent from the
+    pool, so no slot can take them. The filter runs here, before the scorers, because a
+    source that is muted should not have its events scored and then discarded — and
+    because exclusion is a statement about the candidate set, not about an event's rank.
+
+    **A show-less source's events are candidates that score lower.** They stay in the
+    pool — "show less" means fewer, not none — and the penalty is applied to the score
+    the formula produced, before anything is ordered by it. See `domain.ranking.
+    apply_show_less` for why the penalty is not a sixth term in FR-22's formula.
+
+    **A personal event has no source**, so the mute never applies to one. The user's own
+    agenda is not something a source can be muted away from.
+
+    **A muted category's events are not candidates either.** `Settings → Taste` lets a user
+    mute a *category* — "less rooftop jazz" — and a category mute is an exclusion, exactly
+    as a source mute is. The filter runs on the candidate's own chip keys, before the
+    scorers, because exclusion is a statement about the candidate set and not about an
+    event's rank. It is **not** a sixth term in FR-22's formula: the formula is pinned to
+    five weighted terms that sum to 1.00, and a mute is not a signal about the event's
+    quality — it is the user saying "not these".
+
+    **An event with no chips is never muted.** The chip keys are matched from the event's
+    own text, so an event matching no keyword belongs to no category, and excluding it
+    would be the product deciding what it is on the user's behalf.
     """
     chosen: list[_Scored] = []
     used: set[UUID] = set()
+
+    muted = visibility.muted if visibility else frozenset()
+    show_less = visibility.show_less if visibility else frozenset()
+
+    # **The mute filter, before anything is scored.** Excluded here, the events are not
+    # candidates and no slot can take them.
+    #
+    # **Two filters, one list.** A source mute removes the event outright; a category mute
+    # removes it too, but only when the event's chips intersect the muted categories.
+    eligible = [
+        candidate
+        for candidate in public_candidates
+        if candidate.source_id not in muted
+        and not is_muted_by_category(chip_keys=candidate.chip_keys, muted_keys=muted_categories)
+    ]
 
     # --- Slot 1: must-know -------------------------------------------------------
     if include_personal_events:
@@ -510,8 +588,9 @@ def _assign_slots(
                 now=now,
                 is_saved=candidate.id in saved_event_ids,
                 serendipity=False,
+                show_less=candidate.source_id in show_less,
             )
-            for candidate in public_candidates
+            for candidate in eligible
         ]
         if scored_public:
             best = min(scored_public, key=lambda scored: scored.order_key())
@@ -519,7 +598,7 @@ def _assign_slots(
             used.add(best.event_id)
 
     # --- Slot 2: nearby ----------------------------------------------------------
-    remaining = [candidate for candidate in public_candidates if candidate.id not in used]
+    remaining = [candidate for candidate in eligible if candidate.id not in used]
     scored_slot_2 = [
         _score_public(
             candidate=candidate,
@@ -529,6 +608,7 @@ def _assign_slots(
             now=now,
             is_saved=candidate.id in saved_event_ids,
             serendipity=False,
+            show_less=candidate.source_id in show_less,
         )
         for candidate in remaining
     ]
@@ -538,7 +618,7 @@ def _assign_slots(
         used.add(best.event_id)
 
     # --- Slot 3: serendipity -----------------------------------------------------
-    remaining = [candidate for candidate in public_candidates if candidate.id not in used]
+    remaining = [candidate for candidate in eligible if candidate.id not in used]
     scored_slot_3 = [
         _score_public(
             candidate=candidate,
@@ -548,6 +628,7 @@ def _assign_slots(
             now=now,
             is_saved=candidate.id in saved_event_ids,
             serendipity=True,
+            show_less=candidate.source_id in show_less,
         )
         for candidate in remaining
     ]
@@ -566,6 +647,46 @@ def _existing_digest(*, user_id: UUID, local_date: date) -> PulseDigest | None:
         .filter(user_id=user_id, local_date=local_date)
         .order_by("id")
         .last()
+    )
+
+
+def read_latest_slot(*, user_id: UUID, event_id: UUID) -> str | None:
+    """Which slot this event was in, in the user's most recent digest. `None` if unknown.
+
+    **The most recent digest, not any digest.** The slot is what the card *was* when the
+    user saw it, and the user saw the card in the digest they were looking at. A card
+    that was in a digest last week and is not in today's is not "a serendipity card" —
+    it is an event the user opened directly, and its slot is unknown.
+
+    **A personal event has no slot.** A composition's `event_kind` says whether the card
+    was a catalog event or the user's own, and the user's own agenda has no slot to be
+    in — it is not something the product chose to show.
+
+    **This read lives here, and not in the dismissal service, on purpose.** The
+    composition rows are this module's business — it writes them — and AD-10's test
+    names the *only* two read paths that may serve a composition, because a third one
+    would be a new place an explanation could be served from. The dismissal service
+    needs the slot, and it gets it from here rather than querying the row itself, so the
+    set of composition read paths does not grow.
+
+    **It reads the slot, not the explanation.** The score, the bucket and the tags are
+    not touched: this is the composition's structure, not the user's explanation.
+    """
+    latest = (
+        PulseDigest.objects.using(PERSONAL)
+        .filter(user_id=user_id)
+        .order_by("-local_date")
+        .values_list("id", flat=True)
+        .first()
+    )
+    if latest is None:
+        return None
+
+    return (
+        DigestComposition.objects.using(PERSONAL)
+        .filter(digest_id=latest, event_id=event_id, event_kind=DigestComposition.EventKind.PUBLIC)
+        .values_list("slot", flat=True)
+        .first()
     )
 
 
@@ -664,14 +785,33 @@ def compose_digest(
     saved_candidates = list_saved_candidates(user_id=user_id, now=now)
     public_candidates = list_public_candidates(now=now, city=user_city or None)
 
+    # **The user's source preferences, read here with the other reads.** One query, and
+    # it is on the personal side — so it belongs with the reads outside the transaction,
+    # not inside it. The muted sources are excluded from the pool below; the show-less
+    # sources are deprioritised when they are scored.
+    visibility = read_source_visibility(user_id=user_id)
+
+    # **The user's muted categories, read here with the other reads.** One query, and it
+    # is on the personal side — so it belongs with the reads outside the transaction, not
+    # inside it. The muted categories are excluded from the pool below.
+    muted_categories = read_muted_category_keys(user_id=user_id, now=now)
+
     saved_event_ids = {saved.event_id for saved in saved_candidates}
 
     # **The counts are the pools narrowed to the horizon.** The pools are already in
     # hand — this is a count over what was read, not a second query — and the
     # composition's own gates (confidence, staleness, publication, city) have already
     # been applied by the reads themselves.
+    #
+    # **A muted category's events are not qualifying events.** The counts answer "is
+    # there something for this user", and a muted category is something the user said they
+    # do not want — so counting it would keep a Ping alive for a category the user
+    # muted, and the Ping would then arrive with nothing in it.
     public_qualifying_count = sum(
-        1 for candidate in public_candidates if candidate.start_time_utc <= horizon
+        1
+        for candidate in public_candidates
+        if candidate.start_time_utc <= horizon
+        and not is_muted_by_category(chip_keys=candidate.chip_keys, muted_keys=muted_categories)
     )
     # **An opted-out user's personal events are not qualifying events.** FR-19's opt-out
     # means those events are not in the user's digest, so they cannot be the reason the
@@ -690,6 +830,8 @@ def compose_digest(
         include_personal_events=include_personal_events,
         saved_event_ids=saved_event_ids,
         now=now,
+        visibility=visibility,
+        muted_categories=muted_categories,
     )
 
     # --- the write, atomic on the personal side -----------------------------------

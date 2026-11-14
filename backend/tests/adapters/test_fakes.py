@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC
 
 import pytest
+from django.db import transaction
 
 from adapters.billing.fake import FAKE_BILLING_URL, FakeBillingAdapter
 from adapters.calendar.fake import FakeCalendarAdapter
@@ -12,10 +13,26 @@ from adapters.llm.fake import FAKE_MODEL, FakeEmbeddingAdapter, FakeLLMAdapter
 from ports.billing import BillingCustomer, ProPlan
 from ports.calendar import CalendarFeed, Credential
 from ports.llm import LLMRequest
+from shared.db import CATALOG
+
+# The embedding fake writes a cost row, so it needs the catalog schema.
+pytestmark = pytest.mark.django_db(databases=[CATALOG])
 
 REQUEST = LLMRequest(
     task="extract_event", instructions="Extract the event", untrusted_content="Jazz night at 8pm"
 )
+
+
+@pytest.fixture
+def catalog_transaction():
+    """A `catalog` transaction, which the embedding fake needs to write its cost row.
+
+    **The fake writes a cost row too**, and a row of zero — the fake really is free. It
+    is a stand-in for the *behaviour*, and the behaviour includes the cost row; a fake
+    that skipped it would mean the cost path was never exercised outside production.
+    """
+    with transaction.atomic(using=CATALOG):
+        yield
 
 
 def test_fake_llm_is_deterministic_and_free():
@@ -35,7 +52,7 @@ def test_fake_llm_result_changes_with_the_content():
 
 
 @pytest.mark.parametrize("dimensions", [1, 256, 512])
-def test_fake_embeddings_are_unit_vectors_of_the_requested_size(dimensions):
+def test_fake_embeddings_are_unit_vectors_of_the_requested_size(dimensions, catalog_transaction):
     result = FakeEmbeddingAdapter().embed(["jazz night", "book fair"], dimensions=dimensions)
 
     assert len(result.vectors) == 2
@@ -46,7 +63,7 @@ def test_fake_embeddings_are_unit_vectors_of_the_requested_size(dimensions):
     assert result.cost_micros == 0
 
 
-def test_fake_embeddings_same_text_same_vector_different_text_different_vector():
+def test_fake_embeddings_same_text_same_vector_different_text_different_vector(catalog_transaction):
     adapter = FakeEmbeddingAdapter()
     [a, b, a_again] = adapter.embed(["jazz", "books", "jazz"], dimensions=8).vectors
 

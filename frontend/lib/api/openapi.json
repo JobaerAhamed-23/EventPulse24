@@ -449,6 +449,132 @@
         "title": "CalendarReconnectIn",
         "type": "object"
       },
+      "CategoryMuteIn": {
+        "description": "The request body for setting one category mute.",
+        "properties": {
+          "category_key": {
+            "title": "Category Key",
+            "type": "string"
+          },
+          "duration_days": {
+            "anyOf": [
+              {
+                "enum": [
+                  7,
+                  30,
+                  90
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days"
+          }
+        },
+        "required": [
+          "category_key"
+        ],
+        "title": "CategoryMuteIn",
+        "type": "object"
+      },
+      "CategoryMuteListOut": {
+        "description": "Every active category mute for the signed-in user.\n\n**An expired mute is not in the list.** The row is still there — it is the user's\ndata — but it no longer mutes anything, so the screen does not list it.",
+        "properties": {
+          "mutes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CategoryMuteOut"
+            },
+            "title": "Mutes",
+            "type": "array"
+          }
+        },
+        "title": "CategoryMuteListOut",
+        "type": "object"
+      },
+      "CategoryMuteOut": {
+        "description": "One active category mute, as the settings screen reads it.",
+        "properties": {
+          "category_key": {
+            "title": "Category Key",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "is_indefinite": {
+            "default": false,
+            "title": "Is Indefinite",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category_key",
+          "label"
+        ],
+        "title": "CategoryMuteOut",
+        "type": "object"
+      },
+      "CategoryMuteRestoreDefaultsOut": {
+        "description": "The outcome of the bulk reset.\n\n**`removed` is how many mutes were cleared**, so the screen can say what happened\nrather than just that it happened.",
+        "properties": {
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "title": "CategoryMuteRestoreDefaultsOut",
+        "type": "object"
+      },
+      "CategoryMuteResultOut": {
+        "description": "The outcome of setting or clearing one category mute.\n\n**`changed` says whether the call did anything.** Setting a mute that is already set\nis a success, not an error — but a response claiming a change when none happened\nwould make the screen redraw something that did not move.",
+        "properties": {
+          "category_key": {
+            "title": "Category Key",
+            "type": "string"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "required": [
+          "category_key",
+          "changed"
+        ],
+        "title": "CategoryMuteResultOut",
+        "type": "object"
+      },
       "CheckoutIn": {
         "description": "The checkout request: which plan to buy.\n\n**The plan is the only field.** There is deliberately no `success_url`, no\n`cancel_url` and no `return_url`, and that absence is the security property rather\nthan an oversight: the URLs handed to the provider are built from configuration, so a\nclient cannot name one. Taking the redirect target from the request is the classic\nopen-redirect in a checkout flow — a crafted target sends a paying user (and the\nsession id in the query string) to somebody else's site.\n\nThe plan is an enum, so an unknown one is a 422 at the edge rather than a provider\nerror later.",
         "properties": {
@@ -1920,6 +2046,56 @@
         "title": "DigestScheduleOut",
         "type": "object"
       },
+      "DismissalIn": {
+        "description": "The request body for recording one dismissal.\n\n**Only the event id is needed.** The slot is *read*, not sent: the service resolves\nit from the user's own composition, so a client cannot claim a dismissal came from a\nslot it did not come from — and cannot put a serendipity card into the cluster by\nasserting it did.",
+        "properties": {
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id"
+        ],
+        "title": "DismissalIn",
+        "type": "object"
+      },
+      "DismissalOut": {
+        "description": "What one dismissal did.\n\n**`cluster_advanced` says whether this dismissal counted**, and `prompt_due` says\nwhether the product should now ask. Both are separate facts: a dismissal that\nadvanced the counter may still not have completed a cluster, and a dismissal that did\nnot advance can never complete one.",
+        "properties": {
+          "cluster_advanced": {
+            "title": "Cluster Advanced",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MutePromptOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt_due": {
+            "title": "Prompt Due",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "event_id",
+          "cluster_advanced",
+          "prompt_due"
+        ],
+        "title": "DismissalOut",
+        "type": "object"
+      },
       "EffectiveQuietHoursOut": {
         "description": "One weekday of the schedule the delivery path will actually use (FR-51).\n\n**Read-only, and derived.** It is the base window with a Pro account's overrides laid\nover it; for a Free or lapsed account it is the base window on all seven days whatever\n`quiet_hours_overrides` holds. It exists so a lapsed user is never shown seven windows\nthat are not in force — the one honest answer to \"when will I actually be quiet\".\n\n`quiet_hours` is `null` on a day with no quiet hours at all.",
         "properties": {
@@ -2497,6 +2673,36 @@
           "chip_keys"
         ],
         "title": "InterestsOut",
+        "type": "object"
+      },
+      "MutePromptOut": {
+        "description": "The \"less of this\" prompt, when the product should show it.\n\n**The copy is the server's own.** The title names the category the cluster agreed on\nand the label comes from `INTEREST_CHIPS` — never from the event's title, which is\nuntrusted scraped text (AD-9).\n\n**`category_key` is `None` for the generic variant**, when no single chip dominates\nthe cluster. The client renders the generic copy in that case, and the mute it\ncreates is a general one rather than a category-specific one.",
+        "properties": {
+          "category_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description"
+        ],
+        "title": "MutePromptOut",
         "type": "object"
       },
       "NoticeDismissOut": {
@@ -3990,6 +4196,180 @@
           }
         },
         "title": "SignUpOut",
+        "type": "object"
+      },
+      "SourceGroupOut": {
+        "description": "One group of sources — Official, Community, Aggregator or Crawled.\n\n**The four groups are always present, even when empty.** The screen renders a heading\nper group, and a group that appeared and disappeared as the registry changed would\nmake the screen's shape depend on the data.",
+        "properties": {
+          "badge": {
+            "title": "Badge",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "badge",
+          "label"
+        ],
+        "title": "SourceGroupOut",
+        "type": "object"
+      },
+      "SourceListOut": {
+        "description": "Every source in the registry, grouped.\n\n**`groups` is the whole registry**, in the order the screen shows it. A registry with\nno sources answers with four empty groups rather than an error — an empty registry is\nan answer, and the screen has a quiet empty state for it.",
+        "properties": {
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "title": "SourceListOut",
+        "type": "object"
+      },
+      "SourceMuteResultOut": {
+        "description": "The outcome of setting one source's mute state.\n\n**`changed` says whether the call did anything.** Setting the state a source was\nalready in is a success, not an error — but a response claiming a change when none\nhappened would make the screen redraw something that did not move.",
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "mute",
+              "show_less",
+              "default"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "state",
+          "changed"
+        ],
+        "title": "SourceMuteResultOut",
+        "type": "object"
+      },
+      "SourceMuteSetIn": {
+        "description": "The request body for setting one source's mute state.",
+        "properties": {
+          "state": {
+            "enum": [
+              "mute",
+              "show_less",
+              "default"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "SourceMuteSetIn",
+        "type": "object"
+      },
+      "SourceOut": {
+        "description": "One source in the registry, as the screen shows it.\n\n**`id` is the catalog Source's id, by value.** The mute is keyed on it, and the\nclient sends it back on the write — so the id the screen shows and the id the mute\nuses are the same one.\n\n**`mute_state` is this user's state for this source**, and it is `\"default\"` for a\nsource the user has never touched. It is not `None`: the control has three\npositions, and \"no preference\" is one of them.",
+        "properties": {
+          "city": {
+            "default": "",
+            "title": "City",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_paused": {
+            "default": false,
+            "title": "Is Paused",
+            "type": "boolean"
+          },
+          "mute_state": {
+            "default": "default",
+            "enum": [
+              "mute",
+              "show_less",
+              "default"
+            ],
+            "title": "Mute State",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_badge": {
+            "title": "Source Badge",
+            "type": "string"
+          },
+          "trust": {
+            "$ref": "#/components/schemas/SourceTrustOut"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source_badge",
+          "trust"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "SourceRestoreDefaultsOut": {
+        "description": "The outcome of the bulk reset.\n\n**`removed` is how many preferences were cleared**, so the screen can say what\nhappened rather than just that it happened.",
+        "properties": {
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "title": "SourceRestoreDefaultsOut",
+        "type": "object"
+      },
+      "SourceTrustOut": {
+        "description": "One source's trust, as the screen renders it.\n\n**`band` is the 1–5 count the dots draw**, and it is the server's number. The client\ndraws `band` filled dots and `5 - band` empty ones; it does not compute the band from\n`score`, because the boundaries are the server's rule and a client that recomputed\nthem would be a second opinion about what a score means.\n\n**`score` is the raw FR-16 posterior**, in [0, 1]. It is here for the client's own\ntooltips and for a future \"why is this source low?\" — not for the dots.\n\n**`band` is never a delta.** A week-over-week drop is provably impossible\n(`domain/reliability.py`), so there is no \"down\" state to render.",
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "integer"
+          },
+          "score": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Score",
+            "type": "string"
+          }
+        },
+        "required": [
+          "band",
+          "score"
+        ],
+        "title": "SourceTrustOut",
         "type": "object"
       },
       "SubscriptionOut": {
@@ -6418,6 +6798,49 @@
         ]
       }
     },
+    "/api/personal/dismissals": {
+      "post": {
+        "description": "Records one dismissal and tells the client whether the product should now ask the \"less of this\" question.\n\n**The slot is read, not sent.** The service resolves it from the user's own composition, so a client cannot claim a dismissal came from a slot it did not come from — and cannot put a serendipity card into the cluster by asserting it did.\n\n**`prompt_due` is the whole answer.** It is true when three similar events have been dismissed in a digest window, and it stays true for that one call — the cluster's counter resets when the prompt fires, so the same cluster cannot nag.\n\n**A dismissal that did not advance the cluster was still recorded.** The user really did dismiss it; the product just does not count it.",
+        "operationId": "apps_personalization_api_record_a_dismissal",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissalIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DismissalOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Record that the user swiped past an event",
+        "tags": [
+          "personal"
+        ]
+      }
+    },
     "/api/personal/event-reports": {
       "post": {
         "description": "Records one report against a public event (FR-59). The body names the event and exactly one of four categories; there is no free-text field.\n\n**A report never changes what anyone can see.** The event stays in the digest and on its public page until an editor decides. One person cannot pull a listing.\n\nFive reports per user per day; the sixth answers 429 with the wait. Reporting the same event for the same reason twice is accepted and counted once — the editor's tally counts people, not taps.\n\nAn event that does not exist, or that is not publicly visible, answers 404 — the same refusal the event detail read gives, so this endpoint cannot be used to find out whether a hidden event exists.",
@@ -7495,6 +7918,358 @@
           }
         },
         "summary": "Save the signed-in user's notification settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/sources": {
+      "get": {
+        "description": "Every source in the registry, grouped by how its facts were obtained — Official, Community, Aggregator, Crawled — with each source's trust and the caller's mute state.\n\n**The groups are the Source Badge types.** The server names the type; the client owns the label and the glyph.\n\n**A muted source is still listed.** The screen's job is transparency — the user is told what is informing their timeline *and* what they have turned off. A muted source that disappeared would be a preference they could not see or undo.",
+        "operationId": "apps_personalization_source_mutes_api_list_sources",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceListOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "The source registry, grouped, with the caller's visibility settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/sources/restore-defaults": {
+      "post": {
+        "description": "Reset every source to its default visibility, clearing both the mutes and the \"show less\" preferences in one action.\n\n**The screen asks before it calls this.** The endpoint is a single idempotent delete; the confirmation belongs to the client, because the safeguard is that the destructive action is confirmed before it completes.",
+        "operationId": "apps_personalization_source_mutes_api_restore_defaults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRestoreDefaultsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Clear every custom visibility setting",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/sources/{source_id}": {
+      "put": {
+        "description": "Set one source's state to `mute`, `show_less` or `default`.\n\n**`mute` excludes the source's events** — they are not shown at all. **`show_less` deprioritises them** — they are still shown, but ordered lower. **`default` restores the source** to how it was before any preference.\n\nThe state is idempotent: setting a source to the state it already has is a success, and `changed` says whether anything actually moved.\n\n**There is no 404.** The endpoint does not read the catalog (AD-3), so a source that is not in the registry is accepted like any other: the preference excludes nothing and is purged with the user's data.",
+        "operationId": "apps_personalization_source_mutes_api_set_source_mute_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceMuteSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceMuteResultOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set one source's visibility",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/taste": {
+      "get": {
+        "description": "Every category the caller has muted, with the server's label for each and when the mute ends.\n\n**A null `expires_at` means the mute is indefinite** — the mockup's \"until I change it\".\n\n**An expired mute is not in the list.** The row is still there — it is the caller's data — but it no longer mutes anything.",
+        "operationId": "apps_personalization_taste_mutes_api_list_category_mutes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMuteListOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "The caller's muted categories",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/taste/mutes": {
+      "put": {
+        "description": "Mute one category for the caller, for 7, 30 or 90 days — or indefinitely, by sending a null `duration_days`.\n\n**The duration set is closed.** A mute that outlived the caller's patience by a typo is a mute they have to find a screen to undo, so anything else is a 422.\n\n**The mute is idempotent.** Setting a mute that is already set is a success, and `changed` says whether the expiry actually moved.\n\n**The expiry runs from now, not from the mute's creation.** Asking for 30 days again refreshes the window, which is what pressing the button again means.",
+        "operationId": "apps_personalization_taste_mutes_api_put_category_mute",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMuteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMuteResultOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Mute one category",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/taste/mutes/restore-defaults": {
+      "post": {
+        "description": "Clear every category mute in one action.\n\n**The screen asks before it calls this.** The endpoint is a single idempotent delete; the confirmation belongs to the client, because the safeguard is that the destructive action is confirmed before it completes.",
+        "operationId": "apps_personalization_taste_mutes_api_restore_defaults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMuteRestoreDefaultsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Clear every muted category",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/taste/mutes/{category_key}": {
+      "delete": {
+        "description": "Unmute one category. One tap, and the row is gone.\n\n**Unmuting does not resurrect the muted events.** The events that were excluded from a digest are excluded from the digests they were excluded from; the next digest is composed from the current candidate pool. A caller who unmutes is asking for the category back *from now on*.",
+        "operationId": "apps_personalization_taste_mutes_api_delete_category_mute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_key",
+            "required": true,
+            "schema": {
+              "title": "Category Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMuteResultOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Unmute one category",
         "tags": [
           "settings"
         ]

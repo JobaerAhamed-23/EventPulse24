@@ -45,12 +45,15 @@ from apps.personalization.schemas import (
     DigestCardOut,
     DigestOut,
     DigestPreferenceIn,
+    DismissalIn,
+    DismissalOut,
     EventReportIn,
     EventReportOut,
     InterestChipOut,
     InterestChipsOut,
     InterestsIn,
     InterestsOut,
+    MutePromptOut,
     OnboardingStateOut,
     PersonalEventCreateIn,
     PersonalEventListOut,
@@ -76,6 +79,7 @@ from apps.personalization.services.calendar_connections import (
 from apps.personalization.services.conflict_list import list_conflict_pairs
 from apps.personalization.services.conflict_resolutions import resolve_conflict
 from apps.personalization.services.digest_read import read_digest
+from apps.personalization.services.dismissals import record_dismissal
 from apps.personalization.services.event_reports import report_event
 from apps.personalization.services.onboarding import (
     advance_step,
@@ -434,6 +438,48 @@ def unsave_public_event(request, catalog_event_id: UUID):
         now=timezone.now(),
     )
     return Status(204, None)
+
+
+@router.post(
+    "/dismissals",
+    response={200: DismissalOut, 401: ErrorOut},
+    summary="Record that the user swiped past an event",
+    description=(
+        "Records one dismissal and tells the client whether the product should now ask "
+        'the "less of this" question.\n\n'
+        "**The slot is read, not sent.** The service resolves it from the user's own "
+        "composition, so a client cannot claim a dismissal came from a slot it did not "
+        "come from — and cannot put a serendipity card into the cluster by asserting it "
+        "did.\n\n"
+        "**`prompt_due` is the whole answer.** It is true when three similar events have "
+        "been dismissed in a digest window, and it stays true for that one call — the "
+        "cluster's counter resets when the prompt fires, so the same cluster cannot nag.\n\n"
+        "**A dismissal that did not advance the cluster was still recorded.** The user "
+        "really did dismiss it; the product just does not count it."
+    ),
+)
+def record_a_dismissal(request, body: DismissalIn) -> DismissalOut:
+    """Record one dismissal, and say whether the prompt is due."""
+    result = record_dismissal(
+        user_id=request.user.pk,
+        event_id=body.event_id,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    return DismissalOut(
+        event_id=result.event_id,
+        cluster_advanced=result.cluster_advanced,
+        prompt_due=result.prompt_due,
+        prompt=(
+            MutePromptOut(
+                title=result.prompt.title,
+                description=result.prompt.description,
+                category_key=result.prompt.category_key,
+            )
+            if result.prompt is not None
+            else None
+        ),
+    )
 
 
 @router.get(

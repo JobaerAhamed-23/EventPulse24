@@ -19,6 +19,16 @@ from shared.constants import (
     EVENT_REPORT_WINDOW_SECONDS,
     EXTRACTION_CONFIDENCE_PUBLISH,
     EXTRACTION_CONFIDENCE_REJECT,
+    FR25_CLUSTER_COSINE_THRESHOLD,
+    FR25_CLUSTER_MIN_EVENTS,
+    FR25_CLUSTER_WINDOW_HOURS,
+    FR25_DECAY_EXPIRE_DAYS,
+    FR25_DECAY_HALF_DAYS,
+    FR25_EMBEDDING_DIMENSIONS,
+    FR25_EMBEDDING_MODEL,
+    FR25_MUTE_DURATIONS_DAYS,
+    FR25_RAGE_GUARD_COUNT,
+    FR25_RAGE_GUARD_SECONDS,
     POSTPONEMENT_WINDOW,
     RANKING_BUCKET_2,
     RANKING_BUCKET_3,
@@ -289,3 +299,71 @@ def test_the_daily_report_limit_is_the_prd_five():
     """FR-59: "capped at 5 per user per day"."""
     assert EVENT_REPORT_DAILY_LIMIT == 5
     assert EVENT_REPORT_WINDOW_SECONDS == 24 * 60 * 60
+
+
+# ── FR-25: the "Less like this" cluster ─────────────────────────────────────────────────
+
+
+def test_the_cluster_cosine_threshold_is_the_fr25_number():
+    """FR-25: "embedding cosine ≥0.7".
+
+    A cluster that fires at a different cosine is a different product — one that asks
+    users to mute categories they did not mean to mute. So the number is pinned.
+    """
+    assert FR25_CLUSTER_COSINE_THRESHOLD == Decimal("0.70")
+
+
+def test_the_cluster_needs_three_distinct_events():
+    """FR-25: "3 distinct events dismissed".
+
+    Two dismissals is what a user does when a card renders wrong; three is what a user
+    does when they do not want a category.
+    """
+    assert FR25_CLUSTER_MIN_EVENTS == 3
+
+
+def test_the_cluster_window_is_twenty_four_hours():
+    """FR-25: the three dismissals must fall inside a 24-hour window."""
+    assert FR25_CLUSTER_WINDOW_HOURS == 24
+
+
+def test_the_rage_guard_is_three_swipes_in_five_seconds():
+    """FR-25: the guard against a flick being read as a preference.
+
+    The count and the window are separate constants because they are different kinds of
+    number — one counts dismissals, the other measures time — and a bare "3" at the call
+    site is exactly the kind of literal AD-8 exists to prevent.
+    """
+    assert FR25_RAGE_GUARD_COUNT == 3
+    assert FR25_RAGE_GUARD_SECONDS == 5
+
+
+def test_the_decay_is_a_sixty_day_half_life_and_a_one_hundred_eighty_day_cliff():
+    """FR-25: the decay has two stages, and the cliff is what makes the half-life honest.
+
+    A half-life alone never reaches zero, so a decade-old swipe would still count for a
+    sliver — and a sliver that never dies is a preference the user cannot escape.
+    """
+    assert FR25_DECAY_HALF_DAYS == 60
+    assert FR25_DECAY_EXPIRE_DAYS == 180
+    assert FR25_DECAY_EXPIRE_DAYS > FR25_DECAY_HALF_DAYS
+
+
+def test_the_mute_durations_are_the_mocks_three_finite_ones():
+    """FR-25: 7, 30, 90 days — and the indefinite one is a `null` expiry, not a fourth number."""
+    assert FR25_MUTE_DURATIONS_DAYS == (7, 30, 90)
+    assert all(isinstance(days, int) and days > 0 for days in FR25_MUTE_DURATIONS_DAYS)
+
+
+def test_the_embedding_dimensions_are_the_pinned_two_hundred_and_fifty_six():
+    """The spine pins 256 or 512; this is the 256 choice, written down once."""
+    assert FR25_EMBEDDING_DIMENSIONS == 256
+
+
+def test_the_embedding_model_is_the_pinned_name():
+    """**The name is a constant because the cost row carries it.**
+
+    A cost row that records "some model" cannot answer "what did we spend on embeddings",
+    and the AI Cost Dashboard reads exactly that.
+    """
+    assert FR25_EMBEDDING_MODEL == "voyage-4-lite"

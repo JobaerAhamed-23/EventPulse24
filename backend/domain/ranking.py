@@ -166,6 +166,7 @@ from shared.constants import (
     RANKING_WEIGHT_INTEREST,
     RANKING_WEIGHT_RECENCY,
     RANKING_WEIGHT_RELIABILITY,
+    SOURCE_SHOW_LESS_PENALTY,
 )
 
 UTC_ZONE = "UTC"
@@ -336,6 +337,32 @@ def relevance_score(inputs: RankingInputs) -> Decimal:
         + RANKING_WEIGHT_RELIABILITY * inputs.source_reliability
     )
     return _clamp(score.quantize(SCORE_PRECISION))
+
+
+def apply_show_less(score: Decimal, *, show_less: bool) -> Decimal:
+    """The "show less" deprioritisation, applied to a score the formula produced.
+
+    **This is not a sixth term in FR-22's formula.** `relevance_score` is exactly five
+    weighted terms summing to 1.00, and `tests/shared/test_constants.py` pins those
+    weights against ADR-0025 — so adding a term would change a published formula and need
+    a new ADR to authorise it. "Show less" is a preference over the *ordering*, not a
+    property of the event, so it belongs outside the formula and before the ordering.
+
+    **It is a penalty, not an exclusion.** "Show less" means fewer. A source whose events
+    vanished would be indistinguishable from a mute on the wire, and would be a lie to the
+    user who asked for fewer, not none.
+
+    **The score is clamped afterwards**, so a score that was already 0.00 stays 0.00 rather
+    than going negative — a negative score would sort *above* a zero one, which is the
+    opposite of what the user asked for.
+
+    **`show_less=False` returns the score unchanged**, and that is the common case: the
+    penalty is not applied by default, so an event from a source with no preference is
+    scored exactly as the formula says.
+    """
+    if not show_less:
+        return score
+    return _clamp((score - SOURCE_SHOW_LESS_PENALTY).quantize(SCORE_PRECISION))
 
 
 def score_bucket(score: Decimal) -> int:
@@ -612,6 +639,7 @@ __all__ = [
     "SCORE_PRECISION",
     "RankingInputs",
     "apply_hysteresis",
+    "apply_show_less",
     "city_band",
     "interest_overlap",
     "recency_band",

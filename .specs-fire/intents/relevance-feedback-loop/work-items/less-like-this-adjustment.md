@@ -1,12 +1,15 @@
 ---
 id: less-like-this-adjustment
 title: FR-25 "Less like this" — Unbuilt on Both Sides
-intent: unwired-surfaces
+intent: relevance-feedback-loop
 complexity: high
 mode: validate
-status: in_progress
+status: completed
+design_doc: less-like-this-adjustment-design.md
+checkpoint_1: approved
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-034
 ---
 
 # Work Item: FR-25 "Less like this" — Unbuilt on Both Sides

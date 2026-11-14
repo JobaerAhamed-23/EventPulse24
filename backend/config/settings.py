@@ -31,6 +31,9 @@ INSTALLED_APPS = [
     "apps.delivery",
     "apps.identity",
     "apps.editorial",
+    # AD-8: the AI cost table lives in the adapter, because under `apps | adapters` the
+    # gateway cannot import an app's models. Its schema is `catalog` — see DATABASE_ROUTING.
+    "adapters.llm",
 ]
 
 MIDDLEWARE = [
@@ -73,7 +76,10 @@ DATABASE_ROUTERS = ["config.db_router.SchemaRouter"]
 # Which alias each app lives in. Every app with models must appear here (eventpulse.E001), and
 # no relation field may cross the two sets (eventpulse.E002).
 DATABASE_ROUTING = {
-    CATALOG: {"ingestion", "catalog", "editorial"},
+    # `llm` is here because the AI cost row is a fact about a call, not about a person —
+    # so it carries no user id and is not user data. The coding standard pins it to
+    # `catalog` (E001).
+    CATALOG: {"ingestion", "catalog", "editorial", "llm"},
     PERSONAL: {
         "identity",
         "personalization",
@@ -156,6 +162,11 @@ REVALIDATION_TIMEOUT_SECONDS = env.revalidation_timeout_seconds
 STRIPE_API_KEY = env.stripe_api_key
 STRIPE_WEBHOOK_SECRET = env.stripe_webhook_secret
 STRIPE_PRICE_IDS = {"monthly": env.stripe_price_monthly, "yearly": env.stripe_price_yearly}
+
+# FR-25: the Voyage API key for the real embedding adapter. The key authorises calls out
+# to Voyage; it is read once, here, and never reaches a log line.
+VOYAGE_API_KEY = env.voyage_api_key
+VOYAGE_TIMEOUT_SECONDS = env.voyage_timeout_seconds
 
 # FR-48: the paths the checkout and portal URLs point at. **These are the whole reason the
 # endpoints cannot be turned into an open redirect.** The success, cancel and portal-return

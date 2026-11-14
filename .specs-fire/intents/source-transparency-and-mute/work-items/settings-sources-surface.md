@@ -1,12 +1,16 @@
 ---
 id: settings-sources-surface
 title: Settings → Sources — A Designed Screen With No Endpoints
-intent: unwired-surfaces
+intent: source-transparency-and-mute
 complexity: high
 mode: validate
-status: in_progress
+status: completed
+design_doc: settings-sources-surface-design.md
+checkpoint_1: approved
 depends_on: []
 created: 2026-11-13
+run_id: run-eventpulse24-033
+completed_at: 2026-11-13T17:02:07.888Z
 ---
 
 # Work Item: Settings → Sources — A Designed Screen With No Endpoints

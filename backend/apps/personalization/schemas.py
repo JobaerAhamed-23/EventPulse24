@@ -18,6 +18,7 @@ no field the client has no use for.
 """
 
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -1571,3 +1572,244 @@ class BrowseOut(Schema):
     #: True when the user has never set a city. The surface shows the quiet empty state
     #: with "Change city" rather than guessing one the user did not choose.
     city_missing: bool = False
+
+
+#: The three states the source-mute control offers, as a closed set.
+#:
+#: **`default` is in the set even though no row ever holds it.** The control has three
+#: positions, and the third one is what the wire shape says when the user puts a source
+#: back the way they found it. The service turns it into a row *deletion* — the absence
+#: of a row is the default state — but the vocabulary the client sends is the three
+#: positions the user sees.
+SourceMuteState = Literal["mute", "show_less", "default"]
+
+
+class SourceTrustOut(Schema):
+    """One source's trust, as the screen renders it.
+
+    **`band` is the 1–5 count the dots draw**, and it is the server's number. The client
+    draws `band` filled dots and `5 - band` empty ones; it does not compute the band from
+    `score`, because the boundaries are the server's rule and a client that recomputed
+    them would be a second opinion about what a score means.
+
+    **`score` is the raw FR-16 posterior**, in [0, 1]. It is here for the client's own
+    tooltips and for a future "why is this source low?" — not for the dots.
+
+    **`band` is never a delta.** A week-over-week drop is provably impossible
+    (`domain/reliability.py`), so there is no "down" state to render.
+    """
+
+    band: int
+    score: Decimal
+
+
+class SourceOut(Schema):
+    """One source in the registry, as the screen shows it.
+
+    **`id` is the catalog Source's id, by value.** The mute is keyed on it, and the
+    client sends it back on the write — so the id the screen shows and the id the mute
+    uses are the same one.
+
+    **`mute_state` is this user's state for this source**, and it is `"default"` for a
+    source the user has never touched. It is not `None`: the control has three
+    positions, and "no preference" is one of them.
+    """
+
+    id: UUID
+    name: str
+    #: The Source Badge type — the group this source belongs to.
+    source_badge: str
+    #: The source's city, when it has one.
+    city: str = ""
+    #: The source's trust.
+    trust: SourceTrustOut
+    #: This user's mute state for this source.
+    mute_state: SourceMuteState = "default"
+    #: Whether the source is paused. A paused source is still in the registry.
+    is_paused: bool = False
+
+
+class SourceGroupOut(Schema):
+    """One group of sources — Official, Community, Aggregator or Crawled.
+
+    **The four groups are always present, even when empty.** The screen renders a heading
+    per group, and a group that appeared and disappeared as the registry changed would
+    make the screen's shape depend on the data.
+    """
+
+    #: The Source Badge type — the group key.
+    badge: str
+    #: The heading the screen shows.
+    label: str
+    sources: list[SourceOut] = []
+
+
+class SourceListOut(Schema):
+    """Every source in the registry, grouped.
+
+    **`groups` is the whole registry**, in the order the screen shows it. A registry with
+    no sources answers with four empty groups rather than an error — an empty registry is
+    an answer, and the screen has a quiet empty state for it.
+    """
+
+    groups: list[SourceGroupOut] = []
+
+
+class SourceMuteSetIn(Schema):
+    """The request body for setting one source's mute state."""
+
+    #: The state to set. `default` restores the source to the default visibility.
+    state: SourceMuteState
+
+
+class SourceMuteResultOut(Schema):
+    """The outcome of setting one source's mute state.
+
+    **`changed` says whether the call did anything.** Setting the state a source was
+    already in is a success, not an error — but a response claiming a change when none
+    happened would make the screen redraw something that did not move.
+    """
+
+    source_id: UUID
+    state: SourceMuteState
+    changed: bool
+
+
+class SourceRestoreDefaultsOut(Schema):
+    """The outcome of the bulk reset.
+
+    **`removed` is how many preferences were cleared**, so the screen can say what
+    happened rather than just that it happened.
+    """
+
+    removed: int
+
+
+# ── FR-25: the dismissal and the category mute ───────────────────────────────────
+
+#: The chip keys a mute may name.
+#:
+#: **The vocabulary is the server's.** The category label the user reads comes from
+#: `shared.constants.INTEREST_CHIPS`, so an unknown key would have no label — and a mute
+#: on a key the server does not recognise would exclude nothing, silently, while the
+#: screen showed a row the user could not make sense of.
+CategoryKey = str
+
+#: The durations a mute may last, in days. `None` means indefinite.
+#:
+#: **The set is closed.** Seven, thirty, ninety, or "until I change it". A mute that
+#: outlived the user's patience by a typo is a mute the user has to find a screen to undo.
+#:
+#: **The `Literal` is the published contract, and it is why a bad duration is a
+#: *shape* refusal.** The request schema refuses a duration outside the set before the
+#: handler runs, so the endpoint never sees it — and a refusal that happens before the
+#: command is `invalid_request`, where a refusal by the command is `invalid_input`.
+#: (`tests/identity/test_profile_api.py` pins the same distinction for the profile
+#: write.) The service refuses the same set in its own right, for the callers that are
+#: not this endpoint.
+#:
+#: **The category key is open here on purpose** — it is `str`, not a `Literal` — because
+#: the vocabulary is the server's and the schema should not be a second copy of it. So
+#: a bad category reaches the command and is refused as a value.
+CategoryMuteDuration = Literal[7, 30, 90] | None
+
+
+class DismissalIn(Schema):
+    """The request body for recording one dismissal.
+
+    **Only the event id is needed.** The slot is *read*, not sent: the service resolves
+    it from the user's own composition, so a client cannot claim a dismissal came from a
+    slot it did not come from — and cannot put a serendipity card into the cluster by
+    asserting it did.
+    """
+
+    #: The catalog event the user dismissed.
+    event_id: UUID
+
+
+class MutePromptOut(Schema):
+    """The "less of this" prompt, when the product should show it.
+
+    **The copy is the server's own.** The title names the category the cluster agreed on
+    and the label comes from `INTEREST_CHIPS` — never from the event's title, which is
+    untrusted scraped text (AD-9).
+
+    **`category_key` is `None` for the generic variant**, when no single chip dominates
+    the cluster. The client renders the generic copy in that case, and the mute it
+    creates is a general one rather than a category-specific one.
+    """
+
+    title: str
+    description: str
+    category_key: CategoryKey | None = None
+
+
+class DismissalOut(Schema):
+    """What one dismissal did.
+
+    **`cluster_advanced` says whether this dismissal counted**, and `prompt_due` says
+    whether the product should now ask. Both are separate facts: a dismissal that
+    advanced the counter may still not have completed a cluster, and a dismissal that did
+    not advance can never complete one.
+    """
+
+    event_id: UUID
+    cluster_advanced: bool
+    prompt_due: bool
+    #: The prompt, when one is due. `None` otherwise.
+    prompt: MutePromptOut | None = None
+
+
+class CategoryMuteIn(Schema):
+    """The request body for setting one category mute."""
+
+    #: The chip key to mute.
+    category_key: CategoryKey
+    #: How long the mute lasts. `null` means "until I change it".
+    duration_days: CategoryMuteDuration = None
+
+
+class CategoryMuteOut(Schema):
+    """One active category mute, as the settings screen reads it."""
+
+    #: The chip key.
+    category_key: CategoryKey
+    #: The server's label for the chip — the wording the user reads.
+    label: str
+    #: When the mute ends. `null` means it is indefinite.
+    expires_at: datetime | None = None
+    #: Whether the mute has no end date.
+    is_indefinite: bool = False
+
+
+class CategoryMuteListOut(Schema):
+    """Every active category mute for the signed-in user.
+
+    **An expired mute is not in the list.** The row is still there — it is the user's
+    data — but it no longer mutes anything, so the screen does not list it.
+    """
+
+    mutes: list[CategoryMuteOut] = []
+
+
+class CategoryMuteResultOut(Schema):
+    """The outcome of setting or clearing one category mute.
+
+    **`changed` says whether the call did anything.** Setting a mute that is already set
+    is a success, not an error — but a response claiming a change when none happened
+    would make the screen redraw something that did not move.
+    """
+
+    category_key: CategoryKey
+    expires_at: datetime | None = None
+    changed: bool
+
+
+class CategoryMuteRestoreDefaultsOut(Schema):
+    """The outcome of the bulk reset.
+
+    **`removed` is how many mutes were cleared**, so the screen can say what happened
+    rather than just that it happened.
+    """
+
+    removed: int

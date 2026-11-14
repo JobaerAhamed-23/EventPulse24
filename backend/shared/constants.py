@@ -197,6 +197,50 @@ RELIABILITY_CLAIM_TTL = timedelta(hours=1)
 # `SCHEDULE_BATCH` is: one slow source must not hold up every other tick's work.
 RELIABILITY_BATCH_SIZE = 100
 
+# FR-16's score, rendered as the **1–5 trust dots** on `Settings → Sources`.
+#
+# **These are not FR-22's bucket boundaries.** `RANKING_BUCKET_*` (below) bands the
+# *Relevance Pulse* — the Confidence Pulse's bucket — and its boundaries are FR-22's. The
+# trust dots answer a different question ("how much do we trust this source's facts?"),
+# so they get their own bands. Reusing `score_bucket` would mean the source's trust was
+# silently the confidence of an event from it.
+#
+# **0.50 is band 3 — "ok".** A source the recompute has never reached has no score, and
+# reads as the 0.50 prior (`reliability_score(0, 0)`). Banding it at 3 says "we have not
+# learned anything bad yet", which is what the prior actually means. It also means the
+# dots are meaningful before a source has 30 observations — which is every source in the
+# registry on day one.
+#
+# **Never a week-over-week delta.** `domain/reliability.py` proves a 3× drop is
+# impossible, so a delta here would assert something the domain says cannot happen.
+SOURCE_TRUST_BAND_5 = Decimal("0.80")
+SOURCE_TRUST_BAND_4 = Decimal("0.65")
+SOURCE_TRUST_BAND_3 = Decimal("0.50")
+SOURCE_TRUST_BAND_2 = Decimal("0.35")
+
+# The trust dots are 1–5, and 5 is the most trusted.
+SOURCE_TRUST_MIN = 1
+SOURCE_TRUST_MAX = 5
+
+# The penalty a `show_less` source's events take, applied **after** the published score.
+#
+# **It is not a sixth term in FR-22's formula.** `relevance_score()` is exactly five
+# weighted terms summing to 1.00, and `tests/shared/test_constants.py` pins those
+# weights against ADR-0025 — so adding a term would change a published formula and need
+# a new ADR to authorise it. "Show less" is a *preference over the ordering*, not a
+# property of the event, so it is applied to the score the formula produced, before the
+# ordering, and the formula itself is untouched.
+#
+# **It is a penalty, not an exclusion.** "Show less" means fewer, and a source whose
+# events vanished would be indistinguishable from a mute on the wire.
+#
+# **0.10 is deliberately equal to the smallest published weight** (the city term). One
+# "show less" should be able to reorder a slot — that is the whole point of the control —
+# but it should not on its own invert what a slot is for: the reliability term is 0.25 and
+# the interest term 0.35, so neither a city match nor a good source can be undone by one
+# user's preference about one source.
+SOURCE_SHOW_LESS_PENALTY = Decimal("0.10")
+
 # FR-60 tz-inference scores and DST caps (domain/timezones.py). Tuning anchors, not truths (AD-8):
 # re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
 TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim
@@ -1408,3 +1452,124 @@ URL_FEED_DEFAULT_PAGE_SIZE = 1000
 #: The ceiling on one feed page. A caller asking for more has made a mistake, and the
 #: HTTP edge refuses it with a 422 — the same rule the city page's query follows.
 URL_FEED_MAX_PAGE_SIZE = 1000
+
+
+# ── FR-25: "Less like this" — the dismissal cluster (AD-8) ──────────────────────────
+#
+# FR-25 is the feedback loop: the user swipes past a card, and after enough *similar*
+# swipes the product asks whether they would like less of that category.
+#
+# **Every number the loop uses is here.** AD-8: a threshold lives in one place, so that
+# there is one answer to "what does 0.7 mean?" and one place to change it. None of these
+# may be written as a literal in the service that reads them — the cosine rule lives in
+# `apps/personalization/services/dismissals.py`, and a literal there would be a second
+# answer to the same question.
+#
+# **The category is the chip key.** There is no `Event.category` column and this section
+# does not invent one: `apps/ingestion/services/chip_matching.py` already computes each
+# event's `chip_keys` at read time, deliberately not as a stored column (a stored column
+# would be wrong the moment the keyword table changed), and the interest term of FR-22 —
+# the largest weight in the published formula — already reads it. So the mute is keyed on
+# the chip key, and the prompt names the chip's own label from `INTEREST_CHIPS`.
+
+#: The cosine similarity two events' embeddings must reach for the dismissals to count
+#: as the same cluster.
+#:
+#: **0.70 is a threshold on a unit vector's cosine**, which is a number in `[-1, 1]`
+#: where `1.0` means "the same direction" and `0.0` means "orthogonal". 0.70 is
+#: "clearly the same thing, but not a duplicate" — two events about the same thing in
+#: the same vein, not the same event listed twice.
+#:
+#: It is `Decimal` rather than `float` because it is compared against a cosine computed
+#: in `Decimal` (the embedding vectors are read as exact decimals), and a float
+#: comparison at the boundary would make "exactly 0.70" a coin flip.
+FR25_CLUSTER_COSINE_THRESHOLD = Decimal("0.70")
+
+#: How many distinct events must be dismissed before the cluster can fire.
+#:
+#: **Three is the minimum, and it is not two.** FR-25's own wording is "3 distinct
+#: events dismissed" — the mockup's specs panel says the same. Two dismissals is what a
+#: user does when a card renders wrong; three is what a user does when they do not want
+#: a category. The number also bounds the work: the rule reads at most three vectors.
+FR25_CLUSTER_MIN_EVENTS = 3
+
+#: How far apart the dismissals may be and still be one cluster.
+#:
+#: **24 hours is the window on the *span*, not on each dismissal.** The first and the
+#: third must be within a day of each other; a dismissal this morning and one this
+#: evening are adjacent, while one this morning and one tomorrow morning are not.
+#:
+#: The window is what stops the rule from muting a category from three swipes spread
+#: over a year — a year of drifting preferences is not one verdict.
+FR25_CLUSTER_WINDOW_HOURS = 24
+
+#: The rage-dismiss guard: three dismissals inside this many seconds is a flick, not a
+#: preference.
+#:
+#: **Five seconds.** A user who swipes three cards in five seconds has not formed an
+#: opinion about a category; they have cleared a screen. Without the guard, the fastest
+#: way to get a category muted is to be annoyed for four seconds — which would make the
+#: mute a button for *being irritated*, and the mute is not reversible to the user's
+#: taste, only to their patience.
+#:
+#: The guard is **not** a veto on recording: the dismissal is still recorded (the user
+#: really did dismiss it), it just does not advance the cluster counter.
+FR25_RAGE_GUARD_SECONDS = 5
+
+#: How many dismissals inside the rage window trigger the guard.
+#:
+#: Three, and it is a separate constant because it is a different kind of number: this
+#: one counts dismissals, and the window above measures time. Writing "3" inline at the
+#: call site would be the kind of bare literal this section exists to prevent.
+FR25_RAGE_GUARD_COUNT = 3
+
+#: After this many days a dismissal counts for **half**.
+#:
+#: The decay is a half-life, not a cliff: a dismissal from two months ago is weaker
+#: evidence than one from yesterday, but it is not nothing. A cliff at 60 days would
+#: throw away the evidence of a slow, deliberate dislike — the user who swipes past the
+#: same kind of event for two months *before* the cluster fires is precisely the user
+#: the loop should catch.
+FR25_DECAY_HALF_DAYS = 60
+
+#: After this many days a dismissal is **expired** — ignored entirely.
+#:
+#: This is the cliff, and it exists because the half-life alone never reaches zero: a
+#: decade-old swipe would still count for a sliver, and a sliver that never dies is a
+#: preference the user cannot escape. 180 days is the window in which the product is
+#: willing to speak for the user.
+FR25_DECAY_EXPIRE_DAYS = 180
+
+#: The durations a category mute may last, in days.
+#:
+#: **The mockup's four choices, and the fourth is not a number.** Seven days, thirty
+#: days, ninety days, and "until I change it" — the indefinite one is represented by a
+#: `null` expiry on the row, so it is a *state* of the same row rather than a second
+#: code path. The constant is the three finite durations, and `None` is the indefinite
+#: case.
+#:
+#: **These are the only accepted durations.** The endpoint refuses anything else with a
+#: 422: a mute that outlived the user's patience by a typo (3650 days) is a mute the
+#: user has to find a screen to undo, and there is one tap to undo it but no reason to
+#: make it hard.
+FR25_MUTE_DURATIONS_DAYS = (7, 30, 90)
+
+#: The embedding dimensions the product stores.
+#:
+#: **`voyage-4-lite` is a Matryoshka model**, so it can be truncated to a smaller
+#: dimension at essentially no loss in similarity — and the cluster rule compares
+#: vectors by cosine, so the dimension is a storage and comparison cost, not a
+#: capability.
+#:
+#: **256 rather than 512.** Half the storage, half the bytes on the wire, and the
+#: cosine at the same threshold. The spine pins 256 or 512; this is the 256 choice, and
+#: it is written down here rather than left to whichever adapter was configured.
+FR25_EMBEDDING_DIMENSIONS = 256
+
+#: The model that produces the embeddings.
+#:
+#: **The name is a constant because the cost row carries it.** A cost row that records
+#: "some model" cannot answer "what did we spend on embeddings", and the AI Cost
+#: Dashboard reads exactly that. The string here and the string in the adapter's cost
+#: row must be the same one.
+FR25_EMBEDDING_MODEL = "voyage-4-lite"

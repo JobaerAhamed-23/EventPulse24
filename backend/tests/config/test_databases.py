@@ -27,6 +27,10 @@ def make_env(**overrides) -> Settings:
         # FR-48 billing: required, with no default and no fallback, for the same reason.
         "stripe_api_key": "sk_test_not-a-real-key",
         "stripe_webhook_secret": "whsec_not-a-real-secret",
+        # FR-25 embeddings: required, with no default and no fallback, for the same reason.
+        # A missing key must abort the boot rather than leave an app that looks healthy
+        # and fails the first time an event needs embedding.
+        "voyage_api_key": "pa_test_not-a-real-key",
         **URLS,
         **overrides,
     }

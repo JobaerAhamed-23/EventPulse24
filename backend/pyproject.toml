@@ -17,6 +17,7 @@ dependencies = [
     "defusedxml==0.7.1",
     "cryptography==46.0.3",
     "stripe==13.1.0",
+    "pgvector==0.4.1",
 ]
 
 [dependency-groups]
@@ -233,7 +234,7 @@ allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "http-client"
-name = "AD-9 only adapters.crawl and adapters.revalidation import an HTTP client"
+name = "AD-9 only adapters.crawl, adapters.revalidation and adapters.llm import an HTTP client"
 type = "forbidden"
 source_modules = [
     "domain",
@@ -247,7 +248,6 @@ source_modules = [
     "adapters.calendar",
     "adapters.email",
     "adapters.geo",
-    "adapters.llm",
     "adapters.logging",
     "adapters.throttle",
 ]

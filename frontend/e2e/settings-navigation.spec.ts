@@ -45,13 +45,25 @@ function subnav(page: import("@playwright/test").Page) {
   return page.getByRole("navigation", { name: "Settings sections" });
 }
 
-/** The seven sections, in the order the index and the sub-nav render them. */
+/**
+ * The nine sections, in the order the index and the sub-nav render them.
+ *
+ * **This list is hand-written, and that is the point of the spec.** The spec fails when
+ * somebody adds a section to `SETTINGS_SECTIONS` and forgets this list — because a
+ * section the spec does not walk is a section whose reachability was never tested.
+ *
+ * **It must mirror `SETTINGS_SECTIONS` exactly.** `tests/settings-routes.test.ts` holds
+ * the other half of the same rule (every directory under `app/settings` is in the list);
+ * between them, a new settings route cannot ship unreachable.
+ */
 const SECTIONS = [
   { label: "Default reminders", path: "/settings/reminders", heading: "Default reminders" },
   { label: "Quiet hours", path: "/settings/quiet-hours", heading: "Quiet hours" },
   { label: "Pulse Digest", path: "/settings/digest", heading: "Pulse Digest" },
   { label: "Calendars", path: "/settings/calendars", heading: "Calendar sync" },
   { label: "Collections", path: "/settings/collections", heading: "Collections" },
+  { label: "Sources", path: "/settings/sources", heading: "Sources" },
+  { label: "Taste", path: "/settings/taste", heading: "Taste" },
   { label: "Account", path: "/settings/account", heading: "Account" },
   { label: "Profile", path: "/settings/profile", heading: "Profile" },
 ];

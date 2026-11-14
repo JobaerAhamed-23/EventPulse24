@@ -24,6 +24,7 @@ ENV_KEYS = [
     "SOURCE_FETCH_MAX_BYTES",
     "CALENDAR_CREDENTIAL_KEY",
     "REVALIDATION_SECRET",
+    "VOYAGE_API_KEY",
 ]
 
 REQUIRED = {
@@ -43,6 +44,10 @@ REQUIRED = {
     # leaking does not confer the other's power, and so they can rotate independently.
     "STRIPE_API_KEY": "sk_test_not-a-real-key",
     "STRIPE_WEBHOOK_SECRET": "whsec_not-a-real-secret",
+    # FR-25 embeddings: required, with no default and no fallback. A missing key must
+    # abort the boot rather than leave an app that looks healthy and fails the first
+    # time an event needs embedding.
+    "VOYAGE_API_KEY": "pa_test_not-a-real-key",
 }
 
 

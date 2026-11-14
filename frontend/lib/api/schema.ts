@@ -929,6 +929,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/dismissals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that the user swiped past an event
+         * @description Records one dismissal and tells the client whether the product should now ask the "less of this" question.
+         *
+         *     **The slot is read, not sent.** The service resolves it from the user's own composition, so a client cannot claim a dismissal came from a slot it did not come from — and cannot put a serendipity card into the cluster by asserting it did.
+         *
+         *     **`prompt_due` is the whole answer.** It is true when three similar events have been dismissed in a digest window, and it stays true for that one call — the cluster's counter resets when the prompt fires, so the same cluster cannot nag.
+         *
+         *     **A dismissal that did not advance the cluster was still recorded.** The user really did dismiss it; the product just does not count it.
+         */
+        post: operations["apps_personalization_api_record_a_dismissal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/event-reports": {
         parameters: {
             query?: never;
@@ -1365,6 +1391,172 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The source registry, grouped, with the caller's visibility settings
+         * @description Every source in the registry, grouped by how its facts were obtained — Official, Community, Aggregator, Crawled — with each source's trust and the caller's mute state.
+         *
+         *     **The groups are the Source Badge types.** The server names the type; the client owns the label and the glyph.
+         *
+         *     **A muted source is still listed.** The screen's job is transparency — the user is told what is informing their timeline *and* what they have turned off. A muted source that disappeared would be a preference they could not see or undo.
+         */
+        get: operations["apps_personalization_source_mutes_api_list_sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/sources/restore-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear every custom visibility setting
+         * @description Reset every source to its default visibility, clearing both the mutes and the "show less" preferences in one action.
+         *
+         *     **The screen asks before it calls this.** The endpoint is a single idempotent delete; the confirmation belongs to the client, because the safeguard is that the destructive action is confirmed before it completes.
+         */
+        post: operations["apps_personalization_source_mutes_api_restore_defaults"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set one source's visibility
+         * @description Set one source's state to `mute`, `show_less` or `default`.
+         *
+         *     **`mute` excludes the source's events** — they are not shown at all. **`show_less` deprioritises them** — they are still shown, but ordered lower. **`default` restores the source** to how it was before any preference.
+         *
+         *     The state is idempotent: setting a source to the state it already has is a success, and `changed` says whether anything actually moved.
+         *
+         *     **There is no 404.** The endpoint does not read the catalog (AD-3), so a source that is not in the registry is accepted like any other: the preference excludes nothing and is purged with the user's data.
+         */
+        put: operations["apps_personalization_source_mutes_api_set_source_mute_state"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/taste": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's muted categories
+         * @description Every category the caller has muted, with the server's label for each and when the mute ends.
+         *
+         *     **A null `expires_at` means the mute is indefinite** — the mockup's "until I change it".
+         *
+         *     **An expired mute is not in the list.** The row is still there — it is the caller's data — but it no longer mutes anything.
+         */
+        get: operations["apps_personalization_taste_mutes_api_list_category_mutes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/taste/mutes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mute one category
+         * @description Mute one category for the caller, for 7, 30 or 90 days — or indefinitely, by sending a null `duration_days`.
+         *
+         *     **The duration set is closed.** A mute that outlived the caller's patience by a typo is a mute they have to find a screen to undo, so anything else is a 422.
+         *
+         *     **The mute is idempotent.** Setting a mute that is already set is a success, and `changed` says whether the expiry actually moved.
+         *
+         *     **The expiry runs from now, not from the mute's creation.** Asking for 30 days again refreshes the window, which is what pressing the button again means.
+         */
+        put: operations["apps_personalization_taste_mutes_api_put_category_mute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/taste/mutes/restore-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear every muted category
+         * @description Clear every category mute in one action.
+         *
+         *     **The screen asks before it calls this.** The endpoint is a single idempotent delete; the confirmation belongs to the client, because the safeguard is that the destructive action is confirmed before it completes.
+         */
+        post: operations["apps_personalization_taste_mutes_api_restore_defaults"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/taste/mutes/{category_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unmute one category
+         * @description Unmute one category. One tap, and the row is gone.
+         *
+         *     **Unmuting does not resurrect the muted events.** The events that were excluded from a digest are excluded from the digests they were excluded from; the next digest is composed from the current candidate pool. A caller who unmutes is asking for the category back *from now on*.
+         */
+        delete: operations["apps_personalization_taste_mutes_api_delete_category_mute"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/webhooks/billing": {
         parameters: {
             query?: never;
@@ -1704,6 +1896,74 @@ export interface components {
              * @default
              */
             display_label: string;
+        };
+        /**
+         * CategoryMuteIn
+         * @description The request body for setting one category mute.
+         */
+        CategoryMuteIn: {
+            /** Category Key */
+            category_key: string;
+            /** Duration Days */
+            duration_days?: (7 | 30 | 90) | null;
+        };
+        /**
+         * CategoryMuteListOut
+         * @description Every active category mute for the signed-in user.
+         *
+         *     **An expired mute is not in the list.** The row is still there — it is the user's
+         *     data — but it no longer mutes anything, so the screen does not list it.
+         */
+        CategoryMuteListOut: {
+            /**
+             * Mutes
+             * @default []
+             */
+            mutes: components["schemas"]["CategoryMuteOut"][];
+        };
+        /**
+         * CategoryMuteOut
+         * @description One active category mute, as the settings screen reads it.
+         */
+        CategoryMuteOut: {
+            /** Category Key */
+            category_key: string;
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Is Indefinite
+             * @default false
+             */
+            is_indefinite: boolean;
+            /** Label */
+            label: string;
+        };
+        /**
+         * CategoryMuteRestoreDefaultsOut
+         * @description The outcome of the bulk reset.
+         *
+         *     **`removed` is how many mutes were cleared**, so the screen can say what happened
+         *     rather than just that it happened.
+         */
+        CategoryMuteRestoreDefaultsOut: {
+            /** Removed */
+            removed: number;
+        };
+        /**
+         * CategoryMuteResultOut
+         * @description The outcome of setting or clearing one category mute.
+         *
+         *     **`changed` says whether the call did anything.** Setting a mute that is already set
+         *     is a success, not an error — but a response claiming a change when none happened
+         *     would make the screen redraw something that did not move.
+         */
+        CategoryMuteResultOut: {
+            /** Category Key */
+            category_key: string;
+            /** Changed */
+            changed: boolean;
+            /** Expires At */
+            expires_at?: string | null;
         };
         /**
          * CheckoutIn
@@ -2665,6 +2925,43 @@ export interface components {
             timezone: string;
         };
         /**
+         * DismissalIn
+         * @description The request body for recording one dismissal.
+         *
+         *     **Only the event id is needed.** The slot is *read*, not sent: the service resolves
+         *     it from the user's own composition, so a client cannot claim a dismissal came from a
+         *     slot it did not come from — and cannot put a serendipity card into the cluster by
+         *     asserting it did.
+         */
+        DismissalIn: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+        };
+        /**
+         * DismissalOut
+         * @description What one dismissal did.
+         *
+         *     **`cluster_advanced` says whether this dismissal counted**, and `prompt_due` says
+         *     whether the product should now ask. Both are separate facts: a dismissal that
+         *     advanced the counter may still not have completed a cluster, and a dismissal that did
+         *     not advance can never complete one.
+         */
+        DismissalOut: {
+            /** Cluster Advanced */
+            cluster_advanced: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            prompt?: components["schemas"]["MutePromptOut"] | null;
+            /** Prompt Due */
+            prompt_due: boolean;
+        };
+        /**
          * EffectiveQuietHoursOut
          * @description One weekday of the schedule the delivery path will actually use (FR-51).
          *
@@ -3012,6 +3309,26 @@ export interface components {
         InterestsOut: {
             /** Chip Keys */
             chip_keys: string[];
+        };
+        /**
+         * MutePromptOut
+         * @description The "less of this" prompt, when the product should show it.
+         *
+         *     **The copy is the server's own.** The title names the category the cluster agreed on
+         *     and the label comes from `INTEREST_CHIPS` — never from the event's title, which is
+         *     untrusted scraped text (AD-9).
+         *
+         *     **`category_key` is `None` for the generic variant**, when no single chip dominates
+         *     the cluster. The client renders the generic copy in that case, and the mute it
+         *     creates is a general one rather than a category-specific one.
+         */
+        MutePromptOut: {
+            /** Category Key */
+            category_key?: string | null;
+            /** Description */
+            description: string;
+            /** Title */
+            title: string;
         };
         /**
          * NoticeDismissOut
@@ -3971,6 +4288,145 @@ export interface components {
              * @default accepted
              */
             status: string;
+        };
+        /**
+         * SourceGroupOut
+         * @description One group of sources — Official, Community, Aggregator or Crawled.
+         *
+         *     **The four groups are always present, even when empty.** The screen renders a heading
+         *     per group, and a group that appeared and disappeared as the registry changed would
+         *     make the screen's shape depend on the data.
+         */
+        SourceGroupOut: {
+            /** Badge */
+            badge: string;
+            /** Label */
+            label: string;
+            /**
+             * Sources
+             * @default []
+             */
+            sources: components["schemas"]["SourceOut"][];
+        };
+        /**
+         * SourceListOut
+         * @description Every source in the registry, grouped.
+         *
+         *     **`groups` is the whole registry**, in the order the screen shows it. A registry with
+         *     no sources answers with four empty groups rather than an error — an empty registry is
+         *     an answer, and the screen has a quiet empty state for it.
+         */
+        SourceListOut: {
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["SourceGroupOut"][];
+        };
+        /**
+         * SourceMuteResultOut
+         * @description The outcome of setting one source's mute state.
+         *
+         *     **`changed` says whether the call did anything.** Setting the state a source was
+         *     already in is a success, not an error — but a response claiming a change when none
+         *     happened would make the screen redraw something that did not move.
+         */
+        SourceMuteResultOut: {
+            /** Changed */
+            changed: boolean;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "mute" | "show_less" | "default";
+        };
+        /**
+         * SourceMuteSetIn
+         * @description The request body for setting one source's mute state.
+         */
+        SourceMuteSetIn: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "mute" | "show_less" | "default";
+        };
+        /**
+         * SourceOut
+         * @description One source in the registry, as the screen shows it.
+         *
+         *     **`id` is the catalog Source's id, by value.** The mute is keyed on it, and the
+         *     client sends it back on the write — so the id the screen shows and the id the mute
+         *     uses are the same one.
+         *
+         *     **`mute_state` is this user's state for this source**, and it is `"default"` for a
+         *     source the user has never touched. It is not `None`: the control has three
+         *     positions, and "no preference" is one of them.
+         */
+        SourceOut: {
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Paused
+             * @default false
+             */
+            is_paused: boolean;
+            /**
+             * Mute State
+             * @default default
+             * @enum {string}
+             */
+            mute_state: "mute" | "show_less" | "default";
+            /** Name */
+            name: string;
+            /** Source Badge */
+            source_badge: string;
+            trust: components["schemas"]["SourceTrustOut"];
+        };
+        /**
+         * SourceRestoreDefaultsOut
+         * @description The outcome of the bulk reset.
+         *
+         *     **`removed` is how many preferences were cleared**, so the screen can say what
+         *     happened rather than just that it happened.
+         */
+        SourceRestoreDefaultsOut: {
+            /** Removed */
+            removed: number;
+        };
+        /**
+         * SourceTrustOut
+         * @description One source's trust, as the screen renders it.
+         *
+         *     **`band` is the 1–5 count the dots draw**, and it is the server's number. The client
+         *     draws `band` filled dots and `5 - band` empty ones; it does not compute the band from
+         *     `score`, because the boundaries are the server's rule and a client that recomputed
+         *     them would be a second opinion about what a score means.
+         *
+         *     **`score` is the raw FR-16 posterior**, in [0, 1]. It is here for the client's own
+         *     tooltips and for a future "why is this source low?" — not for the dots.
+         *
+         *     **`band` is never a delta.** A week-over-week drop is provably impossible
+         *     (`domain/reliability.py`), so there is no "down" state to render.
+         */
+        SourceTrustOut: {
+            /** Band */
+            band: number;
+            /** Score */
+            score: string;
         };
         /**
          * SubscriptionOut
@@ -5794,6 +6250,39 @@ export interface operations {
             };
         };
     };
+    apps_personalization_api_record_a_dismissal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissalIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DismissalOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apps_personalization_api_report_event_endpoint: {
         parameters: {
             query?: never;
@@ -6529,6 +7018,293 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_source_mutes_api_list_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceListOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_source_mutes_api_restore_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRestoreDefaultsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_source_mutes_api_set_source_mute_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceMuteSetIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceMuteResultOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_taste_mutes_api_list_category_mutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMuteListOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_taste_mutes_api_put_category_mute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryMuteIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMuteResultOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_taste_mutes_api_restore_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMuteRestoreDefaultsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_taste_mutes_api_delete_category_mute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMuteResultOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

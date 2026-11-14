@@ -64,6 +64,15 @@ REQUEST_MODULES = (
     # asks of a request handler.
     "apps/personalization/collections_api.py",
     "apps/personalization/detail_api.py",
+    # FR-13, FR-16. It reads the registry through `ingestion`'s published service and
+    # writes the caller's own visibility state through `personalization`'s — the shape
+    # AD-11 asks of a request handler.
+    "apps/personalization/source_mutes_api.py",
+    # FR-25. It reads the caller's own muted categories and writes the caller's own
+    # category mutes through `personalization`'s published service — the shape AD-11
+    # asks of a request handler. It is a **sibling** of the sources router above, not
+    # the same screen: the sources screen mutes sources, and this one mutes categories.
+    "apps/personalization/taste_mutes_api.py",
     "config/api.py",
     "config/health.py",
 )

@@ -90,6 +90,12 @@ from shared.constants import (
     RELIABILITY_PRIOR_ALPHA,
     RELIABILITY_PRIOR_BETA,
     RELIABILITY_SPIKE_MULTIPLIER,
+    SOURCE_TRUST_BAND_2,
+    SOURCE_TRUST_BAND_3,
+    SOURCE_TRUST_BAND_4,
+    SOURCE_TRUST_BAND_5,
+    SOURCE_TRUST_MAX,
+    SOURCE_TRUST_MIN,
 )
 
 _HUNDREDTHS = Decimal("0.01")
@@ -207,6 +213,66 @@ def should_escalate(score: Decimal, observations: int) -> bool:
     return score < RELIABILITY_ESCALATION_SCORE and observations >= RELIABILITY_MIN_OBSERVATIONS
 
 
+def source_trust_band(score: Decimal) -> int:
+    """FR-16's score, as the **1–5 trust band** `Settings → Sources` renders.
+
+    **This is not the Confidence Pulse's bucket.** `domain.ranking.score_bucket` bands the
+    *Relevance Pulse* — the confidence of an event — and its boundaries are FR-22's. A
+    source's trust answers a different question ("how much do we trust this source's
+    facts?"), so it has its own bands, and reusing the ranking's would make the source's
+    trust silently the confidence of an event from it.
+
+    **0.50 is band 3.** A source the recompute has never reached has no score, and reads as
+    the prior — `reliability_score(0, 0)`, which is 0.50. Banding it at 3 says "we have not
+    learned anything bad yet", which is exactly what the prior means; banding it at 1 would
+    call every un-scored source a bad one on the strength of no evidence at all.
+
+    **On an exact boundary the higher band wins.** `0.80` is a 5, not a 4; `0.50` is a 3,
+    not a 2. The score is a `Decimal`, so `Decimal("0.80")` is exactly the boundary and
+    there is no float rounding to argue about.
+
+    **The bands are inclusive lower bounds**, so the comparison is `>=` and not `>`. This
+    is the opposite of `domain.ranking.score_bucket`, whose bands are *exclusive* upper
+    bounds — and it is not an inconsistency: the two answer different questions, and the
+    trust band's own docstring says which way its boundary falls. What matters is that the
+    rule is stated and testable, not that the two modules agree.
+
+    **The five bands, whole.** Each one is a range, so a reader knows what a number means:
+
+    ====================  ==========================
+    Band                 Score
+    ====================  ==========================
+    5 — trusted          `>= 0.80`
+    4                    `>= 0.65` and `< 0.80`
+    3 — ok               `>= 0.50` and `< 0.65`
+    2                    `>= 0.35` and `< 0.50`
+    1 — low coverage     `< 0.35`
+    ====================  ==========================
+
+    Band 1 has no lower bound of its own: it is everything below 0.35, including a score
+    of 0.00. The floor FR-16 declares (0.32 until 30 observations) keeps a real source out
+    of the bottom of band 1, but a score *below* the floor still bands at 1 rather than
+    raising — a band is a reading of the score, not a judgement about the source.
+
+    **It is the stored score, never a delta.** `domain/reliability.py` proves a 3×
+    week-over-week drop is impossible, so a delta here would assert something the domain
+    says cannot happen.
+
+    Raises if the score is outside [0, 1]: a caller passing something else has a bug, and
+    a band for it would be a plausible-looking wrong answer.
+    """
+    score = checked_rate(score, name="score")
+    if score >= SOURCE_TRUST_BAND_5:
+        return SOURCE_TRUST_MAX
+    if score >= SOURCE_TRUST_BAND_4:
+        return 4
+    if score >= SOURCE_TRUST_BAND_3:
+        return 3
+    if score >= SOURCE_TRUST_BAND_2:
+        return 2
+    return SOURCE_TRUST_MIN
+
+
 __all__ = [
     "checked_count",
     "checked_rate",
@@ -214,5 +280,6 @@ __all__ = [
     "posterior_mean",
     "reliability_score",
     "should_escalate",
+    "source_trust_band",
     "weekly_negative_rate",
 ]

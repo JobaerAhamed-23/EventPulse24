@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PulseCard } from "@/components/digest/pulse-card";
+import { DigestCardList } from "@/components/digest/digest-card-list";
 import { DigestEmpty } from "@/components/digest/digest-empty";
 import { DigestError } from "@/components/digest/digest-error";
 import { DigestHeader } from "@/components/digest/digest-header";
@@ -158,32 +159,20 @@ function DigestCards({
   origin: string | null;
 }) {
   return (
-    <>
-      {/*
-        The live region announces once, when the cards are in the DOM — not on the
-        server, where it would be read before the cards exist. It is visually hidden
-        and carries the count, so "Pulse Digest ready, 3 events for today."
+    /*
+     **The list is a client component, and the page's read stays on the server.**
 
-        **It is the page's one `role="status"`, and it stays the only one.** The cards'
-        own share confirmations are bare `aria-live="polite"` regions — two status
-        regions on a page would make "which one is the page talking?" a question the
-        DOM cannot answer.
-      */}
-      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-        Pulse Digest ready, {digest.cards.length} events for today.
-      </div>
+     **FR-25's swipe is a gesture**, so the answer to it lives in the browser — and
+     the component that holds that answer is the one that renders the cards. The
+     digest is still read on the server, still composed by the backend, and still
+     rendered in the order it was composed (AD-10): what moved into the browser is the
+     gesture, not the facts.
 
-      <div className="flex flex-col gap-(--layout-card-spacing-mobile) md:gap-(--layout-card-spacing-desktop)">
-        {digest.cards.map((card) => (
-          <PulseCard
-            key={card.event_id}
-            card={card}
-            explanation={{ kind: "relevance", value: card.bucket }}
-            shareOrigin={origin}
-          />
-        ))}
-      </div>
-    </>
+     **The card's removal is local.** The server's composition is a record of a past
+     decision, and it does not change because the user swiped a card on this page load
+     — the *next* composition is what excludes it.
+     */
+    <DigestCardList cards={digest.cards} origin={origin} />
   );
 }
 
@@ -216,4 +205,3 @@ function HomeUnavailable() {
     </div>
   );
 }
-
