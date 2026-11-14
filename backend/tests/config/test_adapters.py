@@ -4,7 +4,13 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
-from config.adapters import FAKE_ADAPTERS, REAL_ADAPTERS, THROTTLE_ADAPTERS, adapter_paths
+from config.adapters import (
+    CALENDAR_ADAPTERS,
+    FAKE_ADAPTERS,
+    REAL_ADAPTERS,
+    THROTTLE_ADAPTERS,
+    adapter_paths,
+)
 from ports.registry import PORT_KEYS
 
 
@@ -152,3 +158,46 @@ def test_the_real_geo_adapter_implements_the_port():
     adapter = import_string(REAL_ADAPTERS["geo"])
 
     assert issubclass(adapter, GeoPort)
+
+
+# --- CALENDAR_ADAPTER ---------------------------------------------------------------------------
+#
+# The override that lets a local run import a *real* calendar while every other adapter stays
+# fake. It exists because the calendar fake is the one stand-in a developer cannot see: it
+# returns two well-formed events for any address, so a connected Google calendar looks healthy,
+# recent and error-free while showing somebody else's events.
+
+
+def test_the_calendar_adapter_defaults_to_the_mode():
+    """Unset: follow ADAPTER_MODE, exactly as the fetch and throttle ports do.
+
+    **The default local stack is unchanged.** A developer who adds nothing to their `.env`
+    keeps the fake importer they have today.
+    """
+    assert adapter_paths("fake")["calendar"] == FAKE_ADAPTERS["calendar"]
+    assert adapter_paths("fake", calendar="fake")["calendar"] == FAKE_ADAPTERS["calendar"]
+
+
+def test_the_calendar_adapter_ics_swaps_only_the_calendar_adapter():
+    paths = adapter_paths("fake", calendar="ics")
+
+    assert paths["calendar"] == "adapters.calendar.ics.IcsCalendarAdapter"
+    assert {k: v for k, v in paths.items() if k != "calendar"} == {
+        k: v for k, v in FAKE_ADAPTERS.items() if k != "calendar"
+    }
+
+
+def test_every_calendar_adapter_satisfies_the_port():
+    from ports.calendar import CalendarPort
+
+    for path in CALENDAR_ADAPTERS.values():
+        assert issubclass(import_string(path), CalendarPort), path
+
+
+def test_the_three_overrides_are_independent():
+    """Naming one does not disturb the others."""
+    paths = adapter_paths("fake", "http", "redis", "ics")
+
+    assert paths["fetch"] == "adapters.crawl.http.HttpFetchAdapter"
+    assert paths["throttle"] == "adapters.throttle.redis.RedisThrottleAdapter"
+    assert paths["calendar"] == "adapters.calendar.ics.IcsCalendarAdapter"

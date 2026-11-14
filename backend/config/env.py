@@ -173,6 +173,21 @@ class Settings(BaseSettings):
     # `memory` is offered so a developer can still run without Redis, at the cost of the
     # cross-process sharing described above.
     throttle_adapter: Literal["memory", "redis"] | None = None
+
+    # The calendar port (ports.calendar). CALENDAR_ADAPTER overrides ADAPTER_MODE for this one
+    # port, so a local run can import a *real* calendar while every other adapter stays fake.
+    # Unset: follow the mode — which means `fake`, and the fake returns two fixed events for
+    # every address it is given.
+    #
+    # **Why this override exists.** `ADAPTER_MODE=real` does not boot yet (there is no real
+    # `llm` or `email` adapter), so without a per-port override there was no way to point a
+    # local stack at a genuine ICS feed at all. A developer who connected their own Google
+    # calendar got the fake's "Team stand-up" and "Dinner" back, with a healthy connection and
+    # no error anywhere to explain it — the stand-in is indistinguishable from a working
+    # import until you read the uids.
+    #
+    # It names the *adapter*, not the mode, exactly as SOURCE_FETCH and THROTTLE_ADAPTER do.
+    calendar_adapter: Literal["fake", "ics"] | None = None
     source_fetch_user_agent: str = (
         "EventPulse24-SourceFetcher/0.1 (+https://github.com/JobaerAhamed-23/EventPulse24)"
     )
@@ -226,6 +241,31 @@ class Settings(BaseSettings):
         if value < 0:
             raise ValueError("SOURCE_FETCH_MAX_REDIRECTS must be 0 or more")
         return value
+
+    @model_validator(mode="after")
+    def real_calendars_need_a_real_fetch(self) -> "Settings":
+        """`CALENDAR_ADAPTER=ics` is meaningless while the fetch port is fake.
+
+        **The ICS adapter never opens a socket.** It resolves `SourceFetchPort` from the
+        registry and calls `fetch()`, so the hardened client does the SSRF policy, the size
+        limits and the deadline — one implementation, not a second weaker copy. The
+        consequence is that pointing the calendar port at the real adapter while the fetch
+        port is still fake buys nothing: the canned fetch answers, and the developer gets
+        stand-in data from a configuration that says `ics` on the tin.
+
+        That is precisely the failure this override was added to end, so it is refused at
+        boot with the variable to set, rather than discovered later by reading event uids.
+        """
+        if self.calendar_adapter != "ics":
+            return self
+        fetch = self.source_fetch or ("http" if self.adapter_mode == "real" else "fake")
+        if fetch != "http":
+            raise ValueError(
+                "CALENDAR_ADAPTER=ics needs a real fetch: set SOURCE_FETCH=http. "
+                "The ICS adapter fetches through the shared source-fetch port, so a fake "
+                "one would return stand-in data for every calendar address."
+            )
+        return self
 
     @model_validator(mode="after")
     def owner_role_requires_owner_url(self) -> "Settings":
