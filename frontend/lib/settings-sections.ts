@@ -23,19 +23,31 @@
  * the sub-nav as a compact rail — and a component that could do both would be a
  * component with a `variant` prop deciding which half of itself to be.
  *
- * ## The order is the mockup's
+ * ## Switches in one row, things in the rest
  *
- * `settings-desktop.html` runs Notifications → Quiet hours → Calendar sync → Account.
- * The built routes map onto that order with two insertions: the default Reminder Plan is
- * this product's "Notifications" section, and the digest's two screens sit together
- * because they answer the two halves of one question — when the brief arrives, and what
- * is in it. **Profile sits after Account**, because it is the account-adjacent section
- * and the mockup's order ends there.
+ * **`General` is where a new toggle goes.** The preferences used to be three routes —
+ * reminders, quiet hours, digest — one per work item, and each cost a row here. The nav
+ * therefore grew by one every time a switch was added, and the user had to know which of
+ * nine rows a given switch had been filed under. Worse, the digest's own two settings sat
+ * on two different pages: the delivery time under Quiet hours, the opt-out under Digest.
+ *
+ * They are now three sections of `/settings/general`, and **every row below it is a
+ * thing** — a calendar, a collection, a source, a muted category, the account, the
+ * profile — each a list the user owns or adds to. A switch does not earn a row; a noun
+ * does. The three old routes still exist as redirects into the page's anchors, because
+ * their URLs are in people's history.
+ *
+ * ## The order
+ *
+ * `settings-desktop.html` runs Notifications → Quiet hours → Calendar sync → Account, and
+ * `General` now stands for its first two. **Profile sits after Account**, because it is
+ * the account-adjacent section and the mockup's order ends there.
  *
  * **Appearance, Privacy and Danger zone are not here**, because they are not built. A
  * row for a route that does not exist is the 404 link this whole file exists to prevent;
  * `tests/settings-routes.test.ts` asserts that every `href` below resolves to a real
- * `page.tsx`. **Profile is here because its route does exist** — the rule is about
+ * `page.tsx`, and that every route under `app/settings` is either listed here or a
+ * redirect into one that is. **Profile is here because its route does exist** — the rule is about
  * reachability, not about which sections are interesting.
  */
 
@@ -61,19 +73,9 @@ export type SettingsSection = {
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
-    href: "/settings/reminders",
-    label: "Default reminders",
-    description: "What we suggest when you save an event.",
-  },
-  {
-    href: "/settings/quiet-hours",
-    label: "Quiet hours",
-    description: "When we stay quiet, and when your daily brief arrives.",
-  },
-  {
-    href: "/settings/digest",
-    label: "Pulse Digest",
-    description: "What travels in your daily brief.",
+    href: "/settings/general",
+    label: "General",
+    description: "Reminders, quiet hours, and your daily brief.",
   },
   {
     href: "/settings/calendars",
@@ -117,6 +119,24 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 export function isSettingsPath(pathname: string): boolean {
   return pathname === "/settings" || pathname.startsWith("/settings/");
 }
+
+/**
+ * Where each retired preferences route lands inside `/settings/general`.
+ *
+ * `/settings/reminders`, `/settings/quiet-hours` and `/settings/digest` were screens of
+ * their own before the preferences were merged. Their URLs are in people's history and in
+ * onboarding copy, so they redirect here rather than 404 — and to the **anchor**, not the
+ * top of the page, so a visitor lands on the setting they asked for.
+ *
+ * **The ids are the page's.** `/settings/general` renders a `<section id="…">` for each
+ * one; `tests/settings-routes.test.ts` asserts the two agree, so a renamed section cannot
+ * leave a redirect pointing at an anchor that no longer exists.
+ */
+export const SETTINGS_GENERAL_ANCHORS = {
+  reminders: "/settings/general#reminders",
+  "quiet-hours": "/settings/general#quiet-hours",
+  digest: "/settings/general#digest",
+} as const;
 
 /**
  * Where `/settings` sends you — **the first section, by construction.**

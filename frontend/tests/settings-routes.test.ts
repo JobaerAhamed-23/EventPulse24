@@ -24,10 +24,40 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { SETTINGS_SECTIONS, isSettingsPath } from "@/lib/settings-sections";
+import {
+  SETTINGS_GENERAL_ANCHORS,
+  SETTINGS_SECTIONS,
+  isSettingsPath,
+} from "@/lib/settings-sections";
 
 const ROOT = path.resolve(__dirname, "..");
 const SETTINGS_DIR = path.join(ROOT, "app", "settings");
+
+/**
+ * The route segments whose `page.tsx` does nothing but redirect.
+ *
+ * **The test is "renders nothing", not "mentions redirect".** A page that redirects on
+ * one branch and renders a screen on another is a screen, and the exemption must not
+ * reach it — so the file has to both call `redirect` and contain no JSX at all.
+ */
+function redirectOnlySections(): string[] {
+  return builtSections().filter((section) => {
+    const source = readFileSync(path.join(SETTINGS_DIR, section, "page.tsx"), "utf8");
+    return source.includes("redirect(") && !/return \(|<[A-Z]/.test(source);
+  });
+}
+
+/**
+ * The segments that render an actual screen — every built route except the redirects.
+ *
+ * The rules below are about what a settings *screen* must do: carry the sub-nav, open a
+ * signed-in branch. A redirect does none of that, and should not: it renders nothing at
+ * all, which is exactly what earns it the exemption.
+ */
+function screenSections(): string[] {
+  const redirects = new Set(redirectOnlySections());
+  return builtSections().filter((section) => !redirects.has(section));
+}
 
 /** The route segments that have a page under `app/settings/` — the built screens. */
 function builtSections(): string[] {
@@ -50,15 +80,43 @@ describe("the settings sections", () => {
     }
   });
 
-  it("every route that exists is in the list", () => {
+  it("every route that exists is in the list, or redirects into one that is", () => {
     // **This is the assertion that was missing.** The other direction — a screen that
     // is built, works, and is in no navigation — is exactly what shipped four times.
-    // A seventh settings route added without a row here fails this, at the moment it is
-    // added rather than whenever somebody notices.
+    // A settings route added without a row here fails this, at the moment it is added
+    // rather than whenever somebody notices.
+    //
+    // **A redirect-only route is exempt, and only a redirect-only route.** The three
+    // retired preferences routes still exist so their URLs keep working, and a row for
+    // each would put the same page in the nav four times. The exemption is earned by
+    // `redirectOnlySections()`, which requires the file to render nothing at all — a
+    // page that redirects *and* renders is a screen, and a screen needs a row.
     const listed = SETTINGS_SECTIONS.map((section) =>
       section.href.replace("/settings/", ""),
     ).sort();
-    expect(listed).toEqual(builtSections());
+    const reachable = [...listed, ...redirectOnlySections()].sort();
+    expect(reachable).toEqual(builtSections());
+  });
+
+  it("every redirect-only route sends the visitor to a section that is in the list", () => {
+    // A redirect is exempt from needing a row *because* it lands on something that has
+    // one. One pointing anywhere else would be a route in no navigation, wearing a
+    // disguise.
+    const listed = SETTINGS_SECTIONS.map((section) => section.href);
+    for (const [, target] of Object.entries(SETTINGS_GENERAL_ANCHORS)) {
+      expect(listed, target).toContain(target.split("#")[0]);
+    }
+  });
+
+  it("every anchor a retired route points at is a section the page renders", () => {
+    // **The redirect and the id have to agree.** A renamed section would otherwise leave
+    // the old URL landing at the top of a long page, silently — the visitor would simply
+    // not find the setting they clicked for, and nothing would fail.
+    const page = readFileSync(path.join(SETTINGS_DIR, "general", "page.tsx"), "utf8");
+    for (const target of Object.values(SETTINGS_GENERAL_ANCHORS)) {
+      const anchor = target.split("#")[1];
+      expect(page, anchor).toContain(`id="${anchor}"`);
+    }
   });
 
   it("has an index page, which is what the nav points at", () => {
@@ -112,7 +170,7 @@ describe("the settings screens", () => {
     // be followed immediately by the sub-nav.
     const missing: string[] = [];
 
-    for (const section of builtSections()) {
+    for (const section of screenSections()) {
       const source = readFileSync(path.join(SETTINGS_DIR, section, "page.tsx"), "utf8");
       const lines = source.split("\n");
 
@@ -147,7 +205,7 @@ describe("the settings screens", () => {
     // *every* branch it finds and demands the sub-nav after each, so a single branch is
     // walked once — not vacuously, but exactly once. The floor exists so the loop finds
     // something at all; it does not require a second copy of the same assertion.
-    for (const section of builtSections()) {
+    for (const section of screenSections()) {
       const source = readFileSync(path.join(SETTINGS_DIR, section, "page.tsx"), "utf8");
       const branches = source.match(/<AppShell name=\{.*email=\{session\.user\.email\}>/g) ?? [];
       expect(branches.length, section).toBeGreaterThanOrEqual(1);

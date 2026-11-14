@@ -12,7 +12,35 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import SettingsRemindersPage from "@/app/settings/reminders/page";
+import SettingsGeneralPage from "@/app/settings/general/page";
+
+const readDigestPreference = vi.fn();
+
+vi.mock("@/lib/digest-preference-read", () => ({
+  readDigestPreference: () => readDigestPreference(),
+}));
+
+const readIsPro = vi.fn();
+
+vi.mock("@/lib/entitlement-read", () => ({
+  readIsPro: () => readIsPro(),
+}));
+
+const PUT = vi.fn();
+
+vi.mock("@/lib/backend-client", () => ({
+  api: { PUT: (...args: unknown[]) => PUT(...args) },
+}));
+
+/** The digest preference, as the server sends it. */
+function preference(overrides: Record<string, unknown> = {}) {
+  return {
+    delivery_time: "09:00:00",
+    timezone: "America/New_York",
+    include_personal_events: true,
+    ...overrides,
+  };
+}
 
 const readNotificationSettings = vi.fn();
 const getSession = vi.fn();
@@ -27,7 +55,7 @@ vi.mock("@/lib/session", async () => {
 });
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/settings/reminders",
+  usePathname: () => "/settings/general",
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
   redirect: vi.fn(),
 }));
@@ -50,6 +78,12 @@ function settings(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  readDigestPreference.mockReset();
+  readIsPro.mockReset();
+  PUT.mockReset();
+  readDigestPreference.mockResolvedValue({ kind: "found", preference: preference() });
+  readIsPro.mockResolvedValue(false);
+  PUT.mockResolvedValue({ data: { digest: { include_personal_events: false } }, error: null });
   readNotificationSettings.mockReset();
   getSession.mockReset();
   getSession.mockResolvedValue({ kind: "signed-in", user: USER });
@@ -63,7 +97,7 @@ function sidenav(): HTMLElement {
 
 describe("the route", () => {
   it("renders the four chips, and only the four", async () => {
-    render(await SettingsRemindersPage());
+    render(await SettingsGeneralPage());
 
     const chips = document.querySelectorAll("[data-reminder-chip]");
     expect(chips).toHaveLength(4);
@@ -73,7 +107,7 @@ describe("the route", () => {
   });
 
   it("shows the server's default plan as the selection", async () => {
-    render(await SettingsRemindersPage());
+    render(await SettingsGeneralPage());
 
     // **The server's answer, not a local default.** The server's default plan is
     // `["1d", "1hr"]`, and those two chips are pressed.
@@ -92,7 +126,7 @@ describe("the route", () => {
   });
 
   it("says plainly that it does not change plans already set", async () => {
-    render(await SettingsRemindersPage());
+    render(await SettingsGeneralPage());
 
     // **The opposite is the natural assumption**, and getting it wrong silently
     // rewrites the user's choices — so the page says which way it goes.
@@ -103,14 +137,14 @@ describe("the route", () => {
   });
 
   it("marks Settings as the active sidenav item", async () => {
-    render(await SettingsRemindersPage());
+    render(await SettingsGeneralPage());
 
     const settingsLink = within(sidenav()).getByRole("link", { name: "Settings" });
     expect(settingsLink).toHaveAttribute("aria-current", "page");
   });
 
   it("keeps the topbar brand-only", async () => {
-    const { container } = render(await SettingsRemindersPage());
+    const { container } = render(await SettingsGeneralPage());
 
     // **The topbar-quiet rule (ASSUM-11).** The brand mark and the tagline, and
     // nothing else — an action affordance in the topbar is an inversion.
@@ -122,7 +156,7 @@ describe("the route", () => {
   });
 
   it("has no page-level Save button, because the save is inline", async () => {
-    render(await SettingsRemindersPage());
+    render(await SettingsGeneralPage());
 
     // **The work item rules one out.** A settings screen that asks for a confirmation
     // of a control the user just pressed is asking for something it does not need.
@@ -132,7 +166,7 @@ describe("the route", () => {
   it("shows the unavailable state when the read fails", async () => {
     readNotificationSettings.mockResolvedValue({ kind: "unavailable" });
 
-    render(await SettingsRemindersPage());
+    render(await SettingsGeneralPage());
 
     expect(document.querySelector("[data-settings-unavailable]")).not.toBeNull();
     expect(screen.getByRole("link", { name: "Back to Pulse Digest" })).toBeInTheDocument();
