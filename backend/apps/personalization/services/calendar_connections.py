@@ -42,15 +42,20 @@ from apps.personalization.services.audit import write_audit
 from apps.personalization.services.personal_events import delete_personal_event
 from domain.errors import (
     CalendarConnectionNotFoundError,
+    CalendarNotSyncable,
     CalendarProviderCapReached,
     CredentialDecryptionError,
     InvalidCalendarCredentialError,
+    ThrottledError,
 )
 from ports.calendar import Credential
 from ports.fetch_policy import fetch_deny_policy
+from ports.registry import get_throttle_port
 from shared.actor import Actor
 from shared.constants import (
     CALENDAR_CLAIM_TTL,
+    CALENDAR_MANUAL_SYNC_COOLDOWN_SECONDS,
+    CALENDAR_MANUAL_SYNC_LIMIT,
     FREE_TIER_CALENDAR_PROVIDER_CAP,
     PRO_TIER_CALENDAR_PROVIDER_CAP,
 )
@@ -753,6 +758,114 @@ def disconnect_calendar_for_user(
     """
     connection = _owned_connection(user_id=user_id, connection_id=connection_id)
     disconnect_calendar(connection=connection, actor=actor, now=now)
+
+
+def manual_sync_throttle_key(connection_id: UUID) -> str:
+    """The cooldown's key: one window per **connection**, not per user.
+
+    A Pro user holding three calendars should be able to refresh each of them; a window
+    keyed on the user would make the first calendar's refresh silently eat the second's.
+    The thing being protected is one feed's poll cadence, so the key is that feed.
+    """
+    return f"calendar_manual_sync:{connection_id}"
+
+
+def request_manual_sync(
+    *,
+    user_id,
+    connection_id: UUID,
+    actor: Actor,
+    now=None,
+) -> CalendarConnection:
+    """Ask for one connection to be synced now, rather than at its next hourly poll (FR-50).
+
+    ## It marks the connection due; it does not fetch
+
+    **The same mechanism `connect_calendar` already uses for the first sync**: set
+    `next_poll_at` to now, and the 60-second dispatcher claims it on its next tick. The
+    service opens no socket, so "Sync now" costs the request nothing and cannot sit on a
+    web process while somebody else's calendar server thinks about it.
+
+    It also means the sync goes through **one code path**, not two. A manual sync that
+    fetched inline would be a second implementation of "sync this calendar" — with its own
+    claim handling, its own error mapping and its own idempotence — and the two would drift
+    at the first bug fixed in only one of them.
+
+    The cost is honesty about latency: the import lands within a tick, not within the
+    request. The response says the sync is queued, and `sync_in_progress` on the next read
+    says it is running.
+
+    ## The cooldown is about the control telling the truth
+
+    Pressing the button twice inside one tick changes nothing the second time — the
+    connection is already due, and the claim the dispatcher holds means the second press
+    cannot produce a second fetch. A control that accepts a press and does nothing is a
+    control that lies, so the second press inside the window is **refused out loud** with
+    the seconds remaining, rather than accepted and dropped.
+
+    `ThrottledError` is the shared one, which `config/errors.py` already maps to 429 with
+    `retry_after_seconds` in `details` — the same shape `report_event` answers with.
+
+    ## Only an active connection can be synced
+
+    A `needs_reconnect` connection has a credential the provider has already rejected, and
+    syncing it would spend a fetch to be told so again. A `disconnected` one has no
+    credential at all. Both are refused as **not found for this purpose**, in the one way
+    that is true for the user: there is nothing here to sync. `_owned_connection` has
+    already decided the row is theirs, so this is not a scoping answer — it is a state one,
+    and it carries its own message.
+    """
+    moment = now or timezone.now()
+    connection = _owned_connection(user_id=user_id, connection_id=connection_id)
+
+    if connection.status != CalendarConnection.Status.ACTIVE:
+        raise CalendarNotSyncable(
+            "That calendar isn't connected right now. Reconnect it first.",
+            details={"status": connection.status},
+        )
+
+    # **The throttle is checked after the status, and that order is deliberate.** A refusal
+    # the user cannot act on ("reconnect it first") should not also spend their one
+    # refresh: they would reconnect, press Sync now, and be told to wait for a window they
+    # never knowingly opened.
+    decision = get_throttle_port().check(
+        manual_sync_throttle_key(connection.pk),
+        limit=CALENDAR_MANUAL_SYNC_LIMIT,
+        window_seconds=CALENDAR_MANUAL_SYNC_COOLDOWN_SECONDS,
+    )
+    if not decision.allowed:
+        raise ThrottledError(
+            "That calendar was just refreshed. Give it a moment.",
+            details={"retry_after_seconds": decision.retry_after_seconds},
+        )
+
+    with transaction.atomic(using=PERSONAL):
+        connection.next_poll_at = moment
+        # A claim left behind by a worker that died would keep the dispatcher from picking
+        # this up until `CALENDAR_CLAIM_TTL` expired — so the user's explicit request would
+        # wait up to fifteen minutes for a job that is never coming. `connect_calendar`
+        # clears a stale claim for the same reason; this clears only a stale one, because
+        # clearing a **live** claim would let a second worker fetch the same feed at the
+        # same time, which is the exact race `sync_claimed_at` exists to prevent.
+        claimed = connection.sync_claimed_at
+        stale = claimed is not None and claimed <= moment - CALENDAR_CLAIM_TTL
+        fields = ["next_poll_at", "updated_at"]
+        if stale:
+            connection.sync_claimed_at = None
+            fields.append("sync_claimed_at")
+        connection.save(using=PERSONAL, update_fields=fields)
+
+        write_audit(
+            actor=actor,
+            action="calendar.sync_requested",
+            target_type="calendar_connection",
+            target_id=connection.pk,
+            # The provider and the moment. Never the address, never the fingerprint
+            # (AD-13) — the same details every other calendar command writes.
+            details={"provider": connection.provider, "at": moment.isoformat()},
+        )
+
+    return connection
 
 
 def _purge_connection_events(*, connection: CalendarConnection, actor: Actor, now) -> int:

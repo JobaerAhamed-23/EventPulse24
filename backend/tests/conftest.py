@@ -22,14 +22,17 @@ PROJECT_ROLES = ("ep_owner", "ep_catalog", "ep_personal")
 #: window boundary does not depend on when the suite ran.
 THROTTLE_CLOCK = 1_000_000.0
 
-#: The modules that resolve the throttle port by name. **The port is reached through two
-#: of them**, and both have to be patched: the auth limits are counted by
-#: `apps.identity.services.throttle`, and the save cap by
-#: `apps.personalization.services.save_cap`. Patching one and not the other would leave a
-#: gate reading the shared counter while the test believed it had isolated it.
+#: The modules that resolve the throttle port by name. **Every one of them has to be
+#: patched**: the auth limits are counted by `apps.identity.services.throttle`, the save
+#: cap by `apps.personalization.services.save_cap`, and the calendar's "Sync now" cooldown
+#: by `apps.personalization.services.calendar_connections`. Patching some and not others
+#: would leave a gate reading the shared counter while the test believed it had isolated
+#: it — and a leaked counter fails whichever test happens to run tenth, not the one that
+#: spent the allowance.
 THROTTLE_CONSUMERS = (
     "apps.identity.services.throttle",
     "apps.personalization.services.save_cap",
+    "apps.personalization.services.calendar_connections",
 )
 
 

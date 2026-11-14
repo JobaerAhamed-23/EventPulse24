@@ -553,6 +553,23 @@ CALENDAR_SYNC_BATCH = 100
 # poll interval, so a lost claim is recovered well before the next scheduled poll.
 CALENDAR_CLAIM_TTL = timedelta(minutes=15)
 
+# FR-50: how often one connection may be synced **on demand**, from the "Sync now" button.
+#
+# **This is honesty, not provider protection.** A manual sync does not fetch anything
+# itself: it marks the connection due (`next_poll_at = now`) and the 60-second tick picks
+# it up, holding the claim while it runs. So the real outbound rate is already bounded at
+# roughly one fetch per tick per connection, no matter how often the button is pressed.
+#
+# What the cooldown buys is a truthful control. Without it the button would accept every
+# press and appear to do something each time, while the second press within a tick changes
+# nothing — a control that lies about having worked. One minute matches the tick, so
+# "allowed again" and "the previous request has actually run" line up.
+CALENDAR_MANUAL_SYNC_COOLDOWN_SECONDS = 60
+
+# One manual sync per cooldown window. Named rather than inlined as `limit=1`, because the
+# limit and the window are one rule and a reader should not have to infer the pair.
+CALENDAR_MANUAL_SYNC_LIMIT = 1
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Saved events (FR-49)
 #

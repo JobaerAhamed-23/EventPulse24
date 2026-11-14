@@ -75,6 +75,7 @@ from apps.personalization.services.calendar_connections import (
     get_calendar_connection,
     list_calendar_connections,
     reconnect_calendar_for_user,
+    request_manual_sync,
 )
 from apps.personalization.services.conflict_list import list_conflict_pairs
 from apps.personalization.services.conflict_resolutions import resolve_conflict
@@ -894,6 +895,49 @@ def post_reconnect_calendar(request, connection_id: UUID, body: CalendarReconnec
             user_id=request.user.pk, connection_id=connection.pk, now=timezone.now()
         )
     )
+
+
+@router.post(
+    "/calendars/{connection_id}/sync",
+    response={202: CalendarConnectionOut, 404: ErrorOut, 409: ErrorOut, 429: ErrorOut},
+    summary="Sync one calendar now, instead of waiting for its next hourly poll",
+    description=(
+        "Asks for one of the user's calendars to be synced now. **202, not 200**: the "
+        "sync is queued, not performed here. The connection is marked due and the "
+        "dispatcher claims it on its next tick, so the response comes back immediately "
+        "and the import lands within about a minute. The body is the connection as it "
+        "stands; a following read reports `sync_in_progress` while the job runs, and a "
+        "new `last_synced_at` when it has finished.\n\n"
+        "**It does not fetch inline**, deliberately: the request would otherwise wait on "
+        "the user's calendar provider, and a manual sync that fetched for itself would be "
+        "a second implementation of the hourly one.\n\n"
+        "One sync per calendar per minute. A second request inside that window answers "
+        "429 with `retry_after_seconds` — the window matches the dispatcher's tick, so "
+        "being allowed again and the previous request having actually run coincide. The "
+        "limit is per **connection**, so a Pro account can refresh each of its calendars.\n\n"
+        "A calendar that is not active answers 409: a revoked credential cannot be "
+        "fetched with, and the remedy is to reconnect rather than to ask again."
+    ),
+)
+def post_calendar_sync(request, connection_id: UUID):
+    """Queue a sync for one of the user's own calendars."""
+    # Scoping, status and the cooldown all live in the service — the API layer may not
+    # import the model, and a rule enforced at one caller is a rule the next caller
+    # skips. `CalendarConnectionNotFoundError`, `CalendarNotSyncable` and `ThrottledError`
+    # are all `DomainError`s that `config/errors.py` already maps to 404, 409 and 429, so
+    # none is caught here: one mapping, in one place.
+    connection = request_manual_sync(
+        user_id=request.user.pk,
+        connection_id=connection_id,
+        actor=_actor(request),
+        now=timezone.now(),
+    )
+    # Read back through the published read, exactly as the connect endpoint does, so one
+    # projection decides what a connection looks like.
+    view = get_calendar_connection(
+        user_id=request.user.pk, connection_id=connection.pk, now=timezone.now()
+    )
+    return Status(202, CalendarConnectionOut.from_view(view))
 
 
 @router.delete(

@@ -729,6 +729,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/personal/calendars/{connection_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync one calendar now, instead of waiting for its next hourly poll
+         * @description Asks for one of the user's calendars to be synced now. **202, not 200**: the sync is queued, not performed here. The connection is marked due and the dispatcher claims it on its next tick, so the response comes back immediately and the import lands within about a minute. The body is the connection as it stands; a following read reports `sync_in_progress` while the job runs, and a new `last_synced_at` when it has finished.
+         *
+         *     **It does not fetch inline**, deliberately: the request would otherwise wait on the user's calendar provider, and a manual sync that fetched for itself would be a second implementation of the hourly one.
+         *
+         *     One sync per calendar per minute. A second request inside that window answers 429 with `retry_after_seconds` — the window matches the dispatcher's tick, so being allowed again and the previous request having actually run coincide. The limit is per **connection**, so a Pro account can refresh each of its calendars.
+         *
+         *     A calendar that is not active answers 409: a revoked credential cannot be fetched with, and the remedy is to reconnect rather than to ask again.
+         */
+        post: operations["apps_personalization_api_post_calendar_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/personal/collections": {
         parameters: {
             query?: never;
@@ -5915,6 +5941,55 @@ export interface operations {
             };
             /** @description Unprocessable Content */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_api_post_calendar_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectionOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

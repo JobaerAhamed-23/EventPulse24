@@ -332,6 +332,22 @@ class CalendarConnectionNotFoundError(NotFoundError):
     default_message = "We couldn't find that calendar connection."
 
 
+class CalendarNotSyncable(ConflictError):
+    """The connection is the caller's, but it is in no state to be synced (FR-50).
+
+    **A conflict, not a not-found.** The caller has already been shown this connection in
+    their own list, so pretending it does not exist would contradict the screen they are
+    looking at. What is wrong is its *state*: a `needs_reconnect` connection holds a
+    credential the provider has already rejected, and a `disconnected` one holds none at
+    all. Neither can be fetched with, and neither is fixed by asking again.
+
+    The remedy is a different action — reconnect — so the message names it.
+    """
+
+    code = "calendar_not_syncable"
+    default_message = "That calendar isn't connected right now. Reconnect it first."
+
+
 class TooManyInterestsError(ValidationError):
     """The user picked more interest chips than the flow allows (FR-1).
 
