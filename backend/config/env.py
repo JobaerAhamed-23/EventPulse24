@@ -93,6 +93,20 @@ class Settings(BaseSettings):
     # How long the backend waits for the frontend's revalidation route handler to answer.
     revalidation_timeout_seconds: PositiveFloat = 5.0
 
+    # FR-25: the Voyage API key for the real embedding adapter.
+    #
+    # **Required with no default and no fallback, exactly like `stripe_api_key`.** A
+    # missing key must abort the boot rather than leave an app that looks healthy and
+    # fails the first time an event needs embedding — and a silent zero cost would be
+    # worse: the cost row would say the embedding was free.
+    #
+    # It is read here, in `config`, and never in `adapters`: the `layers` contract puts
+    # `config` above `adapters`, so this is the only place the environment is read.
+    voyage_api_key: str
+
+    # How long the backend waits for Voyage to answer an embedding call.
+    voyage_timeout_seconds: PositiveFloat = 30.0
+
     # Whether the caller's IP may be read from the `X-Forwarded-For` header.
     #
     # The header is **attacker-controlled** unless something in front of this runtime

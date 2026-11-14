@@ -56,6 +56,16 @@ INGESTION_TABLES = {
     "ingestion_sourcereliabilityscore",
 }
 
+#: The AI cost row is a catalog table too (AD-8).
+#:
+#: **It is not user data, so it cannot be a personal table.** A cost row records what a
+#: *call* cost — which model, how many tokens, how much, when — and it carries no user id
+#: at all. The coding standard pins it to `catalog` with `NOT_USER_DATA`, so it sits on
+#: the catalog side of the AD-3 wall with the rest of the non-user facts.
+LLM_TABLES = {
+    "llm_aicostrow",
+}
+
 PERSONALIZATION_TABLES = {
     "personalization_personalevent",
     "personalization_savedevent",
@@ -70,7 +80,9 @@ DELIVERY_TABLES = {
 
 
 def test_catalog_schema_holds_only_catalog_tables():
-    assert tables_in("catalog") == {"catalog_probe_thing", "django_migrations"} | INGESTION_TABLES
+    assert tables_in("catalog") == (
+        {"catalog_probe_thing", "django_migrations"} | INGESTION_TABLES | LLM_TABLES
+    )
 
 
 def test_personal_schema_holds_no_ingestion_table():

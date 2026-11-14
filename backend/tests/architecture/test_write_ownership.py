@@ -91,6 +91,13 @@ TABLE_OWNERS = {
     # value, because AD-3 forbids a relation across the wall; the *preference* is the
     # user's, so the row and its commands live on the personal side.
     "personalization_sourcemute": "personalization",
+    # AD-16: `personalization` owns FR-25's dismissal and its category mute. Both are
+    # per-user records about what the user chose not to see — the dismissal is the raw
+    # signal and the mute is the preference it produced — so they belong on the personal
+    # side and are written only by `services/dismissals.py` and
+    # `services/taste_mutes.py`.
+    "personalization_eventdismissal": "personalization",
+    "personalization_categorymute": "personalization",
     # AD-16: `ingestion` owns the catalog entities. `EVENT_FIT` is the one this intent
     # added — the public, per-(event, city) explanation (AD-10).
     "ingestion_source": "ingestion",
@@ -148,6 +155,11 @@ TABLE_OWNERS = {
     # is `personalization`'s surface, but the preference it sets is about a *delivery*, so
     # the row and its commands live here — beside the notice it silences.
     "delivery_eventnoticemute": "delivery",
+    # AD-16: the AI cost row is owned by the `llm` adapter (AD-8). It is named here even
+    # though the write scan only walks `apps/`, because the map is the statement of who
+    # owns what, and an unstated owner is the thing this file exists to prevent. The
+    # standard is explicit that the gateway writes it and nobody else does.
+    "llm_aicostrow": "llm",
 }
 
 #: The apps that may write. `worker` and `config` are excluded deliberately: the worker

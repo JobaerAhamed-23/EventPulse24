@@ -22,12 +22,33 @@ def test_fake_mode_returns_a_copy():
 
 
 def test_real_mode_fails_and_names_every_missing_adapter():
+    """**`embedding` is no longer on the list, and that is the point.**
+
+    FR-25 added the real Voyage adapter, so `adapters.llm.voyage.VoyageEmbeddingAdapter`
+    is in the real table. `llm` and `email` still have no real adapter, so real mode
+    still refuses to boot — which is correct: this item ships embeddings, not go-live.
+    """
     with pytest.raises(ImproperlyConfigured) as excinfo:
         adapter_paths("real")
 
     assert str(excinfo.value) == (
-        "ADAPTER_MODE=real is not available yet: no real adapter for email, embedding, llm."
+        "ADAPTER_MODE=real is not available yet: no real adapter for email, llm."
     )
+
+
+def test_real_mode_has_the_voyage_embedding_adapter():
+    """FR-25: the real embedding adapter is the one that reaches Voyage."""
+    assert REAL_ADAPTERS["embedding"] == "adapters.llm.voyage.VoyageEmbeddingAdapter"
+
+
+def test_the_real_embedding_adapter_implements_the_port():
+    from django.utils.module_loading import import_string
+
+    from ports.embedding import EmbeddingPort
+
+    adapter = import_string(REAL_ADAPTERS["embedding"])
+
+    assert issubclass(adapter, EmbeddingPort)
 
 
 def test_settings_use_the_fake_table_by_default(settings):

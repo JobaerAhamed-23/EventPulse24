@@ -1450,7 +1450,19 @@ intents:
         completed_at: 2026-11-13T13:17:34.101Z
     completed_at: 2026-11-13T13:17:30.478Z
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-034
+      scope: single
+      work_items:
+        - id: less-like-this-adjustment
+          intent: relevance-feedback-loop
+          mode: validate
+          status: in_progress
+          current_phase: plan
+          checkpoint_state: approved
+          current_checkpoint: plan
+      current_item: less-like-this-adjustment
+      started: 2026-11-13T17:03:56.431Z
   completed:
     - id: run-eventpulse24-001
       scope: single
