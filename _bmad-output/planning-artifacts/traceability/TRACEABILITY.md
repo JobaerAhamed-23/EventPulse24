@@ -1,6 +1,6 @@
 # EventPulse24 — Traceability Matrix
 
-Generated: 2026-11-17 (produced by the project's own `doc-trace` skill — `.claude/skills/doc-trace/SKILL.md`)
+Generated: 2026-11-17, **regenerated the same day** after the `traceability-gap-closure` intent closed its items (produced by the project's own `doc-trace` skill — `.claude/skills/doc-trace/SKILL.md`)
 
 **Supersedes the 2026-11-13 matrix.** That version scored Sections A and B on 2026-11-12 and
 added Section C on 2026-11-13. Four days of work have landed since, and **three of its four
@@ -8,9 +8,16 @@ headline findings have expired** — FR-25, FR-16 and FR-13 were all `MISSING` i
 are now reachable; FR-16's Section A `PARTIAL` is now `FULL`. They are retired below with
 evidence rather than silently dropped by the re-scan.
 
-**Section C is now a full pass.** The previous version scored 12 of 45 MVP FRs and left 33
+**Section C is now a full pass.** The earlier version scored 12 of 45 MVP FRs and left 33
 `UNASSESSED`, which was honest but not useful. Every MVP FR is scored here against running
-code, and the pass found **one new gap the previous matrix never looked at** (FR-29).
+code, and that pass found **one new gap no matrix had ever looked at** (FR-29).
+
+**This regeneration scores the work that closed it.** Between the two runs, the
+`traceability-gap-closure` intent shipped FR-29's admin, FR-10's Settings control and
+FR-32's location reveal, and repaired six tests that had expired. **All three sections now
+read 0 missing and 0 partial.** Two new findings were raised rather than papered over —
+`timeline-why-this-tag` and `fr22-published-formula` — and both are decisions for a human,
+not work waiting on a runner.
 
 **Sources scanned:**
 - PRD: `_bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/prd.md` — 60 FR headings: 45 MVP (FR-1–30, FR-32, FR-33, FR-48–FR-60) and 15 deferred (FR-31, FR-34–FR-47), listed separately and not scored.
@@ -38,7 +45,7 @@ with nothing found. `N/A` = no UI surface by nature.
 | FR-2 | Pulse Preview (No-Auth First Value) | `geo-consent-banner-desktop.html`, `pulse-preview-desktop.html` | FULL | self-tagged mockup header (tier 1) |
 | FR-3 | Calendar Connect (read-only ICS/webcal) | `light-archive/onboarding-step1-desktop.html`, `light-archive/onboarding-step1-mobile.html` | FULL | self-tagged mockup header (tier 1) |
 | FR-4 | Authenticated User State | `signin-desktop.html` | FULL | self-tagged mockup header (tier 1) |
-| FR-5 | Pulse Digest Composition | named in EXPERIENCE.md (3 citations) | FULL | named section citing the FR (tier 2) |
+| FR-5 | Pulse Digest Composition | named in EXPERIENCE.md (3 citations); Slot 3's treatment in DESIGN.md `component.card.pulse.digest.category.discovery`, now tagged **Amendment A-2** | FULL | named section citing the FR (tier 2) |
 | FR-6 | Pulse Card Information Density | named in EXPERIENCE.md (2 citations) | FULL | named section citing the FR (tier 2) |
 | FR-7 | Pulse Digest Delivery Time | named in EXPERIENCE.md (3 citations) | FULL | named section citing the FR (tier 2) |
 | FR-8 | Empty-State Pulse Digest | `pulse-digest-empty-state-desktop.html` | FULL | self-tagged mockup header (tier 1) |
@@ -151,7 +158,7 @@ Every component cited below was checked for an importer rooted in a route, becau
 endpoint is not a reachable feature* and *a passing test is not a reachable feature* — the two
 traps that have already caught this project.
 
-**Counts: 39 FULL · 0 PARTIAL · 1 MISSING · 5 N/A · 0 UNASSESSED** (45 total)
+**Counts: 40 FULL · 0 PARTIAL · 0 MISSING · 5 N/A · 0 UNASSESSED** (45 total)
 
 **This is the first complete pass.** The previous version scored 12 and left 33 `UNASSESSED`.
 
@@ -166,7 +173,7 @@ traps that have already caught this project.
 | FR-7 | Pulse Digest Delivery Time | FULL | `components/settings/digest-delivery-time.tsx` @ `app/settings/general/page.tsx` |
 | FR-8 | Empty-State Pulse Digest | FULL | `components/digest/digest-empty.tsx`, imported by `app/page.tsx` |
 | FR-9 | Multi-Tier Reminder Picker | FULL | `app/events/[id]/reminders/page.tsx` |
-| FR-10 | Pulse Ping — Single Daily Notification | FULL | `worker/tasks.py:486` → `apps.delivery.services.pulse_ping.mint_ping_send`, with `ping_minted`/`ping_suppressed`/`ping_reason` outcomes; delivery time set via FR-7. **See open item O-1** — the in-app on/off switch onboarding promises does not exist |
+| FR-10 | Pulse Ping — Single Daily Notification | FULL | `worker/tasks.py:486` → `mint_ping_send`; **and the user can now turn it off and on** at `components/settings/pulse-ping-switch.tsx` @ `/settings/general`, through `resubscribe_pulse_ping` / `unsubscribe_pulse_ping`. **O-1 closed by `d39c897`** — onboarding's "you can change this anytime" is true as written |
 | FR-11 | Email Multi-Tier Reminders | FULL | `apps/delivery` (`ScheduledSend`, `email_api.py`, templates); plans set from the FR-9 picker |
 | FR-12 | Quiet Hours | FULL | `components/settings/quiet-hours-window.tsx` @ `app/settings/general/page.tsx` |
 | FR-13 | Source Registry | FULL | `app/settings/sources/page.tsx` → `components/settings/source-list.tsx`. **Was MISSING until `fe307b6` (2026-11-13)** |
@@ -185,9 +192,9 @@ traps that have already caught this project.
 | FR-26 | Public Event Pages with Structured Data | FULL | `components/public-event/public-event-page.tsx` @ `app/events/[id]/page.tsx` (public shell branch) |
 | FR-27 | SEO City Pages | FULL | `app/events-in/[slug]/page.tsx` → `components/city-page/city-page.tsx`; `app/sitemap/`, `app/robots.ts` |
 | FR-28 | Share-Card Public Link | FULL | `components/share/share-control.tsx`, mounted by `pulse-card.tsx` and `detail-actions.tsx`, gated on `public_slug` |
-| FR-29 | AI Cost Dashboard (Internal) | **MISSING** | `adapters/llm/costs.py:63` writes `AICostRow` to the catalog schema and `migrations/0001_aicostrow.py` creates the table — **and nothing reads it back**. `adapters/llm/` has no `admin.py`, and no `@admin.register(AICostRow)` exists anywhere in `backend/`. The cost data accrues and no one — staff included — can see it |
+| FR-29 | AI Cost Dashboard (Internal) | **FULL** | `adapters/llm/admin.py` — read-only `AICostRow` registration with add/change/delete all refused and a **total over the filtered queryset**, so PRD §10.3's ceiling is answerable at a glance. **Was MISSING until commit `da8d651` (2026-11-17)**: the rows had accrued since the gateway shipped with nothing able to read them back |
 | FR-30 | Caching & Batching Defaults | N/A | backend caching/batching policy |
-| FR-32 | Unified Personal+Public Timeline | FULL | `app/timeline/page.tsx` → `timeline-panel.tsx`, `timeline-block.tsx`, `timeline-navigator.tsx`. **See open item O-2** — the specced desktop hover/focus detail is absent |
+| FR-32 | Unified Personal+Public Timeline | FULL | `app/timeline/page.tsx` → `timeline-panel.tsx`, `timeline-block.tsx`, `timeline-navigator.tsx`; the block now **reveals its location on hover and focus** (`d1d6c83`, `b4ba162`), with the place resolved server-side onto `TimelineBlockOut`. **O-2 partly closed** — §13's Why-this tag is open as `timeline-why-this-tag` |
 | FR-33 | Conflict-Aware Scheduling | FULL | `app/conflicts/page.tsx` → `components/conflicts/conflicts-panel.tsx` |
 | FR-48 | Pro Tier with MVP-Only Features | FULL | `app/pricing/page.tsx`; `components/settings/plan-summary.tsx` @ `/settings/account`; free-cap enforcement at `components/browse/browse-quota-note.tsx` + `components/upgrade/upgrade-prompt.tsx` |
 | FR-49 | Unlimited Saves + Saved Collections (Pro) | FULL | `components/collections/collection-manager.tsx` @ `app/settings/collections/page.tsx`. **Assign was MISSING until `da924ca`** |
@@ -205,35 +212,45 @@ traps that have already caught this project.
 
 ### Open Implementation gaps
 
-- **FR-29 AI Cost Dashboard — `MISSING`.** The only non-N/A gap in this section, and **new**:
-  the previous matrix left FR-29 `UNASSESSED` and never looked. `AICostRow` is written on
-  every LLM call (`adapters/llm/costs.py:63`), the table exists, the model is append-only and
-  correct — and there is no admin registration, no API and no page. **This is the exact shape
-  Section C exists to catch:** a complete, tested backend with no reachable surface. Both
-  Section A (`N/A — internal Django admin tool`) and Section B (`FULL — adapters/llm,
-  editorial`) score it clean, because neither asks whether the admin was built. The fix is
-  small — an `adapters/llm/admin.py` registering `AICostRow` read-only, as
-  `apps/ingestion/admin.py` already does for `SourceReliabilityScore` and `IngestionAuditEntry`.
-  Worth noting: PRD §10.3 sets an AI cost ceiling, and nothing currently reports against it.
+**None.** Every MVP FR with a user surface is reachable in the running product. This is the
+first regeneration in which all three sections read clean at once.
 
-### Open items that are not gaps
+**FR-29 is closed, and it is worth saying what it was.** `AICostRow` had been written on
+every LLM call since the gateway shipped, with no admin, no API and no page — a complete,
+tested backend with no reachable surface, scored `N/A` by Section A (correctly: an internal
+admin tool is outside the design system) and `FULL` by Section B (correctly: the Capability
+row names the module). Neither section asks whether the admin was built. That is the gap
+Section C exists for, and it is the gap it found.
 
-- **O-1 — FR-10's missing in-app switch.** The Pulse Ping mints and suppresses correctly and
-  can be turned off through the email's RFC 8058 one-click unsubscribe (the scope is honoured
-  and pending sends are cancelled). But `NotificationSettingsIn`
-  (`apps/delivery/schemas.py:267`) carries only `quiet_hours`, `quiet_hours_overrides`,
-  `default_reminder_slots` and `digest` — there is **no ping on/off field**, and no Settings
-  row for one, while `ping_unsubscribed` exists as a column
-  (`migrations/0004_notificationpreference_ping_unsubscribed`). Onboarding tells the user
-  *"One calm Pulse Ping per day… You can change this anytime"*
-  (`onboarding-flow.tsx:86`). FR-10's own testable consequences are all about send behaviour
-  and are met, so this is scored `FULL` — but the copy promises a control the product does not
-  have, and that is a promise to either build or rewrite.
-- **O-2 — FR-32's missing hover/focus detail.** EXPERIENCE.md §13's density table (line 1107)
-  specifies that a desktop Timeline event-block **adds** location and one Why-this tag on hover
-  or focus. `timeline-block.tsx` has no such state — only the `hover:bg-surface-inset` fill
-  swap. The FR's core (a read-only unified week) is reachable, so this is `FULL` with a
-  documented shortfall rather than `PARTIAL`.
+### Open items that are decisions, not work
+
+- **`timeline-why-this-tag`** — `EXPERIENCE.md` §13 says a desktop Timeline block adds
+  location **and one Why-this Tag** on hover. The location shipped; the tag did not, and
+  not for want of effort. There is no persisted tag this surface may read: `EventFit.tags`
+  is per `(event, city)` on `catalog`, the Relevance Pulse's tags are per user per day and
+  may not exist for a given saved event, and the import-linter contract *"AD-10
+  personalization never reaches the Event Fit"* bars the obvious route — a rule whose
+  reason is that substituting one explanation kind for the other is the trust-collapse
+  failure PRD Risk 11 calls company-ending. Computing one per user, as Browse does, needs
+  four extra reads on a surface whose design is to decide nothing. **The question is
+  whether a read-only surface starts ranking**, and it is a human's.
+- **`fr22-published-formula`** — **FR-22 publishes a four-term formula; the product
+  computes five.** The divergence is deliberate and well-argued in `domain/ranking.py`
+  (the two dropped terms depend on FR-25's preference graph, which did not exist) and is
+  pinned to `ADR-0025`; EXPERIENCE.md already describes the five-term version as built.
+  What is missing is the PRD, which still publishes the four-term version as *"immutable
+  post-launch"* — the document FR-22 names as the source of the published formula is the
+  one that does not know it changed. EXPERIENCE.md §2 row 9 commits `/settings/privacy` to
+  showing users that formula, so this is a live trust question, not a filing error.
+
+### The test suite, for the record
+
+The backend suite ran **6 failed** across the first three runs of this intent and is now
+**7314 passed, 0 failed**. None of the six was a regression: each pinned an absolute date
+the wall clock had passed. They are repaired by anchoring the fixtures to the calendar, and
+the repair was proved non-vacuous by mutation rather than by assertion. **Twenty further
+test files combine a pinned date with a real-clock HTTP path**; all pass today and are
+listed in `run-eventpulse24-039`'s test report rather than touched.
 
 ### Retired findings from the 2026-11-13 Section C
 
@@ -253,8 +270,8 @@ appears in one document but is plausibly relevant to another that does not menti
 | Amendment | Found in | Consistent? |
 |---|---|---|
 | A-1 (FR-15 dedup revision) | PRD; Architecture via the `sources_as_of: 'PRD amendments A-1..A-9'` range, AD-4 implementing the substance | Consistent |
-| A-2 (FR-5 revision) | PRD only (5 citations) | **No** — FR-5 is core UX real estate (`Card.PulseDigest`); neither DESIGN.md nor EXPERIENCE.md carries the tag (0 hits in both, re-verified) |
-| A-3 (FR-22 revision) | PRD only (4 citations) | **No** — UX references FR-22 directly but never cites "Amendment A-3" (0 hits in both, re-verified) |
+| A-2 (FR-5 revision) | PRD, DESIGN.md (`component.card.pulse.digest.category.discovery`) | **Consistent — closed 2026-11-17** by `f754c3e`. The entry already described A-2's rule (slate stripe at 0.85 plus a `discovery` micro-tag); it now cites the amendment that made it |
+| A-3 (FR-22 revision) | PRD only (4 citations) | **No — and deliberately left untagged.** Not a propagation miss: the UX docs describe the **five-term as-built** formula pinned to ADR-0025, while the PRD publishes A-3's **four-term** one. Tagging the section would assert a revision it does not implement. See `fr22-published-formula` |
 | A-4 (FR-59 added) | PRD, `report-event-modal-desktop.html` | Consistent |
 | A-5 (FR-58 revision) | PRD, EXPERIENCE.md (3 citations) | **Consistent — corrected.** The previous ledger scored this `No`; EXPERIENCE.md cites "Amendment A-5" three times, including the Surface Coverage row and the conflict-prompt spec |
 | A-6 (FR-60 added) | PRD | Consistent — backend-only, no UX impact expected |
@@ -267,16 +284,18 @@ appears in one document but is plausibly relevant to another that does not menti
 | A-22 (Pulse Card state treatment) | DESIGN (3 citations) | Consistent — a component treatment with no PRD or Architecture surface |
 | A-23 (traceability design-gap closure) | PRD (amendment list, line 18), DESIGN, EXPERIENCE | Consistent — propagated deliberately; absent from Architecture, correctly, since it changes no requirement and no system |
 
-**Inconsistent amendments: 3** (A-2, A-3, and the A-11–A-20 block counted as one) — **down
-from 6.** A-5 and A-7 were re-verified and are **corrections of previous mis-scores, not new
-work**: both are cited in EXPERIENCE.md and were reported inconsistent in error.
+**Inconsistent amendments: 2** (A-3 and the A-11–A-20 block counted as one) — **down from 6
+at the start of the day, and from 3 at the previous regeneration.** A-5 and A-7 were
+corrections of earlier mis-scores; A-2 is now genuinely closed.
 
-The remaining three fall into two kinds, and the distinction matters before anyone "fixes"
-them:
+The two that remain are different in kind, and the distinction matters before anyone
+"fixes" them:
 
-- **A-2, A-3** — the PRD amended an FR whose UX surface exists, and the UX docs cover that FR
-  without ever citing the amendment ID. Genuine tag-propagation misses, cheap to close: one
-  inline tag each in the `Card.PulseDigest` and Confidence Pulse sections.
+- **A-3** — **not a tag-propagation miss.** Tagging it would hide a live inconsistency
+  between the PRD's published formula and the one the product computes. It stays open
+  until `fr22-published-formula` decides which formula is canonical, and the right close
+  is probably a *new* amendment ID rather than stretching A-3 to cover a change it never
+  made.
 - **A-11 – A-20** — UX-originated amendments the PRD never absorbed. A *convention* question,
   not a defect: if UX-originated reconciliation is not expected to flow back into the PRD, the
   convention should say so and these rows should stop being re-flagged every regeneration.

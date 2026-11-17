@@ -1492,10 +1492,12 @@ intents:
         run_id: run-eventpulse24-038
         completed_at: 2026-11-17T15:40:24.157Z
       - id: amendment-tag-propagation
-        status: pending
+        status: completed
         complexity: low
         mode: autopilot
         depends_on: []
+        run_id: run-eventpulse24-040
+        completed_at: 2026-11-17T16:07:06.820Z
       - id: time-bomb-tests
         status: completed
         complexity: medium
@@ -1523,19 +1525,7 @@ intents:
         source: found while tagging A-3; the PRD publishes four weighted terms and the
           product computes five
 runs:
-  active:
-    - id: run-eventpulse24-040
-      scope: single
-      work_items:
-        - id: amendment-tag-propagation
-          intent: traceability-gap-closure
-          mode: autopilot
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: amendment-tag-propagation
-      started: 2026-11-17T16:04:29.208Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2218,3 +2208,11 @@ runs:
           mode: confirm
       started: 2026-11-17T15:45:45.292Z
       completed: 2026-11-17T15:56:13.029Z
+    - id: run-eventpulse24-040
+      scope: single
+      work_items:
+        - id: amendment-tag-propagation
+          intent: traceability-gap-closure
+          mode: autopilot
+      started: 2026-11-17T16:04:29.208Z
+      completed: 2026-11-17T16:07:06.820Z
