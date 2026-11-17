@@ -9,15 +9,15 @@ import type { TimelineBlock as TimelineBlockData } from "@/lib/timeline-read";
  *
  * **The stripe and the label always come together.** The 2px left stripe is
  * `color.warm.personal` for a personal event and `color.cool.public` for a public one,
- * and the block also carries the visible text label "Personal" / "Public event" in its
- * top-right corner. **Colour is never the sole carrier of meaning** (WCAG 1.4.1) — the
+ * and the block also carries the visible text label "Personal" / "Public event" in the
+ * right of its top line, above the name. **Colour is never the sole carrier of meaning** (WCAG 1.4.1) — the
  * design says so twice, and the pairing is what makes the two kinds of block tellable
  * without colour vision.
  *
  * **The conflict indicator is a 6px filled amber circle**, `aria-label="Schedule
- * conflict"`, at the **top-left** — so it never covers the category label at the
- * top-right. The API has already decided whether it is there; the block draws it and
- * decides nothing.
+ * conflict"`, at the **top-left** — the opposite corner from the category label, on a
+ * line the name does not share. The API has already decided whether it is there; the
+ * block draws it and decides nothing.
  *
  * **The time is the event's own zone.** The week is cut in the *user's* zone, but the
  * block's time belongs to the event — a public event in Berlin shown to a user in Los
@@ -64,9 +64,10 @@ export function TimelineBlockView({
       />
 
       {/*
-        The conflict indicator, top-left, so the category label at the top-right stays
-        readable. It is a `<span>` with a label of its own, and the visible dot is
-        `aria-hidden` — the label is what a screen reader reads.
+        The conflict indicator, top-left. The category label is right-aligned on that
+        same first line, so the dot sits in space nothing else uses. It is a `<span>`
+        with a label of its own, and the visible dot is `aria-hidden` — the label is
+        what a screen reader reads.
       */}
       {block.conflict ? (
         <span
@@ -77,30 +78,36 @@ export function TimelineBlockView({
       ) : null}
 
       {/*
-        The name. A single line, ellipsised on overflow — the timeline is denser than
-        the digest, and a wrapped name would break the column's rhythm.
+        The category label, on its own line and pushed to the right corner. It comes
+        **first** in the block: the reader sees what kind of thing this is, then reads
+        its name.
+
+        **It is in the flow, not on top of it.** An absolutely positioned label is
+        invisible to the name's layout — `truncate` would measure the name against the
+        block's *full* width and run its text underneath the label. In a seven-column
+        week the column is ~110px wide and "Public event" takes most of it, so that
+        overlap was every block with a name, not an edge case. A line of its own cannot
+        be overlapped by anything.
       */}
-      <span
-        className={[
-          "block truncate [font:var(--type-scale-meta-md)] text-ink-primary",
-          // The indicator's gutter, so a flagged block's name does not sit under it.
-          block.conflict ? "pl-3" : "",
-        ].join(" ")}
-      >
+      <span className="block text-right [font:var(--type-scale-meta-sm)] text-ink-muted">
+        {personal ? "Personal" : "Public event"}
+      </span>
+
+      {/*
+        The name, with the whole column width to itself now that nothing shares its
+        line. Still a single line, ellipsised on overflow — the timeline is denser than
+        the digest, and a wrapped name would break the column's rhythm.
+
+        **No conflict gutter.** The indicator sits at the block's top-left, which is now
+        the category label's line, so it is nowhere near the name's first letter.
+      */}
+      <span className="block truncate [font:var(--type-scale-meta-md)] text-ink-primary">
         {name}
       </span>
 
       {time ? (
         <span className="block [font:var(--type-scale-meta-sm)] text-ink-muted">{time}</span>
       ) : null}
-
-      {/*
-        The category label, top-right. The one place the block says what kind of thing
-        it is, in words.
-      */}
-      <span className="absolute top-1 right-1 [font:var(--type-scale-meta-sm)] text-ink-muted">
-        {personal ? "Personal" : "Public event"}
-      </span>
     </>
   );
 
