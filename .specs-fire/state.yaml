@@ -1484,11 +1484,13 @@ intents:
         run_id: run-eventpulse24-037
         completed_at: 2026-11-17T15:37:59.704Z
       - id: timeline-hover-detail
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - timeline-block-detail-contract
+        run_id: run-eventpulse24-038
+        completed_at: 2026-11-17T15:40:24.157Z
       - id: amendment-tag-propagation
         status: pending
         complexity: low
@@ -1511,19 +1513,7 @@ intents:
         source: split from timeline-hover-detail; AD-10 bars personalization from the
           Event Fit
 runs:
-  active:
-    - id: run-eventpulse24-038
-      scope: single
-      work_items:
-        - id: timeline-hover-detail
-          intent: traceability-gap-closure
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-      current_item: timeline-hover-detail
-      started: 2026-11-17T15:38:03.837Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2190,3 +2180,11 @@ runs:
           mode: confirm
       started: 2026-11-17T15:23:48.254Z
       completed: 2026-11-17T15:37:59.704Z
+    - id: run-eventpulse24-038
+      scope: single
+      work_items:
+        - id: timeline-hover-detail
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:38:03.837Z
+      completed: 2026-11-17T15:40:24.157Z

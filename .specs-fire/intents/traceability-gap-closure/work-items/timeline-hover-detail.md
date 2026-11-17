@@ -4,9 +4,12 @@ title: Reveal the Timeline block's detail on hover and focus — FR-32 (UI)
 intent: traceability-gap-closure
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [timeline-block-detail-contract]
+status: completed
+depends_on:
+  - timeline-block-detail-contract
 created: 2026-11-17
+run_id: run-eventpulse24-038
+completed_at: 2026-11-17T15:40:24.157Z
 ---
 
 # Work Item: Reveal the Timeline block's detail on hover and focus — FR-32 (UI)
