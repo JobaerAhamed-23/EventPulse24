@@ -14,11 +14,13 @@ accents. Each is pinned.
 import pytest
 
 from domain.cities import (
+    CITY_ALIAS_GROUPS,
     KEY_MAX,
     NAME_MAX,
     REGION_MAX,
     SLUG_MAX,
     city_identity,
+    city_spellings,
     display_name,
     mint_city_slug,
     normalize_city,
@@ -158,3 +160,62 @@ class TestBounds:
         key, region = split_region("x" * (KEY_MAX + 50) + " ny")
         assert len(key) <= KEY_MAX
         assert len(region) <= REGION_MAX
+
+
+# ── Alias groups: one place, written more than one way ──────────────────────────────
+#
+# The table is a factual claim that two names are one city, so these pin both halves of
+# it: that a known alias is found from either side, and that a city with no alias is
+# completely unaffected — the second is what keeps the table from quietly widening what
+# every other city matches.
+
+
+def test_a_city_with_no_alias_is_only_itself():
+    assert city_spellings("Brooklyn") == ("Brooklyn",)
+
+
+@pytest.mark.parametrize("nothing", ["", "   ", None])
+def test_no_city_has_no_spellings(nothing):
+    assert city_spellings(nothing) == ()
+
+
+def test_an_alias_is_found_from_either_side():
+    assert city_spellings("Dhaka") == ("Dhaka", "ঢাকা")
+    assert city_spellings("ঢাকা") == ("ঢাকা", "Dhaka")
+
+
+def test_the_callers_own_spelling_comes_first():
+    """The caller asked for a city; its own form leads, whatever the table's order is."""
+    assert city_spellings("ঢাকা")[0] == "ঢাকা"
+
+
+def test_casing_and_spacing_still_find_the_group_and_are_not_repeated():
+    spellings = city_spellings("  dhaka  ")
+
+    # Trimmed, the caller's own form; "Dhaka" is the same key and so is not added again.
+    assert spellings == ("dhaka", "ঢাকা")
+
+
+def test_every_group_has_at_least_two_forms():
+    """A group of one claims nothing, and would only be a row waiting to be wrong."""
+    assert all(len(group) >= 2 for group in CITY_ALIAS_GROUPS)
+
+
+def test_no_written_form_belongs_to_two_groups():
+    """Two groups sharing a form would make the lookup depend on table order."""
+    keys = [normalize_city(form) for group in CITY_ALIAS_GROUPS for form in group]
+
+    assert len(keys) == len(set(keys))
+
+
+def test_a_groups_forms_are_distinct_once_normalized():
+    """Two forms with the same key are one form; the table should not say otherwise."""
+    for group in CITY_ALIAS_GROUPS:
+        keys = [normalize_city(form) for form in group]
+        assert len(keys) == len(set(keys)), group
+
+
+def test_every_form_resolves_to_its_whole_group():
+    for group in CITY_ALIAS_GROUPS:
+        for form in group:
+            assert set(city_spellings(form)) == set(group)
