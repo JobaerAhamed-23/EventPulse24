@@ -82,6 +82,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Fetch and parse, report what would be registered, write nothing.",
         )
+        # **A real address is passed in, never defaulted to in the file.** The default here
+        # is a `.example.test` fixture on purpose: a personal address committed to the repo
+        # would be published with it, and this command is pushed to a public remote.
+        parser.add_argument(
+            "--email", default=LIVE_EMAIL, help="The account to read the surface through."
+        )
+        parser.add_argument(
+            "--password",
+            default=LIVE_PASSWORD,
+            help="Only ever used when the account is created; an existing one keeps its own.",
+        )
 
     # ── the source ──────────────────────────────────────────────────────────────────
     def _source(self, *, url: str, city: str, dry_run: bool):
@@ -156,7 +167,7 @@ class Command(BaseCommand):
         return made, found
 
     # ── the account the surface is read through ─────────────────────────────────────
-    def _account(self, *, city: str, tz: str) -> None:
+    def _account(self, *, city: str, tz: str, email: str, password: str) -> None:
         """An onboarded account whose home city is the one just ingested.
 
         **The city is set through `set_digest_preference`, not written directly**, and
@@ -169,7 +180,7 @@ class Command(BaseCommand):
         until `completed_at` is set, and that row belongs to the step machine.
         """
         now = datetime.now(UTC)
-        account = ensure_account(email=LIVE_EMAIL, password=LIVE_PASSWORD)
+        account = ensure_account(email=email, password=password)
         actor = Actor.user(account.user_id)
 
         set_interests(user_id=account.user_id, chip_keys=LIVE_CHIPS, actor=actor, now=now)
@@ -188,7 +199,19 @@ class Command(BaseCommand):
                 break
 
         saved = getattr(preference, "city", city)
-        self.stdout.write(f"account: {LIVE_EMAIL} / {LIVE_PASSWORD} — city {saved!r}")
+        self.stdout.write(
+            f"account: {email} ({'new' if account.created else 'already existed'}) — city {saved!r}"
+        )
+        if not account.created:
+            # **The trap this line exists to close.** `ensure_account` sets a password only
+            # on creation, deliberately — a re-run must not reset a password somebody
+            # changed. So `--password` was ignored here, and an operator who assumes
+            # otherwise gets a 401 and no idea why. It also means this run just rewrote a
+            # real account's city, interests and delivery time.
+            self.stderr.write(
+                "  note: existing account — its own password still applies, and this run "
+                "overwrote its city, interests and digest delivery time."
+            )
         if saved != city:
             self.stderr.write(
                 f"  note: asked for {city!r} but the catalog's coverage gave {saved!r}."
@@ -218,4 +241,9 @@ class Command(BaseCommand):
         error = f" [{report.error_code}]" if report.error_code else ""
         self.stdout.write(f"ingest: {report.outcome}{error}: {counts}")
 
-        self._account(city=options["city"], tz=options["tz"])
+        self._account(
+            city=options["city"],
+            tz=options["tz"],
+            email=options["email"],
+            password=options["password"],
+        )
