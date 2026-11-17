@@ -1455,6 +1455,65 @@ intents:
         run_id: run-eventpulse24-032
         completed_at: 2026-11-13T13:17:34.101Z
     completed_at: 2026-11-13T13:17:30.478Z
+  - id: traceability-gap-closure
+    title: Traceability Gap Closure — the Cost Dashboard, the Ping Promise, and the
+      Timeline's Missing Detail
+    status: in_progress
+    created: 2026-11-17
+    source: doc-trace 2026-11-17 (first full Section C pass)
+    work_items:
+      - id: ai-cost-dashboard
+        status: completed
+        complexity: low
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-035
+        completed_at: 2026-11-17T15:00:40.184Z
+      - id: pulse-ping-control
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-036
+        completed_at: 2026-11-17T15:19:19.989Z
+      - id: timeline-block-detail-contract
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-037
+        completed_at: 2026-11-17T15:37:59.704Z
+      - id: timeline-hover-detail
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - timeline-block-detail-contract
+        run_id: run-eventpulse24-038
+        completed_at: 2026-11-17T15:40:24.157Z
+      - id: amendment-tag-propagation
+        status: pending
+        complexity: low
+        mode: autopilot
+        depends_on: []
+      - id: time-bomb-tests
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        added: 2026-11-17
+        source: found while running gates for ai-cost-dashboard and pulse-ping-control
+        run_id: run-eventpulse24-039
+        completed_at: 2026-11-17T15:56:13.029Z
+      - id: timeline-why-this-tag
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - timeline-hover-detail
+        added: 2026-11-17
+        source: split from timeline-hover-detail; AD-10 bars personalization from the
+          Event Fit
 runs:
   active: []
   completed:
@@ -2099,3 +2158,43 @@ runs:
           mode: validate
       started: 2026-11-13T17:03:56.431Z
       completed: 2026-11-14T07:34:11.000Z
+    - id: run-eventpulse24-035
+      scope: single
+      work_items:
+        - id: ai-cost-dashboard
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T14:50:33.081Z
+      completed: 2026-11-17T15:00:40.184Z
+    - id: run-eventpulse24-036
+      scope: single
+      work_items:
+        - id: pulse-ping-control
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:02:51.042Z
+      completed: 2026-11-17T15:19:19.989Z
+    - id: run-eventpulse24-037
+      scope: single
+      work_items:
+        - id: timeline-block-detail-contract
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:23:48.254Z
+      completed: 2026-11-17T15:37:59.704Z
+    - id: run-eventpulse24-038
+      scope: single
+      work_items:
+        - id: timeline-hover-detail
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:38:03.837Z
+      completed: 2026-11-17T15:40:24.157Z
+    - id: run-eventpulse24-039
+      scope: single
+      work_items:
+        - id: time-bomb-tests
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:45:45.292Z
+      completed: 2026-11-17T15:56:13.029Z

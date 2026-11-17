@@ -39,6 +39,7 @@ from apps.delivery.services.unsubscribe_tokens import (
 from apps.delivery.services.unsubscribes import (
     UnsubscribeResult,
     pulse_ping_unsubscribed,
+    resubscribe_pulse_ping,
     unsubscribe_event_reminders,
     unsubscribe_pulse_ping,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "pulse_ping_unsubscribed",
     "read_click_token",
     "read_unsubscribe_token",
+    "resubscribe_pulse_ping",
     "release_claim",
     "render_digest",
     "render_transactional",

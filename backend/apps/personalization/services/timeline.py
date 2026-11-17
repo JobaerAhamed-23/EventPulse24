@@ -136,6 +136,20 @@ class TimelineBlock:
     this way (`public-event-page.tsx`: "the vocabulary is the backend's"), and a boolean
     `cancelled` here would need a second field the moment `postponed` had to be rendered —
     which FR-54 already names.
+
+    `place` is where the event is, as **one already-chosen string** — the catalog event's
+    venue name, or its city when the venue has no name, or a personal event's own
+    location. It is None when there is nothing to state: a personal event without a
+    location, or a save whose catalog event has disappeared, which has an *unknown* place
+    rather than no place.
+
+    **The precedence is resolved here rather than on the screen** (EXPERIENCE.md §13: the
+    desktop block adds its location on hover and focus). `pulse-card.tsx` picks between
+    `venue_name`, `location` and `venue_city` in the browser for the digest; doing the
+    same thing a second time on another surface is how two surfaces start disagreeing
+    about where one event is. The block stays a projection the client renders without
+    deciding (AD-10), and there is no extra query to pay for it — `get_public_events`
+    already `select_related`s the venue.
     """
 
     kind: str
@@ -146,6 +160,21 @@ class TimelineBlock:
     start_time_tz: str
     conflict: bool
     state: str | None = None
+    place: str | None = None
+
+
+def _place_of(public) -> str | None:
+    """Where a public event is, as one string — or None when the catalog has lost it.
+
+    **The venue's name first, the city second.** A venue name ("Barbican") tells a reader
+    where they are going; a city ("London") tells them less but is better than nothing,
+    and it is what the Pulse Card falls back to as well. An event the catalog no longer
+    holds has an **unknown** place, which is not the same claim as "no place" — so it is
+    None, the same degradation `name` and `state` already make.
+    """
+    if public is None:
+        return None
+    return public.venue_name or public.venue_city or None
 
 
 @dataclass(frozen=True)
@@ -443,6 +472,10 @@ def read_timeline_week(
                     start_time_tz=block.start_time_tz,
                     conflict=lights,
                     state=block.state,
+                    # Carried through per covered day. This rebuild is field-by-field, so
+                    # a field added above and not added here is silently dropped on every
+                    # block — which is invisible until a screen renders nothing.
+                    place=block.place,
                 )
             )
 
@@ -456,6 +489,8 @@ def read_timeline_week(
                 end_time_utc=event.end_utc,
                 start_time_tz=event.start_time_tz,
                 conflict=False,
+                # The user's own words for where it is, or None when they gave none.
+                place=event.location,
             ),
             conflict_window=conflicted_personal.get(event.id),
         )
@@ -480,6 +515,9 @@ def read_timeline_week(
                 # event: a save whose event has disappeared has an *unknown* state, which
                 # is not the same claim as "scheduled".
                 state=public.status if public else None,
+                # The venue's name, the city as the fallback, and None when the catalog
+                # no longer holds the event — an unknown place, not an absent one.
+                place=_place_of(public),
             ),
             conflict_window=conflicted_saved.get(saved.id),
         )

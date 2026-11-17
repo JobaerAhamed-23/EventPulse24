@@ -292,20 +292,24 @@ describe("the route", () => {
 
     // **One control, one status region** (`detail-mute-control.tsx:215-228`). The rule
     // used to read "one page, one region" because the page held one control. Merged, the
-    // digest holds its two — the delivery time and the opt-out — so the count is two,
-    // and the rule is restated at the level it was always about: **a region belongs to a
-    // control, and the route adds none of its own.**
+    // digest held two — the delivery time and the opt-out — and FR-10's Pulse Ping
+    // switch makes three. **The count tracks the controls; the rule does not change:** a
+    // region belongs to a control, and the route adds none of its own.
     const section = document.getElementById("digest");
     expect(section).not.toBeNull();
 
-    for (const control of ["[data-digest-delivery-time]", "[data-digest-personal-events]"]) {
+    for (const control of [
+      "[data-pulse-ping]",
+      "[data-digest-delivery-time]",
+      "[data-digest-personal-events]",
+    ]) {
       const element = (section as HTMLElement).querySelector(control);
       expect(element, control).not.toBeNull();
       expect(within(element as HTMLElement).getAllByRole("status"), control).toHaveLength(1);
     }
 
-    // Two controls, two regions: nothing in the section owns a region but a control.
-    expect(within(section as HTMLElement).getAllByRole("status")).toHaveLength(2);
+    // Three controls, three regions: nothing in the section owns a region but a control.
+    expect(within(section as HTMLElement).getAllByRole("status")).toHaveLength(3);
   });
 
   it("shows the unavailable state when the read fails", async () => {

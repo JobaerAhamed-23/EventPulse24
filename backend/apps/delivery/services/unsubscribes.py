@@ -242,6 +242,67 @@ def unsubscribe_pulse_ping(
         )
 
 
+def resubscribe_pulse_ping(
+    *,
+    user_id: UUID,
+    actor: Actor,
+    now: datetime,
+) -> UnsubscribeResult:
+    """Turn the Pulse Ping back on.
+
+    **The other direction, which until now did not exist.** The only caller of
+    `unsubscribe_pulse_ping` was the RFC 8058 one-click link, and a one-click unsubscribe
+    is one-way by definition — so nothing in the product could ever clear the flag. That
+    is why onboarding's *"You can change this anytime"* was not true: there was no code
+    path that changed it back. A settings switch needs both directions, so here is the
+    second.
+
+    **Nothing is resurrected.** Turning the Ping off cancelled that scope's pending digest
+    sends, and turning it back on does not un-cancel them: a cancelled send was for a day
+    that has since passed, and delivering it now would be a digest about yesterday. The
+    next tick mints a fresh one. So this command returns `cancelled=0` always — it
+    cancels nothing, by design, rather than as an oversight.
+
+    **Reminder plans are not touched, in either direction.** The Ping's scope is the daily
+    digest and nothing else — the same split `unsubscribe_pulse_ping` keeps, for the same
+    reason (FR-11).
+
+    Resubscribing twice is a no-op, not an error.
+    """
+    with transaction.atomic(using=PERSONAL):
+        # Same lazy creation and advisory lock as every other write of this row.
+        get_preference(user_id=user_id)
+
+        row = (
+            NotificationPreference.objects.using(PERSONAL)
+            .select_for_update()
+            .filter(user_id=user_id)
+            .first()
+        )
+        if row is None:  # pragma: no cover - `get_preference` just created it
+            return UnsubscribeResult(scope="pulse_ping", target_id=None, cancelled=0, changed=False)
+
+        if not row.pulse_ping_unsubscribed:
+            return UnsubscribeResult(scope="pulse_ping", target_id=None, cancelled=0, changed=False)
+
+        row.pulse_ping_unsubscribed = False
+        row.save(
+            using=PERSONAL,
+            # `updated_at` is auto_now and is only written when update_fields names it.
+            update_fields=["pulse_ping_unsubscribed", "updated_at"],
+        )
+
+        write_audit(
+            actor=actor,
+            action="resubscribe.pulse_ping",
+            target_type="user",
+            target_id=user_id,
+            details={"at": now.isoformat()},
+        )
+
+        return UnsubscribeResult(scope="pulse_ping", target_id=None, cancelled=0, changed=True)
+
+
 def pulse_ping_unsubscribed(*, user_id: UUID) -> bool:
     """Whether the user has turned the Pulse Ping off.
 
@@ -256,6 +317,7 @@ def pulse_ping_unsubscribed(*, user_id: UUID) -> bool:
 __all__ = [
     "UnsubscribeResult",
     "pulse_ping_unsubscribed",
+    "resubscribe_pulse_ping",
     "unsubscribe_event_reminders",
     "unsubscribe_pulse_ping",
 ]

@@ -2841,6 +2841,18 @@
             ],
             "description": "When and where the daily digest is due. **Omit this field to leave it alone.** The delivery time is a local wall clock and the timezone is the IANA zone it is a clock in; both are required together."
           },
+          "pulse_ping": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the daily **Pulse Ping** should be on. **Omit this field to leave it alone**; send `true` to turn the Ping on and `false` to turn it off.\n\n**Turning it off cancels the digest sends already pending for you**, so the mail you just turned off is not delivered afterwards — and it leaves every reminder plan alone. The two scopes never touch: this is the daily digest, not your event reminders.\n\n**Turning it back on does not resurrect what was cancelled.** Those sends were for days that have passed; the next one is minted fresh.",
+            "title": "Pulse Ping"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -2891,6 +2903,10 @@
             "title": "Effective Quiet Hours",
             "type": "array"
           },
+          "pulse_ping": {
+            "title": "Pulse Ping",
+            "type": "boolean"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -2914,7 +2930,8 @@
           "quiet_hours_overrides",
           "effective_quiet_hours",
           "default_reminder_slots",
-          "digest"
+          "digest",
+          "pulse_ping"
         ],
         "title": "NotificationSettingsOut",
         "type": "object"
@@ -4387,7 +4404,7 @@
         "type": "object"
       },
       "TimelineBlockOut": {
-        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.\n\n**`state` is the catalog's lifecycle word**, carried through unchanged — the same\n`str` the event detail and the public page already carry, because the vocabulary is\nthe backend's and a second one here would be a translation layer with nothing to\ntranslate. It is null for a personal block, which has no lifecycle, and for a public\nblock whose catalog event has disappeared, where the state is unknown rather than\nnormal — the same distinction `name` already draws.\n\nA `cancelled` block is still returned. FR-55 removes a cancelled event from the\n*digest*; the Timeline is the user's calendar, and a cancelled event is still on it\nuntil they take it off.",
+        "description": "One block on one day of the Timeline.\n\n**`id` is the id the screen acts on.** For a personal block it is the personal event's\nid; for a public block it is the **catalog** event's id, so the screen routes to\n`/events/:id` without knowing which table it came from.\n\n**`name` is nullable, and that is a state rather than a hole.** A save whose catalog\nevent has disappeared has no title to show — the save is still the user's own record\nand its snapshot still has a time, so the block is still drawn, and the client says\n\"event no longer available\" rather than showing a blank.\n\n**`start_time_tz` is the event's own zone**, not the zone the week is cut in. A public\nevent in Berlin, shown to a user in Los Angeles, is on a different Los Angeles day than\nits own clock suggests — so the block carries its own zone, and the response carries\nthe user's zone separately.\n\n**`conflict` is already decided.** The server projects the pairs onto the blocks, so\nthe screen does not have to know what a conflict pair is, and the two surfaces — the\nPulse Card and the Timeline — cannot disagree about which block is flagged.\n\n**`state` is the catalog's lifecycle word**, carried through unchanged — the same\n`str` the event detail and the public page already carry, because the vocabulary is\nthe backend's and a second one here would be a translation layer with nothing to\ntranslate. It is null for a personal block, which has no lifecycle, and for a public\nblock whose catalog event has disappeared, where the state is unknown rather than\nnormal — the same distinction `name` already draws.\n\nA `cancelled` block is still returned. FR-55 removes a cancelled event from the\n*digest*; the Timeline is the user's calendar, and a cancelled event is still on it\nuntil they take it off.\n\n**`place` is one already-chosen string**, not the three fields it was chosen from:\nthe venue's name, or the city when the venue has none, or a personal event's own\nlocation. It is null when there is nothing to state. The screen reveals it on hover\nand focus (EXPERIENCE.md §13) and never picks between candidates — the precedence is\nthe server's, so this surface and the Pulse Card cannot disagree about where one\nevent is.",
         "properties": {
           "conflict": {
             "default": false,
@@ -4429,6 +4446,17 @@
               }
             ],
             "title": "Name"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
           },
           "start_time_tz": {
             "title": "Start Time Tz",
@@ -7936,7 +7964,7 @@
         ]
       },
       "put": {
-        "description": "Saves the settings the request mentions, and **re-times the pending reminders and digests in the same transaction** — a setting that does not change what is already scheduled is a setting that does nothing.\n\n**This is a patch.** Every field is optional, and an **omitted field is left alone**: changing your quiet hours does not clear your default plan, and moving your delivery time does not reset your window. The one field where `null` means something is `quiet_hours` — **omit it to leave the window alone, send `null` to turn quiet hours off.**\n\n**The quiet-hours window is two local wall clocks.** A window that covers the whole day (the same clock twice) is refused, because that is the absence of a window rather than a window, and \"off\" already has one spelling.\n\n**The default Reminder Plan is 0 to 4 slots**, validated by exactly the same rule as a per-event plan — the same named reminders, the same custom-reminder grammar, the same errors. An empty list is valid and means \"new reminders start with none\". **Changing it does not change plans that already exist**: it applies to events saved from now on.\n\n**The delivery time and the zone are one setting.** A wall clock without its zone is not a schedule, so they are sent together and are applied together.",
+        "description": "Saves the settings the request mentions, and **re-times the pending reminders and digests in the same transaction** — a setting that does not change what is already scheduled is a setting that does nothing.\n\n**This is a patch.** Every field is optional, and an **omitted field is left alone**: changing your quiet hours does not clear your default plan, and moving your delivery time does not reset your window. The one field where `null` means something is `quiet_hours` — **omit it to leave the window alone, send `null` to turn quiet hours off.**\n\n**The quiet-hours window is two local wall clocks.** A window that covers the whole day (the same clock twice) is refused, because that is the absence of a window rather than a window, and \"off\" already has one spelling.\n\n**The default Reminder Plan is 0 to 4 slots**, validated by exactly the same rule as a per-event plan — the same named reminders, the same custom-reminder grammar, the same errors. An empty list is valid and means \"new reminders start with none\". **Changing it does not change plans that already exist**: it applies to events saved from now on.\n\n**The delivery time and the zone are one setting.** A wall clock without its zone is not a schedule, so they are sent together and are applied together.\n\n**`pulse_ping` turns the daily digest mail on and off.** Turning it off cancels the digest sends already pending for you and leaves every reminder plan alone — the two scopes never touch. Turning it back on mints fresh sends rather than resurrecting cancelled ones.",
         "operationId": "apps_delivery_preferences_api_put_notification_settings",
         "parameters": [],
         "requestBody": {
