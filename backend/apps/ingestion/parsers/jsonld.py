@@ -2,7 +2,9 @@
 
 The HTML is scanned with the stdlib parser only to collect those script blocks: nothing is
 rendered or executed. Every Event node (any subtype, a `@type` list, `@graph`, arrays) becomes a
-candidate; an `EventSeries` emits its `subEvent`s with a shared `series_id`. One unreadable
+candidate; an `EventSeries` emits its `subEvent`s with a shared `series_id`. An `ItemList`
+is followed through `itemListElement`/`item`, which is how a directory page lists its
+events. One unreadable
 block is skipped and the rest still parse.
 """
 
@@ -62,6 +64,20 @@ STATUS = {
 }
 MAX_DEPTH = 20  # nesting guard for hostile documents
 
+# The two list-container properties the walk *does* follow (schema.org `ItemList`).
+#
+# **A directory page hides its events behind them.** An events listing is published as one
+# `ItemList` whose `itemListElement` is a list of `ListItem`s, each with the real Event under
+# `item`. Both are properties, and the walk below deliberately does not follow properties in
+# general — so without these two names an entire search page parses to nothing, which is a
+# silent miss rather than an error.
+#
+# **They are named rather than opened up.** Following every property would descend into
+# `location`, `performer`, `organizer` and `offers`, and would emit an `EventSeries`'s
+# `subEvent`s a second time — once as nested nodes and once through the series branch, which
+# gives them a `series_id` and is the only emission that should happen.
+LIST_CONTAINERS = ("itemListElement", "item")
+
 
 class _ScriptCollector(HTMLParser):
     def __init__(self) -> None:
@@ -115,6 +131,9 @@ def _nodes(value, depth=0):
         yield value
         if "@graph" in value:
             yield from _nodes(value["@graph"], depth + 1)
+        for name in LIST_CONTAINERS:
+            if name in value:
+                yield from _nodes(value[name], depth + 1)
 
 
 def _enum_name(value) -> str:
