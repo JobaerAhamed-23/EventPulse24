@@ -12,7 +12,7 @@ API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 .PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
         web web-install lint-web test-web test-e2e openapi client dev coverage-backend seed-browse seed-browse-for-test \
-        grant-pro revoke-pro
+        grant-pro revoke-pro seed-dhaka
 
 UV_BACKEND := uv run --directory backend
 
@@ -120,6 +120,14 @@ test-web: ## Run the frontend tests (Vitest)
 # `no-city` one (the city's emptiness, which no browser flow can produce).
 seed-browse: ## Seed the Browse catalog (city, week of events, four accounts)
 	$(UV_BACKEND) python manage.py seed_browse_catalog
+
+# The live counterpart to `seed-browse`. **It makes real network calls**, which is the
+# whole difference: `seed-browse` reads a committed file and invents a city, this one
+# registers a real source and fetches it, so Browse can be looked at with events that
+# actually exist. It is additive — the Fixtureville fixture the e2e specs assert against
+# is left exactly where it is.
+seed-dhaka: ## Register and ingest a real Dhaka source, and an account to read it through
+	$(UV_BACKEND) python manage.py seed_dhaka_live
 
 # The end-to-end run starts from an **empty Pulse**. The seed always puts the save
 # *allowance* back, but it leaves the *saved rows* alone — deliberately, because a seed
