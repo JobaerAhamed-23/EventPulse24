@@ -40,13 +40,15 @@ that has already moved — shapes how the other journeys are staged, so it is wr
 first and the rest follow its conventions.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from adapters.email.memory import InMemoryEmailAdapter
 from apps.delivery.models import ReminderPlan, ScheduledSend, StateChangeNotice
@@ -84,19 +86,43 @@ ZONE = "America/Los_Angeles"
 #: services on this path all take `now` as an argument; the two that do not are read
 #: through HTTP, and the HTTP journeys use an event far enough ahead that the wall
 #: clock cannot overtake it.
-NOW = datetime(2026, 11, 10, 16, 0, tzinfo=UTC)
-
-#: The event's start: 2026-11-12 19:00 in Los Angeles — 2026-11-13 03:00 UTC.
 #:
-#: **Two days out, on purpose.** The `1hr` slot is due at 18:00 local on the 12th, so
-#: a reminder minted at `NOW` is not yet due and the sweep has nothing to claim until
+#: **Frozen per run, and anchored to the real calendar — not to a literal.** It used to
+#: read `datetime(2026, 11, 10, 16, 0)`, and on 2026-11-17 four tests in this file began
+#: failing with `KeyError: 'personal'`: the event two days after that literal was in the
+#: past, the catalog's `now`-bounded read dropped it, `GET /api/events/{id}` answered 404
+#: and the journey read `"personal"` off an error body. Nothing in the product had
+#: broken. The sentence above was always the intent; a literal could only honour it for
+#: a few days.
+#:
+#: **08:00 local, deliberately.** It is outside the default 22:00–08:00 Quiet Hours
+#: window, so a reminder minted at `NOW` is not deferred and the journeys measure what
+#: they mean to. The anchor steps back a day when the suite runs before 08:00, so `NOW`
+#: is never ahead of the real clock — a notice written "later than now" could be
+#: filtered out of a `now`-bounded read.
+_NOW_LOCAL = timezone.now().astimezone(ZoneInfo(ZONE))
+_ANCHOR_DATE = _NOW_LOCAL.date() if _NOW_LOCAL.hour >= 8 else _NOW_LOCAL.date() - timedelta(days=1)
+NOW = datetime.combine(_ANCHOR_DATE, time(8, 0), tzinfo=ZoneInfo(ZONE)).astimezone(UTC)
+
+#: The event's start: 19:00 in Los Angeles, two days after the anchor.
+#:
+#: **Two days out, on purpose.** The `1hr` slot is due at 18:00 local that day, so a
+#: reminder minted at `NOW` is not yet due and the sweep has nothing to claim until
 #: `SWEEP_AT` — which is what lets the hold-and-release journey stage a *claim* before
 #: the catalog moves. A reminder that were not yet due would never be claimed and the
 #: race would not exist.
 #:
 #: **And two days past the wall clock**, so the Detail endpoint's `now`-bounded read
-#: still finds the event however long after the suite was written it is run.
-START_UTC = datetime(2026, 11, 13, 3, 0, tzinfo=UTC)
+#: still finds the event however long after the suite was written it is run. That
+#: sentence is now true: the anchor moves with the calendar, so "two days out" stays two
+#: days out instead of receding into the past.
+#:
+#: **Built as a local wall clock and converted**, not as UTC arithmetic: 19:00 exists on
+#: every day of the year, while a UTC offset computed once would drift by an hour across
+#: a DST boundary.
+START_UTC = datetime.combine(
+    _ANCHOR_DATE + timedelta(days=2), time(19, 0), tzinfo=ZoneInfo(ZONE)
+).astimezone(UTC)
 END_UTC = START_UTC + timedelta(hours=2)
 
 #: The event's start after a postponement: two days later, same local time.

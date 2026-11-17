@@ -25,11 +25,13 @@ import ast
 import inspect
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import connections
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from apps.delivery.models import NotificationPreference, ScheduledSend
 from apps.delivery.services.notification_preferences import get_preference
@@ -49,6 +51,28 @@ User = get_user_model()
 NOW = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 
 ZONE = "America/Los_Angeles"
+
+
+def future_local(*, days_ahead: int, hour: int, minute: int = 0, zone: str = ZONE) -> datetime:
+    """A local wall clock on a day the real clock has not reached yet.
+
+    **Why these fixtures cannot use a literal date.** The two tests below mint their
+    reminder through the **real API**, which schedules against `timezone.now()` and not
+    against this module's `NOW`. They used to build an event on a fixed date; once the
+    wall clock passed it the event was in the past, no reminder was minted at all, and
+    both failed on `ScheduledSend.DoesNotExist` — a time bomb, not a regression.
+
+    **A local wall clock, converted — never UTC arithmetic.** The deferral these tests
+    prove is about *local* times: a slot at 22:30 falls inside the default 22:00–08:00
+    window and is pushed to 08:00 the next morning. Computing that in UTC would drift by
+    an hour across a DST boundary; 22:30, 23:30 and 08:00 exist on every day of the
+    year, because a transition happens at 02:00.
+    """
+    today = timezone.now().astimezone(ZoneInfo(zone)).date()
+    return datetime.combine(
+        today + timedelta(days=days_ahead), time(hour, minute), tzinfo=ZoneInfo(zone)
+    )
+
 
 SETTINGS_URL = "/api/settings/notifications"
 
@@ -260,23 +284,27 @@ def test_the_window_write_rewrites_the_pending_rows_due_at():
     """
     user = make_user()
     with_zone(user)
-    event = make_personal_event(
-        user,
-        start_utc=datetime(2026, 11, 14, 7, 30, tzinfo=UTC),
-    )
+    # 23:30 local, three days out — far enough ahead that the real clock, which the API
+    # schedules against, has not passed it.
+    start_local = future_local(days_ahead=3, hour=23, minute=30)
+    #: The `1hr` slot: 22:30 local, inside the default 22:00-08:00 window.
+    slot_local = start_local - timedelta(hours=1)
+    #: Where the window pushes it: 08:00 the next morning, local.
+    deferred_local = future_local(days_ahead=4, hour=8)
+    event = make_personal_event(user, start_utc=start_local.astimezone(UTC))
     client = signed_in(user)
     save_plan(client, event, ["1hr"])
 
     row = pending_of(user).get()
     before = row.due_at
     # The slot is inside the default window, so the row was deferred to 08:00 local.
-    assert before == datetime(2026, 11, 14, 16, 0, tzinfo=UTC)
+    assert before == deferred_local.astimezone(UTC)
 
     put(client, quiet_hours={"start": "20:00", "end": "22:00"})
 
     row.refresh_from_db()
-    # 22:30 in Los Angeles on the 13th — the slot's own hour, no longer deferred.
-    assert row.due_at == datetime(2026, 11, 14, 6, 30, tzinfo=UTC)
+    # 22:30 local the night before — the slot's own hour, no longer deferred.
+    assert row.due_at == slot_local.astimezone(UTC)
     assert row.due_at != before
 
 
@@ -294,30 +322,32 @@ def test_a_deferred_row_keeps_the_instant_it_was_for():
     """
     user = make_user()
     with_zone(user)
-    event = make_personal_event(
-        user,
-        start_utc=datetime(2026, 11, 14, 7, 30, tzinfo=UTC),
-    )
+    # The same fixture as the test above: 23:30 local, three days out, so its `1hr` slot
+    # at 22:30 falls inside the default 22:00-08:00 window.
+    start_local = future_local(days_ahead=3, hour=23, minute=30)
+    slot_at = (start_local - timedelta(hours=1)).astimezone(UTC)
+    deferred_to = future_local(days_ahead=4, hour=8).astimezone(UTC)
+    event = make_personal_event(user, start_utc=start_local.astimezone(UTC))
     client = signed_in(user)
     save_plan(client, event, ["1hr"])
 
     row = pending_of(user).get()
-    # 22:30 in Los Angeles on the 13th — the slot itself, before any shift.
-    assert row.slot_at == datetime(2026, 11, 14, 6, 30, tzinfo=UTC)
+    # 22:30 local the night before — the slot itself, before any shift.
+    assert row.slot_at == slot_at
     # And the deferral: pushed to 08:00 because the default window covers 22:30.
-    assert row.due_at == datetime(2026, 11, 14, 16, 0, tzinfo=UTC)
+    assert row.due_at == deferred_to
 
     # Quiet Hours off — the row goes back to the hour it was for.
     put(client, quiet_hours=None)
     row.refresh_from_db()
-    assert row.due_at == row.slot_at == datetime(2026, 11, 14, 6, 30, tzinfo=UTC)
+    assert row.due_at == row.slot_at == slot_at
 
     # And on again — pushed back out, to the *same* hour it was pushed to the first time.
     put(client, quiet_hours={"start": "22:00", "end": "08:00"})
     row.refresh_from_db()
-    assert row.due_at == datetime(2026, 11, 14, 16, 0, tzinfo=UTC)
+    assert row.due_at == deferred_to
     # The slot itself never moved — only the send time did.
-    assert row.slot_at == datetime(2026, 11, 14, 6, 30, tzinfo=UTC)
+    assert row.slot_at == slot_at
 
 
 def test_the_rewrite_does_not_read_the_calendar():

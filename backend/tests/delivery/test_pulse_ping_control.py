@@ -10,10 +10,11 @@ file holds the half that makes that sentence true.
 settings screen: turning the daily digest off must leave every event reminder alone.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from apps.delivery.models import NotificationPreference, ScheduledSend
 from apps.delivery.services.notification_preferences import get_preference
@@ -32,7 +33,14 @@ pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 User = get_user_model()
 
-NOW = datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
+#: The test's clock, **taken from the real one**.
+#:
+#: A literal here would be a time bomb of exactly the kind `time-bomb-tests` was opened
+#: for: the pending digest row below is dated relative to `NOW`, and once the wall clock
+#: passed a fixed `NOW` that row would be in the past while the HTTP writes scheduled
+#: against the real clock. The two would disagree, and the failure would look like a
+#: regression in code nobody had touched.
+NOW = timezone.now().replace(microsecond=0)
 SETTINGS_URL = "/api/settings/notifications"
 
 

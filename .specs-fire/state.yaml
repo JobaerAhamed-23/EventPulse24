@@ -1513,7 +1513,19 @@ intents:
         source: split from timeline-hover-detail; AD-10 bars personalization from the
           Event Fit
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-039
+      scope: single
+      work_items:
+        - id: time-bomb-tests
+          intent: traceability-gap-closure
+          mode: confirm
+          status: in_progress
+          current_phase: execute
+          checkpoint_state: approved
+          current_checkpoint: plan
+      current_item: time-bomb-tests
+      started: 2026-11-17T15:45:45.292Z
   completed:
     - id: run-eventpulse24-001
       scope: single
