@@ -79,6 +79,11 @@ class NotificationSettings:
     #: effect, which is `effective_quiet_hours`' business.
     quiet_hours_overrides: dict[int, QuietHours]
     effective_quiet_hours: WeeklyQuietHours
+    #: Whether the user has turned the **Pulse Ping** off (FR-10). Stored as the opt-out
+    #: it is — `True` means unsubscribed — because that is what the column means and a
+    #: dataclass that silently flipped the sense would make every reader check which way
+    #: round it was. The inversion to "is the ping on" happens once, at the wire.
+    pulse_ping_unsubscribed: bool
     default_reminder_slots: tuple[str, ...]
 
 
@@ -143,6 +148,7 @@ def _to_settings(row: NotificationPreference) -> NotificationSettings:
         quiet_hours_overrides=overrides,
         effective_quiet_hours=_effective_week(row.user_id, window, overrides),
         default_reminder_slots=tuple(row.default_reminder_slots),
+        pulse_ping_unsubscribed=row.pulse_ping_unsubscribed,
     )
 
 

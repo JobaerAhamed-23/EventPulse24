@@ -59,6 +59,10 @@ from apps.delivery.services.notification_preferences import (
     set_quiet_hours,
 )
 from apps.delivery.services.scheduled_sends import reschedule_pending_for_user
+from apps.delivery.services.unsubscribes import (
+    resubscribe_pulse_ping,
+    unsubscribe_pulse_ping,
+)
 from domain.quiet_hours import QuietHours
 from shared.actor import Actor
 from shared.db import PERSONAL
@@ -88,6 +92,12 @@ class SettingsPatch:
     default_reminder_slots: tuple[str, ...] | None = None
     delivery_time: time | None = None
     timezone: str | None = None
+    #: Whether the daily Pulse Ping should be **on** (FR-10), or `None` to leave it alone.
+    #:
+    #: **`None` is the only "leave it alone" here — `null` means nothing on the wire.** A
+    #: ping is on or off; unlike `quiet_hours`, there is no third state for `null` to
+    #: carry, so this field is optional purely to express *presence*.
+    pulse_ping: bool | None = None
 
     @property
     def touches_quiet_hours(self) -> bool:
@@ -172,6 +182,20 @@ def apply_settings_patch(
                 actor=actor,
                 now=now,
             )
+
+        if patch.pulse_ping is not None:
+            # **The commands, not the column.** The Settings switch and the email's
+            # one-click link do the same three things — flip the flag, cancel that
+            # scope's pending digest sends, write the audit — because they call the same
+            # command. A settings path that wrote `pulse_ping_unsubscribed` directly
+            # would be a second writer of one column, and the two would drift.
+            #
+            # **This is the one place the polarity is inverted.** Everything above speaks
+            # "is the ping on"; the column below stores "has the user unsubscribed".
+            if patch.pulse_ping:
+                resubscribe_pulse_ping(user_id=user_id, actor=actor, now=now)
+            else:
+                unsubscribe_pulse_ping(user_id=user_id, actor=actor, now=now)
 
         if patch.touches_digest_schedule:
             _set_digest_schedule(

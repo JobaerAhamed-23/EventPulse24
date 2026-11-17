@@ -4,6 +4,7 @@ import { DefaultReminderSlots } from "@/components/settings/default-reminder-slo
 import { DigestDeliveryTime } from "@/components/settings/digest-delivery-time";
 import { DigestPersonalEvents } from "@/components/settings/digest-personal-events";
 import { DigestTimezone } from "@/components/settings/digest-timezone";
+import { PulsePingSwitch } from "@/components/settings/pulse-ping-switch";
 import { QuietHoursWindow } from "@/components/settings/quiet-hours-window";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
@@ -263,7 +264,16 @@ export default async function SettingsGeneralPage() {
         <p className="mt-2 text-ink-secondary [font:var(--type-scale-body-md)]">
           When your daily brief arrives, and what&apos;s in it.
         </p>
+        {/*
+          **Whether it arrives comes before when it arrives.** This switch turns the
+          whole daily mail off (FR-10); the two rows under it configure a mail that is
+          on. A reader who wants to stop the Ping should not have to scroll past the
+          settings for one they are about to switch off.
+        */}
         <div className="mt-6">
+          <PulsePingSwitch initialPulsePing={settings.pulse_ping} />
+        </div>
+        <div className="mt-8">
           <DigestDeliveryTime
             initialDeliveryTime={settings.digest.delivery_time}
             initialTimezone={settings.digest.timezone}

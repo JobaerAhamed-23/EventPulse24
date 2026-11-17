@@ -2841,6 +2841,18 @@
             ],
             "description": "When and where the daily digest is due. **Omit this field to leave it alone.** The delivery time is a local wall clock and the timezone is the IANA zone it is a clock in; both are required together."
           },
+          "pulse_ping": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the daily **Pulse Ping** should be on. **Omit this field to leave it alone**; send `true` to turn the Ping on and `false` to turn it off.\n\n**Turning it off cancels the digest sends already pending for you**, so the mail you just turned off is not delivered afterwards — and it leaves every reminder plan alone. The two scopes never touch: this is the daily digest, not your event reminders.\n\n**Turning it back on does not resurrect what was cancelled.** Those sends were for days that have passed; the next one is minted fresh.",
+            "title": "Pulse Ping"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -2891,6 +2903,10 @@
             "title": "Effective Quiet Hours",
             "type": "array"
           },
+          "pulse_ping": {
+            "title": "Pulse Ping",
+            "type": "boolean"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -2914,7 +2930,8 @@
           "quiet_hours_overrides",
           "effective_quiet_hours",
           "default_reminder_slots",
-          "digest"
+          "digest",
+          "pulse_ping"
         ],
         "title": "NotificationSettingsOut",
         "type": "object"
@@ -7936,7 +7953,7 @@
         ]
       },
       "put": {
-        "description": "Saves the settings the request mentions, and **re-times the pending reminders and digests in the same transaction** — a setting that does not change what is already scheduled is a setting that does nothing.\n\n**This is a patch.** Every field is optional, and an **omitted field is left alone**: changing your quiet hours does not clear your default plan, and moving your delivery time does not reset your window. The one field where `null` means something is `quiet_hours` — **omit it to leave the window alone, send `null` to turn quiet hours off.**\n\n**The quiet-hours window is two local wall clocks.** A window that covers the whole day (the same clock twice) is refused, because that is the absence of a window rather than a window, and \"off\" already has one spelling.\n\n**The default Reminder Plan is 0 to 4 slots**, validated by exactly the same rule as a per-event plan — the same named reminders, the same custom-reminder grammar, the same errors. An empty list is valid and means \"new reminders start with none\". **Changing it does not change plans that already exist**: it applies to events saved from now on.\n\n**The delivery time and the zone are one setting.** A wall clock without its zone is not a schedule, so they are sent together and are applied together.",
+        "description": "Saves the settings the request mentions, and **re-times the pending reminders and digests in the same transaction** — a setting that does not change what is already scheduled is a setting that does nothing.\n\n**This is a patch.** Every field is optional, and an **omitted field is left alone**: changing your quiet hours does not clear your default plan, and moving your delivery time does not reset your window. The one field where `null` means something is `quiet_hours` — **omit it to leave the window alone, send `null` to turn quiet hours off.**\n\n**The quiet-hours window is two local wall clocks.** A window that covers the whole day (the same clock twice) is refused, because that is the absence of a window rather than a window, and \"off\" already has one spelling.\n\n**The default Reminder Plan is 0 to 4 slots**, validated by exactly the same rule as a per-event plan — the same named reminders, the same custom-reminder grammar, the same errors. An empty list is valid and means \"new reminders start with none\". **Changing it does not change plans that already exist**: it applies to events saved from now on.\n\n**The delivery time and the zone are one setting.** A wall clock without its zone is not a schedule, so they are sent together and are applied together.\n\n**`pulse_ping` turns the daily digest mail on and off.** Turning it off cancels the digest sends already pending for you and leaves every reminder plan alone — the two scopes never touch. Turning it back on mints fresh sends rather than resurrecting cancelled ones.",
         "operationId": "apps_delivery_preferences_api_put_notification_settings",
         "parameters": [],
         "requestBody": {

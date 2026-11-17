@@ -4,9 +4,11 @@ title: Make the AI cost rows readable — FR-29
 intent: traceability-gap-closure
 complexity: low
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-17
+run_id: run-eventpulse24-035
+completed_at: 2026-11-17T15:00:40.184Z
 ---
 
 # Work Item: Make the AI cost rows readable — FR-29

@@ -1408,6 +1408,8 @@ export interface paths {
          *     **The default Reminder Plan is 0 to 4 slots**, validated by exactly the same rule as a per-event plan — the same named reminders, the same custom-reminder grammar, the same errors. An empty list is valid and means "new reminders start with none". **Changing it does not change plans that already exist**: it applies to events saved from now on.
          *
          *     **The delivery time and the zone are one setting.** A wall clock without its zone is not a schedule, so they are sent together and are applied together.
+         *
+         *     **`pulse_ping` turns the daily digest mail on and off.** Turning it off cancels the digest sends already pending for you and leaves every reminder plan alone — the two scopes never touch. Turning it back on mints fresh sends rather than resurrecting cancelled ones.
          */
         put: operations["apps_delivery_preferences_api_put_notification_settings"];
         post?: never;
@@ -3494,6 +3496,15 @@ export interface components {
             default_reminder_slots?: string[] | null;
             /** @description When and where the daily digest is due. **Omit this field to leave it alone.** The delivery time is a local wall clock and the timezone is the IANA zone it is a clock in; both are required together. */
             digest?: components["schemas"]["DigestScheduleIn"] | null;
+            /**
+             * Pulse Ping
+             * @description Whether the daily **Pulse Ping** should be on. **Omit this field to leave it alone**; send `true` to turn the Ping on and `false` to turn it off.
+             *
+             *     **Turning it off cancels the digest sends already pending for you**, so the mail you just turned off is not delivered afterwards — and it leaves every reminder plan alone. The two scopes never touch: this is the daily digest, not your event reminders.
+             *
+             *     **Turning it back on does not resurrect what was cancelled.** Those sends were for days that have passed; the next one is minted fresh.
+             */
+            pulse_ping?: boolean | null;
             /** @description The Quiet Hours window, as two local wall clocks. **Omit this field to leave the window alone; send `null` to turn quiet hours off.** A full-day window (the same clock twice) is refused. */
             quiet_hours?: components["schemas"]["QuietHoursIn"] | null;
             /**
@@ -3516,6 +3527,8 @@ export interface components {
             digest: components["schemas"]["DigestScheduleOut"];
             /** Effective Quiet Hours */
             effective_quiet_hours: components["schemas"]["EffectiveQuietHoursOut"][];
+            /** Pulse Ping */
+            pulse_ping: boolean;
             quiet_hours: components["schemas"]["QuietHoursOut"] | null;
             /** Quiet Hours Overrides */
             quiet_hours_overrides: components["schemas"]["QuietHoursOverrideOut"][];

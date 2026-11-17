@@ -199,6 +199,9 @@ class NotificationSettingsOut(Schema):
     effective_quiet_hours: list[EffectiveQuietHoursOut]
     default_reminder_slots: list[str]
     digest: DigestScheduleOut
+    #: Whether the daily Pulse Ping is on (FR-10). `true` for a user who has never
+    #: turned it off, which is the default and the common case.
+    pulse_ping: bool
 
     @classmethod
     def from_view(cls, view: NotificationSettingsView) -> "NotificationSettingsOut":
@@ -224,6 +227,7 @@ class NotificationSettingsOut(Schema):
             ],
             default_reminder_slots=list(view.default_reminder_slots),
             digest=DigestScheduleOut(delivery_time=view.delivery_time, timezone=view.timezone),
+            pulse_ping=view.pulse_ping,
         )
 
 
@@ -299,6 +303,19 @@ class NotificationSettingsIn(Schema):
             "to one window for the whole week. The list **replaces** your weekdays rather "
             "than merging into them, and the whole week is applied in one transaction. A "
             "Free account sending a non-empty list is refused with an upgrade hint."
+        ),
+    )
+    pulse_ping: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the daily **Pulse Ping** should be on. **Omit this field to leave it "
+            "alone**; send `true` to turn the Ping on and `false` to turn it off.\n\n"
+            "**Turning it off cancels the digest sends already pending for you**, so the "
+            "mail you just turned off is not delivered afterwards — and it leaves every "
+            "reminder plan alone. The two scopes never touch: this is the daily digest, "
+            "not your event reminders.\n\n"
+            "**Turning it back on does not resurrect what was cancelled.** Those sends "
+            "were for days that have passed; the next one is minted fresh."
         ),
     )
     default_reminder_slots: list[str] | None = Field(

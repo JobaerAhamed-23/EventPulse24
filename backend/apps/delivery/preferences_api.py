@@ -105,7 +105,11 @@ def get_notification_settings(request):
         'with none". **Changing it does not change plans that already exist**: it applies '
         "to events saved from now on.\n\n"
         "**The delivery time and the zone are one setting.** A wall clock without its "
-        "zone is not a schedule, so they are sent together and are applied together."
+        "zone is not a schedule, so they are sent together and are applied together.\n\n"
+        "**`pulse_ping` turns the daily digest mail on and off.** Turning it off cancels "
+        "the digest sends already pending for you and leaves every reminder plan alone — "
+        "the two scopes never touch. Turning it back on mints fresh sends rather than "
+        "resurrecting cancelled ones."
     ),
 )
 def put_notification_settings(request, body: NotificationSettingsIn):
@@ -202,6 +206,12 @@ def _patch_from(body: NotificationSettingsIn) -> SettingsPatch:
 
     default_slots = body.default_reminder_slots if "default_reminder_slots" in mentioned else None
 
+    # **Presence, again — but with no third state.** A ping is on or off, so unlike
+    # `quiet_hours` there is nothing for a mentioned `null` to mean. It is read as "not
+    # mentioned" rather than refused: the client said nothing useful, and nothing is the
+    # safe reading of nothing.
+    pulse_ping = body.pulse_ping if "pulse_ping" in mentioned else None
+
     delivery_time = None
     timezone_name = None
     if body.digest is not None:
@@ -213,6 +223,7 @@ def _patch_from(body: NotificationSettingsIn) -> SettingsPatch:
         clear_quiet_hours=clear_quiet_hours,
         quiet_hours_overrides=quiet_hours_overrides,
         default_reminder_slots=None if default_slots is None else tuple(default_slots),
+        pulse_ping=pulse_ping,
         delivery_time=delivery_time,
         timezone=timezone_name,
     )

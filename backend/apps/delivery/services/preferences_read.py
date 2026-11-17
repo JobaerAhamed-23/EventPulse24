@@ -62,6 +62,15 @@ class NotificationSettingsView:
     default_reminder_slots: tuple[str, ...]
     delivery_time: time
     timezone: str
+    #: Whether the daily Pulse Ping is **on** (FR-10).
+    #:
+    #: **Stated as "on", not as the opt-out it is stored as.** The column is
+    #: `pulse_ping_unsubscribed`, and the inversion happens here, once, at the edge of the
+    #: read — so every caller above this line, the wire included, reads a field whose
+    #: `True` means what a user would expect it to mean. A settings screen that had to
+    #: remember it was rendering a double negative is a settings screen that will
+    #: eventually render it the wrong way round.
+    pulse_ping: bool
 
 
 def _delivery_settings(user_id: UUID) -> tuple[time, str]:
@@ -109,6 +118,7 @@ def read_notification_settings(*, user_id: UUID) -> NotificationSettingsView:
         default_reminder_slots=tuple(preference.default_reminder_slots),
         delivery_time=delivery_time,
         timezone=zone,
+        pulse_ping=not preference.pulse_ping_unsubscribed,
     )
 
 

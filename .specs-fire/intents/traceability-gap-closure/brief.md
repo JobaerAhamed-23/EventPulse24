@@ -1,7 +1,8 @@
 ---
 id: traceability-gap-closure
-title: Traceability Gap Closure — the Cost Dashboard, the Ping Promise, and the Timeline's Missing Detail
-status: active
+title: Traceability Gap Closure — the Cost Dashboard, the Ping Promise, and the
+  Timeline's Missing Detail
+status: in_progress
 created: 2026-11-17
 ---
 
