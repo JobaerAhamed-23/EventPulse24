@@ -1497,12 +1497,14 @@ intents:
         mode: autopilot
         depends_on: []
       - id: time-bomb-tests
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         added: 2026-11-17
         source: found while running gates for ai-cost-dashboard and pulse-ping-control
+        run_id: run-eventpulse24-039
+        completed_at: 2026-11-17T15:56:13.029Z
       - id: timeline-why-this-tag
         status: pending
         complexity: high
@@ -1513,19 +1515,7 @@ intents:
         source: split from timeline-hover-detail; AD-10 bars personalization from the
           Event Fit
 runs:
-  active:
-    - id: run-eventpulse24-039
-      scope: single
-      work_items:
-        - id: time-bomb-tests
-          intent: traceability-gap-closure
-          mode: confirm
-          status: in_progress
-          current_phase: execute
-          checkpoint_state: approved
-          current_checkpoint: plan
-      current_item: time-bomb-tests
-      started: 2026-11-17T15:45:45.292Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2200,3 +2190,11 @@ runs:
           mode: confirm
       started: 2026-11-17T15:38:03.837Z
       completed: 2026-11-17T15:40:24.157Z
+    - id: run-eventpulse24-039
+      scope: single
+      work_items:
+        - id: time-bomb-tests
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:45:45.292Z
+      completed: 2026-11-17T15:56:13.029Z

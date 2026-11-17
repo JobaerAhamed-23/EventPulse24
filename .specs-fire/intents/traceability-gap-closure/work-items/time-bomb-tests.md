@@ -4,9 +4,11 @@ title: Six tests that pass only before a date that has now passed
 intent: traceability-gap-closure
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-17
+run_id: run-eventpulse24-039
+completed_at: 2026-11-17T15:56:13.029Z
 ---
 
 # Work Item: Six tests that pass only before a date that has now passed
