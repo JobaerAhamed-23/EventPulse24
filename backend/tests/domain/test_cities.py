@@ -19,8 +19,10 @@ from domain.cities import (
     NAME_MAX,
     REGION_MAX,
     SLUG_MAX,
+    canonical_spelling,
     city_identity,
     city_spellings,
+    collapse_aliases,
     display_name,
     mint_city_slug,
     normalize_city,
@@ -219,3 +221,34 @@ def test_every_form_resolves_to_its_whole_group():
     for group in CITY_ALIAS_GROUPS:
         for form in group:
             assert set(city_spellings(form)) == set(group)
+
+
+# ── Collapsing a group for a picker ─────────────────────────────────────────────────
+
+
+def test_a_group_is_offered_once_under_its_first_form():
+    assert collapse_aliases(["Dhaka", "Montgomery", "ঢাকা"]) == ("Dhaka", "Montgomery")
+
+
+def test_the_label_does_not_depend_on_which_spelling_the_catalog_holds():
+    """A picker entry that renamed itself as venues came and went would move under the
+    reader between visits, so the group's first form is the label either way."""
+    assert collapse_aliases(["ঢাকা"]) == ("Dhaka",)
+    assert canonical_spelling("ঢাকা") == "Dhaka"
+
+
+def test_a_city_outside_every_group_is_its_own_label():
+    assert canonical_spelling("Queens") == "Queens"
+    assert canonical_spelling("") == ""
+
+
+def test_order_is_preserved_and_duplicates_drop_out():
+    assert collapse_aliases(["Queens", "queens", "Brooklyn"]) == ("Queens", "Brooklyn")
+
+
+def test_empty_names_are_not_offered():
+    assert collapse_aliases(["", "   ", "Brooklyn"]) == ("Brooklyn",)
+
+
+def test_collapsing_nothing_offers_nothing():
+    assert collapse_aliases([]) == ()

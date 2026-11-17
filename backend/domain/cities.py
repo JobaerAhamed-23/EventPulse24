@@ -19,6 +19,7 @@ never disagree about where one word ends and the next begins. This module only r
 `venue_fingerprint` is computed from the raw string and is not this module's business.
 """
 
+from collections.abc import Iterable
 from typing import NamedTuple
 
 from domain.dedup import tokens
@@ -149,6 +150,41 @@ def city_spellings(city: str | None) -> tuple[str, ...]:
     return (written, *(form for form in group if normalize_city(form) != key))
 
 
+def canonical_spelling(city: str | None) -> str:
+    """The form a city is *shown* as: its group's first entry, or the city as written.
+
+    **The group's first entry is the one the picker offers**, so a city that the catalog
+    files under two scripts still appears once, under one name, however the venues that
+    happen to exist today are spelled. A label that changed with the catalog's contents
+    would move under the reader between visits.
+    """
+    written = display_name(city)
+    if not written:
+        return ""
+    group = _ALIAS_INDEX.get(normalize_city(written))
+    return display_name(group[0]) if group is not None else written
+
+
+def collapse_aliases(cities: Iterable[str]) -> tuple[str, ...]:
+    """The cities, with each alias group reduced to one entry, order preserved.
+
+    **For a picker, not for a filter.** Two spellings of one city are one choice, and
+    offering both asks the reader a question with no answer — either picks the same
+    events, because the reads expand a city into every spelling in its group. A filter
+    must still use `city_spellings`; this is only about what is *offered*.
+    """
+    seen: set[str] = set()
+    collapsed: list[str] = []
+    for city in cities:
+        shown = canonical_spelling(city)
+        key = normalize_city(shown)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        collapsed.append(shown)
+    return tuple(collapsed)
+
+
 def mint_city_slug(key: str, region: str = "", country_code: str = "") -> str:
     """`brooklyn`, `brooklyn-ny`, `brooklyn-ny-us` — the FR-27 URL segment.
 
@@ -163,8 +199,10 @@ def mint_city_slug(key: str, region: str = "", country_code: str = "") -> str:
 __all__ = [
     "CITY_ALIAS_GROUPS",
     "CityIdentity",
+    "canonical_spelling",
     "city_identity",
     "city_spellings",
+    "collapse_aliases",
     "display_name",
     "mint_city_slug",
     "normalize_city",

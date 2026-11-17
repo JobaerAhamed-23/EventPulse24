@@ -39,9 +39,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from apps.ingestion.models import Event, EventFit
+from domain.cities import city_spellings
 from shared.db import CATALOG
 
 # How many events the Pulse Preview shows by default. Three is what fits on the preview
@@ -228,7 +229,16 @@ def list_event_fit_for_city(
     canonical `City`, not a spelling.
     """
     limit = max(1, min(limit, MAX_PREVIEW_SIZE))
-    rows = _published_upcoming_fits(now=now).filter(city__iexact=city.strip())
+    # **Every spelling of the city, not just the one asked for.** The picker offers one
+    # entry per city (`collapse_aliases`), so the entry for a city filed under two
+    # scripts has to answer for both — otherwise choosing it would show half the city.
+    spellings = city_spellings(city)
+    if not spellings:
+        return []
+    match = Q(city__iexact=spellings[0])
+    for form in spellings[1:]:
+        match |= Q(city__iexact=form)
+    rows = _published_upcoming_fits(now=now).filter(match)
 
     entries: list[EventFitPreviewEntry] = []
     for row in rows:

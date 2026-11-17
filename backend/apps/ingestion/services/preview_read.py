@@ -41,6 +41,7 @@ from apps.ingestion.event_fit.reads import (
 )
 from apps.ingestion.models import Event, EventFit, Source
 from apps.ingestion.services.source_badges import source_badge_for_type
+from domain.cities import canonical_spelling, collapse_aliases, normalize_city
 from shared.db import CATALOG
 
 # The Source Badge types live in `source_badges`, because two reads on the catalog side
@@ -87,9 +88,14 @@ class PreviewCities:
         The comparison is case-insensitive, because the city arrives from a query
         parameter or a header — both of which a person types — and "brooklyn" and
         "Brooklyn" are the same city. The *spelling* that comes back is the catalog's.
+
+        **An alias is supported when its group is.** The list offers one entry per city
+        (`collapse_aliases`), so a caller that arrives with the other spelling — an old
+        bookmark, a geo header, a stored preference written before the group existed —
+        is asking for a city this preview can serve, and saying otherwise would be false.
         """
-        wanted = city.strip().casefold()
-        return any(name.casefold() == wanted for name in self.cities)
+        wanted = normalize_city(canonical_spelling(city))
+        return any(normalize_city(canonical_spelling(name)) == wanted for name in self.cities)
 
 
 def source_badge_for(source: Source) -> str:
@@ -141,7 +147,11 @@ def list_supported_cities(*, now: datetime) -> PreviewCities:
         if name and name.casefold() not in {existing.casefold() for existing in names}:
             names.append(name)
 
-    return PreviewCities(cities=tuple(sorted(names, key=str.casefold)))
+    # **One entry per city, not one per spelling.** A catalog that files a city under two
+    # scripts would otherwise offer the reader the same city twice, as two choices that
+    # lead to the same events — `list_event_fit_for_city` expands a city into its whole
+    # group, so either entry answers identically.
+    return PreviewCities(cities=collapse_aliases(sorted(names, key=str.casefold)))
 
 
 def list_preview_cards(
