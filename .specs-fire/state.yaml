@@ -1455,6 +1455,38 @@ intents:
         run_id: run-eventpulse24-032
         completed_at: 2026-11-13T13:17:34.101Z
     completed_at: 2026-11-13T13:17:30.478Z
+  - id: traceability-gap-closure
+    title: Traceability Gap Closure — the Cost Dashboard, the Ping Promise, and the Timeline's Missing Detail
+    status: active
+    created: 2026-11-17
+    source: doc-trace 2026-11-17 (first full Section C pass)
+    work_items:
+      - id: ai-cost-dashboard
+        status: pending
+        complexity: low
+        mode: confirm
+        depends_on: []
+      - id: pulse-ping-control
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: timeline-block-detail-contract
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: timeline-hover-detail
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: [timeline-block-detail-contract]
+      - id: amendment-tag-propagation
+        status: pending
+        complexity: low
+        mode: autopilot
+        depends_on: []
+
 runs:
   active: []
   completed:
