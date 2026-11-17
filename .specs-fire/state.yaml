@@ -1470,10 +1470,12 @@ intents:
         run_id: run-eventpulse24-035
         completed_at: 2026-11-17T15:00:40.184Z
       - id: pulse-ping-control
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-036
+        completed_at: 2026-11-17T15:19:19.989Z
       - id: timeline-block-detail-contract
         status: pending
         complexity: medium
@@ -1491,19 +1493,7 @@ intents:
         mode: autopilot
         depends_on: []
 runs:
-  active:
-    - id: run-eventpulse24-036
-      scope: single
-      work_items:
-        - id: pulse-ping-control
-          intent: traceability-gap-closure
-          mode: confirm
-          status: in_progress
-          current_phase: execute
-          checkpoint_state: approved
-          current_checkpoint: plan
-      current_item: pulse-ping-control
-      started: 2026-11-17T15:02:51.042Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2154,3 +2144,11 @@ runs:
           mode: confirm
       started: 2026-11-17T14:50:33.081Z
       completed: 2026-11-17T15:00:40.184Z
+    - id: run-eventpulse24-036
+      scope: single
+      work_items:
+        - id: pulse-ping-control
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:02:51.042Z
+      completed: 2026-11-17T15:19:19.989Z
