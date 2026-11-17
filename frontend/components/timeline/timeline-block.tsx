@@ -19,6 +19,11 @@ import type { TimelineBlock as TimelineBlockData } from "@/lib/timeline-read";
  * line the name does not share. The API has already decided whether it is there; the
  * block draws it and decides nothing.
  *
+ * **The block reveals its place on hover and on focus** (`EXPERIENCE.md` §13). It is an
+ * addition and never a removal: everything the idle block shows, it keeps. The place is
+ * also in the `aria-label`, because an `aria-label` overrides inner text and a reveal
+ * means nothing to a reader who cannot hover.
+ *
  * **The time is the event's own zone.** The week is cut in the *user's* zone, but the
  * block's time belongs to the event — a public event in Berlin shown to a user in Los
  * Angeles is on a different Los Angeles day than its own clock suggests, and rendering
@@ -45,7 +50,17 @@ export function TimelineBlockView({
   // The accessible name is name + time + kind, and the indicator is named too. The
   // visible label ("Personal" / "Public event") is inside the name, so a screen reader
   // hears the same three things the sighted reader sees.
-  const accessibleName = [name, time, personal ? "Personal" : "Public event"]
+  const place = block.place ?? null;
+
+  // The accessible name is name + time + place + kind, and the indicator is named too.
+  //
+  // **The place is in the name because `aria-label` overrides the element's text.** The
+  // revealed line below is inside this button, but an `aria-label` replaces inner text
+  // in the accessible-name computation — so a screen-reader user would never hear it,
+  // and "reveal on hover" means nothing to someone who cannot hover. Naming it here is
+  // what makes the detail available to them at all, and it cannot be announced twice
+  // for the same reason.
+  const accessibleName = [name, time, place, personal ? "Personal" : "Public event"]
     .filter(Boolean)
     .join(", ");
 
@@ -108,11 +123,50 @@ export function TimelineBlockView({
       {time ? (
         <span className="block [font:var(--type-scale-meta-sm)] text-ink-muted">{time}</span>
       ) : null}
+
+      {/*
+        **The place, revealed on hover and on focus** (`EXPERIENCE.md` §13: the block
+        *adds* location on hover, focus or long-press).
+
+        **It adds; it never removes.** §13's locked anti-pattern is that adaptive density
+        must not hide a trust signal, so the name, the time, the category label and the
+        conflict dot are all exactly as they were in the idle state. This line appears
+        beneath them.
+
+        **Focus reveals whatever hover reveals.** `group-focus-within` sits beside
+        `group-hover` so the keyboard gets the mouse's affordance — the same pairing the
+        Pulse Card's `▸` uses. A hover-only reveal would be a detail that a keyboard user
+        could never reach.
+
+        **Nothing is reserved when there is nothing to show.** A block with no place —
+        a personal event without one, or a save whose catalog event has gone — renders
+        no element, rather than an empty one that would hold open a gap on a surface
+        whose columns are already tight.
+
+        **The block grows, and that is the deliberate choice** over overlaying the line
+        on its neighbour. Growth pushes the *later* blocks in the day down; the hovered
+        block's own top edge does not move, so the pointer cannot be shaken off the
+        element it is hovering — the flicker loop that an overlay or a self-resizing
+        element would risk. An overlay would also paint over the next block's name,
+        which is a trust signal, and §13 forbids covering one.
+      */}
+      {place ? (
+        <span
+          className={[
+            "hidden truncate [font:var(--type-scale-meta-sm)] text-ink-muted",
+            "group-hover:block group-focus-within:block",
+          ].join(" ")}
+        >
+          {place}
+        </span>
+      ) : null}
     </>
   );
 
   const className = [
-    "relative block w-full rounded-subtle border border-border-subtle bg-surface-subtle",
+    // `group` is what lets the revealed place react to the *block's* hover and focus
+    // rather than its own — a `<span>` is not focusable and would never match either.
+    "group relative block w-full rounded-subtle border border-border-subtle bg-surface-subtle",
     "px-3 py-2 pl-4 text-left",
     // **Hover swaps the fill** — the affordance is the fill, not a chevron. The
     // timeline is denser than the digest, and a chevron on every block would be noise.

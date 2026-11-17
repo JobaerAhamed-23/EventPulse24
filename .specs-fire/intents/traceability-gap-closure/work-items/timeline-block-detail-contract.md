@@ -4,9 +4,11 @@ title: Send the Timeline block its location — FR-32 (contract)
 intent: traceability-gap-closure
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-17
+run_id: run-eventpulse24-037
+completed_at: 2026-11-17T15:37:59.704Z
 ---
 
 # Work Item: Send the Timeline block its location — FR-32 (contract)

@@ -1477,10 +1477,12 @@ intents:
         run_id: run-eventpulse24-036
         completed_at: 2026-11-17T15:19:19.989Z
       - id: timeline-block-detail-contract
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-037
+        completed_at: 2026-11-17T15:37:59.704Z
       - id: timeline-hover-detail
         status: pending
         complexity: medium
@@ -1510,18 +1512,18 @@ intents:
           Event Fit
 runs:
   active:
-    - id: run-eventpulse24-037
+    - id: run-eventpulse24-038
       scope: single
       work_items:
-        - id: timeline-block-detail-contract
+        - id: timeline-hover-detail
           intent: traceability-gap-closure
           mode: confirm
           status: in_progress
-          current_phase: execute
-          checkpoint_state: approved
+          current_phase: plan
+          checkpoint_state: none
           current_checkpoint: plan
-      current_item: timeline-block-detail-contract
-      started: 2026-11-17T15:23:48.254Z
+      current_item: timeline-hover-detail
+      started: 2026-11-17T15:38:03.837Z
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2180,3 +2182,11 @@ runs:
           mode: confirm
       started: 2026-11-17T15:02:51.042Z
       completed: 2026-11-17T15:19:19.989Z
+    - id: run-eventpulse24-037
+      scope: single
+      work_items:
+        - id: timeline-block-detail-contract
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-17T15:23:48.254Z
+      completed: 2026-11-17T15:37:59.704Z
