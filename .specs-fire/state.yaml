@@ -1514,8 +1514,28 @@ intents:
         added: 2026-11-17
         source: split from timeline-hover-detail; AD-10 bars personalization from the
           Event Fit
+      - id: fr22-published-formula
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+        added: 2026-11-17
+        source: found while tagging A-3; the PRD publishes four weighted terms and the
+          product computes five
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-040
+      scope: single
+      work_items:
+        - id: amendment-tag-propagation
+          intent: traceability-gap-closure
+          mode: autopilot
+          status: in_progress
+          current_phase: plan
+          checkpoint_state: none
+          current_checkpoint: null
+      current_item: amendment-tag-propagation
+      started: 2026-11-17T16:04:29.208Z
   completed:
     - id: run-eventpulse24-001
       scope: single
