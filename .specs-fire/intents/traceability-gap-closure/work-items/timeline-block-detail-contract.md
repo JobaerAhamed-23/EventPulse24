@@ -1,6 +1,6 @@
 ---
 id: timeline-block-detail-contract
-title: Send the Timeline block its location and one Why-this tag — FR-32 (contract)
+title: Send the Timeline block its location — FR-32 (contract)
 intent: traceability-gap-closure
 complexity: medium
 mode: confirm
@@ -9,7 +9,7 @@ depends_on: []
 created: 2026-11-17
 ---
 
-# Work Item: Send the Timeline block its location and one Why-this tag — FR-32 (contract)
+# Work Item: Send the Timeline block its location — FR-32 (contract)
 
 ## Description
 
@@ -21,19 +21,26 @@ it **adds** *"location (`Text.Meta`) and 1 Why-this Tag (read-only at MVP)"*.
 venue, no location, no tags. So the UI work is blocked on the API, and this item is the API
 half: the server decides the place string and *which* single tag, and sends both.
 
-Splitting it this way is not ceremony. AD-10 forbids the client choosing the tag at render,
-and AD-19 makes the OpenAPI schema the contract the frontend type is generated from — so the
-contract has to land, and be regenerated, before a component can read it.
+**Scope decided 2026-11-17: the location only.** The tag is split out into
+`timeline-why-this-tag`, because there is no persisted tag this surface may read
+(`personalization` is barred from the Event Fit by an import contract, and the Relevance
+Pulse's tags are per user per day and may not exist for a given saved event), so it would
+have to be computed per block from four extra reads. That changes what a deliberately cheap
+read-only surface is, and it is a decision to take on purpose rather than inside this item.
+
+Splitting the contract from the UI is not ceremony either: AD-19 makes the OpenAPI schema
+the contract the frontend type is generated from, so it has to land and be regenerated
+before a component can read it.
 
 ## Acceptance Criteria
 
-- [ ] `TimelineBlockOut` gains a nullable place field and a nullable single-tag field.
-- [ ] **The server picks the one tag.** The payload carries one tag or null — never a list the client narrows. A personal event has no Why-this tag and sends null.
-- [ ] The place field follows the Pulse Card's existing precedence (`venue_name || location || venue_city`), resolved **server-side**, so the two surfaces cannot disagree about the same event's place.
-- [ ] A block whose catalog event is gone sends null for both rather than a guess — consistent with how `name` already degrades.
+- [ ] `TimelineBlockOut` gains a nullable place field.
+- [ ] The place is resolved **server-side** with the same precedence the Pulse Card uses (`venue_name` then `venue_city`), so the two surfaces cannot disagree about one event's place.
+- [ ] A block whose catalog event is gone sends null rather than a guess — consistent with how `name` and `state` already degrade.
+- [ ] A **personal** block sends its own location when it has one, and null otherwise.
 - [ ] The timeline read is **not** made N+1 by the addition; the extra fields come from the same query that already builds the week.
 - [ ] `make openapi` regenerates `frontend/lib/api/openapi.json` and `make client` regenerates `frontend/lib/api/schema.ts`; **neither is hand-edited** (AD-19).
-- [ ] Backend tests cover: a public block with both fields, a public block with neither, and a personal block (place possible, tag always null).
+- [ ] Backend tests cover: a public block with a venue, a public block whose catalog event is gone, and a personal block with and without a location.
 - [ ] `make lint-backend`, `make lint-imports` and `make test-backend` pass.
 
 ## Technical Notes

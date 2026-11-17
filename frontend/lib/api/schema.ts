@@ -4517,6 +4517,13 @@ export interface components {
          *     A `cancelled` block is still returned. FR-55 removes a cancelled event from the
          *     *digest*; the Timeline is the user's calendar, and a cancelled event is still on it
          *     until they take it off.
+         *
+         *     **`place` is one already-chosen string**, not the three fields it was chosen from:
+         *     the venue's name, or the city when the venue has none, or a personal event's own
+         *     location. It is null when there is nothing to state. The screen reveals it on hover
+         *     and focus (EXPERIENCE.md §13) and never picks between candidates — the precedence is
+         *     the server's, so this surface and the Pulse Card cannot disagree about where one
+         *     event is.
          */
         TimelineBlockOut: {
             /**
@@ -4538,6 +4545,8 @@ export interface components {
             kind: "personal" | "public";
             /** Name */
             name?: string | null;
+            /** Place */
+            place?: string | null;
             /** Start Time Tz */
             start_time_tz: string;
             /**
