@@ -44,6 +44,9 @@ from django.db import connections, transaction
 from apps.ingestion.services.preview_read import list_supported_cities
 from apps.personalization.models import DigestPreference
 from apps.personalization.services.audit import write_audit
+from apps.personalization.services.digest_enqueue import (
+    enqueue_digest_composition_on_commit,
+)
 from shared.actor import Actor
 from shared.constants import GEO_CITY_MAX_LENGTH, PREVIEW_FALLBACK_CITY
 from shared.db import PERSONAL
@@ -226,6 +229,12 @@ def set_home_city(
             has_city=resolved_city is not None,
             now=now,
         )
+        # **The city is the nearby slot's filter, so changing it changes the pool.** A
+        # user who sets their city and finds "No qualifying events in <the old city>"
+        # still on today's digest is being told something the product can already see is
+        # false. The recomposition replaces the day's digest only while it is **empty**,
+        # so a user with cards keeps the cards they were shown (AD-10).
+        enqueue_digest_composition_on_commit(user_id)
 
     return preference
 

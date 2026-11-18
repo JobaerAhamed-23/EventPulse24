@@ -28,9 +28,13 @@ enqueue — a retried request, two workers — produces one digest and writes no
 second time.
 """
 
+from functools import partial
 from uuid import UUID
 
 from celery import current_app
+from django.db import transaction
+
+from shared.db import PERSONAL
 
 COMPOSE_DIGEST_TASK = "worker.tasks.compose_digest"
 
@@ -49,7 +53,38 @@ def enqueue_digest_composition(user_id: UUID) -> None:
     _send(COMPOSE_DIGEST_TASK, [str(user_id)])
 
 
+def enqueue_digest_composition_on_commit(user_id: UUID) -> None:
+    """Queue the composition once the calling command's transaction has committed.
+
+    **The one seam the pool-changing commands use.** Setting a home city, saving an
+    event and adding a personal event all change what the day's digest *could* hold, and
+    each of them would otherwise have to spell out the same `on_commit` call with the
+    same alias and the same robustness flag. Three copies of a rule is three places it
+    can drift.
+
+    **After the commit, not inside it.** The worker's transaction cannot see an
+    uncommitted row, so a job enqueued inside the command would compose from the pools as
+    they were *before* it ran — and the user's new city or new save would be exactly the
+    thing it could not see.
+
+    **`robust=True`: a broker that is down does not fail the user's write.** The save, the
+    city change, the added event all stand. What the user does not get is an immediate
+    recomposition, and the scheduler is the backstop — tomorrow's run composes from the
+    pools as they are then.
+
+    **The composition decides whether anything changes, not this call.** It replaces only
+    an *empty* digest for the day, so an enqueue for a user whose digest already has cards
+    writes nothing (`digest_composition._replaceable`).
+    """
+    transaction.on_commit(
+        partial(enqueue_digest_composition, user_id),
+        using=PERSONAL,
+        robust=True,
+    )
+
+
 __all__ = [
     "COMPOSE_DIGEST_TASK",
     "enqueue_digest_composition",
+    "enqueue_digest_composition_on_commit",
 ]

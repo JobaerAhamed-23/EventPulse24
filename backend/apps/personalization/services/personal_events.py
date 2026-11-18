@@ -34,6 +34,9 @@ from apps.personalization.services.conflicts import (
     reconcile_pairs_for_side,
     record_detected_conflicts,
 )
+from apps.personalization.services.digest_enqueue import (
+    enqueue_digest_composition_on_commit,
+)
 from domain.errors import (
     InvalidIntervalError,
     InvalidTimezoneError,
@@ -252,6 +255,11 @@ def create_personal_event(
             },
         )
         snapshot = _snapshot(event)
+        # **A new personal event is Slot 1's candidate, so the day's empty digest is
+        # recomposed.** The composition applies its own windows — FR-5's 48 hours and
+        # FR-19's opt-out — so an event outside them simply produces no cards and the
+        # empty digest stands. This enqueue decides nothing; it only asks.
+        enqueue_digest_composition_on_commit(user_id)
 
     if conflicts:
         return ConflictFound(event=snapshot, conflicts=conflicts)
