@@ -33,11 +33,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from apps.ingestion.models import Event
 from apps.ingestion.services.chip_matching import chip_keys_for
 from apps.ingestion.services.source_badges import source_badge_for_type
+from domain.cities import city_spellings
 from domain.errors import NotFoundError
 from domain.reliability import reliability_score
 from domain.schema_org import project_schema_org_event
@@ -169,8 +170,8 @@ def list_public_events(
     the tiebreak is stable).
     """
     queryset = _public_events().filter(start_time_utc__gte=now)
-    if city:
-        queryset = queryset.filter(venue__city__iexact=city)
+    if city and (match := _in_city(city)) is not None:
+        queryset = queryset.filter(match)
     if starts_after is not None:
         queryset = queryset.filter(start_time_utc__gte=starts_after)
     if starts_before is not None:
@@ -347,6 +348,27 @@ def _to_public_candidate(event: Event) -> PublicEventCandidate:
     )
 
 
+def _in_city(city: str) -> Q | None:
+    """Match a venue's city against every written form of `city`, or None for no city.
+
+    **Equality, case-insensitively, against each spelling** — the same comparison this
+    read has always made, asked once per written form instead of once. `city_spellings`
+    returns just the city itself unless it is in `domain.cities`' curated alias table, so
+    a city with no alias produces exactly the query it produced before.
+
+    None when there is no city to match on, including text that is only whitespace: the
+    caller then filters on nothing, which is how a user with no city gets every eligible
+    event rather than none.
+    """
+    spellings = city_spellings(city)
+    if not spellings:
+        return None
+    match = Q(venue__city__iexact=spellings[0])
+    for form in spellings[1:]:
+        match |= Q(venue__city__iexact=form)
+    return match
+
+
 def list_public_candidates(
     *,
     now: datetime,
@@ -448,8 +470,8 @@ def list_public_candidates(
         .filter(start_time_utc__gte=now)
         .select_related("venue", "source")
     )
-    if city:
-        queryset = queryset.filter(venue__city__iexact=city)
+    if city and (match := _in_city(city)) is not None:
+        queryset = queryset.filter(match)
     if starts_before is not None:
         queryset = queryset.filter(start_time_utc__lt=starts_before)
 

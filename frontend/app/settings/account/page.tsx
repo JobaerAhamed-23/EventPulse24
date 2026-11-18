@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
 
 import { DownloadMyData } from "@/components/settings/download-my-data";
+import { HomeCity } from "@/components/settings/home-city";
 import { PlanSummary } from "@/components/settings/plan-summary";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readBillingAccount } from "@/lib/billing-account-read";
 import { displayName } from "@/lib/display-name";
+import { readHomeCity } from "@/lib/home-city-read";
 import { getSession, homeRoute } from "@/lib/session";
 
 /**
@@ -31,6 +33,12 @@ import { getSession, homeRoute } from "@/lib/session";
  * a Pro-only section would be the same gate wearing a layout, which this item's acceptance
  * criterion forbids by name.
  *
+ * **The city is here because a link already said it was.** Browse's "Change city" goes to
+ * this route — *"the city is the digest preference's city, and account settings is where
+ * the preference lives"* — and until now it arrived at a page with no such control. The
+ * city is the account's own setting in the same sense the plan is: it is what the account
+ * *is*, not what it is configured to send.
+ *
  * **Cancellation is Stripe's.** No local cancel flow — it would be a second write path into
  * subscription state for the webhook to reconcile against.
  *
@@ -54,7 +62,9 @@ export default async function SettingsAccountPage() {
     );
   }
 
-  const read = await readBillingAccount();
+  // **Two reads, side by side.** They answer unrelated questions — the plan and the city
+  // — and neither should wait on the other to render.
+  const [read, homeCity] = await Promise.all([readBillingAccount(), readHomeCity()]);
 
   const name = displayName(session.user);
 
@@ -77,7 +87,7 @@ export default async function SettingsAccountPage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Account</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          Your plan, and your data.
+          Your plan, your city, and your data.
         </p>
       </header>
 
@@ -93,6 +103,30 @@ export default async function SettingsAccountPage() {
           />
         </div>
       </div>
+
+      {/*
+        **The city, between the plan and the data.** It is the setting a reader arrives
+        here to change: Browse's empty state offers "Change city" and sends them to this
+        route, so the control it promises should not be below a download button.
+
+        **An unavailable read renders nothing rather than an empty picker.** A select with
+        no options would read as "your city is not available", which is a statement about
+        the user rather than about the request that failed.
+      */}
+      {homeCity.kind === "found" ? (
+        <div className="mt-12 max-w-(--layout-container-reading)">
+          <h2 className="text-ink-primary [font:var(--type-scale-headline-sm)]">City</h2>
+          <div className="mt-6">
+            <HomeCity
+              initialCity={homeCity.city}
+              initialCitySource={homeCity.citySource}
+              choices={homeCity.choices}
+              deliveryTime={homeCity.deliveryTime}
+              timezone={homeCity.timezone}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/*
         **Its own section, at the same level as the plan.** Not nested under it, not

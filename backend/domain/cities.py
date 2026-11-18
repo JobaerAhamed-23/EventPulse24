@@ -19,6 +19,7 @@ never disagree about where one word ends and the next begins. This module only r
 `venue_fingerprint` is computed from the raw string and is not this module's business.
 """
 
+from collections.abc import Iterable
 from typing import NamedTuple
 
 from domain.dedup import tokens
@@ -86,6 +87,104 @@ def display_name(city: str | None) -> str:
     return " ".join((city or "").split())[:NAME_MAX]
 
 
+#: Written forms that name the same city, grouped. Curated by hand, deliberately.
+#:
+#: **This is not a relaxation of the identity rule above.** `city_identity` still keys
+#: `Portland, OR` and `Portland, ME` apart, and an `ItemList` of free text still produces
+#: one `City` row per distinct identity — that is FR-27's accepted cost and it stands.
+#: What this table does is narrower: it lets a *reader* that was given one spelling also
+#: find events filed under another spelling of the same place.
+#:
+#: **Why a curated tuple and not a database table.** An alias is a factual claim that two
+#: names are one place, and a wrong one silently merges two cities' events — the kind of
+#: claim that should go through code review rather than a form. The list is small by
+#: nature: it earns a row only when a real source is seen writing a city two ways.
+#:
+#: **Only alternate spellings and scripts belong here — never a neighbourhood.** Folding
+#: "Mohammadpur" into Dhaka would be a different claim ("this district is inside that
+#: city"), it would be unbounded, and it would make a reader who asked for one place
+#: silently receive another. `domain.dedup` draws the same line for venues.
+#:
+#: **A group must be unambiguous across countries**, because the lookup is not scoped by
+#: one: the caller that needs this most (Browse) carries no country for the user. So a
+#: spelling that names different places in different countries does not go in this table.
+CITY_ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
+    # Bangladesh's capital. Eventbrite's Dhaka listings write the city in Latin script on
+    # some venues and Bengali on others, so a reader whose city is "Dhaka" would otherwise
+    # never be shown an event at a venue filed under "ঢাকা".
+    ("Dhaka", "ঢাকা"),
+)
+
+
+def _alias_index() -> dict[str, tuple[str, ...]]:
+    """Every alias key mapped to its group's written forms. Built once, at import."""
+    index: dict[str, tuple[str, ...]] = {}
+    for group in CITY_ALIAS_GROUPS:
+        for form in group:
+            index[normalize_city(form)] = group
+    return index
+
+
+_ALIAS_INDEX = _alias_index()
+
+
+def city_spellings(city: str | None) -> tuple[str, ...]:
+    """Every written form that names the same city as `city`, including `city` itself.
+
+    A city with no known alias returns just itself, so a caller can always filter on the
+    result rather than branching on whether an alias happened to exist. Empty text returns
+    nothing at all — the same "no city is a real answer" rule `city_identity` follows.
+
+    The match is on the normalized key, so the caller's spacing and casing do not matter:
+    "  dhaka " finds the group that "Dhaka" is in.
+    """
+    written = display_name(city)
+    if not written:
+        return ()
+    group = _ALIAS_INDEX.get(normalize_city(city))
+    if group is None:
+        return (written,)
+    # The caller's own spelling first, and never twice: a form that only differs by case or
+    # spacing is already covered by the case-insensitive comparison the caller makes.
+    key = normalize_city(written)
+    return (written, *(form for form in group if normalize_city(form) != key))
+
+
+def canonical_spelling(city: str | None) -> str:
+    """The form a city is *shown* as: its group's first entry, or the city as written.
+
+    **The group's first entry is the one the picker offers**, so a city that the catalog
+    files under two scripts still appears once, under one name, however the venues that
+    happen to exist today are spelled. A label that changed with the catalog's contents
+    would move under the reader between visits.
+    """
+    written = display_name(city)
+    if not written:
+        return ""
+    group = _ALIAS_INDEX.get(normalize_city(written))
+    return display_name(group[0]) if group is not None else written
+
+
+def collapse_aliases(cities: Iterable[str]) -> tuple[str, ...]:
+    """The cities, with each alias group reduced to one entry, order preserved.
+
+    **For a picker, not for a filter.** Two spellings of one city are one choice, and
+    offering both asks the reader a question with no answer — either picks the same
+    events, because the reads expand a city into every spelling in its group. A filter
+    must still use `city_spellings`; this is only about what is *offered*.
+    """
+    seen: set[str] = set()
+    collapsed: list[str] = []
+    for city in cities:
+        shown = canonical_spelling(city)
+        key = normalize_city(shown)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        collapsed.append(shown)
+    return tuple(collapsed)
+
+
 def mint_city_slug(key: str, region: str = "", country_code: str = "") -> str:
     """`brooklyn`, `brooklyn-ny`, `brooklyn-ny-us` — the FR-27 URL segment.
 
@@ -98,8 +197,12 @@ def mint_city_slug(key: str, region: str = "", country_code: str = "") -> str:
 
 
 __all__ = [
+    "CITY_ALIAS_GROUPS",
     "CityIdentity",
+    "canonical_spelling",
     "city_identity",
+    "city_spellings",
+    "collapse_aliases",
     "display_name",
     "mint_city_slug",
     "normalize_city",

@@ -237,6 +237,57 @@ def test_no_city_returns_every_eligible_event():
     assert len(list_public_candidates(now=NOW)) == 2
 
 
+def test_a_city_written_in_another_script_is_the_same_city():
+    """`domain.cities.CITY_ALIAS_GROUPS`: one place, two written forms, one pool.
+
+    A real feed writes Dhaka in Latin script on some venues and Bengali on others, so a
+    reader whose city is "Dhaka" would otherwise be shown half of their own city.
+    """
+    latin = EventFactory(start_time_utc=at(2), venue=VenueFactory(city="Dhaka"))
+    bengali = EventFactory(start_time_utc=at(3), venue=VenueFactory(city="ঢাকা"))
+
+    found = {c.id for c in list_public_candidates(now=NOW, city="Dhaka")}
+
+    assert found == {latin.id, bengali.id}
+
+
+def test_the_alias_is_matched_from_either_side():
+    latin = EventFactory(start_time_utc=at(2), venue=VenueFactory(city="Dhaka"))
+    bengali = EventFactory(start_time_utc=at(3), venue=VenueFactory(city="ঢাকা"))
+
+    found = {c.id for c in list_public_candidates(now=NOW, city="ঢাকা")}
+
+    assert found == {latin.id, bengali.id}
+
+
+def test_an_alias_does_not_widen_what_an_unaliased_city_matches():
+    """The table must not become a reason for one city to collect another's events."""
+    EventFactory(start_time_utc=at(2), venue=VenueFactory(city="ঢাকা"))
+    queens = EventFactory(start_time_utc=at(3), venue=VenueFactory(city="Queens"))
+
+    found = {c.id for c in list_public_candidates(now=NOW, city="Queens")}
+
+    assert found == {queens.id}
+
+
+def test_a_neighbourhood_is_not_folded_into_the_city():
+    """Mohammadpur is inside Dhaka, and that is a different claim from a spelling.
+
+    Folding it in would hand a reader who asked for one place events in another, so the
+    alias table deliberately holds only alternate spellings.
+    """
+    EventFactory(start_time_utc=at(2), venue=VenueFactory(city="Mohammadpur"))
+
+    assert list_public_candidates(now=NOW, city="Dhaka") == []
+
+
+def test_a_whitespace_only_city_filters_on_nothing():
+    """`" "` is not a city. It must not become a filter that matches no venue at all."""
+    EventFactory(start_time_utc=at(2), venue=VenueFactory(city="Brooklyn"))
+
+    assert len(list_public_candidates(now=NOW, city="   ")) == 1
+
+
 # --- the source badge -----------------------------------------------------------------
 
 

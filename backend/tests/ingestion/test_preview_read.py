@@ -290,3 +290,57 @@ def test_the_same_city_spelled_two_ways_is_listed_once():
 
     listed = [name for name in supported.cities if name.casefold() == "case city"]
     assert len(listed) == 1
+
+
+def test_a_city_filed_under_two_scripts_is_offered_once():
+    """`domain.cities.CITY_ALIAS_GROUPS`: one city, one entry in the picker.
+
+    Offering both spellings would ask the reader a question with no answer — either
+    entry leads to the same events, because the card read expands a city into its group.
+    """
+    make_event("Dhaka")
+    make_event("ঢাকা")
+
+    supported = list_supported_cities(now=timezone.now())
+
+    dhaka = [name for name in supported.cities if name in {"Dhaka", "ঢাকা"}]
+    assert dhaka == ["Dhaka"]
+
+
+def test_the_entry_is_the_groups_first_form_even_when_only_the_other_is_filed():
+    """A label that changed with the catalog's contents would move between visits."""
+    make_event("ঢাকা")
+
+    supported = list_supported_cities(now=timezone.now())
+
+    assert "Dhaka" in supported.cities
+    assert "ঢাকা" not in supported.cities
+
+
+def test_either_spelling_is_supported_even_though_one_is_offered():
+    """An old bookmark or a stored preference may carry the spelling not offered."""
+    make_event("ঢাকা")
+
+    supported = list_supported_cities(now=timezone.now())
+
+    assert supported.supports("Dhaka")
+    assert supported.supports("ঢাকা")
+
+
+def test_a_cards_read_for_one_entry_covers_the_whole_group():
+    """The picker offers one entry, so that entry has to answer for both spellings."""
+    make_event("Dhaka")
+    make_event("ঢাকা")
+
+    cards = list_preview_cards(city="Dhaka", now=timezone.now())
+
+    assert len(cards) == 2
+
+
+def test_a_neighbourhood_is_still_its_own_entry():
+    """Mohammadpur is inside Dhaka, which is a different claim from a spelling."""
+    make_event("Mohammadpur")
+
+    supported = list_supported_cities(now=timezone.now())
+
+    assert "Mohammadpur" in supported.cities

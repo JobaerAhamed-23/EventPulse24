@@ -326,3 +326,66 @@ def test_item_cap_inside_a_series(monkeypatch):
     result = parse_nodes(series)
 
     assert len(result.candidates) == 1 and result.skipped["too_many_items"] == 1
+
+
+# ── ItemList: how a directory page lists its events ─────────────────────────────────
+
+
+def item_list(*items):
+    """An `ItemList` of `ListItem`s, the shape an events directory page publishes."""
+    return {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i, "item": item}
+            for i, item in enumerate(items, start=1)
+        ],
+    }
+
+
+def test_an_item_list_of_list_items_yields_every_event():
+    result = parse_nodes(item_list(event(name="A"), event(name="B"), event(name="C")))
+
+    assert [c.title for c in result.candidates] == ["A", "B", "C"]
+
+
+def test_an_item_list_carries_each_events_own_fields():
+    listed = event(
+        name="Admission Day",
+        startDate="2026-11-21",
+        location={
+            "@type": "Place",
+            "name": "Edvoy",
+            "address": {
+                "@type": "PostalAddress",
+                "addressLocality": "Dhaka",
+                "addressCountry": "BD",
+            },
+        },
+    )
+
+    [c] = parse_nodes(item_list(listed)).candidates
+
+    assert c.title == "Admission Day"
+    assert (c.venue_name, c.venue_city, c.venue_country) == ("Edvoy", "Dhaka", "BD")
+    assert c.all_day is True
+
+
+def test_a_non_event_in_an_item_list_is_not_a_candidate():
+    product = {"@type": "Product", "name": "A ticket"}
+
+    result = parse_nodes(item_list(event(name="Real"), product))
+
+    assert [c.title for c in result.candidates] == ["Real"]
+
+
+def test_a_series_inside_an_item_list_still_emits_its_subevents_once():
+    series = {"@type": "EventSeries", "@id": "s", "subEvent": [event(name="A"), event(name="B")]}
+
+    result = parse_nodes(item_list(series))
+
+    titles = [c.title for c in result.candidates]
+    assert titles == ["A", "B"], "a subEvent reached twice would be listed twice"
+    # The series branch is the only emission, so both still share its one id.
+    ids = {c.series_id for c in result.candidates}
+    assert len(ids) == 1 and None not in ids
