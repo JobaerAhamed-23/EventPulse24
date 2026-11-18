@@ -39,7 +39,12 @@ export function WeekNavigator({
   return (
     <nav
       aria-label="Week navigator"
-      className="hidden items-center gap-2 md:flex md:rounded-timeline-cell md:border md:border-border-subtle md:bg-surface-elevated md:px-2 md:py-1"
+      // **`w-fit`, because the bar is its controls and nothing else.** A block-level
+      // flex container fills its parent, so the bordered bar stretched the whole way
+      // once the shell went full-bleed — at 2560px that was ~1900px of empty bar to the
+      // right of "← Nov 16 – Nov 22 Today →". The border is drawn around the controls,
+      // so it should be the width of the controls.
+      className="hidden w-fit items-center gap-2 md:flex md:rounded-timeline-cell md:border md:border-border-subtle md:bg-surface-elevated md:px-2 md:py-1"
     >
       <WeekLink href={`/timeline?week=${previousStart}`} label="Previous week">
         ←

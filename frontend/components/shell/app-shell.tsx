@@ -32,6 +32,10 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   return (
+    // **The shell is full-bleed: the rail sits on the viewport's left edge and the
+    // content runs to its right edge.** A capped, centred shell put equal margins
+    // outside it, which read as dead space at both edges rather than as composition —
+    // so the cap is gone and the app occupies the window it is given.
     <div className="flex min-h-screen bg-surface-paper">
       <Sidenav name={name} email={email} />
 
@@ -51,18 +55,42 @@ export function AppShell({
         </header>
 
         {/*
-          The content is constrained to `--layout-container-max` (1180px) and centred,
-          so at `xl` the whitespace expands *outward* and the digest does not reflow.
+          **The content fills the column the rail leaves, at every width.** It used to
+          be capped at `--layout-container-max` (1180px) and centred inside that column
+          — the §10 reading, "desktop adds whitespace, never features, screens, actions
+          or copy", applied as a hard container.
 
-          **"Desktop adds whitespace, never features, screens, actions or copy"** (§10).
-          A wider viewport stretches a card; a wider *card* changes how the card reads.
-          So the constraint is the whole of the desktop's contribution to the layout.
+          **Two things were wrong with it in the authed shell.** The rail is a flex
+          sibling, so it had already taken its width off the left before this `mx-auto`
+          saw any surplus: the content sat half a rail right of the screen's centre,
+          and the surplus opened as a dead band between the rail and the first pixel of
+          content — 570px of it at 2560px, with the content beginning 810px in. Capping
+          the *shell* instead made the two outer gutters equal, but equal gutters are
+          still gutters, and at 2560px they were 570px of nothing at each edge.
+
+          **So the app is full-bleed and the whitespace rule lives in the padding
+          instead.** §10 still holds in the sense that matters — a wider viewport adds
+          no features, screens, actions or copy — it simply no longer buys that with
+          margins the reader reads as emptiness. The public surfaces keep their own
+          container: they have no rail, so theirs centres on the viewport and composes.
+
+          **The frame is the whitespace now, and it is the design's own three steps.**
+          `--layout-page-padding-mobile|tablet|desktop` (24px, 48px, 80px) were defined
+          in `tokens.css` and used by nothing — `<main>` hardcoded `px-6` at every
+          width, so a 2560px window got the same 24px edge as a phone. They are wired
+          here, which is the one place every authed surface passes through.
+
+          **Every surface therefore shares one left edge.** Browse used to add `px-2`
+          on top of this to make its own 32px frame, which put its heading 8px right of
+          Settings', Timeline's and the digest's — an 8px step the reader walks into on
+          every nav change. The frame belongs to the shell, so Browse no longer carries
+          one.
 
           The bottom padding is the bottom-tab bar's height, so the last card is not
           hidden under it on mobile. On desktop the bar is `md:hidden`, and the padding
           is harmless.
         */}
-        <main className="mx-auto w-full max-w-(--layout-container-max) flex-1 px-6 pt-8 pb-(--layout-bottom-tab-height) md:pb-12">
+        <main className="w-full flex-1 px-(--layout-page-padding-mobile) pt-8 pb-(--layout-bottom-tab-height) md:px-(--layout-page-padding-tablet) md:pb-12 xl:px-(--layout-page-padding-desktop)">
           {children}
         </main>
       </div>

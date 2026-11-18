@@ -22,9 +22,22 @@
   --spacing: initial;
   --breakpoint-*: initial;
 
-  /* Breakpoints: tablet and desktop only. */
+  /* Breakpoints: tablet, desktop, and the two wide steps the full-bleed shell needs.
+
+     **`md` and `lg` alone could not describe a wide screen.** With the authed shell
+     capped and centred, everything past `lg` was absorbed by the container's margins,
+     so no rule ever had to fire above 1024px. Full-bleed removed that cushion: a
+     three-column grid written `lg:grid-cols-3` kept three columns at 2560px and simply
+     stretched each one to 739px, while the same card reads 312px wide at 1280px. The
+     card did not change — the absence of a breakpoint above it did.
+
+     `xl` is where a fourth column fits beside the rail at the desktop frame, and `2xl`
+     is where a fifth does. They are the grid's steps, not new layouts: §10 still holds,
+     and a wider screen still adds no features, screens, actions or copy. */
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1440px;
+  --breakpoint-2xl: 2048px;
 
   /* Colors: light (alternative). Dark overrides below. */
   --color-surface-paper: #faf8f4;

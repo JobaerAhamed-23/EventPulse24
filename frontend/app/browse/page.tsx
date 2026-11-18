@@ -105,16 +105,17 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
         <BrowseEmpty />
       ) : (
         /*
-         **The 32px frame.** The shell's `<main>` carries `px-6` — 24px — and Browse's
-         frame is 32px. The extra 8px is `px-2`, and it wraps the *whole* surface, so
-         the hero and the grid share one left edge: a hero at 24px and a grid at 32px
-         would be two surfaces pretending to be one.
-         *
-         **And it is not the city page's full-bleed 80px frame.** The city page bleeds
-         to the viewport edge; Browse sits inside the authed shell's container, which is
-         the whole difference between a public page and a signed-in one.
+         **No frame of its own — the shell carries it.** Browse used to add `px-2` on
+         top of `<main>`'s `px-6` to make a 32px frame. That was 8px more than every
+         other authed surface, so a reader moving from Settings or the Timeline to
+         Browse watched the heading step 8px to the right, and the two surfaces read as
+         two different pages rather than one app.
+
+         **The shell's frame is now responsive** (24/48/80px, from
+         `--layout-page-padding-*`), so the thing Browse wanted — a wider frame on a
+         wide screen — it now gets, along with everything else and on the same edge.
          */
-        <div className="px-2">
+        <div>
           {/*
             **The live allowance, held for the whole surface.**
 
@@ -158,4 +159,3 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
     </AppShell>
   );
 }
-

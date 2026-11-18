@@ -197,11 +197,26 @@ describe("tokens.css shapes, spacing and type", () => {
     }
   });
 
-  it("keeps only DESIGN.md's tablet and desktop breakpoints", () => {
+  it("keeps the breakpoint set closed: DESIGN.md's two, plus the two wide steps", () => {
+    // **The set stays closed, and that is the point of asserting it exhaustively.**
+    // `--breakpoint-*: initial` wipes Tailwind's defaults, so an undeclared breakpoint
+    // generates no CSS and a `2xl:` class fails silently — which is how a three-column
+    // grid came to hold three columns at 2560px, stretching each to 739px against the
+    // same card's 312px at 1280px.
+    //
+    // `xl` and `2xl` are declared for the full-bleed shell's grids to step on. Anything
+    // beyond these four is a layout the design does not describe, so the list is exact.
     expect(light.get("--breakpoint-*")).toBe("initial");
     expect(light.get("--breakpoint-md")).toBe("768px");
     expect(light.get("--breakpoint-lg")).toBe("1024px");
-    expect(declared(light, "--breakpoint-")).toEqual(["--breakpoint-lg", "--breakpoint-md"]);
+    expect(light.get("--breakpoint-xl")).toBe("1440px");
+    expect(light.get("--breakpoint-2xl")).toBe("2048px");
+    expect(declared(light, "--breakpoint-")).toEqual([
+      "--breakpoint-2xl",
+      "--breakpoint-lg",
+      "--breakpoint-md",
+      "--breakpoint-xl",
+    ]);
   });
 });
 

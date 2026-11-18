@@ -236,7 +236,14 @@ export function NoticeStrip({ notices }: NoticeStripProps) {
           // dashed `{color.border.strong}` to feel intentional, not failed" — and the
           // difference between "nothing is wrong" and "something needs saying" is
           // exactly what the strip has to communicate.
-          className="mt-6 rounded-card border border-dashed border-border-strong bg-surface-elevated p-6"
+          //
+          // **The measure is capped, because each entry is a sentence with its Dismiss
+          // at the other end of it.** The row is `justify-between`, so the strip's width
+          // *is* the distance between the two: when the shell went full-bleed that
+          // became 2160px at 2560px, and a reader finished the sentence about 1600px
+          // from the link that answers it. A notice is prose with an action, not a grid,
+          // so it keeps a measure while the card grids take the window.
+          className="mt-6 max-w-(--layout-container-max) rounded-card border border-dashed border-border-strong bg-surface-elevated p-6"
         >
           {renderable.map((notice, index) => {
             const lines = noticeLinesFor(notice.change_kind);
