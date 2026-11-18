@@ -292,16 +292,18 @@ describe("the grid", () => {
     }
   });
 
-  it("lays the grid out in three steps", async () => {
+  it("adds a column at every step, including the two above lg", async () => {
     render(await BrowsePage({ searchParams: Promise.resolve({}) }));
 
-    // **The three-step idiom, and the reason it is the three-step idiom.**
+    // **A-12's range is unchanged**: one column, two at `md: 768px`, three at
+    // `lg: 1024px` — three columns at ≥1280px and two at 1024–1279px, as asked.
     //
-    // Amendment A-12 asks for three columns at ≥1280px and two at 1024–1279px. This
-    // codebase has breakpoints at `md: 768px` and `lg: 1024px` and **no `xl`**, and
-    // `styles/tokens.css` resets `--breakpoint-*`, so an `xl:` rule would generate no
-    // CSS at all. `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` is what every other grid
-    // in `components/` uses, and it is what ships.
+    // **The two steps above it are what stop a card growing into the space.** `lg` used
+    // to be the last breakpoint the token file declared, so three columns was also the
+    // answer at 2560px: the grid held the count and stretched each column to 739px,
+    // against the same card's 312px at 1280px. `xl: 1440px` and `2xl: 2048px` are now
+    // declared in `styles/tokens.css`, and without them these two classes would
+    // generate no CSS — so this asserts the declaration as much as the class.
     //
     // The gap is 20px, and 20px is **not** on the spacing scale — the scale's `20` is
     // 80px. So the gap is the bracketed exact value, not `gap-5`.
@@ -310,20 +312,29 @@ describe("the grid", () => {
       expect(className).toContain("grid-cols-1");
       expect(className).toContain("md:grid-cols-2");
       expect(className).toContain("lg:grid-cols-3");
+      expect(className).toContain("xl:grid-cols-4");
+      expect(className).toContain("2xl:grid-cols-5");
       expect(className).toContain("gap-[20px]");
     }
   });
 
-  it("sits in a 32px frame, and not the city page's full-bleed 80px one", async () => {
+  it("carries no frame of its own, so it shares the shell's left edge", async () => {
     render(await BrowsePage({ searchParams: Promise.resolve({}) }));
 
-    // The shell's `<main>` carries `px-6` — 24px — so Browse's own wrapper adds the
-    // remaining 8px. It wraps the *whole* surface, so the hero and the grid share one
-    // left edge.
+    // **Browse used to add `px-2` on top of `<main>`'s `px-6`** to make itself a 32px
+    // frame. That was 8px more than Settings, the Timeline and the digest, so the
+    // heading stepped sideways on every nav change between them — one app rendering as
+    // two pages.
+    //
+    // The shell's frame is responsive now (24/48/80px, from `--layout-page-padding-*`),
+    // which is the wider frame Browse was reaching for, applied to every surface at
+    // once. So this asserts the *absence* of a horizontal frame here: re-adding one
+    // re-opens the 8px step.
     const frame = document.querySelector("[data-browse-hero]")?.parentElement;
-    expect(frame?.getAttribute("class")).toContain("px-2");
-    // The city page's frame is 80px; Browse's is not.
-    expect(frame?.getAttribute("class")).not.toContain("80");
+    const className = frame?.getAttribute("class") ?? "";
+
+    expect(frame, "the hero's wrapper is the frame under test").not.toBeNull();
+    expect(className).not.toMatch(/\bp[xl]-/);
   });
 
   it("uses the denser Browse sizing on the cards", async () => {

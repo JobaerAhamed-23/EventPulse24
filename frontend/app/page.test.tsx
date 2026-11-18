@@ -662,14 +662,24 @@ describe("the shell", () => {
     expect(header?.querySelector("nav")).toBeNull();
   });
 
-  it("constrains the content to the reading width, so a wide screen does not reflow it", async () => {
+  it("lets the content fill the column the rail leaves, with no container cap", async () => {
     const { container } = render(await HomePage(props()));
 
-    // "Desktop adds whitespace, never features, screens, actions or copy" (§10). A wide
-    // viewport stretches a card; a wide *card* changes how the card reads. So the
-    // constraint is the whole of the desktop's contribution to the layout.
+    // **The authed shell is full-bleed.** The content used to be capped at
+    // `--layout-container-max` and centred, as §10's "desktop adds whitespace, never
+    // features, screens, actions or copy" read as a hard container. In this shell that
+    // cap could not compose: the rail is a flex sibling, so `mx-auto` centred the
+    // content inside the *leftover* column — half a rail right of the screen's centre,
+    // with the surplus opening as a dead band between the rail and the content (570px
+    // of it at 2560px). Capping the shell instead made the gutters equal, and equal
+    // gutters are still 570px of nothing at each edge.
+    //
+    // So the rail sits on the viewport's left edge and the content runs to its right.
+    // This asserts the cap stays off: re-adding it brings the dead band back.
     const main = container.querySelector("main");
-    expect(main?.className).toContain("max-w-(--layout-container-max)");
+    expect(main?.className).not.toContain("max-w-(--layout-container-max)");
+    expect(main?.className).toContain("w-full");
+    expect(main?.className).toContain("flex-1");
   });
 
   it("shows the account row in the sidenav footer", async () => {

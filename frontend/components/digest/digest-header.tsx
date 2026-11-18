@@ -39,7 +39,16 @@ export function DigestHeader({
   empty?: boolean;
 }) {
   return (
-    <header className="relative">
+    // **The head is capped, because its quick action is positioned against it.** The
+    // action is `lg:absolute lg:right-0`, so "right" is this element's right edge — and
+    // when the shell went full-bleed that became the *window's* edge. At 2560px the
+    // button sat roughly 1600px from the heading it belongs to, alone in the corner.
+    //
+    // Capping the head restores what `right-0` meant when the shell was a 1180px
+    // container: level with the date line and beside the lede, which is where the
+    // mockup's `.pagehead .quickadd` puts it. The grids below are untouched and still
+    // use the whole window — a grid wants the width, a page head does not.
+    <header className="relative max-w-(--layout-container-max)">
       <p className="flex items-center gap-2 text-ink-secondary [font:var(--type-scale-meta-md)]">
         {/* The today indicator: a single glowing terracotta dot, inline with the date.
             `aria-hidden` — the words beside it carry the meaning. */}

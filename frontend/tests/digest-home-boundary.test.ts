@@ -409,12 +409,28 @@ describe("the home's shell", () => {
     expect(account).toContain("<SignOutButton />");
   });
 
-  it("constrains the content, so a wide screen does not reflow the digest", () => {
-    // §10: "Desktop adds whitespace and hover affordances — never features, screens,
-    // actions or copy." A wide viewport stretches a card; a wide *card* changes how the
-    // card reads.
+  it("lets the content fill the window, with no container cap on <main>", () => {
+    // §10 — "Desktop adds whitespace and hover affordances — never features, screens,
+    // actions or copy" — used to be read here as a hard container: `<main>` capped at
+    // `--layout-container-max` and centred. In the authed shell that cap could not
+    // compose. The rail is a flex sibling, so `mx-auto` centred the content inside the
+    // *leftover* column: half a rail right of the screen's centre, with the surplus
+    // opening as a dead band between the rail and the content — 570px of it at 2560px.
+    // Capping the shell instead made the gutters equal, and equal gutters are still
+    // 570px of nothing at each edge.
+    //
+    // The rule itself is intact: a wider viewport still adds no features, screens,
+    // actions or copy. It just no longer buys that with margins that read as emptiness.
+    //
+    // **The <main> tag is read, not the whole file**, because the file's comments name
+    // the token to explain why it is gone — a whole-file `toContain` would pass on the
+    // prose alone and assert nothing.
     const shell = code.get("components/shell/app-shell.tsx") ?? "";
-    expect(shell).toContain("max-w-(--layout-container-max)");
+    const main = /<main className="([^"]*)"/.exec(shell)?.[1];
+
+    expect(main, "app-shell.tsx has no <main className=...>").toBeDefined();
+    expect(main).not.toContain("max-w-(--layout-container-max)");
+    expect(main).toContain("w-full");
   });
 });
 

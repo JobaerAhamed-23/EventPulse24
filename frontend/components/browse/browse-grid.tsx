@@ -28,12 +28,17 @@ import type { BrowseCard as BrowseCardOut, BrowseQuota } from "@/lib/browse-read
  * city's events would be lost with them. The city page's own a11y test has a mutation
  * probe for exactly that mistake.
  *
- * **The grid is three columns at `lg` and one at `md`.** Amendment A-12 asks for three
- * columns at ≥1280px and two at 1024-1279px; this codebase's breakpoints are `md: 768px`
- * and `lg: 1024px`, with no `xl` to hang a 1280px rule on, and the token file resets
- * `--breakpoint-*` so an undeclared breakpoint generates no CSS at all. The three-step
- * idiom `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` is what every other grid in
- * `components/` uses, and it is what ships.
+ * **The grid gains a column at each step, and the steps now reach past `lg`.**
+ * Amendment A-12 asks for three columns at ≥1280px and two at 1024-1279px, and
+ * `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` still serves that range unchanged.
+ *
+ * **Above `lg` it used to serve nothing, and that is what made the cards look wrong.**
+ * `lg` was the last breakpoint the token file declared, so three columns was also the
+ * answer at 1920px and at 2560px — the grid kept the column *count* and stretched each
+ * column instead, to 739px at 2560px against the same card's 312px at 1280px. The card
+ * never changed; there was simply no rule above it. `xl: 1440px` and `2xl: 2048px` are
+ * now declared, and this grid uses them to add a fourth and a fifth column, so a card
+ * stays a card at every width instead of growing into the space.
  */
 export type BrowseGridProps = {
   /** The cards to render, in the server's order. */
@@ -142,7 +147,7 @@ export function BrowseGrid({
             </p>
           </div>
 
-          <ul className="grid grid-cols-1 gap-[20px] md:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-[20px] md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {first.map((card) => (
               <li key={card.event_id} className="flex">
                 <BrowseCard card={card} quota={quota} />
@@ -181,7 +186,7 @@ export function BrowseGrid({
             </p>
           </div>
 
-          <ul className="grid grid-cols-1 gap-[20px] md:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-[20px] md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {rest.map((card) => (
               <li key={card.event_id} className="flex">
                 <BrowseCard card={card} quota={quota} />

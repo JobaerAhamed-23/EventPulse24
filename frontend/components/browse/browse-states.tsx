@@ -170,7 +170,7 @@ export function BrowseError() {
 export function BrowseSkeleton() {
   return (
     <div role="status" aria-label="Loading Browse" className="mt-8" data-browse-skeleton>
-      <div className="grid grid-cols-1 gap-[20px] md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-[20px] md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {Array.from({ length: 12 }, (_, index) => (
           <div
             key={index}
