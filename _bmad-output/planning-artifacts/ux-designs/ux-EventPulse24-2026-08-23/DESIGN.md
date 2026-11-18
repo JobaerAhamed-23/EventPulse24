@@ -315,7 +315,7 @@ All three providers (Google, Apple, Outlook) ship at MVP per PRD FR-3 / FR-50. T
 - `component.card.pulse.digest.category.public` — Variant with `{color.accent.slate}` left stripe.
 - `component.card.pulse.digest.category.mustknow` — Variant with `{color.accent.amber}` left stripe. Should appear on fewer than ~10% of cards in any given view.
 - `component.card.pulse.digest.category.personal` — Variant with `{color.warm.personal}` left stripe. Always paired with the visible text label "Personal."
-- `component.card.pulse.digest.category.discovery` — Variant with `{color.accent.slate}` left stripe at 0.85 opacity plus a `discovery` micro-tag in the micro-tag row.
+- `component.card.pulse.digest.category.discovery` — Variant with `{color.accent.slate}` left stripe at 0.85 opacity plus a `discovery` micro-tag in the micro-tag row. **(Amendment A-2 — serendipity slot.)** A-2 made Slot 3 a serendipity category by formula and ruled that its Why-this Tag reads `discovery` or `new-to-you` rather than a category name, so that the slot announces its own intent; this variant is that rule's visual form, and the micro-tag is the amendment's tag, not a category.
 
 ### Badges and indicators
 
