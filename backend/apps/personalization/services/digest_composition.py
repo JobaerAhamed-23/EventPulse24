@@ -32,9 +32,13 @@ a **total** order and two runs over the same candidates cannot disagree).
 and "we never composed for you" are different states, and a parent row with no
 children is what tells them apart.
 
-**The re-run is a no-op.** One digest per `(user, local_date)` — the unique constraint
-is the backstop, but the command takes a per-user advisory lock and checks first, so a
-race serialises rather than surfacing as an `IntegrityError` to the caller.
+**The re-run is a no-op — unless the day's digest is empty.** One digest per
+`(user, local_date)` — the unique constraint is the backstop, but the command takes a
+per-user advisory lock and checks first, so a race serialises rather than surfacing as
+an `IntegrityError` to the caller. A digest **with cards** is never recomposed: AD-10
+fixes the explanation the user was shown. An **empty** one is replaced when the pools
+can now fill it, because it showed the user no card and so has no explanation to fix —
+see `_replaceable`.
 
 **It also reports the candidate pools, not just the cards.** FR-10's rule asks whether
 the user has anything worth sending a Pulse Ping about, and that question is about the
@@ -650,6 +654,60 @@ def _existing_digest(*, user_id: UUID, local_date: date) -> PulseDigest | None:
     )
 
 
+def _replaceable(existing: PulseDigest, *, scored: list) -> bool:
+    """Whether today's digest may be replaced by this composition.
+
+    **Three conditions, and all three are needed.**
+
+    1. **The stored digest is empty.** A digest with cards is a fact the user has been
+       shown, and AD-10 forbids changing it. This is the condition that keeps the rule.
+    2. **It holds no composition rows.** `is_empty` is stored rather than derived, so it
+       is a claim that could in principle disagree with the rows. The rows are the
+       authority here, and they are also why the delete is safe: `DigestComposition` is
+       append-only and `ep_personal` has no `DELETE` on it, so a digest with rows could
+       not be replaced even if this function let it through — it would fail at the
+       database instead of here, which is the wrong place to find out.
+    3. **The new composition has cards.** Replacing an empty digest with another empty
+       digest changes nothing the user can see, and would churn a row and an audit entry
+       on every re-run for a user whose city genuinely has nothing today.
+    """
+    if not existing.is_empty or not scored:
+        return False
+    return not (DigestComposition.objects.using(PERSONAL).filter(digest_id=existing.id).exists())
+
+
+def _delete_empty_digest(
+    existing: PulseDigest,
+    *,
+    actor: Actor,
+    local_date: date,
+    now: datetime,
+) -> None:
+    """Drop the day's empty digest so a composed one can take its place.
+
+    **The audit row is written, and it names the row that went.** AD-5: every mutation is
+    a named command that owns its audit write, and a digest that vanished with no record
+    is exactly the kind of gap the audit table exists to close. The replacement's own
+    `digest.composed` row follows it, so the pair reads as what happened: this empty
+    digest was dropped, and that composed one replaced it.
+
+    **No city, no counts, no titles** (AD-13) — the id and the day, both already on the
+    row.
+    """
+    PulseDigest.objects.using(PERSONAL).filter(id=existing.id).delete()
+    write_audit(
+        actor=actor,
+        action="digest.empty_replaced",
+        target_type="PulseDigest",
+        target_id=existing.id,
+        details={
+            "local_date": local_date.isoformat(),
+            "composed_at": existing.composed_at.isoformat(),
+            "at": now.isoformat(),
+        },
+    )
+
+
 def read_latest_slot(*, user_id: UUID, event_id: UUID) -> str | None:
     """Which slot this event was in, in the user's most recent digest. `None` if unknown.
 
@@ -732,10 +790,17 @@ def compose_digest(
     transaction on `personal` and write everything atomically". The window between the
     read and the write is microseconds wide, and it is the accepted cost of the wall.
 
-    **The re-run is a no-op.** A digest already exists for this `(user, local_date)`,
-    so the existing one is returned with `created=False` and nothing is written — no
-    second composition, no update to an append-only row, and no second audit row. A
+    **The re-run is a no-op over a composed digest.** One already exists for this
+    `(user, local_date)`, so it is returned with `created=False` and nothing is written —
+    no second composition, no update to an append-only row, and no second audit row. A
     re-run decides nothing, and the audit table records decisions.
+
+    **An empty digest is the exception, and it is a narrow one.** When the day's digest
+    is empty and this composition has cards, the empty row is replaced: it showed the
+    user nothing, so nothing they have seen changes, and the pools it was composed from
+    have since moved — a home city set, an event saved or added, a source re-run. The
+    result then carries `created=True`, and the Ping does not double-send, because
+    `mint_digest` keys on the user's local day. See `_replaceable`.
 
     **A short digest is a short digest.** FR-5's "exactly 3 cards on a standard day"
     describes a day with a normal catalog. When there is only one or two candidates,
@@ -839,6 +904,28 @@ def compose_digest(
         _lock_user(user_id)
 
         existing = _existing_digest(user_id=user_id, local_date=local_date)
+        if existing is not None and _replaceable(existing, scored=scored):
+            # **An empty digest that could now hold cards is replaced, not kept.**
+            #
+            # AD-10 fixes the explanation of a card the user has *seen*, and an empty
+            # digest has shown them no card — so there is no explanation to protect and
+            # nothing on screen to change under them. What the rule does protect is a
+            # composed digest: one with rows is never touched here, whatever the pools
+            # now say.
+            #
+            # **The empty row is a statement about the pools at composition time**, and
+            # the pools move during the day: the user picks a home city, saves an event,
+            # adds one to their own agenda, or a source re-runs and its events stop being
+            # stale. Keeping the empty row would keep telling the user "no qualifying
+            # events in {city}" about a city they no longer live in, until tomorrow's
+            # run — a claim the product can already see is false.
+            #
+            # **The Ping is not re-sent.** `scheduled_sends.mint_digest` keys on
+            # `user · digest · local_date`, so the mint that follows a replacement finds
+            # the day's key and adds nothing (FR-10: one Ping per user per day).
+            _delete_empty_digest(existing, actor=actor, local_date=local_date, now=now)
+            existing = None
+
         if existing is not None:
             return DigestCompositionResult(
                 digest_id=existing.id,

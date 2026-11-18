@@ -46,6 +46,9 @@ from apps.personalization.services.conflicts import (
     reconcile_pairs_for_side,
     record_detected_conflicts,
 )
+from apps.personalization.services.digest_enqueue import (
+    enqueue_digest_composition_on_commit,
+)
 from apps.personalization.services.save_cap import check_save_allowed
 from domain.errors import NotFoundError
 from shared.actor import Actor
@@ -188,6 +191,12 @@ def save_event(
             },
         )
         snapshot = _snapshot(saved)
+        # **A new save is a new candidate, so the day's empty digest is recomposed.**
+        # Only a *new* one: a repeat save is the same row returned again and changes no
+        # pool, so it has nothing to recompose. The composition replaces an empty digest
+        # and never a composed one (AD-10).
+        if created:
+            enqueue_digest_composition_on_commit(user_id)
 
     # The third read: the check. If the catalog's version moved past the one the snapshot was
     # stamped with, a postponement landed while we were writing, and the snapshot is stale.

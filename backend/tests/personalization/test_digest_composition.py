@@ -1138,3 +1138,107 @@ def test_a_source_reliability_of_zero_still_scores_the_other_terms():
 
     assert result.compositions
     assert result.compositions[0].score > Decimal("0.00")
+
+
+# --- the empty digest is replaced, the composed one never is ------------------------
+#
+# **The properties a user would notice if they broke.**
+#
+# - A user who sets their home city, saves an event or adds one to their agenda sees
+#   today's digest fill, instead of "No qualifying events in <the old city>" until
+#   tomorrow.
+# - A user whose digest **has cards** keeps exactly the cards they were shown. AD-10 is
+#   about the explanation the user has seen, and this is the half of it that matters.
+# - A day with genuinely nothing in it stays empty, and does not churn a row and an
+#   audit entry on every pass.
+
+
+def test_an_empty_digest_is_replaced_once_the_pool_can_fill_it():
+    """The fix: an empty digest showed the user nothing, so it is not a fact to keep."""
+    user_id = make_preference(_user_id()).user_id
+
+    first = compose(user_id)
+    assert first.is_empty
+
+    make_event(hours=2, title="Event One")
+    second = compose(user_id)
+
+    assert second.created
+    assert not second.is_empty
+    assert len(second.compositions) == 1
+    assert second.digest_id != first.digest_id
+    # The replaced row is gone, not orphaned beside the new one.
+    assert PulseDigest.objects.using(PERSONAL).filter(user_id=user_id).count() == 1
+
+
+def test_a_composed_digest_is_never_replaced():
+    """AD-10: the cards the user was shown this morning do not change under them."""
+    user_id = make_preference(_user_id()).user_id
+    make_event(hours=2, title="Event One")
+
+    first = compose(user_id)
+    assert not first.is_empty
+
+    # A better pool arrives after the composition. It changes nothing.
+    for hours in (3, 4):
+        make_event(hours=hours, title=f"Event {hours}")
+    second = compose(user_id)
+
+    assert not second.created
+    assert second.digest_id == first.digest_id
+    assert [row.event_id for row in second.compositions] == [
+        row.event_id for row in first.compositions
+    ]
+    assert PulseDigest.objects.using(PERSONAL).filter(user_id=user_id).count() == 1
+
+
+def test_an_empty_digest_is_kept_when_the_pool_is_still_empty():
+    """Replacing empty with empty changes nothing the user can see, so it is not done."""
+    user_id = make_preference(_user_id()).user_id
+
+    first = compose(user_id)
+    second = compose(user_id)
+
+    assert first.is_empty
+    assert not second.created
+    assert second.digest_id == first.digest_id
+    assert PulseDigest.objects.using(PERSONAL).filter(user_id=user_id).count() == 1
+    assert not (
+        PersonalizationAuditEntry.objects.using(PERSONAL)
+        .filter(action="digest.empty_replaced")
+        .exists()
+    )
+
+
+def test_the_replacement_is_audited_and_names_the_row_that_went():
+    """AD-5: a digest that vanished with no record is the gap the audit table closes."""
+    user_id = make_preference(_user_id()).user_id
+    first = compose(user_id)
+    make_event(hours=2, title="Event One")
+
+    compose(user_id)
+
+    audit = (
+        PersonalizationAuditEntry.objects.using(PERSONAL)
+        .filter(action="digest.empty_replaced")
+        .get()
+    )
+    assert audit.target_id == first.digest_id
+    assert audit.details["local_date"] == first.local_date.isoformat()
+
+
+def test_the_replacement_picks_up_a_city_the_empty_digest_did_not_have():
+    """The reported bug: the empty digest was composed for the user's *previous* city."""
+    preference = make_preference(_user_id(), city="Fixtureville")
+    user_id = preference.user_id
+    event = make_event(hours=2, title="Dhaka Tech Night", city="Dhaka")
+
+    first = compose(user_id)
+    assert first.is_empty, "the event is in another city, so there is nothing to compose"
+
+    preference.city = "Dhaka"
+    preference.save(using=PERSONAL, update_fields=["city"])
+    second = compose(user_id)
+
+    assert second.created
+    assert [row.event_id for row in second.compositions] == [event.id]
