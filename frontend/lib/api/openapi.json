@@ -1372,6 +1372,11 @@
           },
           "onboarding": {
             "$ref": "#/components/schemas/OnboardingStatusOut"
+          },
+          "pending_email": {
+            "default": "",
+            "title": "Pending Email",
+            "type": "string"
           }
         },
         "required": [
@@ -2119,6 +2124,65 @@
           "quiet_hours"
         ],
         "title": "EffectiveQuietHoursOut",
+        "type": "object"
+      },
+      "EmailChangeConfirmIn": {
+        "description": "The email-change confirmation: the token from the link sent to the new address.",
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "EmailChangeConfirmIn",
+        "type": "object"
+      },
+      "EmailChangeConfirmOut": {
+        "description": "The confirmation answer: the login has moved.\n\nIt carries the new address, because the caller may have no session — the link can be\nopened in a browser that never signed in — and a client that cannot read `me` still\nneeds to be able to say what just happened.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "status": {
+            "default": "email_changed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "EmailChangeConfirmOut",
+        "type": "object"
+      },
+      "EmailChangeRequestIn": {
+        "description": "The email-change request: the address to move the login to.",
+        "properties": {
+          "new_email": {
+            "title": "New Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_email"
+        ],
+        "title": "EmailChangeRequestIn",
+        "type": "object"
+      },
+      "EmailChangeRequestOut": {
+        "description": "The email-change answer. **The same for a free address and a taken one.**\n\nIt says the request was received, and nothing about whether anybody already holds the\naddress. Any difference here — a status, a field, a message — would turn this endpoint\ninto an oracle for *\"does an account exist at this address?\"*, which is the thing the\nwhole flow is shaped to avoid.",
+        "properties": {
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "EmailChangeRequestOut",
         "type": "object"
       },
       "ErrorOut": {
@@ -4742,7 +4806,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.",
+        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.\n\n`pending_email` is the address an outstanding email change is *to*, or empty when there is none. It is the caller's own pending change, and only the caller can read it.",
         "operationId": "apps_identity_api_me",
         "parameters": [],
         "responses": {
@@ -4937,6 +5001,132 @@
           }
         },
         "summary": "Set the signed-in user's name",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/profile/email": {
+      "post": {
+        "description": "Asks to move the login to a new address. A confirmation link is sent to that address, and a warning that the change was asked for is sent to the current one. **Nothing changes until the link is opened.**\n\nThe answer is the same whether the address is free or already belongs to another account, so this endpoint cannot be used to find out who has an account. Asking for the address you already have is refused with 422, because that is a mistake about your own account rather than a probe of someone else's.",
+        "operationId": "apps_identity_api_request_email_change_endpoint",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailChangeRequestOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Ask to change the account's email address",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/profile/email/confirm": {
+      "post": {
+        "description": "Consumes a confirmation token and moves the login to the address it proves. The token is single-use and short-lived.\n\n**The caller does not need a session**: the link is opened from a mailbox, possibly in a browser that never signed in, and requiring a session would make the link work only where it was requested. It is still CSRF-checked — fetch `GET /api/auth/csrf` first — exactly as the password-reset confirmation is.\n\nA token that was already used, revoked or expired is refused, and so is one whose address another account claimed in the meantime. The refusal does not say which of those it was.",
+        "operationId": "apps_identity_api_confirm_email_change_endpoint",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailChangeConfirmOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Confirm a new email address",
         "tags": [
           "auth"
         ]

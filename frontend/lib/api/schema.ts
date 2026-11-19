@@ -34,6 +34,8 @@ export interface paths {
         /**
          * The signed-in user
          * @description The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
+         *
+         *     `pending_email` is the address an outstanding email change is *to*, or empty when there is none. It is the caller's own pending change, and only the caller can read it.
          */
         get: operations["apps_identity_api_me"];
         put?: never;
@@ -100,6 +102,52 @@ export interface paths {
          */
         put: operations["apps_identity_api_put_profile"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask to change the account's email address
+         * @description Asks to move the login to a new address. A confirmation link is sent to that address, and a warning that the change was asked for is sent to the current one. **Nothing changes until the link is opened.**
+         *
+         *     The answer is the same whether the address is free or already belongs to another account, so this endpoint cannot be used to find out who has an account. Asking for the address you already have is refused with 422, because that is a mistake about your own account rather than a probe of someone else's.
+         */
+        post: operations["apps_identity_api_request_email_change_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/email/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a new email address
+         * @description Consumes a confirmation token and moves the login to the address it proves. The token is single-use and short-lived.
+         *
+         *     **The caller does not need a session**: the link is opened from a mailbox, possibly in a browser that never signed in, and requiring a session would make the link work only where it was requested. It is still CSRF-checked — fetch `GET /api/auth/csrf` first — exactly as the password-reset confirmation is.
+         *
+         *     A token that was already used, revoked or expired is refused, and so is one whose address another account claimed in the meantime. The refusal does not say which of those it was.
+         */
+        post: operations["apps_identity_api_confirm_email_change_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2538,6 +2586,11 @@ export interface components {
             /** Name */
             name: string;
             onboarding: components["schemas"]["OnboardingStatusOut"];
+            /**
+             * Pending Email
+             * @default
+             */
+            pending_email: string;
         };
         /**
          * DataExportOut
@@ -3004,6 +3057,55 @@ export interface components {
             quiet_hours: components["schemas"]["QuietHoursOut"] | null;
             /** Weekday */
             weekday: number;
+        };
+        /**
+         * EmailChangeConfirmIn
+         * @description The email-change confirmation: the token from the link sent to the new address.
+         */
+        EmailChangeConfirmIn: {
+            /** Token */
+            token: string;
+        };
+        /**
+         * EmailChangeConfirmOut
+         * @description The confirmation answer: the login has moved.
+         *
+         *     It carries the new address, because the caller may have no session — the link can be
+         *     opened in a browser that never signed in — and a client that cannot read `me` still
+         *     needs to be able to say what just happened.
+         */
+        EmailChangeConfirmOut: {
+            /** Email */
+            email: string;
+            /**
+             * Status
+             * @default email_changed
+             */
+            status: string;
+        };
+        /**
+         * EmailChangeRequestIn
+         * @description The email-change request: the address to move the login to.
+         */
+        EmailChangeRequestIn: {
+            /** New Email */
+            new_email: string;
+        };
+        /**
+         * EmailChangeRequestOut
+         * @description The email-change answer. **The same for a free address and a taken one.**
+         *
+         *     It says the request was received, and nothing about whether anybody already holds the
+         *     address. Any difference here — a status, a field, a message — would turn this endpoint
+         *     into an oracle for *"does an account exist at this address?"*, which is the thing the
+         *     whole flow is shaped to avoid.
+         */
+        EmailChangeRequestOut: {
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
         };
         /**
          * ErrorOut
@@ -4919,6 +5021,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_request_email_change_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_confirm_email_change_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeConfirmOut"];
                 };
             };
             /** @description Forbidden */

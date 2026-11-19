@@ -73,9 +73,14 @@ from apps.identity.api_auth import (
     require_csrf,
     unauthenticated_user,
 )
+from apps.identity.models import PendingEmailChange
 from apps.identity.schemas import (
     CsrfTokenOut,
     CurrentUserOut,
+    EmailChangeConfirmIn,
+    EmailChangeConfirmOut,
+    EmailChangeRequestIn,
+    EmailChangeRequestOut,
     PasswordResetConfirmIn,
     PasswordResetConfirmOut,
     PasswordResetRequestIn,
@@ -89,12 +94,21 @@ from apps.identity.schemas import (
     SignUpOut,
 )
 from apps.identity.services.authenticate import authenticate
+from apps.identity.services.email_change import confirm_email_change, request_email_change
+from apps.identity.services.emails import (
+    email_change_stream,
+    render_confirm_email_change_email,
+    render_email_change_requested_email,
+)
 from apps.identity.services.password_reset import request_password_reset, reset_password
 from apps.identity.services.profile import set_user_name
 from apps.identity.services.session import sign_out
 from apps.identity.services.sign_up import sign_up
 from apps.personalization.schemas import OnboardingStatusOut
 from apps.personalization.services.onboarding import get_onboarding_state
+from ports.registry import get_email_port
+from shared.constants import SEND_KEY_SEPARATOR
+from shared.db import PERSONAL
 from shared.errors import ErrorOut
 
 router = Router(tags=["auth"])
@@ -103,6 +117,9 @@ router = Router(tags=["auth"])
 #: the work may not have happened yet: a known address gets an email, and an unknown one
 #: gets nothing. Both answer the same, so the status cannot say which happened.
 RESET_REQUESTED = 202
+
+#: The email-change request is accepted, not finished: the link has yet to be opened.
+EMAIL_CHANGE_REQUESTED = 202
 
 
 def _client_ip(request) -> str | None:
@@ -259,7 +276,10 @@ def signout(request):
         "permission list and no catch-all field. The name is empty when no name is set; "
         "the frontend renders its own fallback in that case. The onboarding status says "
         "only whether the onboarding is finished and which step the user is on; the full "
-        "state is at `/api/personal/onboarding`."
+        "state is at `/api/personal/onboarding`.\n\n"
+        "`pending_email` is the address an outstanding email change is *to*, or empty "
+        "when there is none. It is the caller's own pending change, and only the caller "
+        "can read it."
     ),
 )
 def me(request):
@@ -277,10 +297,33 @@ def me(request):
     # cross-site write.
     state = get_onboarding_state(user_id=user.pk, now=timezone.now())
 
+    # **The outstanding email change, if there is one.** Read here rather than from a
+    # second endpoint for the reason `name` is here: the shell is rendered on every page
+    # and a second round trip for one row of the caller's own account would be a second
+    # answer to a question this response already has in hand.
+    #
+    # Read-only, like the onboarding read above and for the same reason: `me` is a `GET`,
+    # and a `GET` is never CSRF-checked, so a write behind one would be a cross-site
+    # write. An expired request is simply not reported — it is left for the next command
+    # to revoke.
+    pending = (
+        PendingEmailChange.objects.using(PERSONAL)
+        .filter(
+            user_id=user.pk,
+            used_at__isnull=True,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        .order_by("-created_at")
+        .values_list("new_email", flat=True)
+        .first()
+    )
+
     return CurrentUserOut(
         id=user.pk,
         email=user.email,
         name=user.name,
+        pending_email=pending or "",
         onboarding=OnboardingStatusOut(
             completed=state.completed,
             current_step=state.current_step,
@@ -347,6 +390,97 @@ def put_profile(request, body: ProfileIn):
     # The answer is the caller's whole profile — the id, the email and the name that was
     # just saved — so the client can update what it knows without a second `me` call.
     return ProfileOut(id=user.pk, email=user.email, name=saved)
+
+
+@router.post(
+    "/profile/email",
+    # 202 is the accepted request; 401 an anonymous caller; 403 the CSRF refusal; 422 the
+    # two plain refusals (no address, your own address); 429 the throttle. Declaring them
+    # is what puts `ErrorOut` in the generated client.
+    response={
+        EMAIL_CHANGE_REQUESTED: EmailChangeRequestOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+    },
+    summary="Ask to change the account's email address",
+    description=(
+        "Asks to move the login to a new address. A confirmation link is sent to that "
+        "address, and a warning that the change was asked for is sent to the current "
+        "one. **Nothing changes until the link is opened.**\n\n"
+        "The answer is the same whether the address is free or already belongs to "
+        "another account, so this endpoint cannot be used to find out who has an "
+        "account. Asking for the address you already have is refused with 422, because "
+        "that is a mistake about your own account rather than a probe of someone "
+        "else's."
+    ),
+)
+def request_email_change_endpoint(request, body: EmailChangeRequestIn):
+    """Ask to move the login. The answer never says whether the address was taken."""
+    require_csrf(request)
+
+    user = current_user(request)
+
+    pending = request_email_change(
+        user_id=user.pk,
+        new_email=body.new_email,
+        ip_address=_client_ip(request),
+    )
+
+    # **`None` means "nothing to send", and the response does not change because of it.**
+    # It is the already-taken case, and a caller who could tell it apart from a free
+    # address would have an account-existence oracle.
+    if pending is not None:
+        email_port = get_email_port()
+        stream = email_change_stream()
+
+        # The confirmation, to the address being proven.
+        email_port.send(
+            render_confirm_email_change_email(to=pending.new_email, token=pending.token),
+            stream=stream,
+            idempotency_key=f"email_change_confirm{SEND_KEY_SEPARATOR}{pending.row_id}",
+        )
+        # The warning, to the address still on the account. **This is the security
+        # control**, not a courtesy: it is the one message that reaches the real account
+        # holder when somebody else asked.
+        email_port.send(
+            render_email_change_requested_email(to=pending.old_email, new_email=pending.new_email),
+            stream=stream,
+            idempotency_key=f"email_change_warn{SEND_KEY_SEPARATOR}{pending.row_id}",
+        )
+
+    return Status(EMAIL_CHANGE_REQUESTED, EmailChangeRequestOut())
+
+
+@router.post(
+    "/profile/email/confirm",
+    # 422 covers every way a token can fail — unknown, used, revoked, expired, or beaten
+    # to the address — and says which it was in none of them. 403 is the CSRF refusal.
+    response={200: EmailChangeConfirmOut, 403: ErrorOut, 422: ErrorOut},
+    summary="Confirm a new email address",
+    description=(
+        "Consumes a confirmation token and moves the login to the address it proves. "
+        "The token is single-use and short-lived.\n\n"
+        "**The caller does not need a session**: the link is opened from a mailbox, "
+        "possibly in a browser that never signed in, and requiring a session would make "
+        "the link work only where it was requested. It is still CSRF-checked — fetch "
+        "`GET /api/auth/csrf` first — exactly as the password-reset confirmation is.\n\n"
+        "A token that was already used, revoked or expired is refused, and so is one "
+        "whose address another account claimed in the meantime. The refusal does not say "
+        "which of those it was."
+    ),
+)
+def confirm_email_change_endpoint(request, body: EmailChangeConfirmIn):
+    """Consume a confirmation token and move the login."""
+    require_csrf(request)
+
+    # **No `current_user` here.** The person opening this link is reading mail, and the
+    # browser they read it in may never have signed in. `password_reset_confirm` is
+    # anonymous for the same reason.
+    user = confirm_email_change(token=body.token)
+
+    return EmailChangeConfirmOut(email=user.email)
 
 
 @router.post(

@@ -27,6 +27,12 @@ from adapters.throttle.memory import InMemoryThrottleAdapter
 _EMAIL_CONSUMERS = (
     "apps.identity.services.sign_up",
     "apps.identity.services.password_reset",
+    # **The email-change sends happen at the edge, not in the command.**
+    # `request_email_change` returns the token and both addresses and sends nothing, so
+    # the command stays testable with no email port at all; `apps.identity.api` owns the
+    # two sends. That makes the API module a third consumer of this port, and a fixture
+    # that patched only the services would let a real SMTP adapter answer here.
+    "apps.identity.api",
 )
 
 

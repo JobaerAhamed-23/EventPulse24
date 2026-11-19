@@ -107,6 +107,18 @@ class CurrentUserOut(Schema):
     id: UUID
     email: str
     name: str
+    #: The address an outstanding email change is *to*, or `""` when there is none.
+    #:
+    #: **The address, not a boolean**, and that was a decision rather than convenience.
+    #: A boolean leaves the screen unable to say *which* address a link went to, which is
+    #: precisely what someone who mistyped it needs to see before they wait a day for a
+    #: mail that will never arrive. It costs putting the address in every page's payload
+    #: — but it is **the account holder's own data about their own pending change**, and
+    #: `me` is readable by nobody else.
+    #:
+    #: It is `""` and never `null`, for the same reason `name` is: "none pending" is one
+    #: state, not two.
+    pending_email: str = ""
     onboarding: OnboardingStatusOut
 
 
@@ -133,6 +145,42 @@ class ProfileOut(Schema):
     id: UUID
     email: str
     name: str
+
+
+class EmailChangeRequestIn(Schema):
+    """The email-change request: the address to move the login to."""
+
+    new_email: str
+
+
+class EmailChangeRequestOut(Schema):
+    """The email-change answer. **The same for a free address and a taken one.**
+
+    It says the request was received, and nothing about whether anybody already holds the
+    address. Any difference here — a status, a field, a message — would turn this endpoint
+    into an oracle for *"does an account exist at this address?"*, which is the thing the
+    whole flow is shaped to avoid.
+    """
+
+    status: str = "accepted"
+
+
+class EmailChangeConfirmIn(Schema):
+    """The email-change confirmation: the token from the link sent to the new address."""
+
+    token: str
+
+
+class EmailChangeConfirmOut(Schema):
+    """The confirmation answer: the login has moved.
+
+    It carries the new address, because the caller may have no session — the link can be
+    opened in a browser that never signed in — and a client that cannot read `me` still
+    needs to be able to say what just happened.
+    """
+
+    status: str = "email_changed"
+    email: str
 
 
 class PasswordResetRequestIn(Schema):

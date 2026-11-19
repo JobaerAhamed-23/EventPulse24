@@ -4,10 +4,12 @@ title: Request and Confirm — Two Endpoints, One of Them Unauthenticated
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - email-change-mails
 created: 2026-11-19
+run_id: run-eventpulse24-044
+completed_at: 2026-11-19T11:15:48.309Z
 ---
 
 # Work Item: Request and Confirm — Two Endpoints, One of Them Unauthenticated
