@@ -173,6 +173,44 @@ def request_email_change(
     )
 
 
+def cancel_email_change(*, user_id) -> int:
+    """Call off any outstanding change for this account. Returns how many were revoked.
+
+    **This is the user-facing half of the warning mail's remedy.** The mail tells someone
+    who did not ask for the change that a password reset stops it; this is the gentler
+    route for the much commoner case — the account holder changed their mind, or mistyped
+    the address and would rather start again than wait a day for a link they cannot use.
+
+    **Cancelling when nothing is pending is not an error.** The caller's intent — *"have
+    no pending change"* — is satisfied either way, which is the rule `sign_out` already
+    follows for signing out when nobody is signed in. An endpoint that refused would make
+    every client check first, and the check would race with the cancel anyway.
+
+    **Revoked, not deleted.** `revoked_at` is what the row's check constraint is built
+    around, and a deleted row would lose the fact that a change was asked for and called
+    off — which is exactly the history an account holder investigating a takeover wants.
+    """
+    with transaction.atomic(using=PERSONAL):
+        revoked = (
+            PendingEmailChange.objects.using(PERSONAL)
+            .filter(user_id=user_id, used_at__isnull=True, revoked_at__isnull=True)
+            .update(revoked_at=timezone.now())
+        )
+
+        # **Audited even when nothing was pending.** That somebody pressed cancel is the
+        # fact worth keeping; whether there happened to be a row is not. No address in
+        # the details (AD-13).
+        audit_service.write_audit(
+            actor=Actor.user(user_id),
+            action="email_change_cancelled",
+            target_type="User",
+            target_id=user_id,
+            details={"method": "user"},
+        )
+
+    return revoked
+
+
 def confirm_email_change(*, token: str, now=None) -> User:
     """Consume a token and move the login to the address it proves.
 

@@ -77,6 +77,7 @@ from apps.identity.models import PendingEmailChange
 from apps.identity.schemas import (
     CsrfTokenOut,
     CurrentUserOut,
+    EmailChangeCancelOut,
     EmailChangeConfirmIn,
     EmailChangeConfirmOut,
     EmailChangeRequestIn,
@@ -94,7 +95,11 @@ from apps.identity.schemas import (
     SignUpOut,
 )
 from apps.identity.services.authenticate import authenticate
-from apps.identity.services.email_change import confirm_email_change, request_email_change
+from apps.identity.services.email_change import (
+    cancel_email_change,
+    confirm_email_change,
+    request_email_change,
+)
 from apps.identity.services.emails import (
     email_change_stream,
     render_confirm_email_change_email,
@@ -278,8 +283,8 @@ def signout(request):
         "only whether the onboarding is finished and which step the user is on; the full "
         "state is at `/api/personal/onboarding`.\n\n"
         "`pending_email` is the address an outstanding email change is *to*, or empty "
-        "when there is none. It is the caller's own pending change, and only the caller "
-        "can read it."
+        "when there is none, and `pending_email_expires_at` is when that link stops "
+        "working. It is the caller's own pending change, and only the caller can read it."
     ),
 )
 def me(request):
@@ -315,7 +320,7 @@ def me(request):
             expires_at__gt=timezone.now(),
         )
         .order_by("-created_at")
-        .values_list("new_email", flat=True)
+        .values_list("new_email", "expires_at")
         .first()
     )
 
@@ -323,7 +328,8 @@ def me(request):
         id=user.pk,
         email=user.email,
         name=user.name,
-        pending_email=pending or "",
+        pending_email=pending[0] if pending else "",
+        pending_email_expires_at=pending[1].isoformat() if pending else "",
         onboarding=OnboardingStatusOut(
             completed=state.completed,
             current_step=state.current_step,
@@ -451,6 +457,28 @@ def request_email_change_endpoint(request, body: EmailChangeRequestIn):
         )
 
     return Status(EMAIL_CHANGE_REQUESTED, EmailChangeRequestOut())
+
+
+@router.delete(
+    "/profile/email",
+    # 401 an anonymous caller, 403 the CSRF refusal. Cancelling cannot fail on its merits.
+    response={200: EmailChangeCancelOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Call off a pending email change",
+    description=(
+        "Revokes any outstanding email change for the signed-in account, so the "
+        "confirmation link already sent can no longer move the login.\n\n"
+        "Cancelling when nothing is pending is **not** an error: the caller wanted no "
+        "pending change and has none either way. The answer is the same in both cases."
+    ),
+)
+def cancel_email_change_endpoint(request):
+    """Call off any outstanding email change."""
+    require_csrf(request)
+
+    user = current_user(request)
+    cancel_email_change(user_id=user.pk)
+
+    return EmailChangeCancelOut()
 
 
 @router.post(

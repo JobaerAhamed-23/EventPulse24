@@ -310,6 +310,9 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
     name is — the screen that shows it is reached on a path that already reads `me` — and
     it is the **address** rather than a boolean, because a screen that cannot say *which*
     address a link went to is no use to someone who mistyped it.
+    **`pending_email_expires_at`** rides with it: the screen has to say whether a link is
+    still worth waiting for, and a duration written into the frontend would be a number
+    that keeps claiming "24 hours" after the constant says otherwise.
 
     **The exact dict is the assertion, and that is the point.** A field added to
     `CurrentUserOut` without a thought lands here as a failure, which is how `me` is kept
@@ -328,6 +331,7 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
         "email": "maya@example.test",
         "name": "",
         "pending_email": "",
+        "pending_email_expires_at": "",
         "onboarding": {"completed": False, "current_step": 1},
     }
     # The hash is not in the body under any key.

@@ -19,7 +19,7 @@ split: the refusal is provable because the ordinary client still refuses.
 import pytest
 from django.test import Client
 
-from apps.identity.models import User
+from apps.identity.models import PendingEmailChange, User
 from shared.db import PERSONAL
 from tests.csrf import ORIGIN, CsrfClient
 from tests.identity.factories import UserFactory
@@ -192,6 +192,63 @@ class TestConfirming:
         assert response.status_code == 422
 
 
+class TestCancelling:
+    def test_it_clears_the_pending_change(self, email_adapter):
+        client = signed_in_client()
+        ask(client)
+
+        response = client.delete("/api/auth/profile/email")
+
+        assert response.status_code == 200
+        assert client.get("/api/auth/me").json()["pending_email"] == ""
+
+    def test_the_cancelled_link_no_longer_confirms(self, email_adapter):
+        client = signed_in_client()
+        ask(client)
+        token = _token_for(email_adapter)
+
+        client.delete("/api/auth/profile/email")
+
+        assert confirm(client, token).status_code == 422
+
+    def test_cancelling_with_nothing_pending_is_not_an_error(self):
+        client = signed_in_client()
+
+        assert client.delete("/api/auth/profile/email").status_code == 200
+
+    def test_an_anonymous_caller_is_refused(self):
+        client = CsrfClient()
+        client.defaults["CONTENT_TYPE"] = "application/json"
+
+        assert client.delete("/api/auth/profile/email").status_code == 401
+
+    def test_a_request_without_a_csrf_token_is_refused(self):
+        signed_in_client()
+        plain = Client()
+
+        response = plain.delete("/api/auth/profile/email", HTTP_ORIGIN=ORIGIN)
+
+        assert response.status_code == 403
+
+
+class TestResendingIsJustAskingAgain:
+    def test_it_mints_a_new_link_and_kills_the_old_one(self, email_adapter):
+        """**No resend endpoint exists, and none is needed.** The token is never stored,
+        so a resend must mint a new link anyway, and the request endpoint already revokes
+        the outstanding row."""
+        client = signed_in_client()
+        ask(client)
+        first = _token_for(email_adapter)
+
+        email_adapter.sent.clear()
+        ask(client)
+        second = _token_for(email_adapter)
+
+        assert second != first
+        assert confirm(client, first).status_code == 422
+        assert confirm(client, second).status_code == 200
+
+
 class TestMeReportsThePendingChange:
     def test_it_names_the_address_a_link_was_sent_to(self):
         """A boolean would leave the screen unable to say *which* address, which is what
@@ -201,10 +258,25 @@ class TestMeReportsThePendingChange:
 
         assert client.get("/api/auth/me").json()["pending_email"] == NEW
 
+    def test_it_says_when_the_link_stops_working(self, email_adapter):
+        """The screen has to tell someone whether a mail is still worth waiting for, and
+        the server is what knows — a duration in the frontend would be a number that keeps
+        claiming 24 hours after the constant says otherwise."""
+        client = signed_in_client()
+        ask(client)
+
+        expires = client.get("/api/auth/me").json()["pending_email_expires_at"]
+
+        assert expires != ""
+        row = PendingEmailChange.objects.using(PERSONAL).get()
+        assert expires.startswith(row.expires_at.isoformat()[:19])
+
     def test_it_is_empty_when_nothing_is_pending(self):
         client = signed_in_client()
 
-        assert client.get("/api/auth/me").json()["pending_email"] == ""
+        body = client.get("/api/auth/me").json()
+        assert body["pending_email"] == ""
+        assert body["pending_email_expires_at"] == ""
 
     def test_it_clears_once_the_change_is_confirmed(self, email_adapter):
         client = signed_in_client()

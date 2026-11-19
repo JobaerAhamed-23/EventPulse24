@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { EmailChange } from "@/components/settings/email-change";
 import { HomeCity } from "@/components/settings/home-city";
 import { ProfileName } from "@/components/settings/profile-name";
 import { SettingsNav } from "@/components/settings/settings-nav";
@@ -123,12 +124,28 @@ export default async function SettingsProfilePage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Profile</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          Your name, how we address you, and the city your Pulse Digest follows.
+          Your name, your address, and the city your Pulse Digest follows.
         </p>
       </header>
 
       <div className="mt-8 max-w-(--layout-container-reading)">
         <ProfileName initialName={stored} email={session.user.email} />
+      </div>
+
+      {/*
+        **The address, under the name.** It is the account's login rather than a
+        preference, which is why it reads as its own block with its own explanation
+        instead of sitting in the same list as the name.
+
+        **It needs no read of its own**: `me` already carries the current address and any
+        pending change, and the session has both in hand.
+      */}
+      <div className="mt-12 max-w-(--layout-container-reading)">
+        <EmailChange
+          email={session.user.email}
+          initialPendingEmail={session.user.pending_email}
+          initialPendingExpiresAt={session.user.pending_email_expires_at}
+        />
       </div>
 
       {/*

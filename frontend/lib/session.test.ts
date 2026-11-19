@@ -33,6 +33,8 @@ const USER = {
   id: "11111111-1111-1111-1111-111111111111",
   email: "maya@example.test",
   name: "",
+  pending_email: "",
+  pending_email_expires_at: "",
   onboarding: { completed: true, current_step: null },
 };
 

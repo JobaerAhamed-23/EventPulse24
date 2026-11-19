@@ -1377,6 +1377,11 @@
             "default": "",
             "title": "Pending Email",
             "type": "string"
+          },
+          "pending_email_expires_at": {
+            "default": "",
+            "title": "Pending Email Expires At",
+            "type": "string"
           }
         },
         "required": [
@@ -2124,6 +2129,18 @@
           "quiet_hours"
         ],
         "title": "EffectiveQuietHoursOut",
+        "type": "object"
+      },
+      "EmailChangeCancelOut": {
+        "description": "The cancel answer. The same whether something was pending or nothing was.\n\nCancelling with nothing outstanding is not an error — the caller wanted no pending\nchange and has none — so the response does not distinguish the two. A client that\ncould tell them apart would be reading state it can already get from `me`.",
+        "properties": {
+          "status": {
+            "default": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "EmailChangeCancelOut",
         "type": "object"
       },
       "EmailChangeConfirmIn": {
@@ -4806,7 +4823,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.\n\n`pending_email` is the address an outstanding email change is *to*, or empty when there is none. It is the caller's own pending change, and only the caller can read it.",
+        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.\n\n`pending_email` is the address an outstanding email change is *to*, or empty when there is none, and `pending_email_expires_at` is when that link stops working. It is the caller's own pending change, and only the caller can read it.",
         "operationId": "apps_identity_api_me",
         "parameters": [],
         "responses": {
@@ -5007,6 +5024,47 @@
       }
     },
     "/api/auth/profile/email": {
+      "delete": {
+        "description": "Revokes any outstanding email change for the signed-in account, so the confirmation link already sent can no longer move the login.\n\nCancelling when nothing is pending is **not** an error: the caller wanted no pending change and has none either way. The answer is the same in both cases.",
+        "operationId": "apps_identity_api_cancel_email_change_endpoint",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailChangeCancelOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Call off a pending email change",
+        "tags": [
+          "auth"
+        ]
+      },
       "post": {
         "description": "Asks to move the login to a new address. A confirmation link is sent to that address, and a warning that the change was asked for is sent to the current one. **Nothing changes until the link is opened.**\n\nThe answer is the same whether the address is free or already belongs to another account, so this endpoint cannot be used to find out who has an account. Asking for the address you already have is refused with 422, because that is a mistake about your own account rather than a probe of someone else's.",
         "operationId": "apps_identity_api_request_email_change_endpoint",

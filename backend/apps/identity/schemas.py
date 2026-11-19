@@ -119,6 +119,14 @@ class CurrentUserOut(Schema):
     #: It is `""` and never `null`, for the same reason `name` is: "none pending" is one
     #: state, not two.
     pending_email: str = ""
+    #: When that pending change's link stops working, ISO-8601, or `""` when none.
+    #:
+    #: **The moment, not the duration.** The screen has to tell someone whether it is
+    #: still worth waiting for a mail, and a duration typed into the frontend would be
+    #: the same mistake the mail templates had: a number that keeps saying "24 hours"
+    #: after the constant says otherwise. The server knows when this link dies, so the
+    #: server says when.
+    pending_email_expires_at: str = ""
     onboarding: OnboardingStatusOut
 
 
@@ -163,6 +171,17 @@ class EmailChangeRequestOut(Schema):
     """
 
     status: str = "accepted"
+
+
+class EmailChangeCancelOut(Schema):
+    """The cancel answer. The same whether something was pending or nothing was.
+
+    Cancelling with nothing outstanding is not an error — the caller wanted no pending
+    change and has none — so the response does not distinguish the two. A client that
+    could tell them apart would be reading state it can already get from `me`.
+    """
+
+    status: str = "cancelled"
 
 
 class EmailChangeConfirmIn(Schema):

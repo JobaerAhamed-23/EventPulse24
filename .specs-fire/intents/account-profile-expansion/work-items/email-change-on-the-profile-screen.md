@@ -4,10 +4,12 @@ title: Asking to Move Your Address — and the Page the Link Lands On
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - email-change-endpoints-and-contract
 created: 2026-11-19
+run_id: run-eventpulse24-045
+completed_at: 2026-11-19T11:56:00.199Z
 ---
 
 # Work Item: Asking to Move Your Address — and the Page the Link Lands On
@@ -35,12 +37,36 @@ that moves a login is performed by every mail scanner that touches the message. 
 link opens a **frontend route** that posts the token — and that route must work for a
 visitor with **no session**, in a browser that never saw the request.
 
+## Scope amendment — 2026-11-19
+
+**The decomposition had a gap: this item's pending state needs a resend and a cancel, and
+neither endpoint was in any work item.** `email-change-endpoints-and-contract` shipped
+request and confirm only. The gap was mine, not the intent's.
+
+**Half of it turned out not to be a gap.** The raw token is never stored — only its digest
+is (AD-18) — so a resend *cannot* re-send the original link; it has to mint a new one. And
+`request_email_change` already revokes any outstanding row before creating the next. **So
+a resend is `POST /api/auth/profile/email` called again with the pending address**, no new
+endpoint, and the existing per-account throttle limits it for free.
+
+**The real gap is one endpoint: cancel.** `DELETE /api/auth/profile/email` and a
+`cancel_email_change` command, added to this item's scope.
+
+**Cancel matters more than it looks.** It is the user-facing half of the remedy the
+warning mail promises: an account holder who sees a change they did not ask for should be
+able to stop it from the screen, not only by resetting their password.
+
 ## Acceptance Criteria
 
 - [ ] The profile screen shows the current address and an explicit control to change it
 - [ ] The control **does not fire on change**; the copy says what will happen before it
       happens
 - [ ] A pending change shows the requested address, the expiry, a resend and a cancel
+- [ ] **`DELETE /api/auth/profile/email`** and a `cancel_email_change` command (AD-5),
+      audited, with no address in the details
+- [ ] Cancelling is **idempotent**: cancelling when nothing is pending is not an error
+- [ ] A cancelled link no longer confirms — asserted, not assumed
+- [ ] **Resend mints a new token**; the old link stops working
 - [ ] Cancelling clears the pending state, and the old address keeps working
 - [ ] A refusal from the API is shown **verbatim**; the generic offline line only when
       the request never reached the API (`save-failure.ts`'s existing rule)

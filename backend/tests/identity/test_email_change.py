@@ -281,6 +281,74 @@ def test_the_account_keeps_its_sessions():
     assert Session.objects.using(PERSONAL).filter(session_key=store.session_key).exists()
 
 
+# --- cancelling ---------------------------------------------------------
+
+
+def test_cancelling_stops_the_link_from_working():
+    """The gentler half of the remedy: the account holder calls it off themselves."""
+    from apps.identity.services import cancel_email_change
+
+    user = UserFactory(email="maya@example.test")
+    pending = request_email_change(user_id=user.pk, new_email=NEW)
+
+    cancel_email_change(user_id=user.pk)
+
+    with pytest.raises(InvalidEmailChangeTokenError):
+        confirm_email_change(token=pending.token)
+    assert _reload(user).email == "maya@example.test"
+
+
+def test_cancelling_with_nothing_pending_is_not_an_error():
+    """`sign_out`'s rule: the caller wanted no pending change, and has none either way."""
+    from apps.identity.services import cancel_email_change
+
+    user = UserFactory(email="maya@example.test")
+
+    assert cancel_email_change(user_id=user.pk) == 0
+
+
+def test_cancelling_revokes_rather_than_deletes():
+    """The row is the history an account holder investigating a takeover wants."""
+    from apps.identity.services import cancel_email_change
+
+    user = UserFactory(email="maya@example.test")
+    request_email_change(user_id=user.pk, new_email=NEW)
+
+    cancel_email_change(user_id=user.pk)
+
+    row = PendingEmailChange.objects.using(PERSONAL).get(user_id=user.pk)
+    assert row.revoked_at is not None
+    assert row.used_at is None
+
+
+def test_the_cancel_audit_carries_no_address():
+    from apps.identity.services import cancel_email_change
+
+    user = UserFactory(email="maya@example.test")
+    request_email_change(user_id=user.pk, new_email=NEW)
+
+    cancel_email_change(user_id=user.pk)
+
+    entry = IdentityAuditEntry.objects.using(PERSONAL).filter(action="email_change_cancelled").get()
+    assert NEW not in str(entry.details)
+
+
+def test_asking_again_mints_a_new_link_and_kills_the_old_one():
+    """**This is what "resend" is.** The raw token is never stored, so a resend cannot
+    re-send the original link — it has to mint a new one, and the old one must stop
+    working or there would be two live ways in."""
+    user = UserFactory(email="maya@example.test")
+    first = request_email_change(user_id=user.pk, new_email=NEW)
+
+    second = request_email_change(user_id=user.pk, new_email=NEW)
+
+    assert second.token != first.token
+    with pytest.raises(InvalidEmailChangeTokenError):
+        confirm_email_change(token=first.token)
+    confirm_email_change(token=second.token)
+    assert _reload(user).email == NEW
+
+
 # --- the remedy the warning mail promises -------------------------------
 
 

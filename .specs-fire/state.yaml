@@ -1578,11 +1578,13 @@ intents:
         run_id: run-eventpulse24-044
         completed_at: 2026-11-19T11:15:48.309Z
       - id: email-change-on-the-profile-screen
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - email-change-endpoints-and-contract
+        run_id: run-eventpulse24-045
+        completed_at: 2026-11-19T11:56:00.199Z
       - id: place-on-the-profile-screen
         status: completed
         complexity: medium
@@ -2314,3 +2316,11 @@ runs:
           mode: confirm
       started: 2026-11-19T10:37:19.444Z
       completed: 2026-11-19T11:15:48.309Z
+    - id: run-eventpulse24-045
+      scope: single
+      work_items:
+        - id: email-change-on-the-profile-screen
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-19T11:17:34.206Z
+      completed: 2026-11-19T11:56:00.199Z

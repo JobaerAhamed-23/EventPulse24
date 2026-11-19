@@ -57,6 +57,8 @@ const USER = {
   id: "11111111-1111-1111-1111-111111111111",
   email: "maya@example.test",
   name: "",
+  pending_email: "",
+  pending_email_expires_at: "",
   onboarding: { completed: true, current_step: null },
 };
 
@@ -223,5 +225,41 @@ describe("the city, which used to live on the account screen", () => {
     expect(note).toHaveTextContent(/time zone/i);
     expect(note).toHaveTextContent(/General/);
     expect(within(note as HTMLElement).queryByRole("link")).toBeNull();
+  });
+});
+
+describe("the email address", () => {
+  it("is shown, because it is the account's login", async () => {
+    /** Scoped to the island: the shell's account sheet shows the address too, and an
+     * unscoped query would pass on that one alone. */
+    const { container } = render(await SettingsProfilePage());
+
+    expect(container.querySelector("[data-current-email]")).toHaveTextContent(
+      "maya@example.test",
+    );
+  });
+
+  it("offers a way to change it, which the screen used to deny was possible", async () => {
+    /**
+     * The screen shipped saying the email *"is the login and the key, and it is not
+     * changeable from here"*. This intent reversed that deliberately, and the control is
+     * the proof.
+     */
+    render(await SettingsProfilePage());
+
+    expect(screen.getByLabelText(/new email address/i)).toBeInTheDocument();
+  });
+
+  it("shows the pending change the session reports", async () => {
+    getSession.mockResolvedValue({
+      kind: "signed-in",
+      user: { ...USER, pending_email: "maya.new@example.test" },
+    });
+
+    const { container } = render(await SettingsProfilePage());
+
+    expect(container.querySelector("[data-pending-change]")).toHaveTextContent(
+      "maya.new@example.test",
+    );
   });
 });

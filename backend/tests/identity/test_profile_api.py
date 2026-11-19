@@ -458,7 +458,14 @@ def test_me_still_carries_no_password_field():
     response = client.get("/api/auth/me")
 
     assert user.password not in response.content.decode()
-    assert set(response.json()) == {"id", "email", "name", "pending_email", "onboarding"}
+    assert set(response.json()) == {
+        "id",
+        "email",
+        "name",
+        "pending_email",
+        "pending_email_expires_at",
+        "onboarding",
+    }
 
 
 # ---------------------------------------------------------------------------

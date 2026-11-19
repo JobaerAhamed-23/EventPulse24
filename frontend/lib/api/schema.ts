@@ -35,7 +35,7 @@ export interface paths {
          * The signed-in user
          * @description The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
          *
-         *     `pending_email` is the address an outstanding email change is *to*, or empty when there is none. It is the caller's own pending change, and only the caller can read it.
+         *     `pending_email` is the address an outstanding email change is *to*, or empty when there is none, and `pending_email_expires_at` is when that link stops working. It is the caller's own pending change, and only the caller can read it.
          */
         get: operations["apps_identity_api_me"];
         put?: never;
@@ -124,7 +124,13 @@ export interface paths {
          *     The answer is the same whether the address is free or already belongs to another account, so this endpoint cannot be used to find out who has an account. Asking for the address you already have is refused with 422, because that is a mistake about your own account rather than a probe of someone else's.
          */
         post: operations["apps_identity_api_request_email_change_endpoint"];
-        delete?: never;
+        /**
+         * Call off a pending email change
+         * @description Revokes any outstanding email change for the signed-in account, so the confirmation link already sent can no longer move the login.
+         *
+         *     Cancelling when nothing is pending is **not** an error: the caller wanted no pending change and has none either way. The answer is the same in both cases.
+         */
+        delete: operations["apps_identity_api_cancel_email_change_endpoint"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2591,6 +2597,11 @@ export interface components {
              * @default
              */
             pending_email: string;
+            /**
+             * Pending Email Expires At
+             * @default
+             */
+            pending_email_expires_at: string;
         };
         /**
          * DataExportOut
@@ -3057,6 +3068,21 @@ export interface components {
             quiet_hours: components["schemas"]["QuietHoursOut"] | null;
             /** Weekday */
             weekday: number;
+        };
+        /**
+         * EmailChangeCancelOut
+         * @description The cancel answer. The same whether something was pending or nothing was.
+         *
+         *     Cancelling with nothing outstanding is not an error — the caller wanted no pending
+         *     change and has none — so the response does not distinguish the two. A client that
+         *     could tell them apart would be reading state it can already get from `me`.
+         */
+        EmailChangeCancelOut: {
+            /**
+             * Status
+             * @default cancelled
+             */
+            status: string;
         };
         /**
          * EmailChangeConfirmIn
@@ -5094,6 +5120,44 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_cancel_email_change_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeCancelOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
