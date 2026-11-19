@@ -238,3 +238,36 @@ describe("the shell", () => {
     expect(screen.queryByRole("region", { name: "Your plan" })).toBeNull();
   });
 });
+
+describe("the city, which moved to the profile screen", () => {
+  it("is no longer edited here", async () => {
+    /**
+     * **One editing surface, not two.** Two copies of one control are two places to
+     * keep in sync and two answers when they drift — which is the failure this move
+     * exists to end, not to duplicate.
+     */
+    render(await SettingsAccountPage());
+
+    expect(screen.queryByRole("combobox", { name: /city/i })).not.toBeInTheDocument();
+  });
+
+  it("leaves a row saying where it went, rather than a hole", async () => {
+    /**
+     * Browse's empty state offers "Change city" and sent readers to this route, and
+     * anyone who knows the city as an Account setting still comes here first. A removed
+     * control that leaves nothing behind is worse than the split it fixed.
+     */
+    const { container } = render(await SettingsAccountPage());
+
+    expect(screen.getByRole("heading", { name: "City" })).toBeInTheDocument();
+
+    /**
+     * It names Profile rather than linking to it: a hand-written link between settings
+     * screens is forbidden, and the sub-nav already carries the destination.
+     */
+    const note = container.querySelector("[data-city-moved-note]");
+    expect(note).not.toBeNull();
+    expect(note).toHaveTextContent(/Profile/);
+    expect(within(note as HTMLElement).queryByRole("link")).toBeNull();
+  });
+});

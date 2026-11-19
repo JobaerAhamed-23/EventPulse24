@@ -1,22 +1,36 @@
 /**
- * `/settings/profile` — the name, and the one field that changes it.
+ * `/settings/profile` — who you are, and where you are.
  *
- * **This page reads nothing of its own.** Every other settings route reads the data it
- * shows, and that read can fail — which is why they have an `unavailable` branch.
- * **This one's data is the name, and the session already carries it**: `CurrentUserOut`
- * gained a `name` field for exactly this. So there is no `unavailable` branch here, and
- * a second `GET /api/auth/me` would answer the same question twice.
+ * **The name still needs no read of its own**: the session already carries it, and a
+ * second `GET /api/auth/me` would answer the same question twice. **The city does need
+ * one**, so this page now has a read that can fail — and what it does when it fails is
+ * worth testing hardest, because the obvious answer is wrong. The name above it is
+ * unaffected, so replacing the screen with *"Couldn't load your settings."* would be a
+ * false statement about the thing in front of the reader.
  *
  * **The second thing worth testing hardest is the fallback.** An account with no name
  * set must still be addressed by something — the email-derived name — and the rail must
  * not go blank.
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsProfilePage from "@/app/settings/profile/page";
 
 const getSession = vi.fn();
+const readHomeCity = vi.fn();
+
+vi.mock("@/lib/home-city-read", () => ({ readHomeCity: () => readHomeCity() }));
+
+/** A city read that succeeded, with the shape `HomeCityRead` promises. */
+const CITY_FOUND = {
+  kind: "found",
+  city: "Dhaka",
+  citySource: "choice",
+  deliveryTime: "09:00:00",
+  timezone: "Asia/Dhaka",
+  choices: ["Dhaka", "Chattogram"],
+};
 
 vi.mock("@/lib/session", async () => {
   const actual = await vi.importActual<typeof import("@/lib/session")>("@/lib/session");
@@ -54,6 +68,8 @@ function sessionWith(name: string) {
 beforeEach(() => {
   getSession.mockReset();
   getSession.mockResolvedValue(sessionWith(""));
+  readHomeCity.mockReset();
+  readHomeCity.mockResolvedValue(CITY_FOUND);
 });
 
 describe("the profile screen", () => {
@@ -149,5 +165,63 @@ describe("the shell", () => {
 
     const sidenav = screen.getByRole("complementary", { name: "Primary" });
     expect(sidenav).toBeTruthy();
+  });
+});
+
+describe("the city, which used to live on the account screen", () => {
+  it("is on the profile screen, because where you live is a fact about you", async () => {
+    render(await SettingsProfilePage());
+
+    expect(screen.getByRole("heading", { name: "City" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Dhaka")).toBeInTheDocument();
+  });
+
+  it("offers the catalog's cities to choose between", async () => {
+    render(await SettingsProfilePage());
+
+    expect(screen.getByRole("option", { name: "Chattogram" })).toBeInTheDocument();
+  });
+
+  it("is absent when the read failed, rather than an empty picker", async () => {
+    /**
+     * A select with no options reads as *"your city is not available"*, which is a
+     * statement about the user rather than about the request that failed.
+     */
+    readHomeCity.mockResolvedValue({ kind: "unavailable" });
+
+    render(await SettingsProfilePage());
+
+    expect(screen.queryByRole("heading", { name: "City" })).not.toBeInTheDocument();
+  });
+
+  it("still shows the name when the city read failed", async () => {
+    /** **The failure is the city's, not the screen's.** The name is unaffected, so a
+     * whole-screen error would be a false statement about the field above it. */
+    readHomeCity.mockResolvedValue({ kind: "unavailable" });
+    getSession.mockResolvedValue(sessionWith("Maya Ahmed"));
+
+    render(await SettingsProfilePage());
+
+    expect(screen.getByDisplayValue("Maya Ahmed")).toBeInTheDocument();
+  });
+
+  it("names where the zone is edited instead of holding a second copy of it", async () => {
+    /**
+     * The zone is paired with the digest's delivery time on General — together they
+     * answer *when the brief arrives* — so this screen signposts it rather than
+     * splitting that pair. A screen that silently omitted it would leave a reader
+     * hunting.
+     *
+     * **It names General rather than linking to it**, because
+     * `tests/settings-routes.test.ts` forbids a hand-written link between settings
+     * screens and the sub-nav already carries the destination.
+     */
+    const { container } = render(await SettingsProfilePage());
+
+    const note = container.querySelector("[data-city-zone-note]");
+    expect(note).not.toBeNull();
+    expect(note).toHaveTextContent(/time zone/i);
+    expect(note).toHaveTextContent(/General/);
+    expect(within(note as HTMLElement).queryByRole("link")).toBeNull();
   });
 });
