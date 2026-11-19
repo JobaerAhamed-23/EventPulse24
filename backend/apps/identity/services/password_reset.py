@@ -18,7 +18,11 @@ Two commands:
     against an injected clock, so a test pins the boundary exactly.
 
 A reset also **ends the user's other sessions**, so a stolen session does not survive a
-password change.
+password change — and it **revokes any outstanding email change**, so a confirmation link
+already sitting in an attacker's mailbox stops working. That second one is what makes the
+email-change warning's advice true: *"if it wasn't you, change your password"* has to
+actually stop the takeover, and `confirm_email_change` checks a token rather than a
+session, so nothing else would.
 
 The token is stored as a salted SHA-256 digest. The raw token exists only in the email the
 user receives; a database dump yields no usable reset link.
@@ -29,7 +33,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.identity.models import PasswordResetToken, User
+from apps.identity.models import PasswordResetToken, PendingEmailChange, User
 from apps.identity.services import audit as audit_service
 from apps.identity.services import tokens as token_service
 from apps.identity.services.emails import render_reset_password_email, reset_password_stream
@@ -148,6 +152,24 @@ def reset_password(
 
         user.set_password(new_password)
         user.save(using=PERSONAL, update_fields=["password"])
+
+        # **A reset also revokes any outstanding email change, and that is a security
+        # control rather than tidiness.**
+        #
+        # The email-change flow's defence against an attacker holding a stolen session is
+        # the warning sent to the *old* address — the one place the real account holder
+        # can be reached. **That warning has to be actionable**, and the action it offers
+        # is this one: a password reset is the recovery step a locked-out or alarmed user
+        # already knows.
+        #
+        # Without this, the warning would be false. `confirm_email_change` takes a token
+        # and nothing else — no session, no password — so an attacker who has already
+        # received the confirmation link keeps it through a password change, and the
+        # login moves anyway. Ending sessions does not help: the token is in their
+        # mailbox, not in their session.
+        PendingEmailChange.objects.using(PERSONAL).filter(
+            user_id=user.pk, used_at__isnull=True, revoked_at__isnull=True
+        ).update(revoked_at=moment)
 
         audit_service.write_audit(
             actor=Actor.user(user.pk),

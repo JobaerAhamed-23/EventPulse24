@@ -281,6 +281,43 @@ def test_the_account_keeps_its_sessions():
     assert Session.objects.using(PERSONAL).filter(session_key=store.session_key).exists()
 
 
+# --- the remedy the warning mail promises -------------------------------
+
+
+def test_password_reset_revokes_a_pending_email_change():
+    """**The warning mail tells the reader to change their password. This is what makes
+    that true.**
+
+    `confirm_email_change` checks a token and nothing else — no session, no password — so
+    an attacker who already holds the confirmation link keeps it through a password
+    change, and ending sessions does not help: the link is in their mailbox, not in their
+    session. Without this revocation the warning would be advice that does nothing, which
+    is worse than no advice.
+    """
+    from apps.identity.models import PasswordResetToken
+    from apps.identity.services import hash_token, reset_password
+    from shared.constants import AUTH_RESET_TOKEN_LIFETIME
+
+    user = UserFactory(email="maya@example.test")
+    pending = request_email_change(user_id=user.pk, new_email=NEW)
+
+    # The account holder reads the warning and resets their password.
+    raw = "the-raw-reset-token"
+    salt = "0123456789abcdef0123456789abcdef"
+    PasswordResetToken.objects.using(PERSONAL).create(
+        user_id=user.pk,
+        token_hash=hash_token(raw, salt),
+        token_salt=salt,
+        expires_at=timezone.now() + AUTH_RESET_TOKEN_LIFETIME,
+    )
+    reset_password(token=raw, new_password="tangerine-derrick-97")
+
+    # The link already sitting in the attacker's mailbox no longer works.
+    with pytest.raises(InvalidEmailChangeTokenError):
+        confirm_email_change(token=pending.token)
+    assert _reload(user).email == "maya@example.test"
+
+
 # --- the audit trail ----------------------------------------------------
 
 

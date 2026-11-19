@@ -1,0 +1,14 @@
+Hi,
+
+Someone asked to change the email address on your EventPulse24 account to:
+
+{{ new_email }}
+
+Nothing has changed yet. The change happens only if someone opens the confirmation
+link we sent to that address, and that link is valid for {{ valid_for }}.
+
+If this was you, there's nothing to do here — just confirm it from the other mailbox.
+
+If it wasn't you, change your password now. That cancels this request, so the link
+we sent can no longer move your account — and it ends any other sessions signed in
+to your account.

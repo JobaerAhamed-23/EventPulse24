@@ -4,10 +4,12 @@ title: Two Letters — One to Prove It, One to Warn About It
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - pending-email-model-and-commands
 created: 2026-11-19
+run_id: run-eventpulse24-043
+completed_at: 2026-11-19T10:35:55.524Z
 ---
 
 # Work Item: Two Letters — One to Prove It, One to Warn About It
