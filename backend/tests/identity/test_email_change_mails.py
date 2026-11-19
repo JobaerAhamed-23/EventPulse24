@@ -9,8 +9,6 @@ template keeps saying "30 minutes" after the constant says otherwise, which is a
 lies to the reader about their own security — so that is asserted rather than eyeballed.
 """
 
-import pytest
-
 from apps.identity.services.emails import (
     confirm_email_change_link,
     email_change_stream,

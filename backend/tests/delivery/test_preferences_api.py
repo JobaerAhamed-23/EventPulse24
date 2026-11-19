@@ -67,6 +67,16 @@ def future_local(*, days_ahead: int, hour: int, minute: int = 0, zone: str = ZON
     window and is pushed to 08:00 the next morning. Computing that in UTC would drift by
     an hour across a DST boundary; 22:30, 23:30 and 08:00 exist on every day of the
     year, because a transition happens at 02:00.
+
+    **And why the tests using this also count their rows.** Converting the dates is only
+    half the fix. Several tests here compare a before-count to an after-count, and that
+    shape is **self-nulling**: when the fixture stops minting, both sides reach zero
+    together and the test passes while asserting nothing. That is what happened on
+    2026-11-19 — three tests failed loudly and four kept passing on fewer rows than their
+    names claim, one of them comparing a one-row user against a none-row user to prove a
+    property about four. So each of them now asserts the row count it depends on *before*
+    the behaviour under test runs. A test that cannot tell the difference between "nothing
+    changed" and "there was nothing" is not a test.
     """
     today = timezone.now().astimezone(ZoneInfo(zone)).date()
     return datetime.combine(
@@ -431,13 +441,15 @@ def test_changing_the_default_plan_does_not_touch_the_existing_per_event_plans()
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=3, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d", "1hr"])
 
     keys_before = sorted(row.send_key for row in pending_of(user))
     count_before = pending_of(user).count()
+    # Counted, not assumed — see `future_local` on why a before/after test must.
+    assert count_before == 2, "the `1d` and `1hr` slots must both be pending"
 
     response = put(client, default_reminder_slots=["5d"])
 
@@ -522,7 +534,7 @@ def test_putting_the_delivery_time_moves_the_pending_reminder_rows_too():
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=3, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d"])
@@ -549,13 +561,15 @@ def test_the_keys_are_unchanged_across_ten_successive_changes():
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=3, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d", "1hr"])
 
     keys_before = sorted(row.send_key for row in pending_of(user))
     count_before = pending_of(user).count()
+    # Counted, not assumed — see `future_local` on why a before/after test must.
+    assert count_before == 2, "the `1d` and `1hr` slots must both be pending"
 
     for hour in range(10):
         put(client, quiet_hours={"start": f"{10 + hour:02d}:00", "end": "12:00"})
@@ -570,7 +584,7 @@ def test_a_sent_row_is_never_touched():
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=3, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d"])
@@ -591,7 +605,7 @@ def test_a_cancelled_row_is_never_touched():
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=3, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d"])
@@ -613,11 +627,13 @@ def test_the_row_count_does_not_change_when_the_window_changes():
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=3, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d", "1hr"])
     before = pending_of(user).count()
+    # Counted, not assumed — see `future_local` on why a before/after test must.
+    assert before == 2, "the `1d` and `1hr` slots must both be pending"
 
     put(client, quiet_hours={"start": "01:00", "end": "02:00"})
 
@@ -728,10 +744,17 @@ def test_the_rewrite_reads_the_zone_once_not_once_per_row():
     with_zone(user)
     event = make_personal_event(
         user,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=7, hour=18).astimezone(UTC),
     )
     client = signed_in(user)
     save_plan(client, event, ["1d", "2d", "5d", "1hr"])
+    # **The four rows have to exist for this test to mean anything.** The assertion below
+    # compares the query cost of a four-row user against a one-row user; if the fixture
+    # mints fewer rows than its name claims, the comparison still passes and the N+1
+    # property it defends goes unexercised. This file has been there: its events were
+    # once pinned to a literal date, and once the clock passed it this test was comparing
+    # one row against none.
+    assert pending_of(user).count() == 4, "all four slots must be pending"
 
     with CaptureQueriesContext(connections[PERSONAL]) as four_rows:
         put(client, quiet_hours={"start": "01:00", "end": "02:00"})
@@ -740,10 +763,11 @@ def test_the_rewrite_reads_the_zone_once_not_once_per_row():
     with_zone(user2)
     event2 = make_personal_event(
         user2,
-        start_utc=datetime(2026, 11, 20, 2, 0, tzinfo=UTC),
+        start_utc=future_local(days_ahead=7, hour=18).astimezone(UTC),
     )
     client2 = signed_in(user2)
     save_plan(client2, event2, ["1d"])
+    assert pending_of(user2).count() == 1, "the single slot must be pending"
 
     with CaptureQueriesContext(connections[PERSONAL]) as one_row:
         put(client2, quiet_hours={"start": "01:00", "end": "02:00"})

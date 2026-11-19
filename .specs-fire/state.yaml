@@ -1458,7 +1458,7 @@ intents:
   - id: traceability-gap-closure
     title: Traceability Gap Closure — the Cost Dashboard, the Ping Promise, and the
       Timeline's Missing Detail
-    status: in_progress
+    status: completed
     created: 2026-11-17
     source: doc-trace 2026-11-17 (first full Section C pass)
     work_items:
@@ -1508,7 +1508,7 @@ intents:
         run_id: run-eventpulse24-039
         completed_at: 2026-11-17T15:56:13.029Z
       - id: timeline-why-this-tag
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on:
@@ -1516,14 +1516,45 @@ intents:
         added: 2026-11-17
         source: split from timeline-hover-detail; AD-10 bars personalization from the
           Event Fit
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T14:02:00.000Z
+        run_id: run-eventpulse24-046
+        completed_at: 2026-11-19T15:02:45.967Z
       - id: fr22-published-formula
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
         added: 2026-11-17
         source: found while tagging A-3; the PRD publishes four weighted terms and the
           product computes five
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T14:38:00.000Z
+        run_id: run-eventpulse24-047
+        completed_at: 2026-11-19T15:15:17.597Z
+      - id: settings-privacy-ranking-transparency
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - fr22-published-formula
+        added: 2026-11-19
+        source: split from fr22-published-formula; FR-22's transparency surface does not
+          exist — there is no /settings/privacy route
+        run_id: run-eventpulse24-048
+        completed_at: 2026-11-19T15:42:30.785Z
+      - id: time-bomb-tests-remainder
+        status: completed
+        complexity: low
+        mode: confirm
+        depends_on:
+          - time-bomb-tests
+        added: 2026-11-19
+        source: found while diagnosing three failures four runs had reported as
+          pre-existing and unowned; run 039 converted 2 of 10 call sites
+        run_id: run-eventpulse24-049
+        completed_at: 2026-11-19T16:01:32.382Z
+    completed_at: 2026-11-19T16:01:32.325Z
   - id: account-profile-expansion
     title: A Profile Worth Having — a Face, an Address You Can Move, and a Place
     status: in_progress
@@ -2324,3 +2355,35 @@ runs:
           mode: confirm
       started: 2026-11-19T11:17:34.206Z
       completed: 2026-11-19T11:56:00.199Z
+    - id: run-eventpulse24-046
+      scope: single
+      work_items:
+        - id: timeline-why-this-tag
+          intent: traceability-gap-closure
+          mode: validate
+      started: 2026-11-19T14:41:17.544Z
+      completed: 2026-11-19T15:02:45.967Z
+    - id: run-eventpulse24-047
+      scope: single
+      work_items:
+        - id: fr22-published-formula
+          intent: traceability-gap-closure
+          mode: validate
+      started: 2026-11-19T15:03:59.184Z
+      completed: 2026-11-19T15:15:17.597Z
+    - id: run-eventpulse24-048
+      scope: single
+      work_items:
+        - id: settings-privacy-ranking-transparency
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-19T15:16:57.756Z
+      completed: 2026-11-19T15:42:30.785Z
+    - id: run-eventpulse24-049
+      scope: single
+      work_items:
+        - id: time-bomb-tests-remainder
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-19T15:47:02.267Z
+      completed: 2026-11-19T16:01:32.382Z
