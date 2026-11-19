@@ -312,6 +312,7 @@ def test_every_adapter_is_covered_by_the_sdk_contracts():
         ("llm-sdk", {"llm"}),
         ("stripe-sdk", {"billing"}),
         ("http-client", {"crawl", "revalidation", "llm"}),
+        ("s3-sdk", {"blob"}),
     ):
         sources = set(CONTRACTS[contract_id]["source_modules"])
         assert {f"adapters.{a}" for a in adapters - owners} <= sources, contract_id

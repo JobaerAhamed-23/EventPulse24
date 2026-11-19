@@ -211,3 +211,48 @@ def find_missing_credential_key_errors(keys: Iterable[str]) -> list[Error]:
 @register()
 def check_credential_key(app_configs=None, **kwargs):
     return find_missing_credential_key_errors([settings.CALENDAR_CREDENTIAL_KEY])
+
+
+#: The settings the S3 blob adapter cannot work without, named as an operator sets them.
+BLOB_REQUIRED_SETTINGS = ("endpoint", "public_endpoint", "bucket", "access_key", "secret_key")
+
+
+def find_blob_storage_errors(adapter_path: str, storage: dict) -> list[Error]:
+    """E008: the object store must be configured when the S3 adapter is the one selected.
+
+    A pure function over explicit inputs, like the other checks, so it is testable without
+    touching the process environment or the settings module.
+
+    **Why this is a check and not only a settings validator.** `config.env` validates the
+    case an operator asked for by name (`BLOB_ADAPTER=s3`), but the adapter is usually
+    *not* named: it is whatever `ADAPTER_MODE` resolved to, and that resolution happens in
+    the settings module, after `env` is built. This check sees the resolved table, so it
+    catches the default local stack booting against a bucket nobody configured.
+
+    **It must not fire for the in-memory adapter.** The test suite runs on it and dials no
+    store, so demanding credentials there would mean demanding credentials to run tests.
+    """
+    if not adapter_path.endswith("S3BlobAdapter"):
+        return []
+    missing = [name for name in BLOB_REQUIRED_SETTINGS if not storage.get(name)]
+    if not missing:
+        return []
+    return [
+        Error(
+            "The object store is not configured: " + ", ".join(sorted(missing)),
+            hint=(
+                "Set BLOB_ENDPOINT, BLOB_PUBLIC_ENDPOINT, BLOB_BUCKET, BLOB_ACCESS_KEY "
+                "and BLOB_SECRET_KEY in .env (`make env` writes local defaults), and run "
+                "`make up` to start MinIO. To run with no object store at all, set "
+                "BLOB_ADAPTER=memory — nothing is then kept across a restart. "
+                "BLOB_ENDPOINT is the address this process dials; BLOB_PUBLIC_ENDPOINT is "
+                "the address a presigned URL is minted for, which the browser dials."
+            ),
+            id="eventpulse.E008",
+        )
+    ]
+
+
+@register()
+def check_blob_storage(app_configs=None, **kwargs):
+    return find_blob_storage_errors(settings.ADAPTERS.get("blob", ""), settings.BLOB_STORAGE)

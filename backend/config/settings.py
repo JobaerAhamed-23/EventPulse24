@@ -197,12 +197,32 @@ STATIC_URL = "static/"
 # is shared by every process in the stack and a per-process fake cannot serve it.
 # CALENDAR_ADAPTER names the calendar importer on its own, so a local run can import a real
 # ICS feed while every other adapter stays fake; unset, it follows the mode.
+# BLOB_ADAPTER names the object store on its own, so a local run can work with no store
+# at all (`memory`) without changing what the mode means for every other port.
 ADAPTERS = adapter_paths(
     env.adapter_mode,
     env.source_fetch,
     env.throttle_adapter,
     env.calendar_adapter,
+    env.blob_adapter,
 )
+
+# The object store (adapters.blob.s3.S3BlobAdapter). Two endpoints on purpose: the first
+# is the address this process dials, the second is the address a presigned URL is minted
+# for, because a SigV4 signature is bound to the host in its canonical request and the
+# browser does not share this process's view of the network.
+BLOB_STORAGE = {
+    "endpoint": env.blob_endpoint,
+    "public_endpoint": env.blob_public_endpoint,
+    "region": env.blob_region,
+    "bucket": env.blob_bucket,
+    "access_key": env.blob_access_key,
+    "secret_key": env.blob_secret_key,
+}
+
+# How long a presigned URL is good for. Short on purpose: it is the inside of a stable
+# app-owned URL, not something a page is rendered with.
+BLOB_URL_TTL_SECONDS = env.blob_url_ttl_seconds
 
 # Source fetch limits (adapters.crawl.http.FetchLimits) and the fake adapter's fixtures.
 SOURCE_FETCH = {

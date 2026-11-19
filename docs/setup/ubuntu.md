@@ -83,6 +83,8 @@ Run `make` with no arguments to list every command.
 | Redis (Celery broker) | `127.0.0.1:6380` |
 | Mailpit SMTP | `127.0.0.1:1025` |
 | Mailpit inbox (web) | <http://127.0.0.1:8025> |
+| Object store (S3 API) | `127.0.0.1:9000`, bucket `eventpulse24-blobs` |
+| Object store console | <http://127.0.0.1:9001> |
 
 All ports bind to `127.0.0.1` only, so nothing is exposed to your network.
 
@@ -99,8 +101,8 @@ This Ubuntu machine already runs other services. The project's defaults are chos
 
 Nothing in the project touches those services. If any default clashes on your machine:
 
-1. Change the port in `.env` (`EP_PG_PORT`, `EP_REDIS_PORT`, `EP_SMTP_PORT`, `EP_MAILPIT_UI_PORT`, `API_PORT`, `WEB_PORT`).
-2. **Also update the port inside the matching URL** (`DATABASE_URL_*`, `REDIS_URL`).
+1. Change the port in `.env` (`EP_PG_PORT`, `EP_REDIS_PORT`, `EP_SMTP_PORT`, `EP_MAILPIT_UI_PORT`, `EP_MINIO_PORT`, `EP_MINIO_CONSOLE_PORT`, `API_PORT`, `WEB_PORT`).
+2. **Also update the port inside the matching URL** (`DATABASE_URL_*`, `REDIS_URL`, `BLOB_ENDPOINT`, `BLOB_PUBLIC_ENDPOINT`).
 3. Run `make up` again.
 
 `make doctor` tells you which ports are taken. It reports a port as "in use by eventpulse24" only when the project's own container is actually the one publishing it.

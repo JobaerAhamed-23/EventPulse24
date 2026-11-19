@@ -174,6 +174,33 @@ class Settings(BaseSettings):
     # cross-process sharing described above.
     throttle_adapter: Literal["memory", "redis"] | None = None
 
+    # The object store (ports.blob). BLOB_ADAPTER overrides ADAPTER_MODE for this one port.
+    # Unset: follow the mode — which means the S3 adapter pointed at the local MinIO, the
+    # same arrangement email has with Mailpit. `memory` runs with no object store at all.
+    blob_adapter: Literal["memory", "s3"] | None = None
+
+    # --- The object store (ports.blob) ---
+    #
+    # **Two endpoints, because they are two different addresses for one service.** The API
+    # dials the store from inside the compose network, where it answers to a service name;
+    # the browser fetches a presigned URL from outside it, where it answers to 127.0.0.1.
+    # A SigV4 signature is bound to the host it was minted for, so a URL signed for the
+    # internal name cannot be fetched by a browser — and that failure appears *only* in a
+    # browser, never in a backend test. In a deployment where the store has one address,
+    # both of these carry it.
+    blob_endpoint: str = ""
+    blob_public_endpoint: str = ""
+    blob_region: str = "us-east-1"
+    blob_bucket: str = ""
+    # Local-only values in .env.example; production reads them from the platform secret
+    # store, like every other credential here.
+    blob_access_key: str = ""
+    blob_secret_key: str = ""
+    # How long a presigned URL is good for. It is the *inside* of a stable app-owned URL,
+    # not something rendered into a page, so it is short: long enough to survive a
+    # redirect and the fetch that follows, not long enough to be worth passing around.
+    blob_url_ttl_seconds: PositiveInt = 300
+
     # The calendar port (ports.calendar). CALENDAR_ADAPTER overrides ADAPTER_MODE for this one
     # port, so a local run can import a *real* calendar while every other adapter stays fake.
     # Unset: follow the mode — which means `fake`, and the fake returns two fixed events for
@@ -264,6 +291,48 @@ class Settings(BaseSettings):
                 "CALENDAR_ADAPTER=ics needs a real fetch: set SOURCE_FETCH=http. "
                 "The ICS adapter fetches through the shared source-fetch port, so a fake "
                 "one would return stand-in data for every calendar address."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def s3_blobs_need_a_configured_bucket(self) -> "Settings":
+        """**The S3 adapter cannot be chosen without somewhere to put bytes.**
+
+        The same shape as `real_calendars_need_a_real_fetch`: the setting that *selects*
+        a real integration is validated against the settings that *configure* it, once,
+        at startup — rather than booting a stack that looks healthy and fails the first
+        time a user uploads a picture.
+
+        **The memory adapter needs none of this**, which is why these have defaults and
+        the check is conditional: a developer running `BLOB_ADAPTER=memory`, and the whole
+        test suite, must not be made to carry credentials for a store they never dial.
+
+        **It fires only when `BLOB_ADAPTER=s3` was asked for by name.** The *resolved*
+        adapter table is checked separately, by `config.checks.check_blob_storage`, and
+        that split is load-bearing rather than tidy: this validator runs while `env` is
+        being built, which happens before any settings module — including
+        `config/settings_test.py` — has had a chance to say which adapter it wants. A
+        validator that refused the unset case here would refuse to **boot the test
+        suite**, which runs on the in-memory adapter and dials no store at all.
+        """
+        if self.blob_adapter != "s3":
+            return self
+        missing = [
+            name
+            for name, value in (
+                ("BLOB_ENDPOINT", self.blob_endpoint),
+                ("BLOB_PUBLIC_ENDPOINT", self.blob_public_endpoint),
+                ("BLOB_BUCKET", self.blob_bucket),
+                ("BLOB_ACCESS_KEY", self.blob_access_key),
+                ("BLOB_SECRET_KEY", self.blob_secret_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                "BLOB_ADAPTER=s3 needs " + ", ".join(missing) + ". "
+                "Set them in .env (make env), or set BLOB_ADAPTER=memory to run with no "
+                "object store."
             )
         return self
 

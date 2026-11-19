@@ -1,10 +1,11 @@
 """Test settings: owner role (tests create the test DB and run DDL) plus the AD-3 probe apps."""
 
+from config.adapters import BLOB_ADAPTERS
 from config.databases import build_databases
 from config.settings import *  # noqa: F403
+from config.settings import ADAPTERS, env
 from config.settings import DATABASE_ROUTING as BASE_ROUTING
 from config.settings import INSTALLED_APPS as BASE_INSTALLED_APPS
-from config.settings import env
 from shared.db import CATALOG, PERSONAL
 
 DATABASES = build_databases(env, role="owner")
@@ -29,6 +30,12 @@ SESSION_COOKIE_SECURE = not DEBUG
 # the whole mechanism — so there is nothing for an operator to set, export or
 # pass. `tests/e2e/test_loopback_allowance.py` proves both halves: the
 # permissive policy inside the block, and the refusal under production settings.
+
+# **The suite stores no bytes anywhere.** The local stack runs the real S3 adapter against
+# MinIO — the same arrangement email has with Mailpit — but a test that needs a running
+# container is a test that fails for reasons that have nothing to do with it. So the
+# object store is in-process here, and `make test-backend` passes with MinIO stopped.
+ADAPTERS = {**ADAPTERS, "blob": BLOB_ADAPTERS["memory"]}
 
 INSTALLED_APPS = [
     *BASE_INSTALLED_APPS,

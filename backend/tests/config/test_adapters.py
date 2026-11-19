@@ -5,6 +5,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
 from config.adapters import (
+    BLOB_ADAPTERS,
     CALENDAR_ADAPTERS,
     FAKE_ADAPTERS,
     FETCH_ADAPTERS,
@@ -60,13 +61,20 @@ def test_the_real_embedding_adapter_implements_the_port():
 
 #: The ports a developer's `.env` may redirect without changing the mode.
 #:
-#: Each has its own variable — `THROTTLE_ADAPTER`, `SOURCE_FETCH`, `CALENDAR_ADAPTER` —
-#: and the local `.env` genuinely sets some of them: `THROTTLE_ADAPTER=redis` always, and
-#: `CALENDAR_ADAPTER=ics` with `SOURCE_FETCH=http` on a machine importing a real calendar.
+#: Each has its own variable — `THROTTLE_ADAPTER`, `SOURCE_FETCH`, `CALENDAR_ADAPTER`,
+#: `BLOB_ADAPTER` — and the local `.env` genuinely sets some of them:
+#: `THROTTLE_ADAPTER=redis` always, and `CALENDAR_ADAPTER=ics` with `SOURCE_FETCH=http` on
+#: a machine importing a real calendar.
+#:
+#: **`blob` is here because the *test settings* override it**, not because `.env` does:
+#: `config/settings_test.py` points it at the in-memory adapter so the suite dials no
+#: object store. That is exactly the "mode's table with a per-port override applied" case
+#: this map describes.
 OVERRIDABLE = {
     "throttle": THROTTLE_ADAPTERS,
     "fetch": FETCH_ADAPTERS,
     "calendar": CALENDAR_ADAPTERS,
+    "blob": BLOB_ADAPTERS,
 }
 
 
@@ -216,3 +224,33 @@ def test_the_three_overrides_are_independent():
     assert paths["fetch"] == "adapters.crawl.http.HttpFetchAdapter"
     assert paths["throttle"] == "adapters.throttle.redis.RedisThrottleAdapter"
     assert paths["calendar"] == "adapters.calendar.ics.IcsCalendarAdapter"
+
+
+# --- the object store ---
+
+
+def test_blob_adapter_overrides_only_that_port():
+    """Like SOURCE_FETCH, THROTTLE_ADAPTER and CALENDAR_ADAPTER: it names one adapter and
+    leaves every other port on the table the mode chose."""
+    paths = adapter_paths("fake", blob="memory")
+
+    assert paths["blob"] == BLOB_ADAPTERS["memory"]
+    assert paths["email"] == FAKE_ADAPTERS["email"]
+
+
+def test_an_unset_blob_override_follows_the_mode():
+    """The default local stack is unchanged: fake mode still stores bytes for real."""
+    assert adapter_paths("fake")["blob"] == FAKE_ADAPTERS["blob"]
+
+
+def test_fake_mode_stores_bytes_for_real_like_email_sends_for_real():
+    """**MinIO is Mailpit for bytes.** A fake object store would let a wrong endpoint, a
+    missing bucket or an unsigned URL pass the local stack and fail at a deploy."""
+    assert adapter_paths("fake")["blob"] == BLOB_ADAPTERS["s3"]
+
+
+def test_both_blob_adapters_implement_the_port():
+    from ports.blob import BlobPort
+
+    for path in BLOB_ADAPTERS.values():
+        assert issubclass(import_string(path), BlobPort), path

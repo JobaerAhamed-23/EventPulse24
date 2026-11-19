@@ -378,12 +378,12 @@ class TestTheImportContractsHold:
 
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_there_are_nineteen_contracts(self):
+    def test_there_are_twenty_contracts(self):
         """**The number is the assertion.** A contract removed from the configuration
         would leave the suite green — the walls that are checked are the walls that
         exist. So the count is itself a contract.
         """
-        assert len(IMPORTLINTER_CONFIG["contracts"]) == 19
+        assert len(IMPORTLINTER_CONFIG["contracts"]) == 20
 
     def test_the_public_surface_cannot_reach_another_apps_models(self):
         """**`models-ingestion`, the wall the catalog's public reads stand behind.**

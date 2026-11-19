@@ -87,6 +87,8 @@ Run `make` with no arguments to list every command.
 | Redis (Celery broker) | `127.0.0.1:6380` |
 | Mailpit SMTP | `127.0.0.1:1025` |
 | Mailpit inbox (web) | <http://127.0.0.1:8025> |
+| Object store (S3 API) | `127.0.0.1:9000`, bucket `eventpulse24-blobs` |
+| Object store console | <http://127.0.0.1:9001> |
 
 All ports bind to `127.0.0.1` only.
 
@@ -94,8 +96,8 @@ All ports bind to `127.0.0.1` only.
 
 The defaults avoid the usual Mac clashes: Postgres.app or Homebrew Postgres on 5432, Homebrew Redis on 6379. If a port is still taken:
 
-1. Change the port in `.env` (`EP_PG_PORT`, `EP_REDIS_PORT`, `EP_SMTP_PORT`, `EP_MAILPIT_UI_PORT`, `API_PORT`, `WEB_PORT`).
-2. **Also update the port inside the matching URL** (`DATABASE_URL_*`, `REDIS_URL`).
+1. Change the port in `.env` (`EP_PG_PORT`, `EP_REDIS_PORT`, `EP_SMTP_PORT`, `EP_MAILPIT_UI_PORT`, `EP_MINIO_PORT`, `EP_MINIO_CONSOLE_PORT`, `API_PORT`, `WEB_PORT`).
+2. **Also update the port inside the matching URL** (`DATABASE_URL_*`, `REDIS_URL`, `BLOB_ENDPOINT`, `BLOB_PUBLIC_ENDPOINT`).
 3. Run `make up` again.
 
 `make doctor` lists what's taken. On macOS it uses `lsof`, which only sees processes owned by your user, so it falls back to a connection test (`nc -z`) to catch the rest.

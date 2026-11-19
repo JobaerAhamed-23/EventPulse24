@@ -1530,7 +1530,7 @@ intents:
     created: 2026-11-19
     work_items:
       - id: object-storage-and-minio
-        status: pending
+        status: blocked
         complexity: high
         mode: validate
         depends_on: []
@@ -1578,10 +1578,12 @@ intents:
         depends_on:
           - email-change-endpoints-and-contract
       - id: place-on-the-profile-screen
-        status: pending
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-041
+        completed_at: 2026-11-19T00:00:00Z
       - id: profile-screen-and-e2e
         status: pending
         complexity: medium

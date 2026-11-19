@@ -80,7 +80,7 @@ def test_the_import_contracts_still_hold():
 
     config = (BACKEND / "pyproject.toml").read_text()
     declared = re.findall(r'^id\s*=\s*"([^"]+)"', config, flags=re.MULTILINE)
-    assert len(declared) == 19, f"the contract count changed: {declared}"
+    assert len(declared) == 20, f"the contract count changed: {declared}"
 
 
 def test_the_models_delivery_contract_names_scheduled_send():

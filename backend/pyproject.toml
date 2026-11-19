@@ -18,6 +18,10 @@ dependencies = [
     "cryptography==46.0.3",
     "stripe==13.1.0",
     "pgvector==0.4.1",
+    # The S3 client for ports.blob — MinIO locally, an S3-compatible bucket in production.
+    # It is the reference client for the API both of them speak; the `minio` SDK would be
+    # a client to swap at deploy. Pinned exactly, like everything else here.
+    "boto3==1.42.6",
 ]
 
 [dependency-groups]
@@ -192,6 +196,7 @@ source_modules = [
     "worker",
     "shared",
     "adapters.billing",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
@@ -220,6 +225,7 @@ source_modules = [
     "config",
     "worker",
     "shared",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
@@ -245,6 +251,7 @@ source_modules = [
     "shared",
     "formats",
     "adapters.billing",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.email",
     "adapters.geo",
@@ -253,6 +260,35 @@ source_modules = [
 ]
 forbidden_modules = ["httpx", "httpcore", "requests", "urllib3"]
 # Wiring the adapter in (config -> adapters.crawl -> httpx) is the intended path.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "s3-sdk"
+name = "Only adapters.blob imports the S3 SDK"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters.billing",
+    "adapters.calendar",
+    "adapters.crawl",
+    "adapters.email",
+    "adapters.geo",
+    "adapters.llm",
+    "adapters.logging",
+    "adapters.throttle",
+    "adapters.revalidation",
+]
+forbidden_modules = [
+    "boto3",
+    "botocore",
+    "s3transfer",
+]
+# Wiring the adapter in (config -> adapters.blob -> boto3) is the intended path.
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
@@ -266,6 +302,7 @@ source_modules = [
     "worker",
     "shared",
     "adapters.billing",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",

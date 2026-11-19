@@ -104,6 +104,8 @@ check_port "$(env_get EP_PG_PORT 5440)"          "Postgres"     postgres 5432 fa
 check_port "$(env_get EP_REDIS_PORT 6380)"       "Redis"        redis    6379 fail
 check_port "$(env_get EP_SMTP_PORT 1025)"        "Mailpit SMTP" mailpit  1025 fail
 check_port "$(env_get EP_MAILPIT_UI_PORT 8025)"  "Mailpit UI"   mailpit  8025 fail
+check_port "$(env_get EP_MINIO_PORT 9000)"       "Object store" minio    9000 fail
+check_port "$(env_get EP_MINIO_CONSOLE_PORT 9001)" "Store console" minio  9001 fail
 check_port "$(env_get API_PORT 8000)"            "Django API"   ""       ""   warn
 check_port "$(env_get WEB_PORT 3000)"            "Next.js"      ""       ""   warn
 
