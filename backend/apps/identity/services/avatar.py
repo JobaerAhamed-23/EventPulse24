@@ -67,6 +67,7 @@ transaction then rolled back, which is the one failure worse than an orphan: it 
 something the user still has.
 """
 
+import hashlib
 import io
 from uuid import UUID, uuid4
 
@@ -177,6 +178,37 @@ def _decoded(data: bytes) -> tuple[bytes, str]:
     return out.getvalue(), AVATAR_CONTENT_TYPE[target]
 
 
+#: How many hex characters of the digest make a version segment.
+#:
+#: Sixteen is 64 bits — far more than enough to make two of a user's own successive
+#: pictures differ, which is the only collision that matters here. The version is not a
+#: secret and not an authorisation: the handler checks it against the caller's *own*
+#: stored key, so guessing one buys nothing.
+_VERSION_LENGTH = 16
+
+
+def version_of(key: str) -> str:
+    """The URL segment that stands for this stored key.
+
+    **A digest of the key, not the key itself.** The key is already opaque and the bucket
+    is private, so publishing it would probably be harmless — but "probably harmless" is
+    not a reason to put the address of a stored object into every page's HTML. A digest
+    costs nothing and means a URL that leaks tells an attacker nothing about where the
+    bytes are.
+
+    **It derives from the key, which is what makes the cache correct.** Replacing a
+    picture mints a new key, so the version changes, so the URL changes, so the browser
+    fetches the new picture without any cache-busting query string. A version derived from
+    the *user* instead would be stable across a replace, and every reader would keep the
+    old picture until their cache expired.
+
+    `""` for no key: an account with no picture has no version, not a version of nothing.
+    """
+    if not key:
+        return ""
+    return hashlib.blake2s(key.encode("utf-8"), digest_size=_VERSION_LENGTH // 2).hexdigest()
+
+
 def _new_key() -> str:
     """An opaque key: the prefix and a random hex string, and nothing about the account."""
     return f"{AVATAR_KEY_PREFIX}{uuid4().hex}"
@@ -279,4 +311,4 @@ def _delete_quietly(key: str) -> None:
         pass
 
 
-__all__ = ["clear_user_avatar", "set_user_avatar"]
+__all__ = ["clear_user_avatar", "set_user_avatar", "version_of"]

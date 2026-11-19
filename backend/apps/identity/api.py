@@ -64,8 +64,11 @@ from django.conf import settings
 from django.contrib.auth import HASH_SESSION_KEY
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
+from django.http import HttpResponse, HttpResponseRedirect
 from django.utils import timezone
-from ninja import Router, Status
+from ninja import File, Router, Status
+from ninja.errors import HttpError
+from ninja.files import UploadedFile
 
 from apps.identity.api_auth import (
     current_user,
@@ -95,6 +98,11 @@ from apps.identity.schemas import (
     SignUpOut,
 )
 from apps.identity.services.authenticate import authenticate
+from apps.identity.services.avatar import (
+    clear_user_avatar,
+    set_user_avatar,
+    version_of,
+)
 from apps.identity.services.email_change import (
     cancel_email_change,
     confirm_email_change,
@@ -111,7 +119,8 @@ from apps.identity.services.session import sign_out
 from apps.identity.services.sign_up import sign_up
 from apps.personalization.schemas import OnboardingStatusOut
 from apps.personalization.services.onboarding import get_onboarding_state
-from ports.registry import get_email_port
+from ports.blob import BlobPort
+from ports.registry import get_adapter, get_email_port
 from shared.constants import SEND_KEY_SEPARATOR
 from shared.db import PERSONAL
 from shared.errors import ErrorOut
@@ -271,6 +280,17 @@ def signout(request):
     return SignOutOut()
 
 
+def _avatar_url(user) -> str:
+    """The app-owned URL for this account's picture, or `""` when none is set.
+
+    **The reverse is not used.** The path is written out because `api.py` is a surface
+    file and the router's prefix is wired in `config/api.py`; reversing a Ninja operation
+    from inside the handler that defines it is a loop the project does not otherwise make.
+    """
+    version = version_of(user.avatar_key)
+    return f"/api/auth/profile/avatar/{version}" if version else ""
+
+
 @router.get(
     "/me",
     response={200: CurrentUserOut, 401: ErrorOut},
@@ -328,6 +348,7 @@ def me(request):
         id=user.pk,
         email=user.email,
         name=user.name,
+        avatar_url=_avatar_url(user),
         pending_email=pending[0] if pending else "",
         pending_email_expires_at=pending[1].isoformat() if pending else "",
         onboarding=OnboardingStatusOut(
@@ -395,7 +416,130 @@ def put_profile(request, body: ProfileIn):
 
     # The answer is the caller's whole profile — the id, the email and the name that was
     # just saved — so the client can update what it knows without a second `me` call.
-    return ProfileOut(id=user.pk, email=user.email, name=saved)
+    return ProfileOut(id=user.pk, email=user.email, name=saved, avatar_url=_avatar_url(user))
+
+
+@router.post(
+    "/profile/avatar",
+    # 200 the updated profile; 401 anonymous; 403 the CSRF refusal; 413 an upload whose
+    # declared length is over the cap; 422 one the command refused after decoding it.
+    # Declaring them is what puts `ErrorOut` in the generated client.
+    response={200: ProfileOut, 401: ErrorOut, 403: ErrorOut, 413: ErrorOut, 422: ErrorOut},
+    summary="Set the signed-in user's profile picture",
+    description=(
+        "Uploads a profile picture as `multipart/form-data` with one file field, `file`. "
+        "The picture is validated from its bytes — the filename and the declared content "
+        "type are not trusted — re-encoded to strip metadata, and stored privately. The "
+        "answer is the caller's whole profile, so a client can update what it knows "
+        "without a second `me` call.\n\n"
+        "A file that is not a readable PNG, JPEG, WebP or GIF is refused with 422 and "
+        "nothing is stored; an existing picture is left exactly as it was. A file whose "
+        "declared length is over the cap is refused with 413 before the body is parsed."
+    ),
+)
+def post_profile_avatar(request, file: UploadedFile = File(...)):  # noqa: B008
+    """Store the caller's profile picture."""
+    # **The CSRF check is first**, as on every write on this router. The caveat
+    # `put_profile` records applies here too and more sharply: Ninja parses the multipart
+    # body before this handler runs, so a bad token on a huge upload is answered after the
+    # body was read. That is what `_refuse_oversized_body` below cannot help with and why
+    # the declared-length check lives in a `before` hook rather than here.
+    require_csrf(request)
+
+    user = current_user(request)
+
+    # The write goes through the named command (AD-5). Everything dangerous — the size cap
+    # enforced while reading, the format sniffed from the bytes, the pixel cap, the EXIF
+    # strip, the old object's removal after commit — lives there, not here.
+    set_user_avatar(user_id=user.pk, upload=file)
+    user.refresh_from_db()
+
+    return ProfileOut(id=user.pk, email=user.email, name=user.name, avatar_url=_avatar_url(user))
+
+
+@router.delete(
+    "/profile/avatar",
+    response={200: ProfileOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Remove the signed-in user's profile picture",
+    description=(
+        "Removes the stored picture and the object behind it. Removing a picture that is "
+        "not set is a success: the account ends in the state the caller asked for.\n\n"
+        "**A `DELETE`, not a `PUT` of an empty string.** The product's settings writes are "
+        "`PUT` with patch semantics, but removing a stored object is a deletion and reads "
+        "as one."
+    ),
+)
+def delete_profile_avatar(request):
+    """Remove the caller's profile picture."""
+    require_csrf(request)
+
+    user = current_user(request)
+    clear_user_avatar(user_id=user.pk)
+    user.refresh_from_db()
+
+    return ProfileOut(id=user.pk, email=user.email, name=user.name, avatar_url=_avatar_url(user))
+
+
+@router.get(
+    "/profile/avatar/{version}",
+    # 302 for a store that mints fetchable URLs; 200 when the bytes are served
+    # inline because it cannot. 401 anonymous; 404 a version that is not the caller's.
+    response={200: None, 302: None, 401: ErrorOut, 404: ErrorOut},
+    summary="Fetch the signed-in user's profile picture",
+    description=(
+        "Redirects to a freshly signed, short-lived URL for the caller's own picture.\n\n"
+        "**Why a redirect rather than a signed URL on the profile.** The bucket is "
+        "private, and a presigned URL cannot be made stable without a data race in the "
+        "signing path — so it would change on every render and defeat the browser cache. "
+        "This URL is stable for as long as the picture is; the signature is minted here, "
+        "per request.\n\n"
+        "The `version` segment derives from the stored object, so replacing a picture "
+        "changes this URL and a cache invalidates itself. A `version` that is not the "
+        "caller's current one is refused with 404 rather than served."
+    ),
+)
+def get_profile_avatar(request, version: str):
+    """Redirect to a freshly signed URL for the caller's own picture.
+
+    **This is the one endpoint in the project whose response is consumed by the browser's
+    image loader rather than by typed client code.** An `<img>` issues it with cookies and
+    no CSRF token, which is correct for a `GET` — no write hides here — and it is still an
+    authenticated read of the caller's own row, which is why it sits on `/api/auth` beside
+    the profile it belongs to.
+    """
+    # No `require_csrf`: a GET is never CSRF-checked, and nothing here writes.
+    user = current_user(request)
+
+    # **The version is checked against the caller's own key, not merely parsed.** A stale
+    # URL — one that may have been shared while it was current — must not resolve to
+    # whatever picture the account holds *now*.
+    if not user.avatar_key or version != version_of(user.avatar_key):
+        raise HttpError(404, "No picture at that address.")
+
+    blob = get_adapter(BlobPort)
+    url = blob.url_for(user.avatar_key, ttl_seconds=settings.BLOB_URL_TTL_SECONDS)
+
+    # **Not every store can mint a URL a browser can fetch.** The in-memory adapter — a
+    # supported mode, `BLOB_ADAPTER=memory`, for running with no object store at all —
+    # returns `memory://…`, and Django refuses to redirect to a scheme outside
+    # http/https/ftp. Redirecting blindly would answer **400 Suspicious operation** for
+    # every user in that mode, which is a broken feature reported as a security event.
+    #
+    # So a store that cannot hand out a fetchable address has its bytes served inline
+    # instead. The redirect is an optimisation for stores that *can* serve — it keeps the
+    # bytes off this process — not the contract. The contract is "the caller's picture".
+    if not url.startswith(("http://", "https://")):
+        stored_blob = blob.open(user.avatar_key)
+        response = HttpResponse(stored_blob.data, content_type=stored_blob.content_type)
+        response["Cache-Control"] = f"private, max-age={settings.AVATAR_REDIRECT_MAX_AGE}"
+        return response
+
+    response = HttpResponseRedirect(url)
+    # **Strictly less than the presign TTL**, and derived from it in settings so the two
+    # cannot drift. A browser holding this redirect longer than the signature lives would
+    # show a broken picture for exactly the difference.
+    response["Cache-Control"] = f"private, max-age={settings.AVATAR_REDIRECT_MAX_AGE}"
+    return response
 
 
 @router.post(

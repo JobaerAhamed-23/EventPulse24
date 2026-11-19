@@ -4,10 +4,12 @@ title: Uploading It — a Multipart Endpoint on a Router With No Auth
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - avatar-model-and-command
 created: 2026-11-19
+run_id: run-eventpulse24-052
+completed_at: 2026-11-19T17:29:14.680Z
 ---
 
 # Work Item: Uploading It — a Multipart Endpoint on a Router With No Auth

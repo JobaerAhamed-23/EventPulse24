@@ -88,6 +88,10 @@ def test_put_profile_saves_the_name_and_returns_the_updated_profile():
         "id": str(client._test_user.pk),  # noqa: SLF001
         "email": "maya@example.test",
         "name": "Maya Ahmed",
+        # The answer is the caller's **whole** profile, so a client can update what it
+        # knows without a second `me` call — which is why a new profile field lands here
+        # too, and why this dict is exact rather than a subset check.
+        "avatar_url": "",
     }
     assert stored_name(client._test_user) == "Maya Ahmed"  # noqa: SLF001
 
@@ -462,6 +466,7 @@ def test_me_still_carries_no_password_field():
         "id",
         "email",
         "name",
+        "avatar_url",
         "pending_email",
         "pending_email_expires_at",
         "onboarding",

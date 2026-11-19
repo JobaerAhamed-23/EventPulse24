@@ -1357,6 +1357,11 @@
       "CurrentUserOut": {
         "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe **onboarding status** is here, and it is here because the frontend needs it to\ndecide between the onboarding flow and the home. It says only whether the onboarding\nis finished and which step the user is on — it carries no interests and no digest\npreference, because `me` is about *who* the user is and a settings blob there would\ngrow without bound. The full state lives at `/api/personal/onboarding`.\n\nThe **name** is here for the same reason the email is: the frontend shows it on\nevery screen, so it is a read the frontend already makes. It is `\"\"` when no name is\nset — the one \"no name set\" state — and the frontend renders its own email-derived\nfallback in that case. **The backend does not guess a name from an address**: how a\nhuman renders their own name is a display concern, not a stored one.\n\nIt is read through `personalization`'s **published interface** — the service, never\nthe model — because `identity` may not reach into another app's tables (AD-2). The\nimport contract `models-personalization` proves it.",
         "properties": {
+          "avatar_url": {
+            "default": "",
+            "title": "Avatar Url",
+            "type": "string"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -3605,6 +3610,11 @@
       "ProfileOut": {
         "description": "The profile after a write.\n\n**It carries the email and the id as well as the name**, so the client can update\nwhat it already knows without a second `me` call after a save — the name is the only\nthing that changed, but the answer is the caller's whole profile rather than a delta.",
         "properties": {
+          "avatar_url": {
+            "default": "",
+            "title": "Avatar Url",
+            "type": "string"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -5125,6 +5135,180 @@
           }
         },
         "summary": "Set the signed-in user's name",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/profile/avatar": {
+      "delete": {
+        "description": "Removes the stored picture and the object behind it. Removing a picture that is not set is a success: the account ends in the state the caller asked for.\n\n**A `DELETE`, not a `PUT` of an empty string.** The product's settings writes are `PUT` with patch semantics, but removing a stored object is a deletion and reads as one.",
+        "operationId": "apps_identity_api_delete_profile_avatar",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Remove the signed-in user's profile picture",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "Uploads a profile picture as `multipart/form-data` with one file field, `file`. The picture is validated from its bytes — the filename and the declared content type are not trusted — re-encoded to strip metadata, and stored privately. The answer is the caller's whole profile, so a client can update what it knows without a second `me` call.\n\nA file that is not a readable PNG, JPEG, WebP or GIF is refused with 422 and nothing is stored; an existing picture is left exactly as it was. A file whose declared length is over the cap is refused with 413 before the body is parsed.",
+        "operationId": "apps_identity_api_post_profile_avatar",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set the signed-in user's profile picture",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/profile/avatar/{version}": {
+      "get": {
+        "description": "Redirects to a freshly signed, short-lived URL for the caller's own picture.\n\n**Why a redirect rather than a signed URL on the profile.** The bucket is private, and a presigned URL cannot be made stable without a data race in the signing path — so it would change on every render and defeat the browser cache. This URL is stable for as long as the picture is; the signature is minted here, per request.\n\nThe `version` segment derives from the stored object, so replacing a picture changes this URL and a cache invalidates itself. A `version` that is not the caller's current one is refused with 404 rather than served.",
+        "operationId": "apps_identity_api_get_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "302": {
+            "description": "Found"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Fetch the signed-in user's profile picture",
         "tags": [
           "auth"
         ]

@@ -330,6 +330,7 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
         "id": str(user.pk),
         "email": "maya@example.test",
         "name": "",
+        "avatar_url": "",
         "pending_email": "",
         "pending_email_expires_at": "",
         "onboarding": {"completed": False, "current_step": 1},

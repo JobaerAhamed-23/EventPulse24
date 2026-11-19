@@ -107,6 +107,22 @@ class CurrentUserOut(Schema):
     id: UUID
     email: str
     name: str
+    #: Where to fetch this account's picture, or `""` when none is set.
+    #:
+    #: **It is here for the same reason `name` is**: the shell shows it on every page, so
+    #: it rides the read the frontend already makes. A second endpoint for the same row
+    #: would be a second round trip on every render.
+    #:
+    #: **A URL, not the key**, and an **app-owned** URL rather than a signed one. The
+    #: bucket is private, and `object-storage-and-minio` measured that a presigned URL
+    #: cannot be made stable without racing botocore's signing path — so a signature baked
+    #: into this field would change on every render and defeat the browser cache. This URL
+    #: is stable for as long as the picture is, and the signature is minted behind a
+    #: redirect at `GET /api/auth/profile/avatar/{version}`.
+    #:
+    #: `""` when unset — not `null` and not absent — the one "no picture" state, matching
+    #: `name` and `pending_email` above.
+    avatar_url: str = ""
     #: The address an outstanding email change is *to*, or `""` when there is none.
     #:
     #: **The address, not a boolean**, and that was a decision rather than convenience.
@@ -153,6 +169,12 @@ class ProfileOut(Schema):
     id: UUID
     email: str
     name: str
+    #: Where to fetch this account's picture, or `""` when none is set.
+    #:
+    #: **A URL, not the key.** The key is internal; what a client can use is an address it
+    #: can put in an `img`. See `CurrentUserOut.avatar_url` for why it is an app-owned URL
+    #: rather than a signed one.
+    avatar_url: str = ""
 
 
 class EmailChangeRequestIn(Schema):

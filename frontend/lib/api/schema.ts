@@ -108,6 +108,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/profile/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the signed-in user's profile picture
+         * @description Uploads a profile picture as `multipart/form-data` with one file field, `file`. The picture is validated from its bytes — the filename and the declared content type are not trusted — re-encoded to strip metadata, and stored privately. The answer is the caller's whole profile, so a client can update what it knows without a second `me` call.
+         *
+         *     A file that is not a readable PNG, JPEG, WebP or GIF is refused with 422 and nothing is stored; an existing picture is left exactly as it was. A file whose declared length is over the cap is refused with 413 before the body is parsed.
+         */
+        post: operations["apps_identity_api_post_profile_avatar"];
+        /**
+         * Remove the signed-in user's profile picture
+         * @description Removes the stored picture and the object behind it. Removing a picture that is not set is a success: the account ends in the state the caller asked for.
+         *
+         *     **A `DELETE`, not a `PUT` of an empty string.** The product's settings writes are `PUT` with patch semantics, but removing a stored object is a deletion and reads as one.
+         */
+        delete: operations["apps_identity_api_delete_profile_avatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/avatar/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch the signed-in user's profile picture
+         * @description Redirects to a freshly signed, short-lived URL for the caller's own picture.
+         *
+         *     **Why a redirect rather than a signed URL on the profile.** The bucket is private, and a presigned URL cannot be made stable without a data race in the signing path — so it would change on every render and defeat the browser cache. This URL is stable for as long as the picture is; the signature is minted here, per request.
+         *
+         *     The `version` segment derives from the stored object, so replacing a picture changes this URL and a cache invalidates itself. A `version` that is not the caller's current one is refused with 404 rather than served.
+         */
+        get: operations["apps_identity_api_get_profile_avatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/profile/email": {
         parameters: {
             query?: never;
@@ -2602,6 +2654,11 @@ export interface components {
          *     import contract `models-personalization` proves it.
          */
         CurrentUserOut: {
+            /**
+             * Avatar Url
+             * @default
+             */
+            avatar_url: string;
             /** Email */
             email: string;
             /**
@@ -3982,6 +4039,11 @@ export interface components {
          *     thing that changed, but the answer is the caller's whole profile rather than a delta.
          */
         ProfileOut: {
+            /**
+             * Avatar Url
+             * @default
+             */
+            avatar_url: string;
             /** Email */
             email: string;
             /**
@@ -5159,6 +5221,155 @@ export interface operations {
             };
             /** @description Unprocessable Content */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_post_profile_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_delete_profile_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_get_profile_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Found */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
