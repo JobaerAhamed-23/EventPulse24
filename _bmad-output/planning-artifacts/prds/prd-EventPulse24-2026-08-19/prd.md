@@ -16,6 +16,7 @@ amendments:
   - 8 amendments (A-1 Event Identity, A-2 Serendipity slot, A-3 Static weights, A-4 User reports in MVP, A-5 Conflict resolution, A-6 Timezone source, A-7 Calendar Connect at MVP, A-8 Timeline + Conflict-Aware at MVP) merged on 2026-09-06
   - A-9 Calendar Connect via read-only ICS/webcal at MVP (OAuth/CalDAV become fast-follow) and Glossary Reminder Plan default aligned to FR-9/FR-20 — merged 2026-10-27, reconciling the PRD with the architecture decision ratified 2026-09-04
   - A-23 Traceability design-gap closure — merged 2026-11-12. **Changes no requirement.** FR-20, FR-28, FR-49 and FR-55 had shipped without a design: TRACEABILITY.md (2026-09-08) rated the first three `PARTIAL (inferred only)` and FR-49 `MISSING`, and the code was built from adjacent FRs' UI. This amendment adds the missing design artifacts — four self-tagged mockups and nine DESIGN.md component entries — describing what was already built. It is recorded here because the amendment convention requires an ID to appear in every document a change touches, and it touched DESIGN.md and EXPERIENCE.md. **Two as-built divergences from this PRD were found and are recorded, not silently adopted:** (1) FR-20's default reminder plan is **user-configurable** via `/settings/reminders`, reading `NOTIFICATION_PREFERENCE.default_reminder_slots` with the 1d + 1hr constant as fallback — a superset of FR-20's text, which says the default simply *is* 1d + 1hr, and a candidate for a future amendment to FR-20 itself; (2) FR-55 shares FR-58's conflict surface because both read one `CONFLICT_PAIR` record (AD-21), which is correct and had never been documented.
+  - A-25 FR-22 Confidence Pulse — the implemented formula, re-minted 2026-11-19. Records which term the implementation evaluates for each of FR-22's four published components, and at what weight (`interest_overlap` 0.35, `source_reliability` 0.25, `recency` 0.20, `city_match` 0.10, `confidence` 0.10). **Changes no weight and no requirement** — `shared/constants.py` is untouched. Originally recorded in FR-22 as `A-10` on 2026-11-11; re-minted because A-10 already belonged to the Browse surface amendment (2026-09-06). Supersedes A-3's four-weight lock. Full record in `docs/adr/ADR-0025.md`
   - 45 MVP FRs (was 41; +2 from Amendment A-4 / FR-59 and FR-60, +2 from Amendment A-8 / FR-32 and FR-33); 15 named FRs for Phase 2/3+ (FR-31, FR-34 through FR-47)
 ---
 
@@ -702,7 +703,7 @@ Each Pulse Card shows up to 3 Why-this Tags (3 keywords explaining why the event
 
 **Out of Scope:** Natural-language "Why this?" (Phase 3 — Why Now? — FR-38).
 
-#### FR-22: Confidence Pulse (revised by Amendment A-3)
+#### FR-22: Confidence Pulse (revised by Amendment A-3, superseded by Amendment A-25)
 
 Each Pulse Card shows a 1–5 dot Confidence Pulse (●●●●○ = 4/5). The Confidence Pulse is computed from the AI's certainty about relevance (not just trust in the source). Realizes UJ-1, UJ-4. The formula and weights are **published in the PRD and immutable post-launch** to honor the "Trust through transparency" principle.
 
@@ -717,14 +718,35 @@ relevance_score = 0.40 × preference_graph_match
 
 Where each component is normalized to [0.0, 1.0]. `preference_graph_match` uses the user's Preference Graph with cold-start fallback. `source_reliability` uses the per-Source reliability score (FR-16, Bayesian-smoothed). `recency_fit` measures how well the event's start time aligns with the user's typical engagement windows. `novelty_vs_exploration` balances familiarity (events similar to past saves) against exploration (events outside the user's usual categories).
 
-**Initial weights (MVP, locked):**
+**Initial weights (MVP, locked) — published components and the terms that evaluate them (Amendment A-25):**
 
-| Weight | Component | Value |
-|---|---|---|
-| `w1` | preference_graph_match | 0.40 |
-| `w2` | source_reliability | 0.25 |
-| `w3` | recency_fit | 0.20 |
-| `w4` | novelty_vs_exploration | 0.15 |
+The four published components below are **locked and unchanged**. What Amendment A-25
+records is **which term the implementation evaluates for each**, and at what weight — so
+that a reader computing a score by hand from this table arrives at the number on the card.
+
+| Published component | Published weight (locked) | Implemented term (A-25) | Implemented weight |
+|---|---|---|---|
+| `w1` preference_graph_match | 0.40 | `interest_overlap` | 0.35 |
+| `w2` source_reliability | 0.25 | `source_reliability` | 0.25 |
+| `w3` recency_fit | 0.20 | `recency` | 0.20 |
+| `w4` novelty_vs_exploration | 0.15 | — **absent**; needs FR-25's Preference Graph and an `Event` category field, neither of which exists | — |
+| — | — | `city_match` | 0.10 |
+| — | — | `confidence` | 0.10 |
+| **Total** | **1.00** | | **1.00** |
+
+**Both columns sum to 1.00**, and that is the check a reader should make: the published
+formula and the implemented one distribute the same unit of weight, differently.
+
+**The accounting, stated so it can be checked:** `w1` gives up 0.05 (0.40 → 0.35) and `w4`
+gives up all 0.15; the 0.20 freed is taken by `city_match` (0.10) and `confidence` (0.10).
+**No term is multiplied by a constant** — an absent term is absent from the expression, not
+pinned, because a pinned term would leave this formula arithmetically checkable while
+producing a different number from the one on the card. FR-25 will replace `interest_overlap`
+with the real Preference Graph and supply `novelty_vs_exploration`, at which point the
+published components and the implemented terms converge. The weights are pinned in
+`backend/shared/constants.py` (`RANKING_WEIGHT_*`, summing to `RANKING_WEIGHT_SUM == 1.00`)
+and asserted by `backend/tests/shared/test_constants.py`, which fails CI if a weight moves
+without this amendment moving with it.
 
 **Bucket boundaries (wireframe-locked):**
 
@@ -748,7 +770,7 @@ Where each component is normalized to [0.0, 1.0]. `preference_graph_match` uses 
 - A/B testing of weights on live users is forbidden. All weight experimentation happens in shadow composition (per `[ASSUMPTION-2]` and the shadow pipeline).
 - The Architecture spec describes the *implementation* of the formula but does not redefine the weights.
 
-**Amendment A-10 (2026-11-11):** The **MVP weights are unchanged** — `w1` 0.40 / `w2` 0.25 / `w3` 0.20 / `w4` 0.15 still stand as published above. What this amendment records is **which term the implementation evaluates for each published component**, so that the formula a user reads here and the formula the product runs are the same formula. The implemented expression is:
+**Amendment A-25 (2026-11-11, re-minted 2026-11-19):** The **published components are unchanged** — `w1` preference_graph_match / `w2` source_reliability / `w3` recency_fit / `w4` novelty_vs_exploration still stand as published above, and the table above now shows the term each is evaluated as. What this amendment records is **which term the implementation evaluates for each published component**, so that the formula a user reads here and the formula the product runs are the same formula. The implemented expression is:
 
 ```
 relevance_score = 0.35 × interest_overlap
@@ -759,6 +781,8 @@ relevance_score = 0.35 × interest_overlap
 ```
 
 `source_reliability` now has an input — FR-16's per-Source reliability score — and enters at its published weight `w2` = 0.25, exactly. `recency_fit` is evaluated as `recency` at its published weight `w3` = 0.20, exactly. `preference_graph_match` is evaluated as `interest_overlap` (the user's FR-1 chip picks matched against the event's chips), the Preference Graph's only surviving trace while FR-25 is deferred, at 0.35 rather than 0.40; the 0.05 shortfall is the slack from `novelty_vs_exploration`. `novelty_vs_exploration` is **absent from the expression** — it needs FR-25's graph and an `Event` category field, and neither exists — and its 0.15 is carried by `city_match` (0.10, the venue's city band, standing in for FR-5's `geographic_distance_factor`, which `Venue` has no coordinates for) and `confidence` (0.10, the event's extraction confidence). No term is multiplied by a constant: a term pinned to a constant would leave this formula arithmetically checkable while producing a different number from the one on the card. FR-25 will replace `interest_overlap` with the real graph and supply `novelty_vs_exploration`. Full record, including why the reliability term is not inert at launch, in `docs/adr/ADR-0025.md`; the weights are pinned in `backend/tests/shared/test_constants.py`, which fails CI if a weight moves without this amendment moving with it.
+
+**Why this amendment was re-minted as A-25 on 2026-11-19.** It was originally recorded here as **Amendment A-10** — an ID that was already in use. **A-10 is the Browse surface amendment (2026-09-06)**, propagated across this PRD, DESIGN.md, EXPERIENCE.md and three mockups. Two different amendments shared one ID for eight days, and the Amendment Ledger scored that ID `Consistent` on the strength of the Browse propagation while reading straight over the ranking one. **For a convention whose premise is that an ID appears in every document a change touches, a reused ID is worse than a missing tag: a missing tag reads as a gap, while a reused one makes the ledger confidently wrong.** The ranking amendment moved because it was the newer of the two and was cited in only two places (this block and `ADR-0025`'s `Amends:` line), against Browse's five documents and three mockups. **Nothing about the amendment's substance changed in the re-mint** — the weights, the mapping and the reasoning are as they were on 2026-11-11. Amendment **A-3**, which locked the four published weights, is **superseded by this amendment** rather than tagged onto the as-built sections: tagging it would assert a revision those sections do not implement.
 
 **Consequences (testable):**
 
@@ -1305,7 +1329,7 @@ Ship-ready functional requirements for the launch MVP:
 - **[ASSUMPTION-8]** From §4.6 FR-25 — "Less like this" swipe is the only dismissal signal in MVP. Nuanced dismissals (e.g., "not for me but similar events are fine") in Phase 2.
 - **[ASSUMPTION-9]** From §4.7 FR-26 — Public event pages are not user-generated-content; they reflect the registry's source-of-truth only.
 - **[ASSUMPTION-10]** From §7.1 SM-1 — "Time-to-first-relevant-event" includes both Pulse Preview (anonymous) and post-signup first Pulse Digest. The 30-second target is for the post-signup path.
-- **[ASSUMPTION-11]** From Amendment A-3 / FR-22 — Confidence Pulse formula weights (`w1=0.40, w2=0.25, w3=0.20, w4=0.15`) are locked at MVP launch. Any change requires a PRD amendment with a changelog entry visible in Settings → Privacy → "Ranking algorithm version." A/B testing on live weights is forbidden; shadow composition is the only sanctioned channel.
+- **[ASSUMPTION-11]** From Amendment A-3, **superseded by Amendment A-25** / FR-22 — the Confidence Pulse's four published components are locked at MVP launch; A-25 records the term each is evaluated as and at what weight (`interest_overlap` 0.35, `source_reliability` 0.25, `recency` 0.20, `city_match` 0.10, `confidence` 0.10, summing to 1.00). Any change requires a PRD amendment with a changelog entry visible in Settings → Privacy → "Ranking algorithm version." A/B testing on live weights is forbidden; shadow composition is the only sanctioned channel.
 - **[ASSUMPTION-12]** From Amendment A-5 / FR-58 — Conflict prompts require an explicit choice (Keep both / Edit the new one / Delete the new one). No dismiss-without-resolution option. The conflict indicator persists on Pulse Cards after "Keep both" is chosen as a calm permanent reminder.
 - **[ASSUMPTION-13]** From Amendment A-6 / FR-60 — Every Event has an explicit `start_time_tz`. Sources with `tz_coverage = none` (bare local time without reliable venue) are auto-rejected for corpus inclusion. The venue registry is a new infrastructure component supporting both FR-60 timezone resolution and FR-15 Event Identity `venue_fingerprint`.
 - **[ASSUMPTION-14]** From Amendment A-8 / FR-32, FR-33 (2026-09-06) — Timeline ships at MVP as a **read-only Week view** combining Personal + Public events (warm vs. cool tones, each paired with a visible text label so color is never the sole carrier of meaning, per EXPERIENCE.md §3 voice and tone rules). The `/conflicts` route surfaces all conflict pairs the system has recorded (active + resolved) for review. Both routes are reachable from the bottom-tab nav on mobile and a left sidebar nav on desktop (md+); the topbar stays brand-only per the topbar-quiet rule (EXPERIENCE.md ASSUM-11). Conflicts appear on Pulse Cards and Timeline event-blocks as `component.indicator.conflict` (8–10 px filled amber circle, `aria-label="Schedule conflict"`). The `/conflicts` route does not surface user-added notes — only system-recorded conflict pairs.

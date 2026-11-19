@@ -3861,6 +3861,113 @@
         "title": "QuietHoursOverrideOut",
         "type": "object"
       },
+      "RankingAmendmentOut": {
+        "description": "Which amendment published the current weights, and when it last moved.\n\nFR-22 requires the surface to show \"the current weights and the last-amendment date\".\n`id` is the **PRD** amendment (what FR-22 promises a reader can look up), `record` is\nthe ADR that authorises the constants, and `date` is when the published amendment last\nmoved — not when the weights last changed, which may be earlier.",
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "record": {
+            "title": "Record",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "record",
+          "date"
+        ],
+        "title": "RankingAmendmentOut",
+        "type": "object"
+      },
+      "RankingBucketOut": {
+        "description": "One step of the 1-5 dot Confidence Pulse scale (FR-22).\n\n`min_score` is the **inclusive** lower bound for this many dots, as a decimal string\nfor the same reason `RankingTermOut.weight` is.",
+        "properties": {
+          "dots": {
+            "title": "Dots",
+            "type": "integer"
+          },
+          "min_score": {
+            "title": "Min Score",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dots",
+          "min_score"
+        ],
+        "title": "RankingBucketOut",
+        "type": "object"
+      },
+      "RankingTermOut": {
+        "description": "One weighted term of the published Relevance Pulse formula (FR-22).\n\n**`weight` is a string, not a number.** FR-22's bucket boundaries are exact and the\nwhole of `domain/ranking.py` turns on `Decimal(\"0.85\")` not being the float `0.85`. A\nJSON number would be parsed into a double by the browser, on the one page that exists\nto let a reader check the arithmetic — so the decimal crosses the wire as the text it\nis, and the client renders it without doing sums on it.\n\n**`label` is the server's, not the client's.** The same rule the interest chips and\nthe category keys already follow: the client never owns a list of formula terms, so it\ncannot render a term the server does not recognise, and the wording of the explanation\ncannot drift from the thing being explained.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "weight"
+        ],
+        "title": "RankingTermOut",
+        "type": "object"
+      },
+      "RankingTransparencyOut": {
+        "description": "The published formula, its scale, and its amendment — FR-22 made visible.\n\n**Every value here is projected from `shared.constants`.** The surface holds no copy\nof a weight or a boundary; a second copy on the page whose purpose is that there is\none source of truth would be the exact drift FR-22 exists to prevent.\n\n`boundary_rule` is `\"lower\"` and says which way an exact boundary falls: a score of\nexactly 0.85 shows **4** dots, not 5. It is published because a reader checking the\narithmetic at a boundary gets the wrong answer without it.",
+        "properties": {
+          "amendment": {
+            "$ref": "#/components/schemas/RankingAmendmentOut"
+          },
+          "boundary_rule": {
+            "title": "Boundary Rule",
+            "type": "string"
+          },
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/RankingBucketOut"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/RankingTermOut"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "terms",
+          "total",
+          "buckets",
+          "boundary_rule",
+          "amendment"
+        ],
+        "title": "RankingTransparencyOut",
+        "type": "object"
+      },
       "ReminderPlanIn": {
         "description": "The plan to save.\n\n**0 to 4 slots**, and at most one custom slot. **Zero is a valid save** — FR-9: *\"0\nslots = no reminders (still in feed)\"* — and it is not a delete: the plan row\nsurvives, so \"the user chose no reminders\" stays distinguishable from \"the user never\nconfigured a plan\".\n\n**A custom slot's id carries its offset**: `custom:90` is 90 minutes before the\nevent. The bound is the product's — **15 minutes to 30 days** before the event, from\nEXPERIENCE.md — and an out-of-range offset is refused rather than snapped here; the\nclient snaps it back, and the server refuses it either way.",
         "properties": {
@@ -8258,6 +8365,29 @@
           }
         },
         "summary": "Save the signed-in user's notification settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/ranking": {
+      "get": {
+        "description": "FR-22's published formula, projected from the constants the product computes with.",
+        "operationId": "apps_personalization_ranking_transparency_api_read_ranking_transparency",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingTransparencyOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The published Relevance Pulse formula, its scale and its amendment",
         "tags": [
           "settings"
         ]

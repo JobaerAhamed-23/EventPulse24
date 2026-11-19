@@ -43,8 +43,11 @@
  * `General` now stands for its first two. **Profile sits after Account**, because it is
  * the account-adjacent section and the mockup's order ends there.
  *
- * **Appearance, Privacy and Danger zone are not here**, because they are not built. A
- * row for a route that does not exist is the 404 link this whole file exists to prevent;
+ * **Appearance and Danger zone are not here**, because they are not built. **Privacy is**
+ * — `/settings/privacy` ships FR-22's ranking transparency, and its description names that
+ * rather than the whole Privacy section, because the data inventory, deletion, the
+ * training opt-out and the amendment-history timeline are still unbuilt. A row for a route
+ * that does not exist is the 404 link this whole file exists to prevent;
  * `tests/settings-routes.test.ts` asserts that every `href` below resolves to a real
  * `page.tsx`, and that every route under `app/settings` is either listed here or a
  * redirect into one that is. **Profile is here because its route does exist** — the rule is about
@@ -106,6 +109,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     href: "/settings/profile",
     label: "Profile",
     description: "Your name, and how we address you.",
+  },
+  {
+    href: "/settings/privacy",
+    label: "Privacy",
+    description: "How your Pulse is ranked.",
   },
 ];
 

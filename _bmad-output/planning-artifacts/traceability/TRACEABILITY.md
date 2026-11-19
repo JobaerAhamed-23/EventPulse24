@@ -194,7 +194,7 @@ traps that have already caught this project.
 | FR-28 | Share-Card Public Link | FULL | `components/share/share-control.tsx`, mounted by `pulse-card.tsx` and `detail-actions.tsx`, gated on `public_slug` |
 | FR-29 | AI Cost Dashboard (Internal) | **FULL** | `adapters/llm/admin.py` — read-only `AICostRow` registration with add/change/delete all refused and a **total over the filtered queryset**, so PRD §10.3's ceiling is answerable at a glance. **Was MISSING until commit `da8d651` (2026-11-17)**: the rows had accrued since the gateway shipped with nothing able to read them back |
 | FR-30 | Caching & Batching Defaults | N/A | backend caching/batching policy |
-| FR-32 | Unified Personal+Public Timeline | FULL | `app/timeline/page.tsx` → `timeline-panel.tsx`, `timeline-block.tsx`, `timeline-navigator.tsx`; the block now **reveals its location on hover and focus** (`d1d6c83`, `b4ba162`), with the place resolved server-side onto `TimelineBlockOut`. **O-2 partly closed** — §13's Why-this tag is open as `timeline-why-this-tag` |
+| FR-32 | Unified Personal+Public Timeline | FULL | `app/timeline/page.tsx` → `timeline-panel.tsx`, `timeline-block.tsx`, `timeline-navigator.tsx`; the block now **reveals its location on hover and focus** (`d1d6c83`, `b4ba162`), with the place resolved server-side onto `TimelineBlockOut`. **O-2 closed (2026-11-19)** — §13's Why-this tag is **withdrawn by Amendment A-24**: the block reveals location only, and that is now the spec's position rather than a gap. Reasoning, and two corrections to the original finding, under *Open items* below |
 | FR-33 | Conflict-Aware Scheduling | FULL | `app/conflicts/page.tsx` → `components/conflicts/conflicts-panel.tsx` |
 | FR-48 | Pro Tier with MVP-Only Features | FULL | `app/pricing/page.tsx`; `components/settings/plan-summary.tsx` @ `/settings/account`; free-cap enforcement at `components/browse/browse-quota-note.tsx` + `components/upgrade/upgrade-prompt.tsx` |
 | FR-49 | Unlimited Saves + Saved Collections (Pro) | FULL | `components/collections/collection-manager.tsx` @ `app/settings/collections/page.tsx`. **Assign was MISSING until `da924ca`** |
@@ -224,24 +224,55 @@ Section C exists for, and it is the gap it found.
 
 ### Open items that are decisions, not work
 
-- **`timeline-why-this-tag`** — `EXPERIENCE.md` §13 says a desktop Timeline block adds
-  location **and one Why-this Tag** on hover. The location shipped; the tag did not, and
-  not for want of effort. There is no persisted tag this surface may read: `EventFit.tags`
-  is per `(event, city)` on `catalog`, the Relevance Pulse's tags are per user per day and
-  may not exist for a given saved event, and the import-linter contract *"AD-10
-  personalization never reaches the Event Fit"* bars the obvious route — a rule whose
-  reason is that substituting one explanation kind for the other is the trust-collapse
-  failure PRD Risk 11 calls company-ending. Computing one per user, as Browse does, needs
-  four extra reads on a surface whose design is to decide nothing. **The question is
-  whether a read-only surface starts ranking**, and it is a human's.
-- **`fr22-published-formula`** — **FR-22 publishes a four-term formula; the product
-  computes five.** The divergence is deliberate and well-argued in `domain/ranking.py`
-  (the two dropped terms depend on FR-25's preference graph, which did not exist) and is
-  pinned to `ADR-0025`; EXPERIENCE.md already describes the five-term version as built.
-  What is missing is the PRD, which still publishes the four-term version as *"immutable
-  post-launch"* — the document FR-22 names as the source of the published formula is the
-  one that does not know it changed. EXPERIENCE.md §2 row 9 commits `/settings/privacy` to
-  showing users that formula, so this is a live trust question, not a filing error.
+- **`timeline-why-this-tag`** — **DECIDED 2026-11-19, Amendment A-24: location only.**
+  `EXPERIENCE.md` §13 promised a desktop Timeline block adds location **and one Why-this
+  Tag** on hover. The location shipped; the tag is withdrawn.
+
+  **Two claims in the original finding were wrong, and are corrected here rather than
+  left to mislead a later reader.** (1) It is *not* four extra reads — `why_this_tags`
+  reads only `inputs.city_match` from `RankingInputs`, the user's city rides on the
+  `DigestPreference` row the Timeline already fetches, and `chip_keys_for` is pure text
+  over columns the batched catalog read already selects, so the true cost is **one**
+  extra query. (2) AD-10 does *not* bar the route — the contract forbids
+  `apps.ingestion.event_fit`, and the Relevance Pulse path (`why_this_tags`) never
+  reaches it; `personalization` already imports `catalog_read`. AD-10 remains correct and
+  remains load-bearing: substituting one explanation kind for the other is the
+  trust-collapse failure PRD Risk 11 calls company-ending. It simply is not what stopped
+  this.
+
+  **What actually stopped it is that the tag says nothing here.** Every public block on
+  the Timeline *is* a saved event, so `is_saved` is universally true; `discovery` needs a
+  digest slot and never fires; the time tags are relative to `now`, so none fire on any
+  week but the current one. The single tag §13 asked for therefore resolves to `nearby` on
+  every block in the user's city, or to `saved` — which, on a surface showing only saved
+  events, answers *"why is this here?"* with *"because you saved it."* The one informative
+  tag, `matches_<chip_key>`, sorts last in `RANKING_TAG_ORDER` and is unreachable whenever
+  any fixed tag applies. Revisitable if FR-25's preference graph ever makes it meaningful.
+- **`fr22-published-formula`** — **DECIDED 2026-11-19, Amendment A-25: the five-term
+  as-built formula is canonical.** FR-22 publishes four components; the product computes
+  five terms. The divergence is deliberate and well-argued in `domain/ranking.py` (the two
+  dropped terms depend on FR-25's preference graph, which did not exist) and is pinned to
+  `ADR-0025`.
+
+  **The original finding's premise was wrong, and it is corrected here.** It said the PRD
+  "still publishes the four-term version … the document FR-22 names as the source of the
+  published formula is the one that does not know it changed." **It knew.** `prd.md:751`
+  carried the amendment, dated 2026-11-11 and citing ADR-0025, and it predates the
+  2026-11-17 pass that raised this finding.
+
+  **What was actually wrong was the amendment's ID**: it reused **A-10**, which already
+  belonged to the Browse surface amendment (2026-09-06), so two amendments shared one ID
+  and this ledger read clean over the collision. Alongside it, FR-22 contradicted itself —
+  the locked table published `w1 = 0.40` while the amendment implemented `interest_overlap`
+  at 0.35 and asserted the weights were unchanged — and `[ASSUMPTION-11]` still cited A-3.
+  All three are fixed under A-25. **No weight moved**; `shared/constants.py` is untouched.
+
+  **One consequence remains open, and it is not a filing matter.** EXPERIENCE.md §2 row 9
+  commits `/settings/privacy` to showing users the formula, weights table, bucket
+  boundaries, amendment history and pledge, and FR-22's own consequences require it. **That
+  route does not exist** — no surface in `frontend/` renders a formula at all. So no user
+  is being shown a wrong formula, but FR-22's transparency promise is unkept. Tracked as
+  `settings-privacy-ranking-transparency`.
 
 ### The test suite, for the record
 
@@ -271,35 +302,44 @@ appears in one document but is plausibly relevant to another that does not menti
 |---|---|---|
 | A-1 (FR-15 dedup revision) | PRD; Architecture via the `sources_as_of: 'PRD amendments A-1..A-9'` range, AD-4 implementing the substance | Consistent |
 | A-2 (FR-5 revision) | PRD, DESIGN.md (`component.card.pulse.digest.category.discovery`) | **Consistent — closed 2026-11-17** by `f754c3e`. The entry already described A-2's rule (slate stripe at 0.85 plus a `discovery` micro-tag); it now cites the amendment that made it |
-| A-3 (FR-22 revision) | PRD only (4 citations) | **No — and deliberately left untagged.** Not a propagation miss: the UX docs describe the **five-term as-built** formula pinned to ADR-0025, while the PRD publishes A-3's **four-term** one. Tagging the section would assert a revision it does not implement. See `fr22-published-formula` |
+| A-3 (FR-22 revision) | PRD only (4 citations) | **Resolved 2026-11-19 — superseded by A-25.** A-3 locked FR-22's four published weights. A-25 records which term the implementation evaluates for each, and at what weight; the PRD's FR-22 table now carries that mapping, so the published formula and the computed one are the same formula. A-3 is **not** tagged onto the as-built UX sections — tagging it would assert a revision they do not implement — it is superseded, which is the honest close |
 | A-4 (FR-59 added) | PRD, `report-event-modal-desktop.html` | Consistent |
 | A-5 (FR-58 revision) | PRD, EXPERIENCE.md (3 citations) | **Consistent — corrected.** The previous ledger scored this `No`; EXPERIENCE.md cites "Amendment A-5" three times, including the Surface Coverage row and the conflict-prompt spec |
 | A-6 (FR-60 added) | PRD | Consistent — backend-only, no UX impact expected |
 | A-7 (FR-3 calendar OAuth→ICS) | PRD, EXPERIENCE.md, 2 mockups | **Consistent — corrected.** The previous ledger scored this `No`; EXPERIENCE.md does carry the tag |
 | A-8 (FR-32/FR-33 lifted to MVP) | PRD, Architecture (AD-21 binds and cites it), DESIGN, EXPERIENCE, 17 mockups | Consistent |
 | A-9 (Calendar Connect via ICS) | PRD, Architecture, DESIGN, EXPERIENCE, 3 mockups | Consistent |
-| A-10 (Browse, 6th authed route) | PRD, DESIGN, EXPERIENCE, 3 mockups | Consistent |
+| A-10 (Browse, 6th authed route) | PRD, DESIGN, EXPERIENCE, 3 mockups | Consistent. **Scope note (2026-11-19):** this ID means the Browse surface and nothing else. From 2026-11-11 to 2026-11-19 the FR-22 ranking-formula amendment was *also* recorded as A-10, and this row scored `Consistent` on the Browse propagation while reading over it. The ranking amendment is now **A-25** |
 | A-11 – A-20 (UX-originated reconciliation + shell migrations) | DESIGN, EXPERIENCE, mockups | **No** — absent from the PRD. Per EXPERIENCE.md's own frontmatter these exist specifically to close PRD-coverage gaps, so the PRD arguably should record that the reconciliation happened. Unchanged since September |
 | A-21 (reminder-picker shell migration) | DESIGN, EXPERIENCE | Consistent — a mockup migration with no PRD or Architecture surface |
 | A-22 (Pulse Card state treatment) | DESIGN (3 citations) | Consistent — a component treatment with no PRD or Architecture surface |
 | A-23 (traceability design-gap closure) | PRD (amendment list, line 18), DESIGN, EXPERIENCE | Consistent — propagated deliberately; absent from Architecture, correctly, since it changes no requirement and no system |
+| A-24 (Timeline block's Why-this Tag withdrawn) | EXPERIENCE (§13 row, §13 anti-pattern scope note, `updated_note`) | Consistent — a surface-density decision with no PRD or Architecture surface. Closes O-2 |
+| A-25 (FR-22 implemented formula) | PRD (FR-22 block + weights table + `[ASSUMPTION-11]` + frontmatter), `docs/adr/ADR-0025.md`, EXPERIENCE (2 as-built notes) | Consistent — re-minted from the colliding `A-10` on 2026-11-19. Changes no weight: `shared/constants.py` is untouched and `RANKING_WEIGHT_SUM == 1.00` still holds. Supersedes A-3 |
 
-**Inconsistent amendments: 2** (A-3 and the A-11–A-20 block counted as one) — **down from 6
-at the start of the day, and from 3 at the previous regeneration.** A-5 and A-7 were
-corrections of earlier mis-scores; A-2 is now genuinely closed.
+**Inconsistent amendments: 1** (the A-11–A-20 block, counted as one) — **down from 6 at the
+start of 2026-11-12, from 3 at the previous regeneration, and from 2 before 2026-11-19.**
+A-5 and A-7 were corrections of earlier mis-scores; A-2 is genuinely closed; **A-3 closed
+2026-11-19.**
 
-The two that remain are different in kind, and the distinction matters before anyone
-"fixes" them:
+- **A-3 — CLOSED 2026-11-19, superseded by A-25.** This note previously said the right
+  close "is probably a *new* amendment ID rather than stretching A-3 to cover a change it
+  never made." **That is what happened.** `fr22-published-formula` ratified the five-term
+  as-built formula as canonical and re-minted the ranking amendment as **A-25**, which now
+  appears in the PRD's FR-22 block, its weights table, `[ASSUMPTION-11]`, the PRD
+  frontmatter, `docs/adr/ADR-0025.md` and EXPERIENCE.md's two as-built notes. A-3's
+  four-weight lock is superseded, not tagged.
 
-- **A-3** — **not a tag-propagation miss.** Tagging it would hide a live inconsistency
-  between the PRD's published formula and the one the product computes. It stays open
-  until `fr22-published-formula` decides which formula is canonical, and the right close
-  is probably a *new* amendment ID rather than stretching A-3 to cover a change it never
-  made.
+  **A second defect was found while closing it, and it was the more serious one:** the
+  ranking amendment had been recorded as **A-10**, an ID already belonging to the Browse
+  surface amendment (2026-09-06). This ledger scored A-10 `Consistent` on the strength of
+  the Browse propagation while reading straight over the ranking one — **a reused ID is
+  worse than a missing tag, because a missing tag reads as a gap and a reused one makes
+  the ledger confidently wrong.** Both rows are now corrected.
 - **A-11 – A-20** — UX-originated amendments the PRD never absorbed. A *convention* question,
   not a defect: if UX-originated reconciliation is not expected to flow back into the PRD, the
   convention should say so and these rows should stop being re-flagged every regeneration.
-  **Recommend deciding this once rather than re-flagging it indefinitely.**
+  **Recommend deciding this once rather than re-flagging it indefinitely.** Unchanged.
 
 ---
 

@@ -1473,6 +1473,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The published Relevance Pulse formula, its scale and its amendment
+         * @description FR-22's published formula, projected from the constants the product computes with.
+         */
+        get: operations["apps_personalization_ranking_transparency_api_read_ranking_transparency"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/sources": {
         parameters: {
             query?: never;
@@ -4142,6 +4162,85 @@ export interface components {
             start: string;
             /** Weekday */
             weekday: number;
+        };
+        /**
+         * RankingAmendmentOut
+         * @description Which amendment published the current weights, and when it last moved.
+         *
+         *     FR-22 requires the surface to show "the current weights and the last-amendment date".
+         *     `id` is the **PRD** amendment (what FR-22 promises a reader can look up), `record` is
+         *     the ADR that authorises the constants, and `date` is when the published amendment last
+         *     moved — not when the weights last changed, which may be earlier.
+         */
+        RankingAmendmentOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Id */
+            id: string;
+            /** Record */
+            record: string;
+        };
+        /**
+         * RankingBucketOut
+         * @description One step of the 1-5 dot Confidence Pulse scale (FR-22).
+         *
+         *     `min_score` is the **inclusive** lower bound for this many dots, as a decimal string
+         *     for the same reason `RankingTermOut.weight` is.
+         */
+        RankingBucketOut: {
+            /** Dots */
+            dots: number;
+            /** Min Score */
+            min_score: string;
+        };
+        /**
+         * RankingTermOut
+         * @description One weighted term of the published Relevance Pulse formula (FR-22).
+         *
+         *     **`weight` is a string, not a number.** FR-22's bucket boundaries are exact and the
+         *     whole of `domain/ranking.py` turns on `Decimal("0.85")` not being the float `0.85`. A
+         *     JSON number would be parsed into a double by the browser, on the one page that exists
+         *     to let a reader check the arithmetic — so the decimal crosses the wire as the text it
+         *     is, and the client renders it without doing sums on it.
+         *
+         *     **`label` is the server's, not the client's.** The same rule the interest chips and
+         *     the category keys already follow: the client never owns a list of formula terms, so it
+         *     cannot render a term the server does not recognise, and the wording of the explanation
+         *     cannot drift from the thing being explained.
+         */
+        RankingTermOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Weight */
+            weight: string;
+        };
+        /**
+         * RankingTransparencyOut
+         * @description The published formula, its scale, and its amendment — FR-22 made visible.
+         *
+         *     **Every value here is projected from `shared.constants`.** The surface holds no copy
+         *     of a weight or a boundary; a second copy on the page whose purpose is that there is
+         *     one source of truth would be the exact drift FR-22 exists to prevent.
+         *
+         *     `boundary_rule` is `"lower"` and says which way an exact boundary falls: a score of
+         *     exactly 0.85 shows **4** dots, not 5. It is published because a reader checking the
+         *     arithmetic at a boundary gets the wrong answer without it.
+         */
+        RankingTransparencyOut: {
+            amendment: components["schemas"]["RankingAmendmentOut"];
+            /** Boundary Rule */
+            boundary_rule: string;
+            /** Buckets */
+            buckets: components["schemas"]["RankingBucketOut"][];
+            /** Terms */
+            terms: components["schemas"]["RankingTermOut"][];
+            /** Total */
+            total: string;
         };
         /**
          * ReminderPlanIn
@@ -7397,6 +7496,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_ranking_transparency_api_read_ranking_transparency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankingTransparencyOut"];
                 };
             };
         };

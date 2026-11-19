@@ -1822,3 +1822,67 @@ class CategoryMuteRestoreDefaultsOut(Schema):
     """
 
     removed: int
+
+
+class RankingTermOut(Schema):
+    """One weighted term of the published Relevance Pulse formula (FR-22).
+
+    **`weight` is a string, not a number.** FR-22's bucket boundaries are exact and the
+    whole of `domain/ranking.py` turns on `Decimal("0.85")` not being the float `0.85`. A
+    JSON number would be parsed into a double by the browser, on the one page that exists
+    to let a reader check the arithmetic — so the decimal crosses the wire as the text it
+    is, and the client renders it without doing sums on it.
+
+    **`label` is the server's, not the client's.** The same rule the interest chips and
+    the category keys already follow: the client never owns a list of formula terms, so it
+    cannot render a term the server does not recognise, and the wording of the explanation
+    cannot drift from the thing being explained.
+    """
+
+    key: str
+    label: str
+    weight: str
+
+
+class RankingBucketOut(Schema):
+    """One step of the 1-5 dot Confidence Pulse scale (FR-22).
+
+    `min_score` is the **inclusive** lower bound for this many dots, as a decimal string
+    for the same reason `RankingTermOut.weight` is.
+    """
+
+    dots: int
+    min_score: str
+
+
+class RankingAmendmentOut(Schema):
+    """Which amendment published the current weights, and when it last moved.
+
+    FR-22 requires the surface to show "the current weights and the last-amendment date".
+    `id` is the **PRD** amendment (what FR-22 promises a reader can look up), `record` is
+    the ADR that authorises the constants, and `date` is when the published amendment last
+    moved — not when the weights last changed, which may be earlier.
+    """
+
+    id: str
+    record: str
+    date: date
+
+
+class RankingTransparencyOut(Schema):
+    """The published formula, its scale, and its amendment — FR-22 made visible.
+
+    **Every value here is projected from `shared.constants`.** The surface holds no copy
+    of a weight or a boundary; a second copy on the page whose purpose is that there is
+    one source of truth would be the exact drift FR-22 exists to prevent.
+
+    `boundary_rule` is `"lower"` and says which way an exact boundary falls: a score of
+    exactly 0.85 shows **4** dots, not 5. It is published because a reader checking the
+    arithmetic at a boundary gets the wrong answer without it.
+    """
+
+    terms: list[RankingTermOut]
+    total: str
+    buckets: list[RankingBucketOut]
+    boundary_rule: str
+    amendment: RankingAmendmentOut

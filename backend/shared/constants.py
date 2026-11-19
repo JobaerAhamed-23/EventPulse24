@@ -3,7 +3,7 @@
 Stdlib only, so `domain` can be allowed to import it (decision for architecture-contracts).
 """
 
-from datetime import time, timedelta
+from datetime import date, time, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from fractions import Fraction
@@ -1000,6 +1000,44 @@ RANKING_WEIGHT_SUM = (
 # updating this string in the same commit still fails, because the ADR's own table has to
 # move too, and the ADR is a document a human reads.
 RANKING_WEIGHTS_AMENDMENT = "ADR-0025"
+
+# **The PRD amendment that publishes the formula, and when it last moved.**
+#
+# FR-22's testable consequence is that Settings → Privacy → "Ranking algorithm version"
+# shows "the current weights **and the last-amendment date**". Nothing held that date:
+# `RANKING_WEIGHTS_AMENDMENT` above names the ADR, which is the engineering record, while
+# the *published* amendment is the PRD's — and the surface has to show the published one,
+# because the PRD is what FR-22 promises a user can read the formula from.
+#
+# **Why constants rather than reading the documents.** Parsing `prd.md` at request time
+# would make a user-facing read depend on a markdown file's heading structure, and would
+# fail open — a reformatted document would silently show nothing. These are pinned by
+# `tests/shared/test_constants.py`, which asserts the id appears in **both** the ADR and
+# the PRD's FR-22 section. So a future amendment that moves the documents without moving
+# these (or the reverse) fails CI, and the page cannot show a stale amendment.
+#
+# **The date is when the amendment last moved, not when the weights last changed.** A-25
+# was first recorded 2026-11-11 as `A-10` and re-minted 2026-11-19 when that ID was found
+# to belong to the Browse surface. The weights did not move either time. A user asking
+# "when did this last change?" is asking about the published record, which is this date.
+RANKING_WEIGHTS_AMENDMENT_ID = "A-25"
+RANKING_WEIGHTS_AMENDMENT_DATE = date(2026, 11, 19)
+
+# The human label for each term of the published formula — **the server's vocabulary**,
+# the same rule `INTEREST_CHIPS` follows.
+#
+# The client never owns a list of formula terms, so it can never render a term the server
+# does not recognise, and the wording of an explanation cannot drift between the surface
+# and the thing being explained. The keys are the `RANKING_WEIGHT_*` terms as
+# `domain/ranking.py` names them; the labels are what a reader who has not read the PRD
+# can understand without one.
+RANKING_TERM_LABELS = (
+    ("interest_overlap", "What you picked"),
+    ("source_reliability", "How reliable the source is"),
+    ("recency", "How soon it starts"),
+    ("city_match", "How near it is"),
+    ("confidence", "How sure we are of the details"),
+)
 
 # The recency bands, in order: how soon the event starts, relative to `now`.
 #

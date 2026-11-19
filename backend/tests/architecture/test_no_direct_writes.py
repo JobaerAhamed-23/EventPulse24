@@ -44,8 +44,14 @@ def test_surface_files_include_every_app_admin_and_api():
     assert "apps/personalization/taste_mutes_api.py" in names
     # 6 admins + 6 api.py + 9 *_api.py + config/api.py + config/health.py = 23
     # 6 admins + 6 api.py + 10 *_api.py + config/api.py + config/health.py = 24
+    # FR-22: the ranking-transparency endpoint is a surface file like any other. It
+    # writes nothing and queries nothing — it projects `shared.constants` onto the wire —
+    # but being in the surface list is what keeps it under AD-5 like every other endpoint,
+    # and a read that is exempt today is a write that is exempt tomorrow.
+    assert "apps/personalization/ranking_transparency_api.py" in names
     # 6 admins + 6 api.py + 11 *_api.py + config/api.py + config/health.py = 25
-    assert len(names) == 25
+    # 6 admins + 6 api.py + 12 *_api.py + config/api.py + config/health.py = 26
+    assert len(names) == 26
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

@@ -3,7 +3,7 @@
 import os
 import subprocess
 import sys
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -43,6 +43,8 @@ from shared.constants import (
     RANKING_WEIGHT_RELIABILITY,
     RANKING_WEIGHT_SUM,
     RANKING_WEIGHTS_AMENDMENT,
+    RANKING_WEIGHTS_AMENDMENT_DATE,
+    RANKING_WEIGHTS_AMENDMENT_ID,
     RELIABILITY_ESCALATION_SCORE,
     RELIABILITY_MIN_OBSERVATIONS,
     RELIABILITY_NEW_SOURCE_FLOOR,
@@ -193,6 +195,85 @@ def test_the_ranking_weights_have_an_amendment_that_says_so():
             "that moved without the amendment saying so is exactly the failure FR-22 "
             "makes a CI-level failure."
         )
+
+    assert RANKING_WEIGHTS_AMENDMENT_ID in text, (
+        f"{RANKING_WEIGHTS_AMENDMENT} does not name the PRD amendment "
+        f"{RANKING_WEIGHTS_AMENDMENT_ID} that publishes these weights. The ADR and the "
+        "PRD amendment are two halves of one record, and Settings → Privacy shows the "
+        "PRD's id to users — so a constant naming an id the ADR has never heard of would "
+        "put an unverifiable amendment on a trust surface."
+    )
+
+
+def test_the_prd_publishes_the_weights_the_product_computes():
+    """FR-22's promise is the *publication* of the formula, so the PRD has to agree too.
+
+    The ADR check above proves the weights are *authorised*. This one proves they are
+    **published** — which is the part FR-22 actually promises: the formula and weights are
+    "published in the PRD and immutable post-launch", and a user "can compute the
+    Confidence Pulse for any Event given the inputs".
+
+    **This gap was real, not hypothetical.** Between 2026-11-11 and 2026-11-19 the PRD's
+    FR-22 published a locked table reading `w1 = 0.40` two paragraphs above an amendment
+    implementing `interest_overlap` at 0.35 — so a reader computing a score by hand from
+    the table got a different number from the one on the card, which is the precise trust
+    failure `domain/ranking.py` refuses to create with inert weights. Amendment A-25
+    reconciled it. Nothing executable would have caught it, which is why this test exists.
+    """
+    prd = (
+        BACKEND_DIR.parent
+        / "_bmad-output"
+        / "planning-artifacts"
+        / "prds"
+        / "prd-EventPulse24-2026-08-19"
+        / "prd.md"
+    )
+    assert prd.exists(), (
+        f"FR-22 names the PRD as the document the formula is published in, but there is "
+        f"no PRD at {prd}. If the PRD has moved, move this test with it — do not delete "
+        "it, because the publication is the requirement."
+    )
+
+    text = prd.read_text()
+    start = text.find("#### FR-22")
+    assert start != -1, "FR-22 has no heading in the PRD; the published formula is unfindable."
+    end = text.find("#### FR-23", start)
+    section = text[start : end if end != -1 else len(text)]
+
+    for weight in (
+        RANKING_WEIGHT_INTEREST,
+        RANKING_WEIGHT_RECENCY,
+        RANKING_WEIGHT_CITY,
+        RANKING_WEIGHT_CONFIDENCE,
+        RANKING_WEIGHT_RELIABILITY,
+    ):
+        assert f"{weight:.2f}" in section, (
+            f"FR-22 does not publish the weight {weight}. The product would be computing "
+            "a score a reader of the PRD cannot reproduce, which is the failure FR-22 "
+            "exists to prevent. Amend FR-22 and record the amendment."
+        )
+
+    assert RANKING_WEIGHTS_AMENDMENT_ID in section, (
+        f"FR-22 does not name amendment {RANKING_WEIGHTS_AMENDMENT_ID}, which "
+        "`shared/constants.py` says published the current weights — and which "
+        "Settings → Privacy shows to users as the ranking algorithm version. An id the "
+        "PRD does not carry is an amendment a user cannot look up."
+    )
+
+
+def test_the_amendment_id_and_date_are_pinned():
+    """The ranking algorithm version, as the Settings surface publishes it (FR-22).
+
+    FR-22's testable consequence is that Settings → Privacy shows "the current weights
+    **and the last-amendment date**". Both are constants rather than parsed documents,
+    and both are pinned here so that moving one without the other fails CI.
+
+    **The date is when the published amendment last moved**, not when the weights last
+    changed. A-25 was first recorded 2026-11-11 as `A-10` and re-minted 2026-11-19 when
+    that id was found to belong to the Browse surface; no weight moved either time.
+    """
+    assert RANKING_WEIGHTS_AMENDMENT_ID == "A-25"
+    assert RANKING_WEIGHTS_AMENDMENT_DATE == date(2026, 11, 19)
 
 
 def test_ranking_bucket_boundaries_are_pinned():

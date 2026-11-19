@@ -4,9 +4,11 @@ title: FR-22 publishes a formula the product does not compute
 intent: traceability-gap-closure
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-17
+run_id: run-eventpulse24-047
+completed_at: 2026-11-19T15:15:14.203Z
 ---
 
 # Work Item: FR-22 publishes a formula the product does not compute
