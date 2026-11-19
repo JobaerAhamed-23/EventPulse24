@@ -1524,6 +1524,71 @@ intents:
         added: 2026-11-17
         source: found while tagging A-3; the PRD publishes four weighted terms and the
           product computes five
+  - id: account-profile-expansion
+    title: A Profile Worth Having — a Face, an Address You Can Move, and a Place
+    status: in_progress
+    created: 2026-11-19
+    work_items:
+      - id: object-storage-and-minio
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: avatar-model-and-command
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - object-storage-and-minio
+      - id: avatar-endpoint-and-contract
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - avatar-model-and-command
+      - id: avatar-on-the-shell
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - avatar-endpoint-and-contract
+      - id: pending-email-model-and-commands
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: email-change-mails
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - pending-email-model-and-commands
+      - id: email-change-endpoints-and-contract
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - email-change-mails
+      - id: email-change-on-the-profile-screen
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - email-change-endpoints-and-contract
+      - id: place-on-the-profile-screen
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: profile-screen-and-e2e
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - avatar-on-the-shell
+          - email-change-on-the-profile-screen
+          - place-on-the-profile-screen
+
 runs:
   active: []
   completed:
