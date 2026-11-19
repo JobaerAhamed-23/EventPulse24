@@ -56,6 +56,11 @@ TABLE_OWNERS = {
     # is part of the account, and it is written by identity's own commands.
     "identity_user": "identity",
     "identity_passwordresettoken": "identity",
+    # The pending email change is identity's for the same reason the reset token is: it
+    # is an unproven claim about the account's own login, written only by identity's
+    # `services/email_change` commands. The address it holds is the account's future
+    # credential, and the app that owns the credential owns the claim on it.
+    "identity_pendingemailchange": "identity",
     # FR-48: `identity/__init__.py` has always said "Owns User and Subscription". Billing
     # state is account state, and the app that can tell you an account exists is the one
     # that tells you what it is entitled to. Written only by `services/subscriptions`.

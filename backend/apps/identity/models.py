@@ -146,6 +146,69 @@ class PasswordResetToken(UUIDv7Model):
         return f"reset token for {self.user_id}"
 
 
+class PendingEmailChange(UUIDv7Model):
+    """One outstanding request to move the login to a new address, as a digest (AD-18).
+
+    **The login is the credential, so the new address is proven before it moves.** This
+    row is that proof in flight: it holds the requested address and a token, and only
+    that token returning from the new address completes the change.
+
+    **Its shape is `PasswordResetToken`'s, deliberately and almost field for field.** That
+    row's docstring records why each property is there — single-use via `used_at` set in
+    the consuming transaction, short-lived via `expires_at` from a named constant,
+    revocable without being used, no token at rest, the user held by value (OQ-8) — and
+    every one of those reasons applies unchanged to a credential move. It also records
+    that Django's `PasswordResetTokenGenerator` was *probed* against the pinned Django and
+    rejected as replayable and unrevocable; that finding is not re-litigated here.
+
+    **`new_email` is normalised on the way in**, exactly as `User.email` is. The confirm
+    compares like with like, and a case variant cannot be smuggled past `user_email_uq`.
+
+    **There is deliberately no unique constraint on `new_email`.** Two people may both
+    *request* the same address; only one can *confirm* it, and `User`'s `user_email_uq` is
+    what decides between them. A unique constraint here would let whoever requested first
+    deny the address to the person who actually owns the mailbox — a squatting vector in a
+    table that is supposed to be a queue of unproven claims.
+
+    **The address is not a credential the way a password is, but it is PII**, so it never
+    appears in an audit row's details, in a log line, or in `__str__` (AD-13).
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_IDENTITY
+
+    user_id = models.UUIDField()
+    # The address being proven. Normalised (trimmed, lowercased) before it is stored.
+    new_email = models.EmailField(max_length=254)
+    # sha256(salt + token), hex. The token itself is never stored.
+    token_hash = models.CharField(max_length=64, unique=True)
+    # The per-row salt, hex. It makes the digest unattackable with precomputed digests.
+    token_salt = models.CharField(max_length=32)
+    expires_at = models.DateTimeField()
+    # Set when the token is consumed and the login moved. Null until then.
+    used_at = models.DateTimeField(null=True, blank=True)
+    # Set when the request is invalidated without being used: a newer request, a cancel.
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # Used means the login moved; revoked means it did not. Never both.
+            models.CheckConstraint(
+                condition=~(models.Q(used_at__isnull=False) & models.Q(revoked_at__isnull=False)),
+                name="pending_email_change_used_or_revoked_ck",
+            ),
+        ]
+        indexes = [
+            # Revoking a user's outstanding requests, and showing them the pending one,
+            # both look up by user.
+            models.Index(fields=["user_id"], name="pending_email_change_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # **No address here** (AD-13): `__str__` reaches logs and the admin changelist.
+        return f"pending email change for {self.user_id}"
+
+
 class SubscriptionStatus(models.TextChoices):
     """The four states a subscription can be in (FR-48).
 

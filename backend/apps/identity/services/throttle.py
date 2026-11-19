@@ -27,6 +27,8 @@ from collections.abc import Iterable
 
 from ports.registry import get_throttle_port
 from shared.constants import (
+    AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT,
+    AUTH_THROTTLE_EMAIL_CHANGE_IP,
     AUTH_THROTTLE_RESET_ACCOUNT,
     AUTH_THROTTLE_RESET_IP,
     AUTH_THROTTLE_SIGN_IN_ACCOUNT,
@@ -41,6 +43,12 @@ LIMITS: dict[str, tuple[int, int]] = {
     "sign_in": (AUTH_THROTTLE_SIGN_IN_IP, AUTH_THROTTLE_SIGN_IN_ACCOUNT),
     "sign_up": (AUTH_THROTTLE_SIGN_UP_IP, AUTH_THROTTLE_SIGN_UP_ACCOUNT),
     "reset": (AUTH_THROTTLE_RESET_IP, AUTH_THROTTLE_RESET_ACCOUNT),
+    # An email-change request sends mail to an address the *requester* typed, so an
+    # unlimited endpoint is a mailer pointed at anyone. **Its account key digests the
+    # account's own address, not the requested one** — keying on the target would let one
+    # account spray many victims at full allowance and would open a counter bucket per
+    # victim address.
+    "email_change": (AUTH_THROTTLE_EMAIL_CHANGE_IP, AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT),
 }
 
 #: The IP part of a key is the address as the edge gave it. It is never logged.

@@ -502,6 +502,17 @@ AUTH_SESSION_LIFETIME = timedelta(days=7)
 # own default is three days, which is too long for a credential that resets a password.
 AUTH_RESET_TOKEN_LIFETIME = timedelta(minutes=30)
 
+# An email-change link is also a bearer credential, and it is deliberately **longer-lived
+# than a reset link**. The two answer different situations: a reset is a person locked out
+# of their account *now*, acting in the minutes after they asked; an email change is a
+# person who has just told us about a mailbox they may not read until this evening. A
+# 30-minute window would expire most honest attempts and teach people to request a second
+# link, which is worse for them and no better for us.
+#
+# It is still a window, not an open door: the link proves one address once, it is revoked
+# by any newer request, and the old address is warned the moment the change is asked for.
+AUTH_EMAIL_CHANGE_TOKEN_LIFETIME = timedelta(hours=24)
+
 # PRD §11.2: "Rate limiting on all public endpoints (per-IP and per-user)". The three
 # public auth operations are limited per IP *and* per account identifier, in the window
 # below. The per-account sign-up limit is the lowest of the three: sign-up is the
@@ -514,6 +525,12 @@ AUTH_THROTTLE_SIGN_UP_IP = 5
 AUTH_THROTTLE_SIGN_UP_ACCOUNT = 3
 AUTH_THROTTLE_RESET_IP = 5
 AUTH_THROTTLE_RESET_ACCOUNT = 3
+# An email-change request sends mail to an address the *requester* typed, so without a
+# limit the endpoint is a mailer pointed at anyone. It is limited like a reset, and the
+# per-account key digests **the account's own** address rather than the requested one —
+# keying on the target would let one account spray many victims at full allowance.
+AUTH_THROTTLE_EMAIL_CHANGE_IP = 5
+AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT = 3
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Calendar connections (FR-50, AD-18)

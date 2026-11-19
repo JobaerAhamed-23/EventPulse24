@@ -4,9 +4,11 @@ title: Moving the Login — a Token That Proves the New Address First
 intent: account-profile-expansion
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-19
+run_id: run-eventpulse24-042
+completed_at: 2026-11-19T09:52:31.876Z
 ---
 
 # Work Item: Moving the Login — a Token That Proves the New Address First

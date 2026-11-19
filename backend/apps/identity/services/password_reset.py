@@ -24,9 +24,6 @@ The token is stored as a salted SHA-256 digest. The raw token exists only in the
 user receives; a database dump yields no usable reset link.
 """
 
-import hashlib
-import secrets
-
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -34,6 +31,7 @@ from django.utils import timezone
 
 from apps.identity.models import PasswordResetToken, User
 from apps.identity.services import audit as audit_service
+from apps.identity.services import tokens as token_service
 from apps.identity.services.emails import render_reset_password_email, reset_password_stream
 from apps.identity.services.session import end_other_sessions
 from apps.identity.services.throttle import is_throttled
@@ -43,12 +41,6 @@ from shared.actor import Actor
 from shared.constants import AUTH_RESET_TOKEN_LIFETIME, SEND_KEY_SEPARATOR
 from shared.db import PERSONAL
 from shared.errors import ErrorItem
-
-#: The entropy of a reset token, in bytes. `token_urlsafe` turns it into a URL-safe string.
-TOKEN_BYTES = 32
-
-#: The salt's entropy, in bytes.
-SALT_BYTES = 16
 
 
 def request_password_reset(*, email: str, ip_address: str | None = None) -> None:
@@ -75,8 +67,7 @@ def request_password_reset(*, email: str, ip_address: str | None = None) -> None
         # known-address path.
         return None
 
-    token = secrets.token_urlsafe(TOKEN_BYTES)
-    salt = secrets.token_hex(SALT_BYTES)
+    token, salt = token_service.mint_token()
 
     with transaction.atomic(using=PERSONAL):
         # A new reset supersedes any outstanding one for the same account: only the
@@ -87,7 +78,7 @@ def request_password_reset(*, email: str, ip_address: str | None = None) -> None
 
         row = PasswordResetToken.objects.using(PERSONAL).create(
             user_id=user.pk,
-            token_hash=hash_token(token, salt),
+            token_hash=token_service.hash_token(token, salt),
             token_salt=salt,
             expires_at=timezone.now() + AUTH_RESET_TOKEN_LIFETIME,
         )
@@ -132,7 +123,7 @@ def reset_password(
         # The salt is per row, so the digest cannot be computed without knowing it. Look
         # the row up by trying each outstanding salt for this token's user — but the user
         # is unknown here, so the lookup walks the outstanding rows and matches the digest.
-        row = _find_outstanding_token(token, moment)
+        row = token_service.find_outstanding(PasswordResetToken, token, moment)
 
         if row is None:
             raise InvalidResetTokenError()
@@ -174,41 +165,9 @@ def reset_password(
     return user
 
 
-def hash_token(token: str, salt: str) -> str:
-    """The digest of a token, for one salt. Hex, 64 characters."""
-    return hashlib.sha256(f"{salt}{token}".encode()).hexdigest()
-
-
-def _find_outstanding_token(token: str, now) -> PasswordResetToken | None:
-    """Find the outstanding row whose token matches the raw `token`.
-
-    The digest depends on the row's own salt, so each outstanding row is checked in turn
-    against its own salt. There are at most a handful of outstanding rows per account, and
-    the comparison is constant time.
-
-    The rows are read with `select_for_update()`, so two concurrent attempts at the same
-    token serialise on the row lock: the second waits, then sees `used_at` set and is
-    refused. Without the lock, both could read `used_at IS NULL` and both could change
-    the password — which would break the single-use property under concurrency.
-
-    An expired row does **not** stop the scan. The token is matched by digest, and two
-    rows may share a raw token value (different salts, different accounts). If the first
-    match is expired, the scan continues, so a later valid row is still reachable.
-    """
-    candidates = (
-        PasswordResetToken.objects.using(PERSONAL)
-        .select_for_update()
-        .filter(used_at__isnull=True, revoked_at__isnull=True)
-    )
-    for row in candidates:
-        if not secrets.compare_digest(row.token_hash, hash_token(token, row.token_salt)):
-            continue
-        if row.expires_at <= now:
-            # Expired. Refused exactly like an unknown token — but the scan continues, so
-            # an expired row cannot shadow a valid one further down.
-            continue
-        return row
-    return None
+#: Re-exported: `hash_token` was this module's public helper before the scan moved to
+#: `services/tokens.py`, and a caller importing it from here is still right to.
+hash_token = token_service.hash_token
 
 
 def _validate_password(password: str, *, user: User) -> None:
