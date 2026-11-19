@@ -1534,6 +1534,8 @@ intents:
         complexity: high
         mode: validate
         depends_on: []
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T00:00:00Z
       - id: avatar-model-and-command
         status: pending
         complexity: high
