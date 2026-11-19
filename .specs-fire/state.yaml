@@ -1561,12 +1561,14 @@ intents:
     created: 2026-11-19
     work_items:
       - id: object-storage-and-minio
-        status: blocked
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
         checkpoint_1: approved
         checkpoint_1_at: 2026-11-19T00:00:00Z
+        run_id: run-eventpulse24-050
+        completed_at: 2026-11-19T16:31:10.229Z
       - id: avatar-model-and-command
         status: pending
         complexity: high
@@ -2387,3 +2389,11 @@ runs:
           mode: confirm
       started: 2026-11-19T15:47:02.267Z
       completed: 2026-11-19T16:01:32.382Z
+    - id: run-eventpulse24-050
+      scope: single
+      work_items:
+        - id: object-storage-and-minio
+          intent: account-profile-expansion
+          mode: validate
+      started: 2026-11-19T16:22:25.335Z
+      completed: 2026-11-19T16:31:10.229Z

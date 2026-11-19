@@ -64,9 +64,28 @@ services:
     # talks to a bucket in production — which is why it is here rather than a MEDIA_ROOT
     # volume that would have to be torn out before a deploy.
     # MinIO is to bytes what Mailpit is to mail: a real local service, not a fake.
-    # Tag verified against minio/minio's GitHub releases; the image itself could not be
-    # pulled where this was written (see the runbook note in README), so confirm on first `make up`.
-    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+    #
+    # **Why this is `pgsty/minio` and not `minio/minio`.** MinIO deleted `minio/minio` and
+    # `minio/mc` from Docker Hub in September 2026 — the registry answers **404 object not
+    # found**, not 403, and `docker pull` reports it as "may require 'docker login'", which
+    # is Docker's one message for *absent or forbidden* and cost this project several days
+    # of chasing credentials for a repository that no longer exists. quay.io/minio refuses
+    # anonymous pulls (401). `pgsty/*` is a third-party republish of the real binaries:
+    # `minio --version` in this image reports `RELEASE.2026-08-04T00-00-00Z`, AGPLv3.
+    #
+    # **Pinned by digest, not by tag, precisely because it is third-party.** A tag on
+    # somebody else's repository can be moved under us; a digest cannot. Re-pin
+    # deliberately, never by floating the tag.
+    #
+    # **It was measured against the privacy property before being adopted** — an unsigned
+    # URL returns 403, an expired presigned URL returns 403, and an anonymous PUT is
+    # refused. `localstack` and `chrislusf/seaweedfs` were measured too and **failed all
+    # three**, answering 200 to unsigned and expired reads and accepting an anonymous
+    # write; either would make "the bucket is private" false locally while every backend
+    # test passed. `dxflrs/garage` also passes and is the first-party alternative if a
+    # third-party image is ever judged unacceptable — it needs a node layout and explicit
+    # key grants, so it is a design change rather than an image swap.
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${BLOB_ACCESS_KEY:-eventpulse_local}
@@ -96,7 +115,9 @@ services:
     # default set would break `make up` for everyone, on a clean clone, every time. Behind
     # the profile the same `up` exits 0, and `make up` runs this explicitly afterwards with
     # `docker compose run --rm`, which was measured to succeed twice in a row.
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # The same republish, for the same reason, pinned the same way. `mc --version` reports
+    # `RELEASE.2026-11-12T00-00-00Z`.
+    image: pgsty/mc@sha256:b532278b7a3747dbab6fe45eebb40a653efa704e6758e24e9d9ec54fc96c1800
     profiles: ["bootstrap"]
     restart: "no"
     depends_on:
