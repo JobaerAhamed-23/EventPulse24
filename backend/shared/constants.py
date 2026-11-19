@@ -999,6 +999,56 @@ RANKING_WEIGHT_SUM = (
 # checks that it lists the weights it claims to authorise — so moving a weight and
 # updating this string in the same commit still fails, because the ADR's own table has to
 # move too, and the ADR is a document a human reads.
+# ── The profile picture (FR-? / account-profile-expansion) ────────────────────────────
+#
+# **These are refusal limits, not storage limits.** They bound what the decoder is asked
+# to do with bytes that came from the internet, which is the most dangerous thing this
+# codebase does.
+
+#: The largest upload accepted, in bytes.
+#:
+#: **Enforced while reading, never after.** The command reads at most `AVATAR_MAX_BYTES + 1`
+#: and refuses if that last byte arrived — so a 2 GB upload costs five mebibytes of memory
+#: and a 422, not two gigabytes and an outage. A cap checked after a read is not a cap.
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
+
+#: The largest image accepted, as total pixels.
+#:
+#: **This is the decompression-bomb guard**, and it is why it is a pixel count rather than
+#: a width and a height: a 1 × 50,000,000 image is as expensive to decode as a square one
+#: and would pass any per-side check. 4096 x 4096 is the budget; a picture rendered at
+#: 96 px has no honest need of more.
+AVATAR_MAX_PIXELS = 4096 * 4096
+
+#: The image formats stored, as Pillow names them.
+#:
+#: **Raster only, and SVG is refused by its absence.** An SVG is a document that can carry
+#: script and fetch external references; it is not the same kind of thing as the four
+#: below, and the word "image" in a filename does not make it one.
+#:
+#: The format is taken from the decoder's own identification of the bytes — never from the
+#: filename and never from the declared content type, both of which the uploader chooses.
+AVATAR_ALLOWED_FORMATS = ("PNG", "JPEG", "WEBP", "GIF")
+
+#: What each stored format is written back out as, after re-encoding.
+#:
+#: **Everything that is not already PNG becomes PNG**, except JPEG, which stays JPEG: a
+#: photograph re-encoded to PNG is several times larger for no gain, and a graphic
+#: re-encoded to JPEG acquires artefacts it did not have. GIF becomes PNG deliberately —
+#: an animated avatar is not a thing this product shows, and taking the first frame is the
+#: honest reading of "a picture of you".
+AVATAR_OUTPUT_FORMAT = {"PNG": "PNG", "JPEG": "JPEG", "WEBP": "PNG", "GIF": "PNG"}
+
+#: The content type stored alongside each output format.
+AVATAR_CONTENT_TYPE = {"PNG": "image/png", "JPEG": "image/jpeg"}
+
+#: The prefix every avatar key carries. The rest of the key is random.
+#:
+#: **The key is opaque (AD-13)**: no user id, no email, no filename. A key derived from an
+#: account would let anyone holding one enumerate the others, and a key carrying a filename
+#: would carry whatever the uploader chose to name their file.
+AVATAR_KEY_PREFIX = "avatars/"
+
 RANKING_WEIGHTS_AMENDMENT = "ADR-0025"
 
 # **The PRD amendment that publishes the formula, and when it last moved.**

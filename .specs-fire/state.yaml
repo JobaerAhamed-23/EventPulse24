@@ -1570,11 +1570,25 @@ intents:
         run_id: run-eventpulse24-050
         completed_at: 2026-11-19T16:31:10.229Z
       - id: avatar-model-and-command
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on:
           - object-storage-and-minio
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T16:40:00.000Z
+        run_id: run-eventpulse24-051
+        completed_at: 2026-11-19T16:58:23.361Z
+      - id: account-deletion-and-avatar-removal
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - avatar-model-and-command
+        added: 2026-11-19
+        source: split from avatar-model-and-command at its Checkpoint 1; no account
+          deletion exists anywhere, so its avatar-removal criterion had nothing
+          to hook into
       - id: avatar-endpoint-and-contract
         status: pending
         complexity: medium
@@ -2397,3 +2411,11 @@ runs:
           mode: validate
       started: 2026-11-19T16:22:25.335Z
       completed: 2026-11-19T16:31:10.229Z
+    - id: run-eventpulse24-051
+      scope: single
+      work_items:
+        - id: avatar-model-and-command
+          intent: account-profile-expansion
+          mode: validate
+      started: 2026-11-19T16:38:17.038Z
+      completed: 2026-11-19T16:58:23.361Z

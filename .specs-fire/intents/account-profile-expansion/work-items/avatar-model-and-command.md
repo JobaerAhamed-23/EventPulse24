@@ -4,10 +4,12 @@ title: The Picture the Account Holds — One Field, Two Commands
 intent: account-profile-expansion
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on:
   - object-storage-and-minio
 created: 2026-11-19
+run_id: run-eventpulse24-051
+completed_at: 2026-11-19T16:58:23.302Z
 ---
 
 # Work Item: The Picture the Account Holds — One Field, Two Commands

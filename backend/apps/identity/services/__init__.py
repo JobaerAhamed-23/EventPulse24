@@ -3,6 +3,7 @@
 from apps.identity.services.accounts import AccountOutcome, ensure_account
 from apps.identity.services.audit import write_audit
 from apps.identity.services.authenticate import authenticate
+from apps.identity.services.avatar import clear_user_avatar, set_user_avatar
 from apps.identity.services.billing import open_portal, read_entitlement, start_checkout
 from apps.identity.services.email_change import (
     cancel_email_change,
@@ -46,6 +47,8 @@ __all__ = [
     "request_email_change",
     "request_password_reset",
     "reset_password",
+    "clear_user_avatar",
+    "set_user_avatar",
     "set_user_name",
     "sign_out",
     "sign_up",

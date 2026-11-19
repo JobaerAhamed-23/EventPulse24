@@ -220,7 +220,7 @@ def test_the_import_contracts_still_hold():
         for block in section
         for match in re.findall(r'^id\s*=\s*"([^"]+)"', block, flags=re.MULTILINE)
     ]
-    assert len(declared) == 20, f"the contract count changed: {declared}"
+    assert len(declared) == 21, f"the contract count changed: {declared}"
 
 
 def test_the_editorial_app_owns_no_table():

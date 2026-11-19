@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from apps.identity.managers import UserManager
 from ports.billing import ProPlan
+from ports.blob import MAX_KEY_LENGTH
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -53,6 +54,31 @@ class User(UUIDv7Model, AbstractBaseUser, PermissionsMixin):
     #: It is **not** normalised the way the email is: the email is a key, and this is a
     #: person's name. The case is theirs.
     name = models.CharField(max_length=120, blank=True, default="")
+
+    #: The key of this account's profile picture in the object store — **not the picture**.
+    #:
+    #: The bytes live in the bucket; this column holds the opaque key that finds them. A
+    #: picture in a database column is a picture read on every query that touches the row.
+    #:
+    #: **Blank, not null**, exactly as `name` above is: `""` is the single "no picture set"
+    #: state, so "cleared" and "never set" are one state rather than two with the same
+    #: meaning. What the product shows in its place — initials, a silhouette — is a
+    #: *display* rule the frontend owns.
+    #:
+    #: **The key is opaque (AD-13).** It carries no account id, no address and no filename:
+    #: `avatars/<random>`. A key derived from the account would let anyone holding one
+    #: enumerate the others.
+    #:
+    #: **A new key on every upload, never an overwrite.** Replacing a picture stores a new
+    #: object and deletes the old one after the row commits, so there is no moment at which
+    #: this column names a half-written object.
+    #:
+    #: **Caveat, recorded deliberately: nothing deletes an account yet.** This key's
+    #: lifetime is bounded by an account-deletion path that does not exist — no command, no
+    #: endpoint, no surface. The object *is* removed when the picture is replaced or
+    #: cleared; it is only account deletion that cannot yet take it. See
+    #: `account-deletion-and-avatar-removal`.
+    avatar_key = models.CharField(max_length=MAX_KEY_LENGTH, blank=True, default="")
 
     is_staff = models.BooleanField(
         default=False,
