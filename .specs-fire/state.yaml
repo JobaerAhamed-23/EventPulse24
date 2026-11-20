@@ -1714,7 +1714,7 @@ intents:
     completed_at: 2026-11-20T06:43:49.702Z
   - id: broken-links-and-legal-pages
     title: The links that lead nowhere — /suggest, /terms, /privacy
-    status: in_progress
+    status: completed
     created: 2026-11-20
     reported_by: user
     work_items:
@@ -1724,50 +1724,25 @@ intents:
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-055
-        completed_at: 2026-11-20T10:51:10.598Z
+        completed_at: 2026-11-20T11:38:45.025Z
       - id: legal-page-routes
         status: completed
         complexity: medium
         mode: confirm
         depends_on: []
         run_id: run-eventpulse24-055
-        completed_at: 2026-11-20T11:15:19.236Z
+        completed_at: 2026-11-20T11:38:45.025Z
       - id: legal-copy-draft
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - legal-page-routes
+        run_id: run-eventpulse24-055
+        completed_at: 2026-11-20T11:38:45.025Z
+    completed_at: 2026-11-20T11:38:08.383Z
 runs:
-  active:
-    - id: run-eventpulse24-055
-      scope: wide
-      work_items:
-        - id: fr8-suggest-link-removal
-          intent: broken-links-and-legal-pages
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-20T10:51:10.598Z
-        - id: legal-page-routes
-          intent: broken-links-and-legal-pages
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-20T11:15:19.236Z
-        - id: legal-copy-draft
-          intent: broken-links-and-legal-pages
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-      current_item: legal-copy-draft
-      started: 2026-11-20T10:42:06.861Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2577,3 +2552,17 @@ runs:
           mode: confirm
       started: 2026-11-20T07:09:44.981Z
       completed: 2026-11-20T10:06:27.173Z
+    - id: run-eventpulse24-055
+      scope: wide
+      work_items:
+        - id: fr8-suggest-link-removal
+          intent: broken-links-and-legal-pages
+          mode: confirm
+        - id: legal-page-routes
+          intent: broken-links-and-legal-pages
+          mode: confirm
+        - id: legal-copy-draft
+          intent: broken-links-and-legal-pages
+          mode: confirm
+      started: 2026-11-20T10:42:06.861Z
+      completed: 2026-11-20T11:38:45.025Z

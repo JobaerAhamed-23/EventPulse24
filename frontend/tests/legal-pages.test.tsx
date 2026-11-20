@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
+import { RETENTION_ROWS } from "@/lib/retention-categories";
 
 const PAGES = [
   { name: "/terms", heading: "Terms of Service", Page: TermsPage },
@@ -78,6 +79,50 @@ describe("the legal documents", () => {
       });
     });
   }
+
+  describe("/privacy content", () => {
+    it("publishes every retention category it mirrors", () => {
+      render(<PrivacyPage />);
+
+      // The rows come from `lib/retention-categories.ts`, which
+      // `backend/tests/shared/test_retention_published.py` pins to the live
+      // `RetentionCategory` registry. This assertion is the frontend half: the data is
+      // not merely imported, it reaches the page.
+      for (const row of RETENTION_ROWS) {
+        expect(screen.getByText(row.label)).toBeInTheDocument();
+      }
+      expect(RETENTION_ROWS.length).toBeGreaterThan(5);
+    });
+
+    it("names the 30-day grace period", () => {
+      render(<PrivacyPage />);
+
+      // `DELETION_GRACE_PERIOD = timedelta(days=30)`. A policy that stated a different
+      // number would be describing a product that does not exist.
+      expect(screen.getByText(/30 days to change your mind/)).toBeInTheDocument();
+    });
+
+    it("is explicit that billing records and audit logs survive deletion", () => {
+      render(<PrivacyPage />);
+
+      // `SURVIVING_CATEGORIES`. The unflattering half, and the half a reader most needs
+      // — a policy that only lists what is deleted is telling half a truth.
+      expect(screen.getByText(/Two things survive/)).toBeInTheDocument();
+      expect(screen.getByText(/seven years because tax law requires it/)).toBeInTheDocument();
+    });
+
+    it("claims no training-data opt-out, because none is configured", () => {
+      const { container } = render(<PrivacyPage />);
+
+      // PRD §10.2 says the system opts out of the provider's training-data retention
+      // "where the provider's terms permit". `adapters/llm/voyage.py` contains no such
+      // configuration, so the page must not say it does. This asserts the absence of a
+      // claim, which is the only kind of guard that keeps an unverified promise off a
+      // legal page.
+      expect(container.textContent).not.toMatch(/opt(ed)?[ -]out/i);
+      expect(container.textContent).toMatch(/do not use your personal data to train/i);
+    });
+  });
 
   it("does not offer a route that was never specified", () => {
     render(<PrivacyPage />);

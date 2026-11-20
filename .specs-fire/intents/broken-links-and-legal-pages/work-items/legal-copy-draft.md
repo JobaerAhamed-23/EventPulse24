@@ -4,10 +4,12 @@ title: Draft the Terms and Privacy copy from what the code actually does
 intent: broken-links-and-legal-pages
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - legal-page-routes
 created: 2026-11-20
+run_id: run-eventpulse24-055
+completed_at: 2026-11-20T11:38:08.383Z
 ---
 
 # Work Item: Copy that is true, and says it is a draft

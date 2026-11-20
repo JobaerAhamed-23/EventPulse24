@@ -1,8 +1,9 @@
 ---
 id: broken-links-and-legal-pages
 title: The links that lead nowhere — /suggest, /terms, /privacy
-status: in_progress
+status: completed
 created: 2026-11-20
+completed_at: 2026-11-20T11:38:08.390Z
 ---
 
 # Intent: The links that lead nowhere
