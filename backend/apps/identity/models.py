@@ -264,6 +264,34 @@ class DeletionRequest(UUIDv7Model):
     survive the account.
 
     **The address is not here** (AD-13): `__str__` reaches logs and the admin changelist.
+
+    **The cancel token lives here, and its lifetime is this row's lifetime.** The notice
+    mail carries a link that cancels the deletion, and that link has to authenticate the
+    person who follows it as the account's owner. The token is therefore held here as a
+    salted digest (`token_hash` + `token_salt`), and **its lifetime is the row's**,
+    because the row is deleted when the token is spent — spending the token *is* the
+    cancellation.
+
+    **There is deliberately no separate expiry column for it.** A second expiry would be a
+    second source of truth about when the promise ends, and it could disagree with
+    `scheduled_for`: a token expired while the grace period was still live would break
+    the promise A-16 makes, and a token alive after the row was destroyed would be a
+    token with nothing to cancel. **One row, one lifetime, no way for the two to drift.**
+
+    **Why a long-lived token is defensible here, when it would not be elsewhere.** A
+    password-reset token lives thirty minutes because spending it grants *full account
+    access*. This token lives the whole grace period because spending it **deletes the
+    pending destruction** — it grants no access, reads nothing, exposes no data, and
+    leaves the account exactly as it was. **A credential that can only prevent destruction
+    is a categorically weaker bearer than one that grants access**, and its worst outcome
+    is that the account *survives*. That bounded upside is what makes the window
+    acceptable; the same window on a reset token would not be.
+
+    **The address is deliberately not captured here.** A second mail — "your account has
+    been destroyed" — cannot exist without it, because when `destroy_account` runs the
+    account row is gone and there is nothing left to write to. Capturing the address onto
+    a row that outlives the account is a PII question (AD-13) and a retention one
+    (AD-15), and it is not settled. **This row does not hold it.**
     """
 
     retention_category = RetentionCategory.ACCOUNT_IDENTITY
@@ -277,6 +305,15 @@ class DeletionRequest(UUIDv7Model):
     #: **Computed once, at request time.** A deadline that moved whenever the constant
     #: changed would mean an outstanding request's grace period silently grew or shrank.
     scheduled_for = models.DateTimeField()
+    #: sha256(salt + token), hex. The token itself is never stored (AD-18).
+    #:
+    #: **Nullable**, because the migration is forward-only: a row that existed before
+    #: this column did has no token, and the mail that would carry one was never sent for
+    #: it. A row with no token simply has no cancel link outstanding.
+    token_hash = models.CharField(max_length=64, null=True, blank=True)
+    #: The per-row salt, hex. It makes the digest unattackable with precomputed digests
+    #: of the token space.
+    token_salt = models.CharField(max_length=32, null=True, blank=True)
 
     class Meta:
         indexes = [

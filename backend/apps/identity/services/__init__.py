@@ -10,6 +10,7 @@ from apps.identity.services.deletion import (
     destroy_account,
     request_account_deletion,
 )
+from apps.identity.services.deletion_read import PendingDeletion, read_pending_deletion
 from apps.identity.services.email_change import (
     cancel_email_change,
     confirm_email_change,
@@ -34,6 +35,7 @@ from apps.identity.services.throttle import is_throttled
 
 __all__ = [
     "AccountOutcome",
+    "PendingDeletion",
     "SignUpOutcome",
     "authenticate",
     "ensure_account",
@@ -48,6 +50,7 @@ __all__ = [
     "is_throttled",
     "open_portal",
     "read_entitlement",
+    "read_pending_deletion",
     "record_subscription_changed",
     "record_subscription_ended",
     "record_subscription_started",

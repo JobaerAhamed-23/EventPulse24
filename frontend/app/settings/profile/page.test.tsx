@@ -65,6 +65,8 @@ const USER = {
   avatar_url: "",
   pending_email: "",
   pending_email_expires_at: "",
+  deletion_scheduled_for: "",
+  deletion_requested_at: "",
   onboarding: { completed: true, current_step: null },
 };
 

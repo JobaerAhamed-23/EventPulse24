@@ -15,6 +15,9 @@ outlive it.
 6. **An account with no picture deletes cleanly.** The empty key must not reach the
    store, because `delete("")` raises `ValueError` from the port's key validation.
 7. **The grace period is thirty days**, computed once, and not moved by asking again.
+8. **The notice mail is sent once, and only once**, and a failure to send it does not
+   fail the request — and **the token in it really cancels the deletion**, so the mail's
+   promise is a tested fact rather than a claim in a docstring.
 """
 
 import io
@@ -26,9 +29,11 @@ from django.utils import timezone
 from PIL import Image
 
 from apps.identity.models import DeletionRequest, IdentityAuditEntry, User
+from apps.identity.services import tokens as token_service
 from apps.identity.services.avatar import set_user_avatar
 from apps.identity.services.deletion import (
     cancel_account_deletion,
+    cancel_account_deletion_with_token,
     destroy_account,
     due_deletion_requests,
     request_account_deletion,
@@ -615,3 +620,265 @@ def test_the_probe_would_not_pass_if_the_grace_period_were_zero(monkeypatch):
     assert not (mutated.scheduled_for > mutated.requested_at), (
         "the grace period is not a grace period — the probe is inert"
     )
+
+
+# ── The notice mail, and the token it carries ──────────────────────────────────────
+
+
+def test_requesting_deletion_sends_the_notice(email_adapter, django_capture_on_commit_callbacks):
+    """**The mail is the only channel that reaches someone who closed the tab.**
+
+    The send is registered with `transaction.on_commit`, so the `on_commit` capture is
+    what makes this test able to fail — under pytest-django's uncommitted transaction the
+    callback would never fire, and an implementation that never sent the mail would pass
+    this test unchanged.
+    """
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    assert len(email_adapter.sent) == 1
+    sent = email_adapter.sent[0]
+    assert sent.message.to == user.email
+    assert sent.stream.value == "transactional"
+
+
+def test_the_notice_carries_a_token_that_is_not_stored_in_the_clear(
+    email_adapter, django_capture_on_commit_callbacks
+):
+    """**AD-18.** The raw token lives in the mail and nowhere else; the row holds a
+    digest and a salt. A database dump must yield no usable cancel link."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    body = email_adapter.sent[0].message.text_body
+    row = DeletionRequest.objects.get(user_id=user.pk)
+
+    # **The token is in the mail** — the person has to be able to follow the link.
+    token = body.split("token=")[1].split("\n")[0].strip()
+    assert token
+    assert row.token_hash == token_service.hash_token(token, row.token_salt)
+
+    # **And it is not in the row in the clear.** The digest is the sha256 of the salted
+    # token, so the raw token cannot be recovered from the database.
+    assert token not in row.token_hash
+    assert row.token_salt
+
+
+def test_asking_twice_sends_one_mail_not_two(email_adapter, django_capture_on_commit_callbacks):
+    """**The mail is sent once.** A second request returns the same row and sends
+    nothing — a person who pressed the button twice should not get two notices, and the
+    idempotency key is derived from the row so the port would collapse them anyway."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+        request_account_deletion(user_id=user.pk)
+
+    assert len(email_adapter.sent) == 1
+
+
+def test_the_notice_carries_an_idempotency_key_derived_from_the_request(
+    email_adapter, django_capture_on_commit_callbacks
+):
+    """**AD-7.** The key must be derived from the request, so a second request sends
+    nothing — and it must not carry the address."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        row = request_account_deletion(user_id=user.pk)
+
+    key = email_adapter.sent[0].idempotency_key
+    assert key.endswith(str(row.pk))
+    assert user.email not in key
+
+
+def test_a_mail_failure_does_not_fail_the_request(
+    email_adapter, django_capture_on_commit_callbacks, monkeypatch, caplog
+):
+    """**The request stands, and the failure is logged rather than raised.**
+
+    The endpoint's contract says the request "cannot fail on its merits" — a deletion
+    request that was recorded must not be reported as a failure because a mail server
+    was down. The person can still cancel from the page.
+    """
+    import apps.identity.services.deletion as module
+
+    user = make_user()
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("the mail server is down")
+
+    monkeypatch.setattr(module, "_send_deletion_notice", _explode)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        # **No exception escapes.**
+        row = request_account_deletion(user_id=user.pk)
+
+    assert row.pk is not None
+    assert DeletionRequest.objects.filter(user_id=user.pk).count() == 1
+
+
+def test_the_send_failure_log_carries_no_address(
+    email_adapter, django_capture_on_commit_callbacks, monkeypatch, caplog
+):
+    """**AD-13.** The log line names the failure, not the recipient. The logger
+    allowlist is not widened — the exception is logged with its own stack, and the
+    address is in neither."""
+    import apps.identity.services.deletion as module
+
+    user = make_user()
+
+    class _BrokenPort:
+        def send(self, *args, **kwargs):
+            raise RuntimeError("the mail server is down")
+
+    monkeypatch.setattr(module, "get_email_port", lambda: _BrokenPort())
+
+    with caplog.at_level("ERROR"):
+        with django_capture_on_commit_callbacks(execute=True):
+            request_account_deletion(user_id=user.pk)
+
+    assert user.email not in caplog.text
+
+
+def test_a_rolled_back_request_sends_no_mail(
+    email_adapter, django_capture_on_commit_callbacks, monkeypatch
+):
+    """**The mail is after the commit, so a rolled back request sends nothing.**
+
+    A request that was never recorded must not leave a notice in an inbox telling the
+    person their account will be destroyed on a date that nothing will honour.
+    """
+    import apps.identity.services.deletion as module
+
+    user = make_user()
+
+    def _explode(*args, **kwargs):
+        raise AssertionError("the mail was sent for a request that was rolled back")
+
+    monkeypatch.setattr(module, "_send_deletion_notice", _explode)
+
+    class _Boom(Exception):
+        pass
+
+    with django_capture_on_commit_callbacks(execute=True):
+        try:
+            with pytest.raises(_Boom):
+                # **Force the transaction to roll back** after the row is written.
+                from django.db import transaction
+
+                with transaction.atomic(using=PERSONAL):
+                    request_account_deletion(user_id=user.pk)
+                    raise _Boom()
+        except _Boom:
+            pass
+
+
+def test_the_token_in_the_mail_cancels_the_deletion(
+    email_adapter, django_capture_on_commit_callbacks
+):
+    """**The promise is a tested fact, not a claim in a docstring.**
+
+    A-16 says the person can cancel "from the email we send". This is that sentence,
+    executed: the token from the mail cancels the pending deletion, and the account
+    survives.
+    """
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    body = email_adapter.sent[0].message.text_body
+    token = body.split("token=")[1].split("\n")[0].strip()
+
+    assert cancel_account_deletion_with_token(token=token) is True
+    assert DeletionRequest.objects.filter(user_id=user.pk).count() == 0
+    assert User.objects.filter(pk=user.pk).exists()
+
+
+def test_a_spent_token_cannot_be_replayed(email_adapter, django_capture_on_commit_callbacks):
+    """**Single-use.** The token lived on the row and the row is gone, so there is
+    nothing left to spend."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    body = email_adapter.sent[0].message.text_body
+    token = body.split("token=")[1].split("\n")[0].strip()
+
+    assert cancel_account_deletion_with_token(token=token) is True
+    assert cancel_account_deletion_with_token(token=token) is False
+
+
+def test_a_wrong_token_cancels_nothing(email_adapter, django_capture_on_commit_callbacks):
+    """**A token that does not match cancels nothing, and says nothing about why.**
+
+    The same answer for an unknown token and a wrong one, so the token cannot be used
+    to probe for a real one."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    assert cancel_account_deletion_with_token(token="not-the-token") is False
+    assert DeletionRequest.objects.filter(user_id=user.pk).count() == 1
+
+
+def test_a_token_cancels_only_its_own_account(email_adapter, django_capture_on_commit_callbacks):
+    """**One token, one account.** A token spent against somebody else's pending
+    deletion would be a serious bug, so it is asserted rather than assumed."""
+    mine = make_user()
+    theirs = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=mine.pk)
+        request_account_deletion(user_id=theirs.pk)
+
+    body = email_adapter.sent[0].message.text_body
+    token = body.split("token=")[1].split("\n")[0].strip()
+
+    assert cancel_account_deletion_with_token(token=token) is True
+    assert DeletionRequest.objects.filter(user_id=mine.pk).count() == 0
+    assert DeletionRequest.objects.filter(user_id=theirs.pk).count() == 1
+
+
+def test_the_cancellation_is_recorded_when_the_token_is_spent(
+    email_adapter, django_capture_on_commit_callbacks
+):
+    """**Cancelling by token is recorded the same way cancelling by session is.** The
+    audit trail must not depend on how the cancellation arrived."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    body = email_adapter.sent[0].message.text_body
+    token = body.split("token=")[1].split("\n")[0].strip()
+
+    cancel_account_deletion_with_token(token=token)
+
+    actions = list(
+        IdentityAuditEntry.objects.filter(actor_id=user.pk).values_list("action", flat=True)
+    )
+    assert "account_deletion_cancelled" in actions
+
+
+def test_the_audit_rows_carry_no_token(email_adapter, django_capture_on_commit_callbacks):
+    """**AD-13.** The token is a credential, and the audit details carry the action and
+    the target only."""
+    user = make_user()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        request_account_deletion(user_id=user.pk)
+
+    body = email_adapter.sent[0].message.text_body
+    token = body.split("token=")[1].split("\n")[0].strip()
+
+    for row in IdentityAuditEntry.objects.filter(actor_id=user.pk):
+        assert token not in str(row.details)
+        assert row.details == {}

@@ -36,6 +36,8 @@ export interface paths {
          * @description The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
          *
          *     `pending_email` is the address an outstanding email change is *to*, or empty when there is none, and `pending_email_expires_at` is when that link stops working. It is the caller's own pending change, and only the caller can read it.
+         *
+         *     `deletion_scheduled_for` is when the account will be destroyed, and `deletion_requested_at` is when that was asked for — both empty when no deletion is pending. They are moments rather than a flag, because a person deciding whether to cancel needs to know *when* the account dies, not merely that it might. The date was computed once, when the request was made, and asking again does not move it.
          */
         get: operations["apps_identity_api_me"];
         put?: never;
@@ -167,7 +169,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * What deleting the account would do
+         * @description The two sentences the confirmation modal shows: what the deletion removes, and what it leaves behind as anonymised aggregates.
+         *
+         *     **This is a preview, and it changes nothing.** It says what the engine does, and it carries no state about the caller's account — the pending-deletion moments ride `me`, where they already are. The two strings are constants of the product, so there is nothing here to refresh and nothing to cache.
+         *
+         *     **They are the same two strings the confirmation mail renders.** One source, two surfaces: a modal that described the destruction in different words from the mail would be telling the same person two different stories about the same thing.
+         */
+        get: operations["apps_identity_api_read_account_deletion_copy_endpoint"];
         put?: never;
         /**
          * Ask to delete the account
@@ -176,6 +186,8 @@ export interface paths {
          *     **Nothing is destroyed yet.** The account keeps working, in full, for the grace period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request off during that time. The stored profile picture is removed when the account is destroyed, not when the request is made, so cancelling inside the grace period leaves the picture where it was.
          *
          *     **Asking twice is not an error.** The first request set the date; a later one returns the same date rather than moving it, so the promise the product made cannot be extended by asking again.
+         *
+         *     `what_is_deleted` and `what_survives` are the two sentences that say what the deletion does and what it leaves behind, in the product's own words. **They are the same two strings the confirmation mail renders**, so the modal and the mail cannot tell the person two different stories about the same destruction.
          */
         post: operations["apps_identity_api_request_account_deletion_endpoint"];
         /**
@@ -1782,6 +1794,45 @@ export interface components {
             status: string;
         };
         /**
+         * AccountDeletionCopyOut
+         * @description **What deleting this account would do — read before anything is asked.**
+         *
+         *     **This is the preview.** The confirmation modal has to say what the deletion
+         *     removes and what it leaves behind, and it has to say it *before* the person has
+         *     typed anything. So the copy is read, not written into the frontend.
+         *
+         *     ## One set of words, for two surfaces
+         *
+         *     `what_is_deleted` and `what_survives` are the two sentences that say what the
+         *     deletion does and what it leaves behind. **They are published here rather than
+         *     written into the frontend**, because the mail already renders them — from the same
+         *     two constants in `services.deletion` — and a second copy of the same sentence is a
+         *     second place for the two surfaces to disagree.
+         *
+         *     **The A-16 mockup's wording for these is not used, and that is not a
+         *     preference.** The mockup's second paragraph ends *"We can't reverse deletion."*,
+         *     which contradicts the thirty-day grace period the paragraph after it promises.
+         *     **A modal that says both in consecutive paragraphs is a modal that lies**, and the
+         *     backend's own wording — which the mail already ships — is the true one.
+         *
+         *     ## It carries no state, on purpose
+         *
+         *     **This read says what the engine does, and nothing about this account.** It is a
+         *     constant of the product dressed as a read, and it is on this path because this is
+         *     the only screen that asks the question. **The account's own pending state does not
+         *     ride here** — `me` carries that, and it already does.
+         *
+         *     **So there is nothing to cache and nothing to refresh.** The two strings never
+         *     change, which is why the modal can read them once and open with its text already
+         *     on screen.
+         */
+        AccountDeletionCopyOut: {
+            /** What Is Deleted */
+            what_is_deleted: string;
+            /** What Survives */
+            what_survives: string;
+        };
+        /**
          * AccountDeletionRequestOut
          * @description The answer to "please delete my account": the request was recorded, and when it
          *     will take effect.
@@ -1799,6 +1850,10 @@ export interface components {
          *     **No reason field.** Nothing here records why somebody asked, and nothing here
          *     records what was deleted — the account is still there, in full, and the audit trail
          *     is where a record of the eventual deletion belongs.
+         *
+         *     **It carries the copy too**, because a client that has just asked for the deletion
+         *     wants to say what it did — and the copy is in this answer anyway, so asking for it
+         *     again would be a second request for a string the server already sent.
          */
         AccountDeletionRequestOut: {
             /** Requested At */
@@ -1810,6 +1865,10 @@ export interface components {
              * @default scheduled
              */
             status: string;
+            /** What Is Deleted */
+            what_is_deleted: string;
+            /** What Survives */
+            what_survives: string;
         };
         /**
          * BillingAccountOut
@@ -2728,6 +2787,19 @@ export interface components {
          *     It is read through `personalization`'s **published interface** — the service, never
          *     the model — because `identity` may not reach into another app's tables (AD-2). The
          *     import contract `models-personalization` proves it.
+         *
+         *     The **pending deletion** is here for the same reason `pending_email` is: the
+         *     frontend has to be able to *say* that an account is scheduled for destruction, and
+         *     it cannot say it from a boolean. A person who asked to delete their account and
+         *     then changed their mind needs to reach the way back — and a way back that does not
+         *     say when the account dies is not a way back, it is a countdown they cannot read.
+         *
+         *     **The two moments ride every page's payload, and that is the cost.** `me` is read
+         *     on every render, so two small strings are carried by every user forever, including
+         *     the ones who will never delete anything. The alternative is a second round trip on
+         *     one screen — and it cannot be the shell's job either, because the shell is not
+         *     where the danger zone lives. **The trade is two strings on every payload, and it
+         *     buys the ability to name the date.**
          */
         CurrentUserOut: {
             /**
@@ -2735,6 +2807,16 @@ export interface components {
              * @default
              */
             avatar_url: string;
+            /**
+             * Deletion Requested At
+             * @default
+             */
+            deletion_requested_at: string;
+            /**
+             * Deletion Scheduled For
+             * @default
+             */
+            deletion_scheduled_for: string;
             /** Email */
             email: string;
             /**
@@ -5446,6 +5528,35 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_read_account_deletion_copy_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionCopyOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

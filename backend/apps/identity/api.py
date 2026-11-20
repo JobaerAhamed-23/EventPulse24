@@ -79,6 +79,7 @@ from apps.identity.api_auth import (
 from apps.identity.models import PendingEmailChange
 from apps.identity.schemas import (
     AccountDeletionCancelOut,
+    AccountDeletionCopyOut,
     AccountDeletionRequestOut,
     CsrfTokenOut,
     CurrentUserOut,
@@ -106,9 +107,12 @@ from apps.identity.services.avatar import (
     version_of,
 )
 from apps.identity.services.deletion import (
+    DELETION_REMOVES,
+    DELETION_SURVIVES,
     cancel_account_deletion,
     request_account_deletion,
 )
+from apps.identity.services.deletion_read import read_pending_deletion
 from apps.identity.services.email_change import (
     cancel_email_change,
     confirm_email_change,
@@ -310,7 +314,13 @@ def _avatar_url(user) -> str:
         "state is at `/api/personal/onboarding`.\n\n"
         "`pending_email` is the address an outstanding email change is *to*, or empty "
         "when there is none, and `pending_email_expires_at` is when that link stops "
-        "working. It is the caller's own pending change, and only the caller can read it."
+        "working. It is the caller's own pending change, and only the caller can read it.\n\n"
+        "`deletion_scheduled_for` is when the account will be destroyed, and "
+        "`deletion_requested_at` is when that was asked for — both empty when no deletion "
+        "is pending. They are moments rather than a flag, because a person deciding "
+        "whether to cancel needs to know *when* the account dies, not merely that it "
+        "might. The date was computed once, when the request was made, and asking again "
+        "does not move it."
     ),
 )
 def me(request):
@@ -350,6 +360,17 @@ def me(request):
         .first()
     )
 
+    # **The outstanding deletion request, if there is one.** Read through the service
+    # rather than from the model, and the reason is specific rather than general:
+    # **`DeletionRequest` carries the cancel token's digest**, and a read that handed the
+    # API layer the row would hand it the digest of a bearer credential that cancels the
+    # account's destruction. The service returns two dates and nothing else — so the
+    # token cannot reach the wire.
+    #
+    # Read-only, like the two reads above and for the same reason: `me` is a `GET`, and a
+    # `GET` is never CSRF-checked, so a write behind one would be a cross-site write.
+    deletion = read_pending_deletion(user_id=user.pk)
+
     return CurrentUserOut(
         id=user.pk,
         email=user.email,
@@ -357,6 +378,8 @@ def me(request):
         avatar_url=_avatar_url(user),
         pending_email=pending[0] if pending else "",
         pending_email_expires_at=pending[1].isoformat() if pending else "",
+        deletion_scheduled_for=deletion.scheduled_for.isoformat() if deletion else "",
+        deletion_requested_at=deletion.requested_at.isoformat() if deletion else "",
         onboarding=OnboardingStatusOut(
             completed=state.completed,
             current_step=state.current_step,
@@ -548,6 +571,43 @@ def get_profile_avatar(request, version: str):
     return response
 
 
+@router.get(
+    "/profile/deletion",
+    # 200 the copy; 401 an anonymous caller. A read cannot fail on CSRF — only writes
+    # are checked, and only writes can be refused.
+    response={200: AccountDeletionCopyOut, 401: ErrorOut},
+    summary="What deleting the account would do",
+    description=(
+        "The two sentences the confirmation modal shows: what the deletion removes, and "
+        "what it leaves behind as anonymised aggregates.\n\n"
+        "**This is a preview, and it changes nothing.** It says what the engine does, "
+        "and it carries no state about the caller's account — the pending-deletion "
+        "moments ride `me`, where they already are. The two strings are constants of "
+        "the product, so there is nothing here to refresh and nothing to cache.\n\n"
+        "**They are the same two strings the confirmation mail renders.** One source, "
+        "two surfaces: a modal that described the destruction in different words from "
+        "the mail would be telling the same person two different stories about the same "
+        "thing."
+    ),
+)
+def read_account_deletion_copy_endpoint(request):
+    """What deleting this account would do. Nothing is asked, and nothing is written."""
+    # **A read needs no CSRF token.** CSRF guards writes; a `GET` that changed nothing
+    # is not a thing an attacker could do anything with.
+    #
+    # **The account is resolved and then not consulted.** The resolver raises for an
+    # anonymous caller, and that is the whole reason it is called: the preview is
+    # behind the same session wall as the thing it previews. **The two strings
+    # describe what the engine does, and that is the same for everybody** — so the
+    # answer is the same for everybody, and the account's own state is not in it.
+    current_user(request)
+
+    return AccountDeletionCopyOut(
+        what_is_deleted=DELETION_REMOVES,
+        what_survives=DELETION_SURVIVES,
+    )
+
+
 @router.post(
     "/profile/deletion",
     # 200 the recorded request; 401 an anonymous caller; 403 the CSRF refusal. The request
@@ -564,7 +624,11 @@ def get_profile_avatar(request, version: str):
         "leaves the picture where it was.\n\n"
         "**Asking twice is not an error.** The first request set the date; a later one "
         "returns the same date rather than moving it, so the promise the product made "
-        "cannot be extended by asking again."
+        "cannot be extended by asking again.\n\n"
+        "`what_is_deleted` and `what_survives` are the two sentences that say what the "
+        "deletion does and what it leaves behind, in the product's own words. **They are "
+        "the same two strings the confirmation mail renders**, so the modal and the mail "
+        "cannot tell the person two different stories about the same destruction."
     ),
 )
 def request_account_deletion_endpoint(request):
@@ -582,6 +646,14 @@ def request_account_deletion_endpoint(request):
     return AccountDeletionRequestOut(
         requested_at=pending.requested_at.isoformat(),
         scheduled_for=pending.scheduled_for.isoformat(),
+        # **The two paragraphs, from the same constants the mail renders.**
+        #
+        # The confirmation modal has to say what the deletion does and what it leaves
+        # behind, and it has to say it in the same words the mail uses. Publishing them
+        # here is what makes that possible: a frontend that wrote its own copy would be
+        # a second sentence about the same destruction, and the two could drift.
+        what_is_deleted=DELETION_REMOVES,
+        what_survives=DELETION_SURVIVES,
     )
 
 

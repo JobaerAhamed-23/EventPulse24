@@ -17,7 +17,15 @@ happening, and it must not also be the means of making it happen.
 **Every expiry in this file's copy is rendered from the constant that enforces it.** A
 number typed into a template is a number that keeps saying "30 minutes" after the constant
 says otherwise, which is a mail that lies to the reader about their own security.
+
+**The account-deletion notice is the one mail here that carries a *long*-lived token**,
+and its lifetime is the grace period rather than a separate expiry. That is safe because
+of what the token authorises: spending it **cancels a destruction** — it grants no
+access, reads nothing and leaves the account untouched. See
+`models.DeletionRequest`'s docstring for the full argument.
 """
+
+from datetime import timedelta
 
 from django.conf import settings
 from django.template.loader import render_to_string
@@ -28,6 +36,7 @@ from shared.constants import (
     AUTH_EMAIL_CHANGE_TOKEN_LIFETIME,
     AUTH_RESET_TOKEN_LIFETIME,
     DATA_EXPORT_LINK_LIFETIME,
+    DELETION_GRACE_PERIOD,
 )
 
 
@@ -197,4 +206,93 @@ def render_data_export_email(
 
 def data_export_stream() -> Stream:
     """The stream the export mail goes on. Transactional: the user asked for it."""
+    return Stream.TRANSACTIONAL
+
+
+def _humanise_days(duration: timedelta) -> str:
+    """A duration in whole days, as "30 days" — or "1 day".
+
+    **`humanise_duration` is not used here, and cannot be.** It is scoped to whole hours
+    and whole minutes — it is a cadence-and-refusal formatter, and its own docstring says
+    it is "not a general formatter". Fed thirty days it falls through to the raw
+    `timedelta` repr, which reads "30 days, 0:00:00" in a sentence about a person's
+    account. **This is the day-granularity formatter, and it exists because the grace
+    period is a number of days.** The number still comes from the constant; only the unit
+    is chosen here.
+    """
+    days = duration.days
+    return f"{days} day" if days == 1 else f"{days} days"
+
+
+def account_deletion_link(token: str) -> str:
+    """The cancel link: the frontend's own route, with the token.
+
+    The same shape and the same reasoning as `reset_password_link` — the frontend is a
+    different origin from this runtime, so the base URL is configuration rather than
+    something read off a request.
+
+    **This link is the whole point of the mail.** It cancels the deletion on its own, with
+    no sign-in, which is what makes A-16's sentence — "you can cancel anytime during the
+    30-day grace from this page or from the email we send" — true of the mail as well as
+    of the page. The route it names is the one the cancel-surface item builds.
+    """
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/cancel-account-deletion?token={token}"
+
+
+def render_account_deletion_email(
+    *, to: str, token: str, scheduled_for, what_is_deleted: str, what_survives: str
+) -> EmailMessage:
+    """The notice that says the account will be destroyed, and how to stop it.
+
+    **This is the mail that arrives *during* the grace period, not after it.** A mail
+    sent when the account is actually gone could not carry a cancel link — there would be
+    nothing left to cancel — so the notice is the only one of the two that can honour
+    A-16's promise.
+
+    **It says the same things the modal's body says**, because the two surfaces must not
+    drift: what is deleted, what survives as anonymised aggregates, that the account
+    keeps working until the date, and the date itself.
+
+    **It does not promise a follow-up mail.** The "your account has been destroyed" mail
+    does not exist — the account row is gone by the time it could be sent, so there would
+    be no address to send it to. Promising one here would be the same unkept promise this
+    flow was reopened to fix.
+
+    Args:
+        to: The account holder's address. It is the recipient, never a log field.
+        token: The raw cancel token. It goes into the link and nowhere else.
+        scheduled_for: The moment the account will be destroyed, **as the server computed
+            it** — not a duration measured from now, which would move every time the mail
+            were re-read.
+        what_is_deleted: The plain statement of what the deletion removes.
+        what_survives: The plain statement of what is kept, as anonymised aggregates.
+    """
+    body = render_to_string(
+        "identity/account_deletion.txt",
+        {
+            "cancel_link": account_deletion_link(token),
+            "grace_days": _humanise_days(DELETION_GRACE_PERIOD),
+            "scheduled_for": scheduled_for.strftime("%d %B %Y"),
+            "what_is_deleted": what_is_deleted,
+            "what_survives": what_survives,
+        },
+    ).strip()
+    return EmailMessage(
+        to=to,
+        subject="Your EventPulse24 account will be deleted — cancel any time",
+        text_body=body,
+    )
+
+
+def account_deletion_stream() -> Stream:
+    """The stream the deletion notice goes on. Transactional: it is a security notice.
+
+    It is a one-time answer to something the user did — a request they made — not a list
+    they subscribed to. So it carries no RFC 8058 unsubscribe URL, and `EmailPort.send`'s
+    refusal of an unsubscribe-less *bulk* message does not apply.
+
+    Named here rather than spelled at the call site, for the reason
+    `reset_password_stream` gives: the stream choice lives in one place, so a future
+    second auth mail cannot drift onto the wrong one by accident.
+    """
     return Stream.TRANSACTIONAL

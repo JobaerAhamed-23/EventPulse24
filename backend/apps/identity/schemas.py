@@ -102,6 +102,19 @@ class CurrentUserOut(Schema):
     It is read through `personalization`'s **published interface** — the service, never
     the model — because `identity` may not reach into another app's tables (AD-2). The
     import contract `models-personalization` proves it.
+
+    The **pending deletion** is here for the same reason `pending_email` is: the
+    frontend has to be able to *say* that an account is scheduled for destruction, and
+    it cannot say it from a boolean. A person who asked to delete their account and
+    then changed their mind needs to reach the way back — and a way back that does not
+    say when the account dies is not a way back, it is a countdown they cannot read.
+
+    **The two moments ride every page's payload, and that is the cost.** `me` is read
+    on every render, so two small strings are carried by every user forever, including
+    the ones who will never delete anything. The alternative is a second round trip on
+    one screen — and it cannot be the shell's job either, because the shell is not
+    where the danger zone lives. **The trade is two strings on every payload, and it
+    buys the ability to name the date.**
     """
 
     id: UUID
@@ -143,6 +156,28 @@ class CurrentUserOut(Schema):
     #: after the constant says otherwise. The server knows when this link dies, so the
     #: server says when.
     pending_email_expires_at: str = ""
+    #: When this account will be destroyed, ISO-8601, or `""` when no deletion is pending.
+    #:
+    #: **The moment, not the duration, and not a boolean.** The surface has to say *when*
+    #: the account dies — that is the whole point of a grace period, and a person deciding
+    #: whether to cancel needs a date rather than "soon". `"deletion_pending": true`
+    #: cannot answer that, and a duration typed into the frontend would be the same
+    #: mistake the mail templates had: a number that keeps saying "30 days" after the
+    #: constant says otherwise.
+    #:
+    #: **The server computed this once, at request time**, and a later request cannot move
+    #: it — so this is the promise the product made, carried verbatim.
+    #:
+    #: It is `""` and never `null`, for the same reason `name` is: "none pending" is one
+    #: state, not two.
+    deletion_scheduled_for: str = ""
+    #: When the deletion was requested, ISO-8601, or `""` when none is pending.
+    #:
+    #: **This is what lets the surface say "you asked on the 3rd".** It differs from
+    #: `deletion_scheduled_for` by exactly the grace period, and the difference is
+    #: computed once — so a change to `DELETION_GRACE_PERIOD` never moves an outstanding
+    #: request's deadline.
+    deletion_requested_at: str = ""
     onboarding: OnboardingStatusOut
 
 
@@ -266,7 +301,46 @@ class CsrfTokenOut(Schema):
     csrf_token: str
 
 
-class AccountDeletionRequestOut(Schema):
+class AccountDeletionCopyOut(Schema):
+    """**What deleting this account would do — read before anything is asked.**
+
+    **This is the preview.** The confirmation modal has to say what the deletion
+    removes and what it leaves behind, and it has to say it *before* the person has
+    typed anything. So the copy is read, not written into the frontend.
+
+    ## One set of words, for two surfaces
+
+    `what_is_deleted` and `what_survives` are the two sentences that say what the
+    deletion does and what it leaves behind. **They are published here rather than
+    written into the frontend**, because the mail already renders them — from the same
+    two constants in `services.deletion` — and a second copy of the same sentence is a
+    second place for the two surfaces to disagree.
+
+    **The A-16 mockup's wording for these is not used, and that is not a
+    preference.** The mockup's second paragraph ends *"We can't reverse deletion."*,
+    which contradicts the thirty-day grace period the paragraph after it promises.
+    **A modal that says both in consecutive paragraphs is a modal that lies**, and the
+    backend's own wording — which the mail already ships — is the true one.
+
+    ## It carries no state, on purpose
+
+    **This read says what the engine does, and nothing about this account.** It is a
+    constant of the product dressed as a read, and it is on this path because this is
+    the only screen that asks the question. **The account's own pending state does not
+    ride here** — `me` carries that, and it already does.
+
+    **So there is nothing to cache and nothing to refresh.** The two strings never
+    change, which is why the modal can read them once and open with its text already
+    on screen.
+    """
+
+    #: What the deletion removes, in the product's own words. Never empty.
+    what_is_deleted: str
+    #: What survives it, as anonymised aggregates. Never empty.
+    what_survives: str
+
+
+class AccountDeletionRequestOut(AccountDeletionCopyOut):
     """The answer to "please delete my account": the request was recorded, and when it
     will take effect.
 
@@ -283,6 +357,10 @@ class AccountDeletionRequestOut(Schema):
     **No reason field.** Nothing here records why somebody asked, and nothing here
     records what was deleted — the account is still there, in full, and the audit trail
     is where a record of the eventual deletion belongs.
+
+    **It carries the copy too**, because a client that has just asked for the deletion
+    wants to say what it did — and the copy is in this answer anyway, so asking for it
+    again would be a second request for a string the server already sent.
     """
 
     status: str = "scheduled"

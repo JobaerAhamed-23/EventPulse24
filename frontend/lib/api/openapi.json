@@ -13,8 +13,27 @@
         "title": "AccountDeletionCancelOut",
         "type": "object"
       },
+      "AccountDeletionCopyOut": {
+        "description": "**What deleting this account would do — read before anything is asked.**\n\n**This is the preview.** The confirmation modal has to say what the deletion\nremoves and what it leaves behind, and it has to say it *before* the person has\ntyped anything. So the copy is read, not written into the frontend.\n\n## One set of words, for two surfaces\n\n`what_is_deleted` and `what_survives` are the two sentences that say what the\ndeletion does and what it leaves behind. **They are published here rather than\nwritten into the frontend**, because the mail already renders them — from the same\ntwo constants in `services.deletion` — and a second copy of the same sentence is a\nsecond place for the two surfaces to disagree.\n\n**The A-16 mockup's wording for these is not used, and that is not a\npreference.** The mockup's second paragraph ends *\"We can't reverse deletion.\"*,\nwhich contradicts the thirty-day grace period the paragraph after it promises.\n**A modal that says both in consecutive paragraphs is a modal that lies**, and the\nbackend's own wording — which the mail already ships — is the true one.\n\n## It carries no state, on purpose\n\n**This read says what the engine does, and nothing about this account.** It is a\nconstant of the product dressed as a read, and it is on this path because this is\nthe only screen that asks the question. **The account's own pending state does not\nride here** — `me` carries that, and it already does.\n\n**So there is nothing to cache and nothing to refresh.** The two strings never\nchange, which is why the modal can read them once and open with its text already\non screen.",
+        "properties": {
+          "what_is_deleted": {
+            "title": "What Is Deleted",
+            "type": "string"
+          },
+          "what_survives": {
+            "title": "What Survives",
+            "type": "string"
+          }
+        },
+        "required": [
+          "what_is_deleted",
+          "what_survives"
+        ],
+        "title": "AccountDeletionCopyOut",
+        "type": "object"
+      },
       "AccountDeletionRequestOut": {
-        "description": "The answer to \"please delete my account\": the request was recorded, and when it\nwill take effect.\n\n**`scheduled_for` is the promise.** The thirty-day grace period is something the\nproduct told the person about, so the answer says exactly when the account will be\ndestroyed — not \"in about a month\", not \"soon\". A person who cancels needs to know\nhow long they have, and a person who wants to be sure the request landed needs to\nsee the date that was set.\n\n**`requested_at` is when the request was recorded, and it can differ from\n`scheduled_for` by exactly the grace period.** The schedule is computed once, when\nthe request is first made, so that a later request cannot move the date.\n\n**No reason field.** Nothing here records why somebody asked, and nothing here\nrecords what was deleted — the account is still there, in full, and the audit trail\nis where a record of the eventual deletion belongs.",
+        "description": "The answer to \"please delete my account\": the request was recorded, and when it\nwill take effect.\n\n**`scheduled_for` is the promise.** The thirty-day grace period is something the\nproduct told the person about, so the answer says exactly when the account will be\ndestroyed — not \"in about a month\", not \"soon\". A person who cancels needs to know\nhow long they have, and a person who wants to be sure the request landed needs to\nsee the date that was set.\n\n**`requested_at` is when the request was recorded, and it can differ from\n`scheduled_for` by exactly the grace period.** The schedule is computed once, when\nthe request is first made, so that a later request cannot move the date.\n\n**No reason field.** Nothing here records why somebody asked, and nothing here\nrecords what was deleted — the account is still there, in full, and the audit trail\nis where a record of the eventual deletion belongs.\n\n**It carries the copy too**, because a client that has just asked for the deletion\nwants to say what it did — and the copy is in this answer anyway, so asking for it\nagain would be a second request for a string the server already sent.",
         "properties": {
           "requested_at": {
             "title": "Requested At",
@@ -28,9 +47,19 @@
             "default": "scheduled",
             "title": "Status",
             "type": "string"
+          },
+          "what_is_deleted": {
+            "title": "What Is Deleted",
+            "type": "string"
+          },
+          "what_survives": {
+            "title": "What Survives",
+            "type": "string"
           }
         },
         "required": [
+          "what_is_deleted",
+          "what_survives",
           "requested_at",
           "scheduled_for"
         ],
@@ -1391,11 +1420,21 @@
         "type": "object"
       },
       "CurrentUserOut": {
-        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe **onboarding status** is here, and it is here because the frontend needs it to\ndecide between the onboarding flow and the home. It says only whether the onboarding\nis finished and which step the user is on — it carries no interests and no digest\npreference, because `me` is about *who* the user is and a settings blob there would\ngrow without bound. The full state lives at `/api/personal/onboarding`.\n\nThe **name** is here for the same reason the email is: the frontend shows it on\nevery screen, so it is a read the frontend already makes. It is `\"\"` when no name is\nset — the one \"no name set\" state — and the frontend renders its own email-derived\nfallback in that case. **The backend does not guess a name from an address**: how a\nhuman renders their own name is a display concern, not a stored one.\n\nIt is read through `personalization`'s **published interface** — the service, never\nthe model — because `identity` may not reach into another app's tables (AD-2). The\nimport contract `models-personalization` proves it.",
+        "description": "The signed-in user.\n\nThe id and the email are what the frontend needs. There is no password field, no\npermission field and no catch-all, so nothing internal can ride along.\n\nThe **onboarding status** is here, and it is here because the frontend needs it to\ndecide between the onboarding flow and the home. It says only whether the onboarding\nis finished and which step the user is on — it carries no interests and no digest\npreference, because `me` is about *who* the user is and a settings blob there would\ngrow without bound. The full state lives at `/api/personal/onboarding`.\n\nThe **name** is here for the same reason the email is: the frontend shows it on\nevery screen, so it is a read the frontend already makes. It is `\"\"` when no name is\nset — the one \"no name set\" state — and the frontend renders its own email-derived\nfallback in that case. **The backend does not guess a name from an address**: how a\nhuman renders their own name is a display concern, not a stored one.\n\nIt is read through `personalization`'s **published interface** — the service, never\nthe model — because `identity` may not reach into another app's tables (AD-2). The\nimport contract `models-personalization` proves it.\n\nThe **pending deletion** is here for the same reason `pending_email` is: the\nfrontend has to be able to *say* that an account is scheduled for destruction, and\nit cannot say it from a boolean. A person who asked to delete their account and\nthen changed their mind needs to reach the way back — and a way back that does not\nsay when the account dies is not a way back, it is a countdown they cannot read.\n\n**The two moments ride every page's payload, and that is the cost.** `me` is read\non every render, so two small strings are carried by every user forever, including\nthe ones who will never delete anything. The alternative is a second round trip on\none screen — and it cannot be the shell's job either, because the shell is not\nwhere the danger zone lives. **The trade is two strings on every payload, and it\nbuys the ability to name the date.**",
         "properties": {
           "avatar_url": {
             "default": "",
             "title": "Avatar Url",
+            "type": "string"
+          },
+          "deletion_requested_at": {
+            "default": "",
+            "title": "Deletion Requested At",
+            "type": "string"
+          },
+          "deletion_scheduled_for": {
+            "default": "",
+            "title": "Deletion Scheduled For",
             "type": "string"
           },
           "email": {
@@ -4976,7 +5015,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.\n\n`pending_email` is the address an outstanding email change is *to*, or empty when there is none, and `pending_email_expires_at` is when that link stops working. It is the caller's own pending change, and only the caller can read it.",
+        "description": "The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.\n\n`pending_email` is the address an outstanding email change is *to*, or empty when there is none, and `pending_email_expires_at` is when that link stops working. It is the caller's own pending change, and only the caller can read it.\n\n`deletion_scheduled_for` is when the account will be destroyed, and `deletion_requested_at` is when that was asked for — both empty when no deletion is pending. They are moments rather than a flag, because a person deciding whether to cancel needs to know *when* the account dies, not merely that it might. The date was computed once, when the request was made, and asking again does not move it.",
         "operationId": "apps_identity_api_me",
         "parameters": [],
         "responses": {
@@ -5392,8 +5431,39 @@
           "auth"
         ]
       },
+      "get": {
+        "description": "The two sentences the confirmation modal shows: what the deletion removes, and what it leaves behind as anonymised aggregates.\n\n**This is a preview, and it changes nothing.** It says what the engine does, and it carries no state about the caller's account — the pending-deletion moments ride `me`, where they already are. The two strings are constants of the product, so there is nothing here to refresh and nothing to cache.\n\n**They are the same two strings the confirmation mail renders.** One source, two surfaces: a modal that described the destruction in different words from the mail would be telling the same person two different stories about the same thing.",
+        "operationId": "apps_identity_api_read_account_deletion_copy_endpoint",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionCopyOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "What deleting the account would do",
+        "tags": [
+          "auth"
+        ]
+      },
       "post": {
-        "description": "Records a request to delete the signed-in account, and answers with the date the deletion will take effect.\n\n**Nothing is destroyed yet.** The account keeps working, in full, for the grace period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request off during that time. The stored profile picture is removed when the account is destroyed, not when the request is made, so cancelling inside the grace period leaves the picture where it was.\n\n**Asking twice is not an error.** The first request set the date; a later one returns the same date rather than moving it, so the promise the product made cannot be extended by asking again.",
+        "description": "Records a request to delete the signed-in account, and answers with the date the deletion will take effect.\n\n**Nothing is destroyed yet.** The account keeps working, in full, for the grace period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request off during that time. The stored profile picture is removed when the account is destroyed, not when the request is made, so cancelling inside the grace period leaves the picture where it was.\n\n**Asking twice is not an error.** The first request set the date; a later one returns the same date rather than moving it, so the promise the product made cannot be extended by asking again.\n\n`what_is_deleted` and `what_survives` are the two sentences that say what the deletion does and what it leaves behind, in the product's own words. **They are the same two strings the confirmation mail renders**, so the modal and the mail cannot tell the person two different stories about the same destruction.",
         "operationId": "apps_identity_api_request_account_deletion_endpoint",
         "parameters": [],
         "responses": {

@@ -314,6 +314,12 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
     still worth waiting for, and a duration written into the frontend would be a number
     that keeps claiming "24 hours" after the constant says otherwise.
 
+    **`deletion_scheduled_for`** and **`deletion_requested_at`** say when the account
+    will be destroyed and when that was asked for, both `""` when no deletion is pending.
+    They are **moments and not a boolean**, because a person deciding whether to cancel
+    needs to know *when* the account dies — a flag that says "maybe" is no use to someone
+    reading a deadline.
+
     **The exact dict is the assertion, and that is the point.** A field added to
     `CurrentUserOut` without a thought lands here as a failure, which is how `me` is kept
     from becoming a settings blob. Adding one is meant to cost this edit.
@@ -333,6 +339,8 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
         "avatar_url": "",
         "pending_email": "",
         "pending_email_expires_at": "",
+        "deletion_scheduled_for": "",
+        "deletion_requested_at": "",
         "onboarding": {"completed": False, "current_step": 1},
     }
     # The hash is not in the body under any key.

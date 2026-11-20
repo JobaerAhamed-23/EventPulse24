@@ -108,6 +108,7 @@ caller's eyes, for a few kilobytes that a sweep can collect.
 """
 
 import logging
+import secrets
 from datetime import datetime
 from uuid import UUID
 
@@ -117,8 +118,14 @@ from django.db.models import sql
 
 from apps.identity.models import DeletionRequest, User
 from apps.identity.services import audit as audit_service
+from apps.identity.services import tokens as token_service
+from apps.identity.services.emails import (
+    account_deletion_stream,
+    render_account_deletion_email,
+)
+from ports.registry import get_email_port
 from shared.actor import Actor
-from shared.constants import DELETION_GRACE_PERIOD
+from shared.constants import DELETION_GRACE_PERIOD, SEND_KEY_SEPARATOR
 from shared.db import PERSONAL
 from shared.models import AppendOnlyModel
 from shared.retention import RetentionCategory, retention_registry
@@ -407,6 +414,77 @@ def _purge_rows(*, model: type[models.Model], path: str, user_id: UUID) -> int:
 
 # ── The commands ──────────────────────────────────────────────────────────────────────
 
+#: What the deletion removes, in the words the mail and the modal both use.
+#:
+#: **These words are shared, and that is the point.** The notice mail and A-16's modal
+#: make the same promise to the same person, in two places, and two sets of words about
+#: the same destruction is how a product ends up telling someone one thing in a mail and
+#: another thing in a dialog. **One source, two surfaces.**
+#:
+#: The wording names the three families of data A-16 names — personal events, saved
+#: events, and the preference graph — rather than the twenty-odd models behind them,
+#: because a person asking to delete their account wants to know what happens to their
+#: events, not which tables hold them.
+DELETION_REMOVES = (
+    "Your personal events, your saved events, and your preference graph — the taste "
+    "we built up about what you like."
+)
+
+#: What the deletion leaves behind, in the words the mail and the modal both use.
+#:
+#: **It says "aggregate", not "your account".** The anonymised figures survive because
+#: they carry no user id to begin with (`ANALYTICS_AGGREGATES` is an untouched category),
+#: and describing them as something of the account's would imply a link that does not
+#: exist.
+#:
+#: **There are no quotation marks in these strings, and that is not a stylistic choice.**
+#: They are rendered into a **plain-text** mail by Django's template engine, which
+#: escapes `"` to `&quot;` and `'` to `&#x27;` — HTML entity syntax in a message that is
+#: not HTML, and a reader would see it. The project's other mails escape on purpose
+#: (`email_change_requested.txt` renders a user's own address), so the escaping stays;
+#: these two strings simply do not need characters that would be mangled by it.
+DELETION_SURVIVES = (
+    "Anonymised aggregate figures survive — counts like 47 events saved in NYC on "
+    "Aug 27. They are not linked to your account and cannot be traced back to you."
+)
+
+
+def _send_deletion_notice(*, user: User, request_row: DeletionRequest, token: str) -> None:
+    """Send the notice that says the account will be destroyed, and how to stop it.
+
+    **This runs after the commit, and it is called from `transaction.on_commit`.** The
+    mail is outside the transaction exactly as the picture's bucket removal is: a rolled
+    back request must send no mail, and a mail-transport failure must not roll back a
+    recorded deletion request.
+
+    **A failure here is logged, not raised.** The endpoint's contract says the request
+    "cannot fail on its merits" — a deletion request that succeeded must not be reported
+    as a failure because a mail server was down. The person can still cancel from the
+    page, and the notice is a convenience, not the mechanism of record.
+
+    **The log line carries the failure, not the recipient** (AD-13). The address never
+    reaches a log line, and the logger allowlist is not widened.
+    """
+    try:
+        message = render_account_deletion_email(
+            to=user.email,
+            token=token,
+            scheduled_for=request_row.scheduled_for,
+            what_is_deleted=DELETION_REMOVES,
+            what_survives=DELETION_SURVIVES,
+        )
+        get_email_port().send(
+            message,
+            stream=account_deletion_stream(),
+            idempotency_key=f"account_deletion{SEND_KEY_SEPARATOR}{request_row.pk}",
+        )
+    except Exception:
+        # **The exception type is logged; the address is not.** A delete of the account
+        # that has just been requested must not undo the request.
+        logger.exception("the account deletion notice could not be sent")
+        return None
+    return None
+
 
 def request_account_deletion(*, user_id: UUID, now: datetime | None = None) -> DeletionRequest:
     """Schedule this account for deletion, and record the request (AD-5).
@@ -417,7 +495,8 @@ def request_account_deletion(*, user_id: UUID, now: datetime | None = None) -> D
     **Requesting twice is one request.** The second call returns the first row rather
     than writing another — so the deadline a person was given does not move because they
     pressed the button again, and there is never more than one pending destruction for
-    the worker to find.
+    the worker to find. **And it sends no second mail**, because the mail is sent only
+    when *this* call writes the row.
 
     Args:
         user_id: The account asking to be deleted.
@@ -442,14 +521,28 @@ def request_account_deletion(*, user_id: UUID, now: datetime | None = None) -> D
         if existing is not None:
             return existing
 
+        # **The cancel token is minted here, and stored as a digest** (AD-18). The raw
+        # token exists in exactly two places: this scope, and the mail that carries it.
+        # The row holds the digest and the per-row salt, so a database dump yields no
+        # usable cancel link.
+        #
+        # **Its lifetime is the row's lifetime**, because spending it deletes the row —
+        # there is no separate expiry that could disagree with `scheduled_for`. See
+        # `models.DeletionRequest`'s docstring for why a long-lived token is defensible
+        # here and not for a password reset.
+        token, salt = token_service.mint_token()
+
         request_row = DeletionRequest.objects.using(PERSONAL).create(
             user_id=user_id,
             requested_at=moment,
             scheduled_for=moment + DELETION_GRACE_PERIOD,
+            token_hash=token_service.hash_token(token, salt),
+            token_salt=salt,
         )
 
         # **The details carry the action and the target only** (AD-13). No address, no
-        # name, no key — and the target id is the account's own, which is the account.
+        # name, no key, and no token — and the target id is the account's own, which is
+        # the account.
         audit_service.write_audit(
             actor=Actor.user(user.pk),
             action="account_deletion_requested",
@@ -457,6 +550,20 @@ def request_account_deletion(*, user_id: UUID, now: datetime | None = None) -> D
             target_id=user.pk,
             details={},
         )
+
+    # **The mail goes after the commit.** A rolled back request sends no mail, and a
+    # mail-transport failure cannot roll back a recorded request — the same ordering the
+    # picture's bucket removal uses, and for the same reason: the bucket and the mail
+    # are both outside the transaction, and both happen after it.
+    #
+    # `robust=True` is what makes the failure logged rather than raised, so it does not
+    # propagate out of the committed callback into the caller. **The request stands
+    # either way.**
+    transaction.on_commit(
+        lambda: _send_deletion_notice(user=user, request_row=request_row, token=token),
+        using=PERSONAL,
+        robust=True,
+    )
 
     return request_row
 
@@ -495,6 +602,74 @@ def cancel_account_deletion(*, user_id: UUID) -> bool:
         )
 
     return bool(pending)
+
+
+def cancel_account_deletion_with_token(*, token: str) -> bool:
+    """Call off a pending deletion with the token from the notice mail.
+
+    **This is what the mail's link does.** The notice tells the person they can cancel
+    from the mail, and this is the command that makes that true — so the promise is a
+    tested fact rather than a claim in a docstring.
+
+    **The token is matched against the row's own salt**, in constant time, exactly as
+    `token_service.find_outstanding` does it. **The shared scan is not reused here**, and
+    the reason is worth recording: that scan narrows by `used_at`/`revoked_at` and hunts
+    blindly for a matching digest, whereas this token's row *is deleted* when the token
+    is spent — so there is no `used_at` to set — and the candidate row is known in
+    advance, because the account is named by the token's own digest.
+
+    **Spending the token consumes it.** The row is deleted, and the row is where the
+    token lived, so a spent token cannot be replayed. **There is no window in which the
+    token is spent but the row survives**, because spending the token *is* the row's
+    deletion.
+
+    **An unknown, wrong or already-spent token cancels nothing.** The caller gets the
+    same answer whether the token matched a row or not, so a wrong token cannot be used
+    to probe for one.
+
+    Args:
+        token: The raw token from the mail's link.
+
+    Returns:
+        Whether a pending deletion was cancelled.
+    """
+    with transaction.atomic(using=PERSONAL):
+        candidates = (
+            DeletionRequest.objects.using(PERSONAL)
+            .select_for_update()
+            .filter(token_hash__isnull=False)
+        )
+
+        matched = None
+        for row in candidates:
+            if not secrets.compare_digest(
+                row.token_hash, token_service.hash_token(token, row.token_salt)
+            ):
+                continue
+            matched = row
+            break
+
+        if matched is None:
+            # **Nothing is cancelled, and nothing is said about why.** An unknown token
+            # and a wrong token are the same answer, so the token cannot be used to
+            # probe for a real one.
+            return False
+
+        user = User.objects.using(PERSONAL).get(pk=matched.user_id)
+
+        # **The row's deletion is the token's consumption.** The token lived on this row
+        # and nowhere else, so deleting the row retires the token with it.
+        matched.delete(using=PERSONAL)
+
+        audit_service.write_audit(
+            actor=Actor.user(user.pk),
+            action="account_deletion_cancelled",
+            target_type="User",
+            target_id=user.pk,
+            details={},
+        )
+
+    return True
 
 
 def destroy_account(*, user_id: UUID) -> bool:

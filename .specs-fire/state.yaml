@@ -38,6 +38,9 @@ workspace:
     - choice: wide
       items_count: 6
       timestamp: 2026-11-13T09:47:45.462Z
+    - choice: wide
+      items_count: 4
+      timestamp: 2026-11-20T13:10:00.000Z
   planning_sources:
     prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/
     ux: _bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/
@@ -1655,6 +1658,59 @@ intents:
           - place-on-the-profile-screen
         run_id: run-eventpulse24-053
         completed_at: 2026-11-20T06:43:49.702Z
+      - id: account-deletion-confirmation-email
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-deletion-and-avatar-removal
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20;
+          A-16's third paragraph promises an email the user can cancel from, and
+          the account-deletion work item recorded that it was never built
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+      - id: account-danger-zone
+        status: completed
+        complexity: low
+        mode: autopilot
+        depends_on:
+          - account-deletion-and-avatar-removal
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20; split
+          out of the two deletion surfaces to break a dependency cycle, because
+          the section is the container both of them hang on
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+      - id: account-deletion-cancel-surface
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-deletion-and-avatar-removal
+          - account-danger-zone
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20; the
+          cancel command and endpoint exist, but CurrentUserOut carries no
+          pending- deletion state, so no surface can know a deletion is pending
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+      - id: account-delete-confirmation-surface
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-deletion-and-avatar-removal
+          - account-danger-zone
+          - account-deletion-confirmation-email
+          - account-deletion-cancel-surface
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20; the
+          engine shipped with no user-reachable surface, and
+          endpoint-coverage.test.ts exempts the endpoint because no caller
+          exists
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
     completed_at: 2026-11-20T06:43:49.702Z
 runs:
   active: []
@@ -2450,3 +2506,20 @@ runs:
           mode: confirm
       started: 2026-11-20T03:37:57.952Z
       completed: 2026-11-20T06:43:49.702Z
+    - id: run-eventpulse24-054
+      scope: wide
+      work_items:
+        - id: account-deletion-confirmation-email
+          intent: account-profile-expansion
+          mode: confirm
+        - id: account-danger-zone
+          intent: account-profile-expansion
+          mode: autopilot
+        - id: account-deletion-cancel-surface
+          intent: account-profile-expansion
+          mode: confirm
+        - id: account-delete-confirmation-surface
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-20T07:09:44.981Z
+      completed: 2026-11-20T10:06:27.173Z

@@ -192,6 +192,84 @@ class TestCallingItOff:
         assert response.status_code == 403
 
 
+class TestTheSurfaceCanTell:
+    """**The read the frontend's cancel surface hangs on.**
+
+    The danger zone can only offer a "Keep my account" action if it knows a deletion is
+    pending — and it can only say *when* the account dies if the read carries the date
+    rather than a boolean."""
+
+    def test_me_carries_the_two_moments_when_a_deletion_is_pending(self):
+        """**The moments, on the wire.**
+
+        `me` is the read the frontend already makes on every render, so the pending
+        deletion rides it — and it rides it as two dates rather than a flag, because a
+        person reading a deadline needs the deadline."""
+        client = signed_in_client()
+        ask(client)
+
+        body = client.get("/api/auth/me").json()
+
+        assert body["deletion_scheduled_for"]
+        assert body["deletion_requested_at"]
+
+    def test_the_two_moments_are_the_ones_the_request_computed(self):
+        """**The surface reads the same date the request answered with.**
+
+        Two answers to one question would be a drift waiting to happen — and the date the
+        request promised is the date the surface has to show."""
+        client = signed_in_client()
+        asked = ask(client).json()
+
+        body = client.get("/api/auth/me").json()
+
+        assert body["deletion_scheduled_for"] == asked["scheduled_for"]
+        assert body["deletion_requested_at"] == asked["requested_at"]
+
+    def test_me_carries_nothing_when_no_deletion_is_pending(self):
+        """**`""`, not `null`, and not a guess.**
+
+        "No pending deletion" is one state, and the surface has to be able to tell it
+        from "a pending deletion with no date"."""
+        client = signed_in_client()
+
+        body = client.get("/api/auth/me").json()
+
+        assert body["deletion_scheduled_for"] == ""
+        assert body["deletion_requested_at"] == ""
+
+    def test_the_moments_are_empty_again_after_the_deletion_is_cancelled(self):
+        """**The way back closes when it is taken.**
+
+        A surface that kept offering a cancel for a deletion that no longer exists would
+        be offering a control that does nothing."""
+        client = signed_in_client()
+        ask(client)
+        cancel(client)
+
+        body = client.get("/api/auth/me").json()
+
+        assert body["deletion_scheduled_for"] == ""
+        assert body["deletion_requested_at"] == ""
+
+    def test_me_carries_no_cancel_token(self):
+        """**The credential does not reach the wire.**
+
+        `DeletionRequest` holds the salted digest of a bearer credential that cancels the
+        account's destruction. `me` is readable by the account holder — and the cancel
+        token is exactly the thing that must not be handed to anyone who merely holds a
+        session."""
+        client = signed_in_client()
+        ask(client)
+
+        raw = client.get("/api/auth/me").content.decode()
+
+        row = DeletionRequest.objects.get(user_id=client._test_user.pk)  # noqa: SLF001
+        assert row.token_hash
+        assert row.token_hash not in raw
+        assert row.token_salt not in raw
+
+
 class TestTheContract:
     def test_the_openapi_declares_the_two_endpoints_and_their_failures(self):
         """**AD-19: the OpenAPI is the contract, and the contract is checked.**

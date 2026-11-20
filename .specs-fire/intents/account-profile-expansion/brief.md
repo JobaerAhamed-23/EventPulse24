@@ -3,7 +3,10 @@ id: account-profile-expansion
 title: A Profile Worth Having — a Face, an Address You Can Move, and a Place
 status: completed
 created: 2026-11-19
-completed_at: 2026-11-20T06:43:49.742Z
+completed_at: 2026-11-20T10:06:22.951Z
+reopened: 2026-11-20
+reopened_reason: the account-deletion engine shipped with no user-reachable
+  surface, and the follow-up item its scope note promised was never written
 ---
 
 # Intent: A Profile Worth Having — a Face, an Address You Can Move, and a Place
@@ -125,6 +128,52 @@ machinery.
   (the standing exception to the constitution's `PROD-NNNN-<slug>` rule).
 - **Node 24** for the frontend (`.nvmrc`); a login shell may default to Node 20, where
   every Vitest file dies in undici.
+
+## Reopened: The Deletion Has an Engine and No Way In (2026-11-20)
+
+**This intent was marked completed on 2026-11-20T06:43:49Z. It is reopened, because
+the code was checked against the spec and the account deletion turns out to be
+reachable by nobody.**
+
+**What shipped.** The whole engine — the three commands, the `DeletionRequest` model,
+the 30-day grace period, the worker that destroys expired accounts, the removal of the
+stored picture from the bucket, and the two endpoints `POST` and
+`DELETE /api/auth/profile/deletion`. Every acceptance criterion of
+`account-deletion-and-avatar-removal` was checked against the code and holds.
+
+**What did not ship, and why it was recorded rather than hidden.** The work item's own
+scope note says the A-16 confirmation modal and the deletion email were deliberately
+left out, and it says the follow-up item would be written later:
+
+> **The follow-up item's job**, when it is written: the modal itself; the **email**
+> A-16 promises; a place to cancel.
+
+**That follow-up item was never written.** There was no file, no id and no `pending`
+status — only prose inside a completed work item. So the intent read `completed` while
+the deletion flow had **no user-reachable surface and sent no email**, and nothing in
+the tracker could see it.
+
+**The gap is now four work items**, and the dependency between them is the interesting
+part:
+
+| # | Work item | Complexity | Mode |
+|---|---|---|---|
+| 1 | `account-deletion-confirmation-email` — the mail, and the decision about how its cancel link authenticates | medium | confirm |
+| 2 | `account-danger-zone` — the section at `/settings/privacy`, and its two states | low | autopilot |
+| 3 | `account-deletion-cancel-surface` — the read that says a deletion is pending, and the "Keep my account" action | medium | confirm |
+| 4 | `account-delete-confirmation-surface` — the A-16 modal | medium | confirm |
+
+**`account-danger-zone` exists as its own item because of a cycle.** The modal's copy
+promises cancelling "from this page", and the cancel surface lives in the danger zone —
+so each needed the other to exist first. Splitting the container out breaks it: the
+danger zone is the section both hang on, and the pending-deletion read on `me` is the
+seam that lets them be built in sequence rather than in one pass.
+
+**One thing this brief under-promised and the code proves.** The success criteria above
+say *"the picture is included in the user's data export and deleted with the account"* —
+and the deletion half holds. But nothing in the criteria said a person could *ask* for
+their account to be deleted. **That was the real gap, and it was invisible from the
+spec alone.**
 
 ## Notes
 

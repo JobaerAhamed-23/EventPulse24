@@ -469,6 +469,8 @@ def test_me_still_carries_no_password_field():
         "avatar_url",
         "pending_email",
         "pending_email_expires_at",
+        "deletion_scheduled_for",
+        "deletion_requested_at",
         "onboarding",
     }
 
