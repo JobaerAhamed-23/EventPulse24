@@ -4,9 +4,11 @@ title: The curated world-city catalog
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-20T14:56:38.365Z
 ---
 
 # Work Item: The curated world-city catalog
