@@ -48,7 +48,7 @@ with nothing found. `N/A` = no UI surface by nature.
 | FR-5 | Pulse Digest Composition | named in EXPERIENCE.md (3 citations); Slot 3's treatment in DESIGN.md `component.card.pulse.digest.category.discovery`, now tagged **Amendment A-2** | FULL | named section citing the FR (tier 2) |
 | FR-6 | Pulse Card Information Density | named in EXPERIENCE.md (2 citations) | FULL | named section citing the FR (tier 2) |
 | FR-7 | Pulse Digest Delivery Time | named in EXPERIENCE.md (3 citations) | FULL | named section citing the FR (tier 2) |
-| FR-8 | Empty-State Pulse Digest | `pulse-digest-empty-state-desktop.html` | FULL | self-tagged mockup header (tier 1) |
+| FR-8 | Empty-State Pulse Digest | `pulse-digest-empty-state-desktop.html` | FULL | self-tagged mockup header (tier 1). **Amendment A-26 (2026-11-20)** withdrew the "Suggest an event" link from §5 on both the digest and the (never-built) `/preview` SEO-referrer placement — the card itself is unchanged |
 | FR-9 | Multi-Tier Reminder Picker | `event-detail-desktop.html`, `personal-event-reminders-desktop.html`, `reminder-picker-desktop.html` | FULL | self-tagged mockup header (tier 1) |
 | FR-10 | Pulse Ping — Single Daily Notification | — | N/A (no design needed) | notification channel, not an in-app screen; incidentally tagged in `onboarding-skip-all-state-desktop.html` |
 | FR-11 | Email Multi-Tier Reminders | named in EXPERIENCE.md | FULL | named section citing the FR (tier 2) |
@@ -171,7 +171,7 @@ traps that have already caught this project.
 | FR-5 | Pulse Digest Composition | FULL | `app/page.tsx` → `components/digest/digest-card-list.tsx`; renders the server's composition in the server's order (AD-10) |
 | FR-6 | Pulse Card Information Density | FULL | `components/digest/pulse-card.tsx` — kicker, trust row, title, ≤3 tags, time · place; no density branch that hides a trust signal |
 | FR-7 | Pulse Digest Delivery Time | FULL | `components/settings/digest-delivery-time.tsx` @ `app/settings/general/page.tsx` |
-| FR-8 | Empty-State Pulse Digest | FULL | `components/digest/digest-empty.tsx`, imported by `app/page.tsx` |
+| FR-8 | Empty-State Pulse Digest | FULL | `components/digest/digest-empty.tsx`, imported by `app/page.tsx`. **The "Suggest an event" link is gone by Amendment A-26, and its absence is enforced, not remembered** — `tests/internal-links.test.ts`. Both matrices scored this row `FULL` while the link 404'd; see the new finding below |
 | FR-9 | Multi-Tier Reminder Picker | FULL | `app/events/[id]/reminders/page.tsx` |
 | FR-10 | Pulse Ping — Single Daily Notification | FULL | `worker/tasks.py:486` → `mint_ping_send`; **and the user can now turn it off and on** at `components/settings/pulse-ping-switch.tsx` @ `/settings/general`, through `resubscribe_pulse_ping` / `unsubscribe_pulse_ping`. **O-1 closed by `d39c897`** — onboarding's "you can change this anytime" is true as written |
 | FR-11 | Email Multi-Tier Reminders | FULL | `apps/delivery` (`ScheduledSend`, `email_api.py`, templates); plans set from the FR-9 picker |
@@ -211,6 +211,39 @@ traps that have already caught this project.
 | FR-60 | Timezone Source of Truth | FULL | `components/settings/digest-timezone.tsx` @ `app/settings/general/page.tsx` (commit `86e78c5`) — the zone the digest is composed in is shown and changeable; the storage-truth policy itself is backend |
 
 ### Open Implementation gaps
+
+**One, found by a user on 2026-11-20 and not by this matrix — and it is a gap in the
+matrix's method, not only in the product.**
+
+**F-1 — a scored-`FULL` row whose link 404'd.** FR-8's empty Pulse Digest carried a
+"Suggest an event" link to `/suggest`, a route that has never existed in any layer: no FR,
+no model, no endpoint, no table, no admin. Both the 2026-11-13 and 2026-11-17 matrices
+scored FR-8 `FULL` in Sections A and C, and **by FR-8's letter both were right** — the PRD
+asks for a link, and a link was there.
+
+**Section C checks that a component has a real importer rooted in a route. It has never
+followed an `href` to the other end.** That is the gap class, and FR-8 is not the only place
+it could hide. Closed by **Amendment A-26** (link withdrawn, not deferred) in
+`run-eventpulse24-055`.
+
+**Two further dangling destinations were found by the same scan, and they are worse:**
+`/terms` and `/privacy`, linked four times from `components/auth/signup-form.tsx` and
+`app/signin/page.tsx` beneath *"By creating an account, you agree to our Terms and Privacy
+Policy."* The product asked people to accept documents it then 404'd. **These are invisible
+to every section of this matrix** — a published privacy policy is required by §10.2/§10.5
+and by GDPR, CCPA/CPRA, PIPEDA and the Privacy Act, none of which carry FR headings, and
+this matrix scores FR headings only. Being built in the same run (`legal-page-routes`,
+`legal-copy-draft`).
+
+**The method is repaired as well as the product.** `frontend/tests/internal-links.test.ts`
+resolves every literal internal `href` under `app/**` and `components/**` against a real
+`page.tsx` or `route.ts`. A resolving check already existed in
+`tests/digest-home-boundary.test.ts` and was sound — it reached only the fifteen files of
+the digest home, which is precisely why the auth surfaces' links were never seen. **A future
+regeneration should treat a green `internal-links` run as evidence for the "reachable"
+half of Section C**, rather than re-deriving it by reading imports.
+
+### Previously (2026-11-17)
 
 **None.** Every MVP FR with a user surface is reachable in the running product. This is the
 first regeneration in which all three sections read clean at once.

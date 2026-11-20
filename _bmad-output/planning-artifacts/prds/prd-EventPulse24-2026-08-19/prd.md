@@ -358,13 +358,25 @@ The system delivers the Pulse Digest at the user-configured time (default 8:00 A
 - A user in a new timezone gets a digest at the new local 8:00 AM, not the old-timezone 8:00 AM.
 - If AI personalization runtime causes >5 minutes of delay, the system logs it; user never sees a "delayed" status.
 
-#### FR-8: Empty-State Pulse Digest
+#### FR-8: Empty-State Pulse Digest (revised by Amendment A-26)
 
 If no qualifying public events exist for the user, the system presents a single "No pulse for today — your week is quiet" card with a "Suggest an event" link. Realizes UJ-1.
 
 **Consequences (testable):**
 - An empty Pulse Digest is never blank; it always shows the empty-state card.
 - The empty-state card never promotes a "promoted event" or ad.
+
+**Amendment A-26 (2026-11-20): the "Suggest an event" link is withdrawn, not deferred.** The empty-state card stands; the link on it does not. **The reason is that the destination does not exist in any layer of the product, and nothing in this PRD ever asked for one.** `/suggest` is named by this FR and by `EXPERIENCE.md` §5 in two places, and across `backend/` there is no suggestion FR, model, endpoint, table, serializer or admin — the route was never built because it was never specified beyond the word "link". It shipped as a real `<Link>` to an unrouted path, and a user reported the 404 on 2026-11-20.
+
+**The link's removal is a subtraction, and the card's two testable consequences are unaffected** — the empty state is still never blank, and it still promotes nothing. If anything the withdrawal strengthens the second: `EXPERIENCE.md` §5's reasoning for this surface is *"a user opening Pulse to nothing should feel the absence of the product's noise, not be marketed at,"* and a link that 404s is noise of the worst kind, because it costs the user a click to discover that the product cannot do what it offered.
+
+**The option this replaces was never evaluated.** `components/digest/digest-empty.tsx` argued in its own header that a real link beats a disabled control (which promises a destination the product cannot deliver) and beats an inert button (which would be worse than either). On those three options the reasoning is correct. The fourth — not making the promise — was not on the list, and it is the one this amendment takes.
+
+**This amendment also withdraws `EXPERIENCE.md` §5's Empty Preview link** (`/suggest?city={city}`, shown on `/preview` to search-engine referrers only), which was specified but never built. It is withdrawn here rather than left standing so that a later build cannot reintroduce the same dead link on a second surface.
+
+**The Empty Preview rationale is recorded verbatim, because it is the condition under which this decision is revisited.** §5's argument for that link is specific and good: *"SEO cold-start is the unlock (§1 Foundation); a brand-new visitor from Google 'events near me {city}' who hits the empty state must have a path to express interest without breaking the No-CTA Discipline for the rest of the audience."* Shown only to search-engine referrers, it is the one placement where "Suggest an event" answers a real question — a visitor in a city the catalog does not cover has no other way to signal that they exist. **That argument is not refuted by this amendment; it is unfunded by it.** If a suggestion feature is ever specified — an FR, a model, a moderation path into the Source Registry or the editorial review queue — the SEO cold-start placement is the strongest case for where it lands first, and §5 L522 should be restored before the digest link is.
+
+**Revisit conditions:** a suggestion FR exists, with a destination that accepts input and a path for what happens to it. Until then, the empty state carries no link, and `frontend/tests/internal-links.test.ts` fails on any internal `href` that resolves to nothing — so the absence is enforced rather than remembered.
 
 ---
 

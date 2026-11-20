@@ -359,17 +359,18 @@ describe("the home's shell", () => {
     // So the rule is now resolved rather than listed — every literal internal `href` in
     // these files must have a `page.tsx` behind it. `/settings` passes today because
     // the settings index exists; delete that route and this fails.
-    // **The one link that is knowingly ahead of its route.** `digest-empty.tsx` offers
-    // "Suggest an event" and `/suggest` has never been built — a pre-existing dead link
-    // this rule found the moment it started resolving instead of matching strings. It is
-    // named here rather than quietly allowed, and the assertion below checks it is
-    // *still* unbuilt, so shipping the route fails this test until the exception goes.
-    const UNBUILT = new Set(["/suggest"]);
-    expect(
-      [...UNBUILT].filter((route) =>
-        existsSync(path.join(ROOT, "app", route.slice(1), "page.tsx")),
-      ),
-    ).toEqual([]);
+    // **The exception is gone, and so is the link it fenced.** `/suggest` sat in an
+    // `UNBUILT` set here, with a reverse assertion that would fail if the route were
+    // ever built — an honest fence around a link `digest-empty.tsx` shipped knowingly
+    // ahead of its route. Amendment A-26 (2026-11-20) withdrew the link instead of
+    // building the route, after a user hit the 404. There is nothing left to allow.
+    //
+    // **The general rule now lives in `tests/internal-links.test.ts`**, which runs this
+    // same resolution over `app/**` and `components/**` rather than the fifteen files
+    // this suite names. That widening is why `/terms` and `/privacy` are no longer
+    // invisible: both shipped in the auth surfaces, outside this file's reach, under a
+    // sentence asking the user to agree to them. This assertion stays as the home
+    // surface's own guard.
 
     const missing: string[] = [];
 
@@ -385,7 +386,6 @@ describe("the home's shell", () => {
           path.join(ROOT, "app", ...segments, "page.tsx"),
           path.join(ROOT, "app", ...segments, "route.ts"),
         ];
-        if (UNBUILT.has(route)) continue;
         if (!candidates.some((candidate) => existsSync(candidate))) {
           missing.push(`${file} → ${route}`);
         }
@@ -446,11 +446,17 @@ describe("the home's digest states", () => {
     expect(preparing).not.toContain("Nothing on the pulse");
   });
 
-  it("gives the empty state one link and no button", () => {
+  it("gives the empty state nothing to click (Amendment A-26)", () => {
     const empty = code.get("components/digest/digest-empty.tsx") ?? "";
 
-    expect([...empty.matchAll(/<Link/g)]).toHaveLength(1);
+    // **This asserted one link until 2026-11-20.** The link was "Suggest an event",
+    // pointing at `/suggest` — a route that existed in no layer of the product — so
+    // this assertion was holding a 404 in place. A-26 withdrew the link rather than
+    // building the route. Zero is now the rule, and it is the stronger one: the
+    // surface whose whole argument is that it offers nothing offers nothing.
+    expect([...empty.matchAll(/<Link/g)]).toHaveLength(0);
     expect(empty).not.toContain("<button");
+    expect(empty).not.toContain("href");
   });
 
   it("names both error labels", () => {
