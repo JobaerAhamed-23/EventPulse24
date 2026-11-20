@@ -4,8 +4,12 @@ title: Provisioning a city on first pick
 intent: city-picker-and-auto-collection
 complexity: high
 mode: validate
-status: pending
-depends_on: [city-catalog-dataset, city-provider-templates, source-city-timezone, api-source-parser]
+status: in_progress
+depends_on:
+  - city-catalog-dataset
+  - city-provider-templates
+  - source-city-timezone
+  - api-source-parser
 created: 2026-11-20
 ---
 

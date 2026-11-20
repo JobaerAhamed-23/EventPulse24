@@ -4,10 +4,12 @@ title: City-parameterized provider templates
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - city-catalog-dataset
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-20T17:49:31.057Z
 ---
 
 # Work Item: City-parameterized provider templates

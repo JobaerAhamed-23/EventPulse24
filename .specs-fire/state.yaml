@@ -1813,11 +1813,13 @@ intents:
         run_id: run-eventpulse24-057
         completed_at: 2026-11-20T15:27:44.809Z
       - id: city-provider-templates
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - city-catalog-dataset
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-20T17:49:31.057Z
       - id: api-source-parser
         status: completed
         complexity: medium
@@ -1826,7 +1828,7 @@ intents:
         run_id: run-eventpulse24-057
         completed_at: 2026-11-20T16:02:35.772Z
       - id: city-provisioning-service
-        status: pending
+        status: in_progress
         complexity: high
         mode: validate
         depends_on:
@@ -1907,17 +1909,18 @@ runs:
         - id: city-provider-templates
           intent: city-picker-and-auto-collection
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-20T17:49:31.057Z
+        - id: city-provisioning-service
+          intent: city-picker-and-auto-collection
+          mode: validate
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: city-provisioning-service
-          intent: city-picker-and-auto-collection
-          mode: validate
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
         - id: provisioning-probation
           intent: city-picker-and-auto-collection
           mode: confirm
@@ -1946,7 +1949,7 @@ runs:
           current_phase: null
           checkpoint_state: none
           current_checkpoint: null
-      current_item: city-provider-templates
+      current_item: city-provisioning-service
       started: 2026-11-20T13:36:37.657Z
   completed:
     - id: run-eventpulse24-001
