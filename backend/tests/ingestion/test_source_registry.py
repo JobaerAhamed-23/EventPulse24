@@ -265,6 +265,10 @@ def test_a_high_priority_source_may_not_be_registered_with_a_weekly_cadence():
         ("source_type", "blog"),
         ("acquisition_method", "scrape"),
         ("tz_coverage", "some"),
+        ("city_tz", "Mars/Olympus_Mons"),
+        ("city_tz", "EST"),  # loads in zoneinfo, but not a zone an event can happen in
+        ("city_tz", "z" * 65),
+        ("city_tz", None),
         ("freshness_ttl_hours", 0),
         ("freshness_ttl_hours", True),
         ("ingestion_cadence", 4),
@@ -276,6 +280,51 @@ def test_register_source_invalid_field_refused(field, value):
 
     assert _locs(excinfo.value) == [[field]]
     assert _nothing_written()
+
+
+def test_register_source_stores_a_city_zone_canonicalized():
+    # FR-60 row C1b's input. Canonicalized on the way in, like a venue's tz, so the column
+    # holds one spelling per zone and `resolve_tz` reads back exactly what was validated.
+    stored = _reload(_register(city="Dhaka", city_tz=" Asia/Dhaka "))
+
+    assert stored.city_tz == "Asia/Dhaka"
+
+    legacy = _register(url="https://two.example.test/f.rss", city_tz="US/Pacific")
+    assert _reload(legacy).city_tz == "America/Los_Angeles"
+
+
+def test_register_source_without_a_city_zone_stores_blank():
+    # Every source that predates this field. A blank city_tz changes no resolution at all —
+    # `tests/domain/test_timezones.py` asserts that half.
+    assert _reload(_register()).city_tz == ""
+
+
+def test_city_zone_and_tz_coverage_are_unrelated():
+    # tz_coverage describes whether the *feed* carries zones; city_tz is a fact about the
+    # *city*. The Dhaka seed is honestly both: tz_coverage="none" with a real city zone.
+    stored = _reload(_register(tz_coverage="none", city="Dhaka", city_tz="Asia/Dhaka"))
+
+    assert (stored.tz_coverage, stored.city_tz) == ("none", "Asia/Dhaka")
+
+
+def test_update_source_can_set_and_clear_a_city_zone():
+    source = _register()
+
+    update_source(actor=STAFF, source_id=source.id, changes={"city_tz": "Asia/Dhaka"})
+    assert _reload(source).city_tz == "Asia/Dhaka"
+
+    update_source(actor=STAFF, source_id=source.id, changes={"city_tz": ""})
+    assert _reload(source).city_tz == ""
+
+
+def test_update_source_invalid_city_zone_refused_and_row_unchanged():
+    source = _register(city_tz="Asia/Dhaka")
+
+    with pytest.raises(ValidationError) as excinfo:
+        update_source(actor=STAFF, source_id=source.id, changes={"city_tz": "Mars/Olympus_Mons"})
+
+    assert _locs(excinfo.value) == [["city_tz"]]
+    assert _reload(source).city_tz == "Asia/Dhaka"
 
 
 def test_register_source_same_feed_under_another_spelling_refused():

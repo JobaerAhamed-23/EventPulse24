@@ -20,6 +20,7 @@ from apps.ingestion.services.audit import write_audit
 from domain.dedup import canonical_url
 from domain.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from domain.sources import cadence_ceiling, humanise_duration
+from domain.timezones import canonical_zone
 from shared.actor import Actor, ActorKind
 from shared.constants import DEFAULT_INGESTION_CADENCE, INGESTION_CADENCE_MIN
 from shared.db import CATALOG
@@ -33,6 +34,7 @@ EDITABLE_SOURCE_FIELDS = (
     "source_type",
     "url",
     "city",
+    "city_tz",
     "acquisition_method",
     "ingestion_cadence",
     "freshness_ttl_hours",
@@ -106,6 +108,23 @@ def _text(value: object, max_length: int, *, required: bool) -> str:
     if len(value) > max_length:
         raise _FieldError(f"Keep this to {max_length} characters.")
     return value
+
+
+def _city_tz(value: object) -> str:
+    """An IANA zone for the source's city, or "" to clear it.
+
+    Canonicalized on the way in — `canonical_zone` folds the legacy links (US/Pacific ->
+    America/Los_Angeles) and the UTC aliases — so the column holds one spelling per zone and
+    `resolve_tz` reads back exactly what was validated. Refusing here is what lets
+    `resolve_tz` ignore an invalid value instead of raising at ingest time.
+    """
+    value = _text(value, 64, required=False)
+    if not value:
+        return ""
+    zone = canonical_zone(value)
+    if zone is None:
+        raise _FieldError("Enter an IANA zone name, like Asia/Dhaka.")
+    return zone
 
 
 def _choice(choices: list[str]):
@@ -185,6 +204,7 @@ _CLEANERS = {
     "source_type": _choice(Source.SourceType.values),
     "url": _http_url,
     "city": lambda v: _text(v, 100, required=False),
+    "city_tz": _city_tz,
     "acquisition_method": _choice(AcquisitionMethod.values),
     "freshness_ttl_hours": _freshness_ttl_hours,
     "tz_coverage": _choice(Source.TzCoverage.values),
@@ -411,6 +431,7 @@ def register_source(
     acquisition_method: str,
     tz_coverage: str,
     city: str = "",
+    city_tz: str = "",
     ingestion_cadence: timedelta | None = None,
     freshness_ttl_hours: int = 24,
     tos_review: TosReviewInput | None = None,
@@ -426,6 +447,7 @@ def register_source(
         "source_type": source_type,
         "url": url,
         "city": city,
+        "city_tz": city_tz,
         "acquisition_method": acquisition_method,
         "freshness_ttl_hours": freshness_ttl_hours,
         "tz_coverage": tz_coverage,

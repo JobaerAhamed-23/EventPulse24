@@ -245,6 +245,12 @@ SOURCE_SHOW_LESS_PENALTY = Decimal("0.10")
 # re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
 TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim
 TZ_SCORE_VENUE_REGISTRY = Decimal("0.95")  # naive time read in the curated venue tz
+# Below the venue registry on purpose: a city zone is weaker evidence than a specific
+# address. On the >= 0.90 auto-publish edge, so a provisioned city's events publish
+# rather than arriving pre-flagged — flagging every event in every new city would make a
+# review queue nobody can clear. A reading that genuinely needs a human still gets one:
+# the DST caps below apply to a city zone exactly as they do to a venue zone.
+TZ_SCORE_CITY_ZONE = Decimal("0.90")  # naive time read in the source's city zone
 TZ_SCORE_FIXED_ZONE = Decimal("0.85")  # exact instant, but only UTC or Etc/GMT±N to show it in
 TZ_SCORE_CONFLICT = Decimal("0.60")  # two explicit claims disagree: a human decides
 TZ_CAP_DST_FOLD = Decimal("0.80")  # naive time occurs twice; the first is taken
@@ -1258,6 +1264,7 @@ PREVIEW_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidat
 # response to another. The preview sets no cookie and reads no session, so the response
 # is identical for everyone and the cache key is the URL.
 PREVIEW_VARY = "Accept-Encoding"
+
 
 # The public event page's cache headers (FR-26). The browser holds it for an hour, a
 # shared cache for an hour too, and a shared cache may serve a slightly stale copy while

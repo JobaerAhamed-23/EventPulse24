@@ -4,9 +4,11 @@ title: A source carries its city's timezone
 intent: city-picker-and-auto-collection
 complexity: high
 mode: validate
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-20T15:27:44.809Z
 ---
 
 # Work Item: A source carries its city's timezone

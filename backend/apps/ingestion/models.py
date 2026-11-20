@@ -86,6 +86,13 @@ class Source(UUIDv7Model):
     source_type = models.CharField(max_length=16, choices=SourceType.choices)
     url = models.URLField(max_length=2048)
     city = models.CharField(max_length=100, blank=True)
+    # The IANA zone of `city`, set at provisioning time from the curated catalog. The last
+    # link in FR-60's fallback chain (row C1b): `_venue_for` never creates a venue (D5), so
+    # without it a brand-new city rejects every naive or date-only time as `tz_unresolvable`
+    # and publishes nothing, forever. Blank on every source that predates this, and a blank
+    # one changes no behaviour at all. Validated through `domain.timezones.canonical_zone`
+    # on write, like a venue's tz.
+    city_tz = models.CharField(max_length=64, blank=True)
     acquisition_method = models.CharField(max_length=16, choices=AcquisitionMethod.choices)
     # Cache of the latest TosReview for the current method (D13). Only record_tos_review and
     # update_source write it.

@@ -6,9 +6,10 @@ from decimal import Decimal
 
 import pytest
 
-from apps.ingestion.models import Event, ExtractedRecord
+from apps.ingestion.models import Event, ExtractedRecord, Venue
 from apps.ingestion.services import ingest_item as item_module
 from apps.ingestion.services.ingest_source import ingest_source
+from apps.ingestion.services.source_registry import update_source
 from apps.ingestion.services.venue_registry import register_venue, set_venue_timezone
 from domain.timezones import resolve_tz
 from shared.actor import Actor
@@ -66,7 +67,9 @@ def test_venue_registry_time_is_gated_by_its_confidence(
 
 @pytest.mark.usefixtures("fillmore")
 def test_confidence_of_exactly_0_90_publishes_unflagged(source, monkeypatch):
-    # No resolve_tz row scores 0.90 (plan P2), so the resolution is adjusted on its way in.
+    # The C1b city-zone row now scores exactly 0.90 and is covered below on its own terms.
+    # This one keeps testing the *boundary* independently of which row happens to sit on it,
+    # so the gate stays pinned even if that score is ever retuned (AD-8: scores are anchors).
     def at_0_90(*args, **kwargs):
         return replace(resolve_tz(*args, **kwargs), confidence=Decimal("0.90"))
 
@@ -190,3 +193,89 @@ def test_all_day_and_overnight_times_arrive_normalized(source):
     assert fair.end_time_utc > fair.start_time_utc
     assert late.end_time_utc == datetime(2026, 11, 6, 10, 0, tzinfo=UTC)  # 02:00 next day
     assert late.end_time_utc > late.start_time_utc
+
+
+# --- C1b: the source's city zone, and the cold start it exists for --------------------------
+#
+# `_venue_for` never creates a venue (D5), so a freshly provisioned city has none and every
+# naive or date-only time rejects as `tz_unresolvable`. The city zone is the last link in the
+# chain. Chittagong stands in for the real case: the Eventbrite `/d/` directory the Dhaka seed
+# documents emits date-only `startDate`, with no venue we are allowed to invent.
+
+CHITTAGONG = "Asia/Dhaka"
+
+
+@pytest.fixture
+def provisioned():
+    """A source for a city with a zone and no registered venues — a brand-new city."""
+    return ics_source(city="Chittagong", city_tz=CHITTAGONG, tz_coverage="none")
+
+
+def _date_only(uid: str, date: str) -> str:
+    return vevent(uid, date, tzid=None).replace("DTSTART:", "DTSTART;VALUE=DATE:")
+
+
+def test_date_only_time_in_a_city_with_no_venue_publishes_on_the_city_zone(provisioned):
+    # The whole point of the item: without city_tz this run rejects every candidate and the
+    # city shows "collecting" forever.
+    report = _run(provisioned, _date_only("show@c", "20261114"))
+
+    event = Event.objects.using(CATALOG).get()
+    assert report.counts == {"new": 1}
+    assert event.tz_inference_confidence == Decimal("0.90")
+    assert (event.publication_status, event.tz_review_pending) == ("published", False)
+    assert event.start_time_tz == CHITTAGONG
+    assert event.start_time_local == "2026-11-14T00:00:00"
+
+
+def test_the_same_feed_without_a_city_zone_still_rejects():
+    # The control. Identical bytes, identical source but for the one field.
+    report = _run(ics_source(city="Chittagong"), _date_only("show@c", "20261114"))
+
+    assert report.counts == {"rejected:tz_unresolvable": 1}
+    assert not Event.objects.using(CATALOG).exists()
+
+
+def test_a_naive_time_in_a_city_with_no_venue_reads_in_the_city_zone(provisioned):
+    _run(provisioned, _floating("show@c", "20261105T200000"))
+
+    event = Event.objects.using(CATALOG).get()
+    assert event.start_time_utc == datetime(2026, 11, 5, 14, 0, tzinfo=UTC)  # 20:00 +06
+    assert event.tz_inference_confidence == Decimal("0.90")
+
+
+@pytest.mark.usefixtures("fillmore")
+def test_a_registered_venue_still_outranks_the_city_zone():
+    # Precedence, asserted through the pipeline and not only in the domain: the venue's own
+    # zone decides, and the event is scored at the venue row, not the city row.
+    source = ics_source(city="San Francisco", city_tz="Asia/Dhaka")
+
+    _run(source, _floating("show@f", "20261105T200000"))
+
+    event = Event.objects.using(CATALOG).get()
+    assert event.start_time_tz == "America/Los_Angeles"
+    assert event.tz_inference_confidence == Decimal("0.95")
+
+
+def test_city_zone_added_later_resolves_the_rejected_item():
+    # D7's rule, applied to the new field: `_content_hash` carries city_tz, so a source that
+    # gains a zone re-resolves the items it already rejected. Without city_tz in the hash the
+    # payload is unchanged, the item is skipped as unchanged, and it stays rejected forever —
+    # which is the one case the zone was added for.
+    source = ics_source(city="Chittagong")
+    _run(source, _date_only("show@c", "20261114"))
+
+    updated = update_source(actor=STAFF, source_id=source.id, changes={"city_tz": CHITTAGONG})
+    report = _run(updated, _date_only("show@c", "20261114"))  # the same bytes
+
+    assert report.counts == {"new": 1}
+    record = ExtractedRecord.objects.using(CATALOG).get()
+    assert (record.resolution, record.reject_reason) == ("resolved", "")
+
+
+def test_no_venue_is_ever_created_for_a_provisioned_city(provisioned):
+    # D5 holds. The cold start is solved with a zone on the source, not by inventing a venue.
+    _run(provisioned, _date_only("show@c", "20261114"))
+
+    assert not Venue.objects.using(CATALOG).exists()
+    assert Event.objects.using(CATALOG).get().venue_id is None

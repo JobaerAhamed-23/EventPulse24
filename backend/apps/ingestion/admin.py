@@ -194,6 +194,14 @@ class SourceForm(forms.ModelForm):
     class Meta:
         model = Source
         fields = list(EDITABLE_SOURCE_FIELDS)
+        help_texts = {
+            "city_tz": (
+                "IANA timezone for this source's city, for example Asia/Dhaka. Used to read a "
+                "time the feed wrote without a zone when no venue is registered yet — leave it "
+                "empty and such times are rejected rather than guessed. A registered venue's "
+                "own timezone always wins over this (FR-60)."
+            )
+        }
 
     def source_values(self) -> dict[str, object]:
         """The registry fields to send: all of them on add, the changed ones on change."""
@@ -281,7 +289,7 @@ class SourceAdmin(CommandAdmin):
         "updated_at",
     )
     fieldsets = (
-        (None, {"fields": ("name", "source_type", "url", "city")}),
+        (None, {"fields": ("name", "source_type", "url", "city", "city_tz")}),
         (
             "Acquisition",
             {

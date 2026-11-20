@@ -105,12 +105,16 @@ def _payload(candidate: ParsedCandidate) -> dict:
     }
 
 
-def _content_hash(payload: dict, venue: Venue | None) -> str:
+def _content_hash(payload: dict, venue: Venue | None, city_tz: str) -> str:
     # The resolution inputs are hashed too: a venue tz added later re-resolves the item (D7).
+    # `city_tz` is in here for the same reason. A source that gains a city zone has unchanged
+    # payloads, so without it every item this run already rejected as `tz_unresolvable` would
+    # be skipped as unchanged and stay rejected forever — the one case the zone was added for.
     material = {
         "payload": payload,
         "venue_id": str(venue.id) if venue else None,
         "venue_tz": venue.tz if venue else None,
+        "city_tz": city_tz or None,
     }
     encoded = json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode()).hexdigest()
@@ -238,7 +242,7 @@ def ingest_item(run: IngestRun, candidate: ParsedCandidate) -> list[str]:
     """Resolve and write one candidate; returns the count keys for the run's audit row."""
     venue = _venue_for(run, candidate)
     payload = _payload(candidate)
-    content_hash = _content_hash(payload, venue)
+    content_hash = _content_hash(payload, venue, run.source.city_tz)
     record = (
         ExtractedRecord.objects.using(CATALOG)
         .filter(source=run.source, source_event_id=candidate.source_event_id)
@@ -263,6 +267,7 @@ def _resolve_and_write(run, candidate, venue, record, payload, content_hash) -> 
         candidate.start,
         source_zone=candidate.start_zone,
         venue_tz=venue.tz if venue else None,
+        city_tz=run.source.city_tz or None,
         end=candidate.end,
     )
     if isinstance(tz, TzRejection):
