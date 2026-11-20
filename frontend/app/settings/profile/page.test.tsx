@@ -12,15 +12,21 @@
  * set must still be addressed by something — the email-derived name — and the rail must
  * not go blank.
  */
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsProfilePage from "@/app/settings/profile/page";
 
 const getSession = vi.fn();
 const readHomeCity = vi.fn();
+/** The one write both place controls go through — asserted on, not just stubbed. */
+const PUT = vi.fn();
 
 vi.mock("@/lib/home-city-read", () => ({ readHomeCity: () => readHomeCity() }));
+
+vi.mock("@/lib/backend-client", () => ({
+  api: { PUT: (...args: unknown[]) => PUT(...args) },
+}));
 
 /** A city read that succeeded, with the shape `HomeCityRead` promises. */
 const CITY_FOUND = {
@@ -80,6 +86,8 @@ beforeEach(() => {
   getSession.mockResolvedValue(sessionWith(""));
   readHomeCity.mockReset();
   readHomeCity.mockResolvedValue(CITY_FOUND);
+  PUT.mockReset();
+  PUT.mockResolvedValue({ data: { digest: { city: "Dhaka", city_source: "choice", timezone: "Asia/Dhaka" } } });
 });
 
 describe("the profile screen", () => {
@@ -176,12 +184,15 @@ describe("the shell", () => {
   });
 });
 
-describe("the city, which used to live on the account screen", () => {
+describe("the place: the city and the zone, which used to live on two other screens", () => {
   it("is on the profile screen, because where you live is a fact about you", async () => {
     render(await SettingsProfilePage());
 
-    expect(screen.getByRole("heading", { name: "City" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Dhaka")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "City and time zone" })).toBeInTheDocument();
+    // **By role, not by displayed value.** The zone picker labels `Asia/Dhaka` as
+    // "Dhaka" too, so `getByDisplayValue("Dhaka")` now matches both controls — which is
+    // a true statement about the screen and a useless one about the city.
+    expect(screen.getByRole("combobox", { name: "City" })).toHaveValue("Dhaka");
   });
 
   it("offers the catalog's cities to choose between", async () => {
@@ -199,7 +210,21 @@ describe("the city, which used to live on the account screen", () => {
 
     render(await SettingsProfilePage());
 
-    expect(screen.queryByRole("heading", { name: "City" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "City and time zone" })).not.toBeInTheDocument();
+  });
+
+  it("takes the zone down with it when the read failed", async () => {
+    /**
+     * **The zone's stored value comes from the same read as the city's.** A zone picker
+     * rendered past a failed read would have to default to something — and a default is
+     * a zone that is not the account's, shown as though it were, one touch away from
+     * being stored.
+     */
+    readHomeCity.mockResolvedValue({ kind: "unavailable" });
+
+    render(await SettingsProfilePage());
+
+    expect(screen.queryByRole("combobox", { name: "Timezone" })).not.toBeInTheDocument();
   });
 
   it("still shows the name when the city read failed", async () => {
@@ -213,24 +238,76 @@ describe("the city, which used to live on the account screen", () => {
     expect(screen.getByDisplayValue("Maya Ahmed")).toBeInTheDocument();
   });
 
-  it("names where the zone is edited instead of holding a second copy of it", async () => {
+  it("edits the zone here rather than naming where it is edited", async () => {
     /**
-     * The zone is paired with the digest's delivery time on General — together they
-     * answer *when the brief arrives* — so this screen signposts it rather than
-     * splitting that pair. A screen that silently omitted it would leave a reader
-     * hunting.
-     *
-     * **It names General rather than linking to it**, because
-     * `tests/settings-routes.test.ts` forbids a hand-written link between settings
-     * screens and the sub-nav already carries the destination.
+     * **The zone moved off `/settings/general`.** It sat there because
+     * `DigestTimezone` posts the delivery time alongside the zone and the delivery time
+     * is edited on General — but that is a constraint on what the control *sends*, not
+     * on where it is rendered. "Which zone am I in" is the same question as "which city
+     * am I in", and a user correcting both after a move had to find two screens.
      */
+    render(await SettingsProfilePage());
+
+    const zone = screen.getByRole("combobox", { name: "Timezone" });
+    expect(zone).toHaveValue("Asia/Dhaka");
+  });
+
+  it("leaves no signpost behind, because the control itself is here", async () => {
+    /** The screen used to carry a line saying the zone sat under General. A signpost
+     * pointing at the screen it is on is worse than nothing. */
     const { container } = render(await SettingsProfilePage());
 
-    const note = container.querySelector("[data-city-zone-note]");
-    expect(note).not.toBeNull();
-    expect(note).toHaveTextContent(/time zone/i);
-    expect(note).toHaveTextContent(/General/);
-    expect(within(note as HTMLElement).queryByRole("link")).toBeNull();
+    expect(container.querySelector("[data-city-zone-note]")).toBeNull();
+  });
+
+  it("hands the city control the zone the zone control holds, not the rendered one", async () => {
+    /**
+     * **This is the hazard the move creates.** `HomeCity` posts `timezone` back
+     * unchanged with every city change. If its copy were the server-rendered zone, a
+     * user who changed the zone and *then* picked a city would send the old zone with
+     * it — and the server would take it. The zone change would be undone by a control
+     * that is not about zones, with a "Saved." under each.
+     *
+     * The assertion is on the wire: change the zone, then the city, and read what the
+     * city's request carried.
+     */
+    PUT.mockResolvedValue({
+      data: {
+        digest: { city: "Chattogram", city_source: "choice", timezone: "Europe/London" },
+      },
+    });
+
+    render(await SettingsProfilePage());
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Timezone" }), {
+      target: { value: "Europe/London" },
+    });
+    // **The zone's save has to land before the city is picked.** The city control reads
+    // the zone the zone control *holds*, and the server's answer is what it comes to
+    // hold — so a city change racing the zone's response would be testing a different
+    // thing.
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Timezone" })).toHaveValue("Europe/London");
+    });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "City" }), {
+      target: { value: "Chattogram" },
+    });
+    await waitFor(() => {
+      expect(
+        PUT.mock.calls.some(([route]) => route === "/api/personal/onboarding/digest-preference"),
+      ).toBe(true);
+    });
+
+    const cityCall = PUT.mock.calls.find(
+      ([route]) => route === "/api/personal/onboarding/digest-preference",
+    );
+    expect(cityCall, "the city control never sent its change").toBeDefined();
+    expect(cityCall?.[1].body).toEqual({
+      city: "Chattogram",
+      delivery_time: "09:00:00",
+      timezone: "Europe/London",
+    });
   });
 });
 
@@ -340,8 +417,10 @@ describe("the four things the screen holds, in the order the heading promises", 
       "Profile picture",
       "Profile",
       "Email address",
-      // **The city's section is a `SettingRow`, not a `<section>`**, so it is not in
-      // this list — and the place's heading is asserted separately below.
+      // **The city's row is a `SettingRow`, not a `<section>`**, so it is not in this
+      // list; the zone's control wraps itself in one, which is why "Timezone" is. The
+      // place's heading is asserted separately below.
+      "Timezone",
     ]);
   });
 
@@ -353,7 +432,7 @@ describe("the four things the screen holds, in the order the heading promises", 
     const { container } = render(await SettingsProfilePage());
 
     const email = container.querySelector("[data-email-change]");
-    const cityHeading = screen.getByRole("heading", { name: "City" });
+    const cityHeading = screen.getByRole("heading", { name: "City and time zone" });
 
     expect(email).not.toBeNull();
     expect(cityHeading).toBeInTheDocument();

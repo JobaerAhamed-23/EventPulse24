@@ -239,8 +239,8 @@ describe("the shell", () => {
   });
 });
 
-describe("the city, which moved to the profile screen", () => {
-  it("is no longer edited here", async () => {
+describe("the city, which is the profile screen's", () => {
+  it("is not edited here", async () => {
     /**
      * **One editing surface, not two.** Two copies of one control are two places to
      * keep in sync and two answers when they drift — which is the failure this move
@@ -251,23 +251,37 @@ describe("the city, which moved to the profile screen", () => {
     expect(screen.queryByRole("combobox", { name: /city/i })).not.toBeInTheDocument();
   });
 
-  it("leaves a row saying where it went, rather than a hole", async () => {
+  it("is not named here either, now that nothing points here for it", async () => {
     /**
-     * Browse's empty state offers "Change city" and sent readers to this route, and
-     * anyone who knows the city as an Account setting still comes here first. A removed
-     * control that leaves nothing behind is worse than the split it fixed.
+     * **The signpost was for the links, and the links were repointed.** A row reading
+     * "your city now sits under Profile" earned its place while Browse's "Change city"
+     * still arrived on this route; `components/browse/browse-hero.tsx` and
+     * `browse-states.tsx` now link to `/settings/profile` directly, and
+     * `tests/browse-rendering.test.tsx` holds them to it.
+     *
+     * What is left without them is a heading over a sentence over nothing, between the
+     * plan and the export, on a screen about neither.
      */
     const { container } = render(await SettingsAccountPage());
 
-    expect(screen.getByRole("heading", { name: "City" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "City" })).not.toBeInTheDocument();
+    expect(container.querySelector("[data-city-moved-note]")).toBeNull();
+  });
 
-    /**
-     * It names Profile rather than linking to it: a hand-written link between settings
-     * screens is forbidden, and the sub-nav already carries the destination.
-     */
-    const note = container.querySelector("[data-city-moved-note]");
-    expect(note).not.toBeNull();
-    expect(note).toHaveTextContent(/Profile/);
-    expect(within(note as HTMLElement).queryByRole("link")).toBeNull();
+  it("does not promise a city in the screen's own subheading", async () => {
+    /** The subheading said "Your plan, your city, and your data." while the row was
+     * here. A heading that lists a thing the screen does not have is the same lie as a
+     * link that goes nowhere. */
+    render(await SettingsAccountPage());
+
+    expect(screen.getByText("Your plan, and your data.")).toBeInTheDocument();
+  });
+
+  it("still says where the zone is not, by not mentioning it", async () => {
+    /** The zone was never here, and the move did not bring it. This is the guard on the
+     * one above: a screen that grew a zone control would fail it. */
+    render(await SettingsAccountPage());
+
+    expect(screen.queryByRole("combobox", { name: /time ?zone/i })).not.toBeInTheDocument();
   });
 });

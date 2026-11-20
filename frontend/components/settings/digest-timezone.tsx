@@ -54,6 +54,20 @@ export type DigestTimezoneProps = {
    * The server refuses a zone without a time, and this control does not change the time.
    */
   deliveryTime: string;
+  /**
+   * Called with the zone this control now holds, whenever that changes.
+   *
+   * **It exists because this control no longer sits alone.** On `/settings/profile` the
+   * city control sits beside it, and `HomeCity` posts `timezone` back *unchanged* with
+   * every city change — so a city picked after a zone change would send the zone the
+   * page was rendered with and quietly undo it. The two controls therefore share one
+   * value, and this is how it travels.
+   *
+   * **It fires on the revert too**, not only on the save: a zone change the server
+   * refused leaves this control showing the old zone, and a neighbour still holding the
+   * refused one would send it back.
+   */
+  onTimezoneChange?: (timezone: string) => void;
 };
 
 /** The offline failure line. The same one the delivery-time control uses. */
@@ -84,12 +98,31 @@ function offsetLabel(zone: string): string | null {
   }
 }
 
-export function DigestTimezone({ initialTimezone, deliveryTime }: DigestTimezoneProps) {
-  const [zone, setZone] = useState(initialTimezone);
+export function DigestTimezone({
+  initialTimezone,
+  deliveryTime,
+  onTimezoneChange,
+}: DigestTimezoneProps) {
+  const [zone, setZoneState] = useState(initialTimezone);
   const [busy, setBusy] = useState(false);
   /** The message, not a flag — so the API's own refusal can be shown verbatim. */
   const [failure, setFailure] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  /**
+   * Set the zone, and tell whoever is listening.
+   *
+   * **Every path goes through here — the optimistic guess, the server's answer and both
+   * reverts.** A revert that did not notify would leave a neighbouring control holding a
+   * zone the server had just refused.
+   */
+  const setZone = useCallback(
+    (next: string) => {
+      setZoneState(next);
+      onTimezoneChange?.(next);
+    },
+    [onTimezoneChange],
+  );
 
   const save = useCallback(
     async (next: string) => {
@@ -128,7 +161,7 @@ export function DigestTimezone({ initialTimezone, deliveryTime }: DigestTimezone
         setBusy(false);
       }
     },
-    [deliveryTime, zone],
+    [deliveryTime, setZone, zone],
   );
 
   const offset = offsetLabel(zone);
@@ -145,12 +178,19 @@ export function DigestTimezone({ initialTimezone, deliveryTime }: DigestTimezone
         /**
          * **Short, because the row puts it beside the control.** A description long
          * enough to fill the reading width pushes the select onto a line of its own, and
-         * the right-hand column the mockup's rows line up in stops before it starts. The
-         * rows below say which settings these are; this one only has to say that they
-         * are all read here.
+         * the right-hand column the mockup's rows line up in stops before it starts.
+         *
+         * **It names what reads the zone rather than saying "everything below".** The
+         * control used to open `/settings/general`, with quiet hours and the digest
+         * underneath it, and "below" was true there. It now sits on `/settings/profile`
+         * under the city, with nothing under it that the zone governs — so the sentence
+         * says which settings are read in this zone instead of pointing at the page.
          */
         description={
-          <>Everything below is read in this zone.{offset ? ` Currently ${offset}.` : null}</>
+          <>
+            Your Pulse Digest, quiet hours and timeline are read in this zone.
+            {offset ? ` Currently ${offset}.` : null}
+          </>
         }
         control={
           <span className="flex items-center gap-3">

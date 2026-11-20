@@ -191,7 +191,11 @@ describe("the hero", () => {
     render(await BrowsePage({ searchParams: Promise.resolve({}) }));
 
     const link = screen.getByRole("link", { name: "Change city" });
-    expect(link.getAttribute("href")).toBe("/settings/account");
+    // **The city picker is on `/settings/profile`.** This link pointed at
+    // `/settings/account` while the picker was there; it moved with the control, and a
+    // link to a screen with no city control is the same dead end this test was written
+    // for.
+    expect(link.getAttribute("href")).toBe("/settings/profile");
   });
 
   it("reports the quota the API stated, not a client guess", async () => {
@@ -517,7 +521,7 @@ describe("the quiet empty state", () => {
     // breaks the heading order the way a skipped level does.
     expect(screen.getByRole("heading", { level: 1, name: /Nothing nearby tonight/ })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Change city" }).getAttribute("href")).toBe(
-      "/settings/account",
+      "/settings/profile",
     );
   });
 
@@ -799,7 +803,7 @@ describe("the two empty states", () => {
     // state is looking at.)
     const emptyState = document.querySelector("[data-browse-search-empty]");
     expect(emptyState).toBeTruthy();
-    expect(emptyState?.querySelector('a[href="/settings/account"]')).toBeNull();
+    expect(emptyState?.querySelector('a[href="/settings/profile"]')).toBeNull();
 
     // And the way out of a query that matched nothing is the query's own clear.
     expect(screen.getByRole("button", { name: /Clear filters/i })).toBeTruthy();

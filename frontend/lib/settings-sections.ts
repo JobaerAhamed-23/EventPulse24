@@ -116,7 +116,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     href: "/settings/profile",
     label: "Profile",
-    description: "Your name, and how we address you.",
+    description: "Your picture, your name, your address, and where in the world you are.",
   },
   {
     href: "/settings/privacy",

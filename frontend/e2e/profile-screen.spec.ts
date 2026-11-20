@@ -54,7 +54,8 @@ import {
  * 3. **A picture uploads, and the rail's face changes — without a reload.**
  * 4. **A picture removes, and the rail's face falls back to the initials.**
  * 5. **An address change can be asked for, and cancelled.**
- * 6. **The place controls are there**, and the zone is named rather than edited.
+ * 6. **The place controls are both there and both real** — the city and the zone, which
+ *    arrived from `/settings/account` and `/settings/general` respectively.
  *
  * ## The picture's bytes are real
  *
@@ -253,9 +254,7 @@ test.describe("the profile screen", () => {
     await expect(page.locator("[data-new-email-input]")).toBeVisible();
   });
 
-  test("the place controls are there, and the zone is named rather than edited", async ({
-    page,
-  }) => {
+  test("the place controls are both there, and both are real", async ({ page }) => {
     await goToSettingsSection(page, "Profile", "/settings/profile");
 
     // **The city picker is a real control with the catalog's cities in it.**
@@ -264,17 +263,59 @@ test.describe("the profile screen", () => {
     const options = await city.locator("option").count();
     expect(options, "the city picker offers no cities").toBeGreaterThan(0);
 
-    // **The zone is named, not edited.** It is paired with the digest's delivery time
-    // on General — together they answer *when the brief arrives* — so this screen
-    // signposts it rather than splitting the pair.
-    const note = page.locator("[data-city-zone-note]");
-    await expect(note).toBeVisible();
-    await expect(note).toContainText(/time zone/i);
-    await expect(note).toContainText(/General/);
+    // **The zone is edited here too, not signposted.** It used to sit on
+    // `/settings/general`, two screens away from the city — so a user correcting both
+    // after a move had to find two settings, on two screens, to describe one fact about
+    // themselves.
+    const zone = page.getByLabel("Timezone");
+    await expect(zone).toBeVisible();
+    await expect(page.locator("[data-timezone-select] option").first()).toBeAttached();
 
-    // **And it names General rather than linking to it** — the sub-nav above already
-    // carries General on every settings screen, and `tests/settings-routes.test.ts`
-    // forbids a hand-written link from one settings screen to another.
-    await expect(note.getByRole("link")).toHaveCount(0);
+    // **And nothing is left pointing elsewhere for it.** The line that said the zone
+    // sat under General is gone with the move; a signpost to the screen you are on is
+    // worse than none.
+    await expect(page.locator("[data-city-zone-note]")).toHaveCount(0);
+  });
+
+  test("the zone saves, and the city picked after it does not undo the save", async ({ page }) => {
+    /**
+     * **The hazard the move creates.** `HomeCity` posts `timezone` back unchanged with
+     * every city change, from a value the server render fixed — so on a screen that
+     * also edits the zone, a city picked afterwards can send the old zone and quietly
+     * revert the zone change. Both controls save with a "Saved." and the account ends
+     * up on the zone it started on.
+     *
+     * The page test asserts the request's body; this asserts what the **server** then
+     * holds, by reloading and reading the control back.
+     */
+    await goToSettingsSection(page, "Profile", "/settings/profile");
+
+    const zone = page.getByLabel("Timezone");
+    const city = page.getByLabel("City");
+
+    const before = await zone.inputValue();
+    const next = before === "Europe/London" ? "Asia/Dhaka" : "Europe/London";
+
+    await zone.selectOption(next);
+    await expect(page.locator("[data-digest-timezone] [data-saved]")).toBeVisible();
+
+    // **Any city change will do — the point is the request it sends, not the city.**
+    // A different one is chosen where the catalog offers one, because a `selectOption`
+    // to the value already selected is a weaker trigger than a real change.
+    const cityBefore = await city.inputValue();
+    const cityValues = await city.locator("option").evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value).filter((value) => value !== ""),
+    );
+    const otherCity = cityValues.find((value) => value !== cityBefore) ?? cityBefore;
+    await city.selectOption(otherCity);
+    await expect(page.locator("[data-home-city-select]")).toBeEnabled();
+
+    await page.reload();
+    await expect(page.getByLabel("Timezone")).toHaveValue(next);
+
+    // Put the account back, so the next run starts where this one did.
+    await page.getByLabel("City").selectOption(cityBefore);
+    await page.getByLabel("Timezone").selectOption(before);
+    await expect(page.getByLabel("Timezone")).toHaveValue(before);
   });
 });

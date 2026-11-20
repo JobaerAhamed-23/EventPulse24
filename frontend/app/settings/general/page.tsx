@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { DefaultReminderSlots } from "@/components/settings/default-reminder-slots";
 import { DigestDeliveryTime } from "@/components/settings/digest-delivery-time";
 import { DigestPersonalEvents } from "@/components/settings/digest-personal-events";
-import { DigestTimezone } from "@/components/settings/digest-timezone";
 import { PulsePingSwitch } from "@/components/settings/pulse-ping-switch";
 import { QuietHoursWindow } from "@/components/settings/quiet-hours-window";
 import { SettingsNav } from "@/components/settings/settings-nav";
@@ -49,6 +48,20 @@ const PRO_QUIET_HOURS_HINT = "Set a different window for each day with Pro.";
  * *two different pages*: the delivery time on Quiet hours, the personal-events opt-out on
  * Digest. Two pages, one feature, because each had arrived with its own work item. A user
  * looking for "my daily brief" had to find both.
+ *
+ * ## The zone is not here, and it was
+ *
+ * `DigestTimezone` opened this screen, on the grounds that *"everything under it is read
+ * in that zone"* — and that was true of this page. It was not the question a reader
+ * arrives with. **"Which zone am I in" is the same question as "which city am I in"**,
+ * and the city was two screens away on `/settings/account`; a user correcting a wrong
+ * zone after a move had to find two settings on two screens to describe one fact about
+ * themselves. Both now sit together on `/settings/profile`.
+ *
+ * **What stayed is the delivery time**, which is a digest setting and reads as one. It
+ * still sends the stored zone back unchanged, exactly as it always did — the endpoint
+ * takes *"both or neither"*, and that was never a claim about which screen the zone is
+ * edited on.
  *
  * So the preferences are one route now, and the nav rows that remain are **things** —
  * calendars, collections, sources, taste, the account, the profile — each a list the user
@@ -162,30 +175,6 @@ export default async function SettingsGeneralPage() {
       </header>
 
       {/*
-        **The zone comes first, because everything under it is read in that zone.**
-        Quiet hours are local wall clocks, the digest's "today" is a local day, and the
-        timeline draws a local week. A reader who does not know which zone they are in
-        cannot interpret any of the rows below — so it is stated before they are asked.
-
-        It had no home at all before this: the zone was set once in onboarding, defaulted
-        to `UTC` for anyone who skipped that step, and `DigestDeliveryTime` sent it
-        straight back unchanged. An account on the wrong zone had no way to discover it.
-      */}
-      <section
-        id="timezone"
-        aria-labelledby="timezone-heading"
-        className="mt-8 max-w-(--layout-container-reading) scroll-mt-8"
-      >
-        <h2 id="timezone-heading" className="sr-only">
-          Timezone
-        </h2>
-        <DigestTimezone
-          initialTimezone={settings.digest.timezone}
-          deliveryTime={settings.digest.delivery_time}
-        />
-      </section>
-
-      {/*
         **Each block is a `<section>` with an id and its own heading.** The id is what the
         redirected old routes target; the heading is what makes the long page navigable by
         a screen reader, which is the same job the sub-nav rows used to do.
@@ -193,7 +182,7 @@ export default async function SettingsGeneralPage() {
       <section
         id="reminders"
         aria-labelledby="reminders-heading"
-        className="mt-12 max-w-(--layout-container-reading) scroll-mt-8"
+        className="mt-8 max-w-(--layout-container-reading) scroll-mt-8"
       >
         <h2
           id="reminders-heading"

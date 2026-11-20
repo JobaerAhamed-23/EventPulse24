@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { AvatarUpload } from "@/components/settings/avatar-upload";
 import { EmailChange } from "@/components/settings/email-change";
-import { HomeCity } from "@/components/settings/home-city";
+import { PlaceSettings } from "@/components/settings/place-settings";
 import { ProfileName } from "@/components/settings/profile-name";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { AppShell } from "@/components/shell/app-shell";
@@ -30,27 +30,34 @@ import { getSession, homeRoute } from "@/lib/session";
  * | **The name** | What to call the person | **On change** |
  | **The address** | The account's login | **On a press** — the request has to be sent, and the link opened to confirm it |
  * | **The city** | Where the digest comes from | **On change** |
+ * | **The time zone** | The clock every local time is read in | **On change** |
  *
- * **Three of the four save on change, and one does not — and the difference is real.**
+ * **Four of the five save on change, and one does not — and the difference is real.**
  * The picture is chosen rather than typed, so there is no keystroke to hang a save on.
  * The address would mail `m@`, then `ma@`, then `may@` — to strangers, from an endpoint
  * that sends real mail — so it takes an explicit action. **A reader who notices that the
  * four controls do not behave alike is noticing something real, and this docstring
  * records it rather than leaving it to look like an inconsistency.**
  *
- * ## The city is here because this is where a person looks for it
+ * ## Where you are: the city and the zone, in one place
  *
- * **It was on `/settings/account`, and the zone is still on `/settings/general`.** That
- * split is the same failure `/settings/general` records about itself — *"the digest's
- * two settings lived on two different pages ... because each had arrived with its own
- * work item"*. "Where am I" is a fact about the person, not about billing, so the city
- * moved here and `/settings/account` links to where it went.
+ * **The city was on `/settings/account` and the zone was on `/settings/general`, and
+ * neither split survived contact with the question a reader actually asks.** "Where am
+ * I" is a fact about the person, not about their billing and not about their
+ * notification switches — so both answers are here, under one heading, and the two
+ * routes they came from say nothing about a city or a zone any more.
  *
- * **The zone did not move, and that is deliberate.** It is paired with the digest's
- * delivery time: together they answer *when the brief arrives*, and `HomeCity` itself
- * posts `deliveryTime` and `timezone` back unchanged because the endpoint requires the
- * three together. Moving the zone alone would split a pair to heal a different one. So
- * this screen **names** it instead of holding it.
+ * **The zone moved too, and the pairing that kept it on General is intact.** It was
+ * there because `DigestTimezone` posts `delivery_time` alongside the zone — the endpoint
+ * takes *"both or neither"* — and the delivery time is edited on General. That is a
+ * constraint on what the control **sends**, not on where it is **rendered**: it sends
+ * the delivery time back unchanged either way, exactly as `HomeCity` does.
+ *
+ * **What the move does create is a real hazard, and `PlaceSettings` is the answer to
+ * it.** `HomeCity` also posts the zone back unchanged, from a value fixed at render
+ * time — so on a screen that edits the zone, a city picked afterwards would send the old
+ * zone and silently undo the zone change. The two controls therefore share one zone
+ * value, held by `PlaceSettings` rather than by the server render.
  *
  * ## The read question, answered
  *
@@ -62,9 +69,9 @@ import { getSession, homeRoute } from "@/lib/session";
  * | The name | `session.user.name` | **No** — the session carries it, and a second `GET /api/auth/me` microseconds later would answer one question twice. |
  * | The picture | `session.user.avatar_url` | **No** — the same read, for the same reason. |
  * | The address and any pending change | `session.user.email`, `session.user.pending_email` | **No** — the same read. |
- * | **The city and its choices** | `readHomeCity()` | **Yes** — two requests, either of which can fail. |
+ * | **The city, the zone and the choices** | `readHomeCity()` | **Yes** — two requests, either of which can fail. |
  *
- * **So the failure is the city's, and not the screen's.** The name is still there, and
+ * **So the failure is the place section's, and not the screen's.** The name is still there, and
  * it is still editable, so `SettingsStates`' *"Couldn't load your settings."* would be
  * false — it would send the visitor looking for a problem that did not happen to the
  * thing in front of them. **The city section is simply absent**, which is exactly what
@@ -72,7 +79,10 @@ import { getSession, homeRoute } from "@/lib/session";
  *
  * **An empty picker would be worse than no picker.** A `<select>` with no options reads
  * as *"your city is not available"*, which is a statement about the user rather than
- * about the request that failed. So an unavailable read renders **nothing at all**.
+ * about the request that failed. So an unavailable read renders **nothing at all** —
+ * and that takes the zone with it, because the zone's stored value comes from the same
+ * read. A zone picker defaulted to `UTC` because a request failed would be a control
+ * showing somebody else's zone, and one touch of it would store that.
  *
  * ## It is a settings route, and it follows the house pattern exactly
  *
@@ -146,8 +156,8 @@ export default async function SettingsProfilePage() {
   // one read that can fail is the city's, and `readHomeCity` needs a session, and this
   // branch has none. So there is no read to fail and nothing that could have loaded.
   //
-  // **The city is not read here, and that is deliberate.** Reading it would be a request
-  // with no session to read *with* — and the section is absent either way.
+  // **The place is not read here, and that is deliberate.** Reading it would be a
+  // request with no session to read *with* — and the section is absent either way.
   if (session.kind !== "signed-in") {
     return (
       <AppShell name="" email="" avatarUrl="">
@@ -169,13 +179,14 @@ export default async function SettingsProfilePage() {
   // answers the second one.**
   const stored = session.user.name;
 
-  // **The city, read the way `/settings/account` reads it** — the same helper, so there
-  // is one implementation of "what city does this account have, and how did it get it".
+  // **The city, its choices and the stored schedule — one read.** The zone comes from it
+  // too: `GET /api/personal/onboarding` carries the whole digest preference, so asking a
+  // second endpoint for the zone would be asking one question twice.
   //
-  // **This is the screen's one read that can fail, and the failure is the city's rather
-  // than the screen's.** The name above it is unaffected, so the section is absent
-  // rather than the screen being replaced by an error — a whole-screen error would be a
-  // false statement about the field above it.
+  // **This is the screen's one read that can fail, and the failure is the place
+  // section's rather than the screen's.** The name above it is unaffected, so the section
+  // is absent rather than the screen being replaced by an error — a whole-screen error
+  // would be a false statement about the field above it.
   const homeCity = await readHomeCity();
 
   return (
@@ -189,7 +200,7 @@ export default async function SettingsProfilePage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Profile</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          Your picture, your name, your address, and the city your Pulse Digest follows.
+          Your picture, your name, your address, and where in the world you are.
         </p>
       </header>
 
@@ -241,42 +252,34 @@ export default async function SettingsProfilePage() {
         **Where you are, under who you are.** The order is the heading's order — the name
         first, the place second — because that is the order the heading promises.
 
-        **An unavailable read renders nothing rather than an empty picker.** A select
-        with no options would read as *"your city is not available"*, which is a
-        statement about the user rather than about the request that failed. This is the
-        rule `/settings/account` already applied to the same read.
+        **The city and the zone are one section, because they are one question.** They
+        arrived from two different screens — the city from Account, the zone from
+        General — and a reader looking for either was looking for "where am I".
+
+        **They are rendered by one client component rather than two.** `HomeCity` posts
+        the zone back unchanged with every city change, from a value that would otherwise
+        be fixed at render time, so the two controls have to share one zone or the city
+        will quietly undo a zone change. `PlaceSettings` is where that value lives.
+
+        **An unavailable read renders nothing rather than empty pickers.** A select with
+        no options would read as *"your city is not available"*, and a zone select
+        defaulted past a failed read would show a zone that is not the account's — which
+        one touch would then store.
       */}
       {homeCity.kind === "found" ? (
         <div className="mt-12 max-w-(--layout-container-reading)">
-          <h2 className="text-ink-primary [font:var(--type-scale-headline-sm)]">City</h2>
+          <h2 className="text-ink-primary [font:var(--type-scale-headline-sm)]">
+            City and time zone
+          </h2>
           <div className="mt-6">
-            <HomeCity
+            <PlaceSettings
               initialCity={homeCity.city}
               initialCitySource={homeCity.citySource}
               choices={homeCity.choices}
               deliveryTime={homeCity.deliveryTime}
-              timezone={homeCity.timezone}
+              initialTimezone={homeCity.timezone}
             />
           </div>
-          {/*
-            **The zone is named here and edited elsewhere, and the line says so.** It is
-            paired with the digest's delivery time on General — together they answer
-            *when the brief arrives* — so this is a signpost, not a second control. A
-            screen that silently omitted the zone would leave a reader hunting for it.
-
-            **It names General; it does not link to it.** `tests/settings-routes.test.ts`
-            forbids a hand-written link from one settings screen to another — *"one list,
-            not a web of one-off links"* — and the sub-nav above already carries General
-            on every settings screen. So the sentence says where to go and the sub-nav
-            is how you get there, which is one destination list rather than two.
-          */}
-          <p
-            data-city-zone-note
-            className="mt-4 text-ink-secondary [font:var(--type-scale-meta-sm)]"
-          >
-            Your time zone decides when your Pulse Digest arrives. It sits with the delivery time
-            under General.
-          </p>
         </div>
       ) : null}
     </AppShell>

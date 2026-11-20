@@ -130,7 +130,7 @@ test.describe("Browse: the two emptinesses", () => {
     // is the city, so the recovery is the city.
     const changeCity = cityEmpty.locator("[data-browse-change-city]");
     await expect(changeCity).toBeVisible();
-    await expect(changeCity).toHaveAttribute("href", "/settings/account");
+    await expect(changeCity).toHaveAttribute("href", "/settings/profile");
 
     // **The hero is gone, because the empty state took its place.** A hero saying
     // "Fixtureville" above a "nothing nearby" message would claim a city the surface
