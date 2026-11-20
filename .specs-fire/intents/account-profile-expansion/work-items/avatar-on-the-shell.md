@@ -4,10 +4,12 @@ title: The Face, Everywhere the Name Already Is
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - avatar-endpoint-and-contract
 created: 2026-11-19
+run_id: run-eventpulse24-053
+completed_at: 2026-11-20T05:39:55.101Z
 ---
 
 # Work Item: The Face, Everywhere the Name Already Is

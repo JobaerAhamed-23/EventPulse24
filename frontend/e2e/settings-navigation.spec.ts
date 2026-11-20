@@ -79,6 +79,16 @@ const SECTIONS = [
   { label: "Taste", path: "/settings/taste", heading: "Taste" },
   { label: "Account", path: "/settings/account", heading: "Account" },
   { label: "Profile", path: "/settings/profile", heading: "Profile" },
+  /**
+   * **Privacy was missing from this list, and the list's own docstring says it "must
+   * mirror `SETTINGS_SECTIONS` exactly".** So the spec claimed to be exhaustive and was
+   * not — **which is the exact failure this file exists to catch, caught in this file.**
+   *
+   * **A section the spec does not walk is a section whose reachability was never
+   * tested.** Privacy is in `SETTINGS_SECTIONS`, so the sub-nav offers it and the rail
+   * highlights it — but nothing proved a person could reach it by clicking.
+   */
+  { label: "Privacy", path: "/settings/privacy", heading: "Privacy" },
 ];
 
 /**

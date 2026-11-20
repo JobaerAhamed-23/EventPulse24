@@ -13,13 +13,30 @@ import { getSession, homeRoute } from "@/lib/session";
 /**
  * `/settings/profile` — **who you are, and where you are.**
  *
- * ## Why this screen exists
+ * ## What this screen holds now
  *
  * **It was one field, and that is no longer true.** It shipped holding only the name,
  * on the stated grounds that the name was the only thing about an account a person could
- * change. The account has since grown a place, and it is growing a picture and a
- * movable address — so the claim that lived in this docstring has been removed rather
- * than left to mislead the next reader.
+ * change. The account has since grown a picture, a movable address and a place — so the
+ * claim that lived in this docstring has been removed rather than left to mislead the
+ * next reader.
+ *
+ * **The four things on it are in the order the heading promises**, and that order is the
+ * account sheet's order:
+ *
+ * | | What it is | How it saves |
+ * |---|---|---|
+ * | **The picture** | The face, drawn in three places | **On the choice** — the file is chosen, and that is the save |
+ * | **The name** | What to call the person | **On change** |
+ | **The address** | The account's login | **On a press** — the request has to be sent, and the link opened to confirm it |
+ * | **The city** | Where the digest comes from | **On change** |
+ *
+ * **Three of the four save on change, and one does not — and the difference is real.**
+ * The picture is chosen rather than typed, so there is no keystroke to hang a save on.
+ * The address would mail `m@`, then `ma@`, then `may@` — to strangers, from an endpoint
+ * that sends real mail — so it takes an explicit action. **A reader who notices that the
+ * four controls do not behave alike is noticing something real, and this docstring
+ * records it rather than leaving it to look like an inconsistency.**
  *
  * ## The city is here because this is where a person looks for it
  *
@@ -33,11 +50,33 @@ import { getSession, homeRoute } from "@/lib/session";
  * delivery time: together they answer *when the brief arrives*, and `HomeCity` itself
  * posts `deliveryTime` and `timezone` back unchanged because the endpoint requires the
  * three together. Moving the zone alone would split a pair to heal a different one. So
- * this screen **links** to it instead of holding it.
+ * this screen **names** it instead of holding it.
+ *
+ * ## The read question, answered
+ *
+ * **This screen has one read that can fail, and it is the city's.** The rest of what it
+ * shows comes from the session, which was read before the page was rendered:
+ *
+ * | What it shows | Where it comes from | Can it fail? |
+ * |---|---|---|
+ * | The name | `session.user.name` | **No** — the session carries it, and a second `GET /api/auth/me` microseconds later would answer one question twice. |
+ * | The picture | `session.user.avatar_url` | **No** — the same read, for the same reason. |
+ * | The address and any pending change | `session.user.email`, `session.user.pending_email` | **No** — the same read. |
+ * | **The city and its choices** | `readHomeCity()` | **Yes** — two requests, either of which can fail. |
+ *
+ * **So the failure is the city's, and not the screen's.** The name is still there, and
+ * it is still editable, so `SettingsStates`' *"Couldn't load your settings."* would be
+ * false — it would send the visitor looking for a problem that did not happen to the
+ * thing in front of them. **The city section is simply absent**, which is exactly what
+ * `/settings/account` already does with the same read and for the same reason.
+ *
+ * **An empty picker would be worse than no picker.** A `<select>` with no options reads
+ * as *"your city is not available"*, which is a statement about the user rather than
+ * about the request that failed. So an unavailable read renders **nothing at all**.
  *
  * ## It is a settings route, and it follows the house pattern exactly
  *
- * All the other `/settings/*` routes do the same five things in the same order, and this
+ * All the other `/settings/*` routes do the same four things in the same order, and this
  * one does too:
  *
  * 1. `force-dynamic` — a settings screen is per-user and is never cached.
@@ -47,16 +86,13 @@ import { getSession, homeRoute } from "@/lib/session";
  * 3. Not signed in → an empty `AppShell`.
  * 4. Otherwise the page itself, with a header and a reading-width content block.
  *
- * **Step 4's read is no longer absent, and the old reasoning is recorded because half
- * of it still holds.** The name needs no read — the session already carries it, and a
- * second call to the same endpoint microseconds later would answer one question twice.
- * **The city does need one**, so this route now reads like its siblings.
- *
- * **But a failed city read does not blank the screen.** The name is still there, and it
- * is still editable, so `SettingsStates`' *"Couldn't load your settings."* would be
- * false — it would send the visitor looking for a problem that did not happen to the
- * thing in front of them. The city section is simply absent, which is exactly what
- * `/settings/account` already does with the same read and for the same reason.
+ * **Step 3's empty shell is not `SettingsStates`, and the reason is worth stating
+ * exactly.** It is not *"nothing failed to load, there was nothing to load"* — the screen
+ * *does* have a read, and it can fail. **The reason is that there is no account to read
+ * anything about.** `readHomeCity` needs a session, and this branch has none — so
+ * there is no read to fail and nothing that could have loaded. It renders an empty
+ * shell, and a visitor who is here for the settings was redirected away by `homeRoute`
+ * in every case but this one: the session could not be read at all.
  *
  * ## The name in the rail is not this screen's job
  *
@@ -81,6 +117,11 @@ import { getSession, homeRoute } from "@/lib/session";
  * the bytes, re-encodes them and may refuse the file outright** — so a URL published
  * early would name a picture that does not exist, and the rail would show a broken face
  * for an upload that was refused.
+ *
+ * **The picture is the control that does not save on change, and the reason is the
+ * undo.** There is no undo on a file picker: a replaced picture is gone, and the old
+ * object is removed from the store when the new one commits. So the screen says what
+ * will happen *before* it happens rather than after.
  */
 export const dynamic = "force-dynamic";
 
@@ -100,9 +141,13 @@ export default async function SettingsProfilePage() {
   // there is no name here to edit.
   //
   // **It renders an empty shell rather than `SettingsStates`.** That component says
-  // *"Couldn't load your settings."* — and nothing failed to load here; there was
-  // nothing to load, and the visitor is not here for the settings. The other settings
-  // routes use it because *their* read can fail. This one has no read.
+  // *"Couldn't load your settings."* — and this is not that case. **The reason is that
+  // there is no account to read anything about**, not that nothing failed: the screen's
+  // one read that can fail is the city's, and `readHomeCity` needs a session, and this
+  // branch has none. So there is no read to fail and nothing that could have loaded.
+  //
+  // **The city is not read here, and that is deliberate.** Reading it would be a request
+  // with no session to read *with* — and the section is absent either way.
   if (session.kind !== "signed-in") {
     return (
       <AppShell name="" email="" avatarUrl="">
@@ -126,8 +171,11 @@ export default async function SettingsProfilePage() {
 
   // **The city, read the way `/settings/account` reads it** — the same helper, so there
   // is one implementation of "what city does this account have, and how did it get it".
-  // A failure is not fatal here: the name above it is unaffected, so the section is
-  // absent rather than the screen being replaced by an error.
+  //
+  // **This is the screen's one read that can fail, and the failure is the city's rather
+  // than the screen's.** The name above it is unaffected, so the section is absent
+  // rather than the screen being replaced by an error — a whole-screen error would be a
+  // false statement about the field above it.
   const homeCity = await readHomeCity();
 
   return (
@@ -159,12 +207,14 @@ export default async function SettingsProfilePage() {
         screen is the same letters the rail shows. The island publishes the new picture
         to the shell once the server accepts the write, so the rail, the bottom bar and
         the account sheet all follow it without a reload.
+
+        **This is the one control here that does not save on change**, and the reason is
+        the undo rather than the timing: a file is chosen, and there is no undo on a
+        file picker — a replaced picture is gone. So the island says what will happen
+        *before* it happens.
       */}
       <div className="mt-8 max-w-(--layout-container-reading)">
-        <AvatarUpload
-          initialAvatarUrl={session.user.avatar_url}
-          name={displayName(session.user)}
-        />
+        <AvatarUpload initialAvatarUrl={session.user.avatar_url} name={displayName(session.user)} />
       </div>
 
       <div className="mt-12 max-w-(--layout-container-reading)">
@@ -224,12 +274,11 @@ export default async function SettingsProfilePage() {
             data-city-zone-note
             className="mt-4 text-ink-secondary [font:var(--type-scale-meta-sm)]"
           >
-            Your time zone decides when your Pulse Digest arrives. It sits with the
-            delivery time under General.
+            Your time zone decides when your Pulse Digest arrives. It sits with the delivery time
+            under General.
           </p>
         </div>
       ) : null}
     </AppShell>
   );
 }
-

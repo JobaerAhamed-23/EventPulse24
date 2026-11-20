@@ -57,6 +57,12 @@ const USER = {
   id: "11111111-1111-1111-1111-111111111111",
   email: "maya@example.test",
   name: "",
+  /**
+   * **`""` is the account's "no picture" state** — the backend's single answer for it,
+   * and what `_avatar_url` returns when the account holds none. It is not `null` and not
+   * absent, and the disc reads it as "fall back to the initials".
+   */
+  avatar_url: "",
   pending_email: "",
   pending_email_expires_at: "",
   onboarding: { completed: true, current_step: null },
@@ -149,9 +155,7 @@ describe("the shell", () => {
     // **The row is found by its accessible name, not by its text.** The name is on the
     // screen in two places — the rail's row and the editor's field — and a text query
     // would find both.
-    expect(
-      screen.getByRole("button", { name: "Account: Maya Ahmed" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Account: Maya Ahmed" })).toBeTruthy();
   });
 
   it("falls back to the email-derived name when no name is set", async () => {
@@ -234,9 +238,7 @@ describe("the email address", () => {
      * unscoped query would pass on that one alone. */
     const { container } = render(await SettingsProfilePage());
 
-    expect(container.querySelector("[data-current-email]")).toHaveTextContent(
-      "maya@example.test",
-    );
+    expect(container.querySelector("[data-current-email]")).toHaveTextContent("maya@example.test");
   });
 
   it("offers a way to change it, which the screen used to deny was possible", async () => {
@@ -261,5 +263,143 @@ describe("the email address", () => {
     expect(container.querySelector("[data-pending-change]")).toHaveTextContent(
       "maya.new@example.test",
     );
+  });
+});
+
+describe("the picture", () => {
+  it("is on the screen, which the screen used to say could not change", async () => {
+    /**
+     * The screen shipped holding one field, on the stated grounds that the name was the
+     * only thing about an account a person could change. The account has since grown a
+     * picture, so the control is the proof that the claim was retired.
+     */
+    render(await SettingsProfilePage());
+
+    expect(screen.getByRole("region", { name: "Profile picture" })).toBeInTheDocument();
+  });
+
+  it("shows the account's picture when it has one", async () => {
+    getSession.mockResolvedValue({
+      kind: "signed-in",
+      user: { ...USER, avatar_url: "/api/auth/profile/avatar/ab12cd34" },
+    });
+
+    const { container } = render(await SettingsProfilePage());
+
+    expect(container.querySelector("[data-avatar-preview] img")).toHaveAttribute(
+      "src",
+      "/api/auth/profile/avatar/ab12cd34",
+    );
+  });
+
+  it("shows the initials when the account has no picture", async () => {
+    /**
+     * **The fallback must not blank anything.** An account with no picture still looks
+     * like an account rather than like a hole in the screen.
+     *
+     * **The letters are the display name's, and the display name here is the
+     * email-derived one** — the account has no name set, so the screen falls back to
+     * "Maya", and "Maya" is one word, so its initial is one letter. **The rule caps at
+     * two letters; it does not pad to two.**
+     */
+    const { container } = render(await SettingsProfilePage());
+
+    expect(container.querySelector("[data-avatar-preview] img")).toBeNull();
+    expect(container.querySelector("[data-avatar-preview]")).toHaveTextContent("M");
+  });
+
+  it("shows two letters when the display name has two words", async () => {
+    getSession.mockResolvedValue(sessionWith("Maya Ahmed"));
+
+    const { container } = render(await SettingsProfilePage());
+
+    expect(container.querySelector("[data-avatar-preview]")).toHaveTextContent("MA");
+  });
+});
+
+describe("the four things the screen holds, in the order the heading promises", () => {
+  it("puts the picture first, then the name, then the address, then the place", async () => {
+    /**
+     * **The order is the account sheet's order** — face, then name, then address — and
+     * the place comes last because it is a different kind of thing: where the digest
+     * comes from, rather than who the person is.
+     *
+     * **The assertion is on the order of the sections in the DOM**, because that is
+     * what a person scrolling the screen experiences. The place's heading is inside its
+     * own block, so the order is read from the four sections the screen renders.
+     */
+    const { container } = render(await SettingsProfilePage());
+
+    const sections = Array.from(container.querySelectorAll("section[aria-label]")).map((section) =>
+      section.getAttribute("aria-label"),
+    );
+
+    expect(sections).toEqual([
+      "Profile picture",
+      "Profile",
+      "Email address",
+      // **The city's section is a `SettingRow`, not a `<section>`**, so it is not in
+      // this list — and the place's heading is asserted separately below.
+    ]);
+  });
+
+  it("puts the place last, after everything about the person", async () => {
+    /**
+     * The city is a different kind of thing from the picture, the name and the address:
+     * it is where the digest comes from, not who the person is. So it comes after them.
+     */
+    const { container } = render(await SettingsProfilePage());
+
+    const email = container.querySelector("[data-email-change]");
+    const cityHeading = screen.getByRole("heading", { name: "City" });
+
+    expect(email).not.toBeNull();
+    expect(cityHeading).toBeInTheDocument();
+    // **The place's heading comes after the address's block in the document.**
+    const emailTop = (email as HTMLElement).compareDocumentPosition(cityHeading);
+    expect(emailTop & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("the read question", () => {
+  it("reads the city, and the city is the only thing it reads", async () => {
+    /**
+     * **The screen's one read is the city's**, and it is read once — through the same
+     * helper `/settings/account` uses, so there is one implementation of "what city
+     * does this account have".
+     */
+    render(await SettingsProfilePage());
+
+    expect(readHomeCity).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads no city at all when there is no session to read one with", async () => {
+    /**
+     * **The not-signed-in branch is not a failed read.** `readHomeCity` needs a
+     * session, and this branch has none — so there is nothing to read and nothing that
+     * could have failed.
+     */
+    getSession.mockResolvedValue({ kind: "unavailable" });
+
+    render(await SettingsProfilePage());
+
+    expect(readHomeCity).not.toHaveBeenCalled();
+  });
+
+  it("leaves the other three parts alone when the city's read fails", async () => {
+    /**
+     * **The failure is the city's, not the screen's.** The name, the picture and the
+     * address are all still there and all still editable, so a whole-screen error would
+     * be a false statement about the thing in front of the reader.
+     */
+    readHomeCity.mockResolvedValue({ kind: "unavailable" });
+
+    render(await SettingsProfilePage());
+
+    expect(screen.getByLabelText("Your name")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Profile picture" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/new email address/i)).toBeInTheDocument();
+    // **And the city is absent rather than an empty picker.**
+    expect(screen.queryByRole("heading", { name: "City" })).not.toBeInTheDocument();
   });
 });

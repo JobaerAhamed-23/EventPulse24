@@ -77,9 +77,16 @@ export function AvatarDisc({ avatarUrl, name, size = "sm" }: AvatarDiscProps) {
 
         **`aria-hidden` on the wrapper**, because the image itself is decorative and the
         wrapper is what the initials fallback is hidden behind.
+
+        **`data-avatar-disc` on the wrapper.** The picture is *out* of the accessibility
+        tree by design, so a screen-reader locator cannot reach it — and a test that
+        needs to know whether the rail is showing a picture or the initials has to
+        look at the DOM. The hook is on the wrapper rather than the `<img>` so it names
+        **the disc**, which is the thing being drawn, rather than one of its two forms.
       */
       <span
         aria-hidden="true"
+        data-avatar-disc
         className={`flex ${dimension} shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-inset`}
       >
         <img src={avatarUrl} alt="" className="size-full object-cover" />
@@ -94,9 +101,14 @@ export function AvatarDisc({ avatarUrl, name, size = "sm" }: AvatarDiscProps) {
       the rail.
 
       **`aria-hidden`**, for the same reason the picture is: the name is beside it.
+
+      **`data-avatar-disc` on the wrapper too**, for the same reason the picture's is
+      there — so a test can ask the disc what it is showing without knowing which of its
+      two forms it took.
     */
     <span
       aria-hidden="true"
+      data-avatar-disc
       className={`flex ${dimension} shrink-0 items-center justify-center rounded-full bg-surface-inset text-ink-secondary ${typeScale}`}
     >
       {initials(name)}

@@ -4,12 +4,14 @@ title: One Screen That Holds All of It — and an e2e That Clicks Through
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on:
   - avatar-on-the-shell
   - email-change-on-the-profile-screen
   - place-on-the-profile-screen
 created: 2026-11-19
+run_id: run-eventpulse24-053
+completed_at: 2026-11-20T06:43:49.702Z
 ---
 
 # Work Item: One Screen That Holds All of It — and an e2e That Clicks Through

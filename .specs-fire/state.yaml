@@ -1557,7 +1557,7 @@ intents:
     completed_at: 2026-11-19T16:01:32.325Z
   - id: account-profile-expansion
     title: A Profile Worth Having — a Face, an Address You Can Move, and a Place
-    status: in_progress
+    status: completed
     created: 2026-11-19
     work_items:
       - id: object-storage-and-minio
@@ -1590,7 +1590,7 @@ intents:
           deletion exists anywhere, so its avatar-removal criterion had nothing
           to hook into
         run_id: run-eventpulse24-053
-        completed_at: 2026-11-20T04:56:48.491Z
+        completed_at: 2026-11-20T06:43:49.702Z
       - id: avatar-endpoint-and-contract
         status: completed
         complexity: medium
@@ -1606,7 +1606,7 @@ intents:
         depends_on:
           - avatar-endpoint-and-contract
         run_id: run-eventpulse24-053
-        completed_at: 2026-11-20T05:39:55.101Z
+        completed_at: 2026-11-20T06:43:49.702Z
       - id: pending-email-model-and-commands
         status: completed
         complexity: high
@@ -1646,43 +1646,18 @@ intents:
         run_id: run-eventpulse24-041
         completed_at: 2026-11-19T00:00:00Z
       - id: profile-screen-and-e2e
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - avatar-on-the-shell
           - email-change-on-the-profile-screen
           - place-on-the-profile-screen
+        run_id: run-eventpulse24-053
+        completed_at: 2026-11-20T06:43:49.702Z
+    completed_at: 2026-11-20T06:43:49.702Z
 runs:
-  active:
-    - id: run-eventpulse24-053
-      scope: wide
-      work_items:
-        - id: account-deletion-and-avatar-removal
-          intent: account-profile-expansion
-          mode: validate
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-20T04:56:48.491Z
-        - id: avatar-on-the-shell
-          intent: account-profile-expansion
-          mode: confirm
-          status: completed
-          current_phase: review
-          checkpoint_state: approved
-          current_checkpoint: plan
-          completed_at: 2026-11-20T05:39:55.101Z
-        - id: profile-screen-and-e2e
-          intent: account-profile-expansion
-          mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
-          current_checkpoint: plan
-      current_item: profile-screen-and-e2e
-      started: 2026-11-20T03:37:57.952Z
+  active: []
   completed:
     - id: run-eventpulse24-001
       scope: single
@@ -2461,3 +2436,17 @@ runs:
           mode: confirm
       started: 2026-11-19T17:00:41.373Z
       completed: 2026-11-19T17:29:14.736Z
+    - id: run-eventpulse24-053
+      scope: wide
+      work_items:
+        - id: account-deletion-and-avatar-removal
+          intent: account-profile-expansion
+          mode: validate
+        - id: avatar-on-the-shell
+          intent: account-profile-expansion
+          mode: confirm
+        - id: profile-screen-and-e2e
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-20T03:37:57.952Z
+      completed: 2026-11-20T06:43:49.702Z

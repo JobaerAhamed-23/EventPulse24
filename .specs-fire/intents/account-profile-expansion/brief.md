@@ -1,8 +1,9 @@
 ---
 id: account-profile-expansion
 title: A Profile Worth Having — a Face, an Address You Can Move, and a Place
-status: in_progress
+status: completed
 created: 2026-11-19
+completed_at: 2026-11-20T06:43:49.742Z
 ---
 
 # Intent: A Profile Worth Having — a Face, an Address You Can Move, and a Place
