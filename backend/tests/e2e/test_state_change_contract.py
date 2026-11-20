@@ -206,7 +206,7 @@ def test_the_import_contracts_still_hold():
 
     config = (BACKEND / "pyproject.toml").read_text()
     declared = re.findall(r'^id\s*=\s*"([^"]+)"', config, flags=re.MULTILINE)
-    assert len(declared) == 19, f"the contract count changed: {declared}"
+    assert len(declared) == 21, f"the contract count changed: {declared}"
 
 
 def test_the_worker_writes_no_rows_itself():

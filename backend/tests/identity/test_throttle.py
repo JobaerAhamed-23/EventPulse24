@@ -9,9 +9,12 @@ from apps.identity.services.throttle import (
     account_key,
     ip_key,
     is_throttled,
+    reset_email_change_throttle,
     reset_sign_in_throttle,
 )
 from shared.constants import (
+    AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT,
+    AUTH_THROTTLE_EMAIL_CHANGE_IP,
     AUTH_THROTTLE_RESET_ACCOUNT,
     AUTH_THROTTLE_RESET_IP,
     AUTH_THROTTLE_SIGN_IN_ACCOUNT,
@@ -201,4 +204,125 @@ def test_the_reset_clears_only_the_addresses_it_is_given(throttle_adapter):
 
     assert (
         is_throttled("sign_in", ip_address="9.9.9.9", normalised_email="other@example.com") is True
+    )
+
+
+# --- the email-change reset ----------------------------------------------------------------
+
+
+def test_the_email_change_limits_are_the_named_constants():
+    """The email-change window is tighter than the sign-in's, and it is named."""
+    assert LIMITS["email_change"] == (
+        AUTH_THROTTLE_EMAIL_CHANGE_IP,
+        AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT,
+    )
+
+
+def test_the_email_change_reset_gives_the_ip_allowance_back(throttle_adapter):
+    """The per-IP bucket is the one a single-machine suite trips first.
+
+    The email-change window is five an hour per IP and three per account — tighter than
+    the sign-in's — so a suite that asks for an address change more than once inside the
+    hour finds the window already up and the request is refused with a 429.
+    """
+    for _ in range(AUTH_THROTTLE_EMAIL_CHANGE_IP):
+        is_throttled("email_change", ip_address="1.2.3.4", normalised_email="a@example.com")
+    assert (
+        is_throttled("email_change", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+    )
+
+    reset_email_change_throttle(ip_address="1.2.3.4", emails=[])
+
+    assert (
+        is_throttled("email_change", ip_address="1.2.3.4", normalised_email="b@example.com")
+        is False
+    )
+
+
+def test_the_email_change_reset_gives_the_account_allowance_back(throttle_adapter):
+    """The per-account bucket is the one an account the suite asks for a change trips."""
+    for n in range(AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT):
+        is_throttled("email_change", ip_address=f"1.2.3.{n}", normalised_email="maya@example.com")
+    assert (
+        is_throttled("email_change", ip_address="9.9.9.9", normalised_email="maya@example.com")
+        is True
+    )
+
+    reset_email_change_throttle(ip_address="9.9.9.9", emails=["maya@example.com"])
+
+    assert (
+        is_throttled("email_change", ip_address="9.9.9.9", normalised_email="maya@example.com")
+        is False
+    )
+
+
+def test_the_email_change_reset_leaves_the_limits_alone(throttle_adapter):
+    """The reset clears the counters, not the rules.
+
+    An email-change request sends real mail to an address the requester typed, so this
+    is the operation where a tight limit matters most. A reader who asks six times in an
+    hour must still be refused the sixth after the seed has run.
+    """
+    reset_email_change_throttle(ip_address="1.2.3.4", emails=["maya@example.com"])
+
+    for _ in range(AUTH_THROTTLE_EMAIL_CHANGE_IP):
+        is_throttled("email_change", ip_address="1.2.3.4", normalised_email="a@example.com")
+
+    assert (
+        is_throttled("email_change", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+    )
+
+
+def test_the_email_change_reset_normalises_the_address_before_keying_it(throttle_adapter):
+    """The endpoint keys the account on the *normalised* address.
+
+    `account_key` lowercases and strips, so a reset that passed `Maya@Example.com`
+    without normalising would clear a key the endpoint never writes — and the account's
+    allowance would still be spent.
+    """
+    for n in range(AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT):
+        is_throttled("email_change", ip_address=f"1.2.3.{n}", normalised_email="maya@example.com")
+    assert (
+        is_throttled("email_change", ip_address="9.9.9.9", normalised_email="maya@example.com")
+        is True
+    )
+
+    reset_email_change_throttle(ip_address="9.9.9.9", emails=["  Maya@Example.com  "])
+
+    assert (
+        is_throttled("email_change", ip_address="9.9.9.9", normalised_email="maya@example.com")
+        is False
+    )
+
+
+def test_the_email_change_reset_leaves_the_sign_in_window_alone(throttle_adapter):
+    """The two resets clear their own operation's window, and only that one.
+
+    Giving the sign-in window back as a side effect of an email-change reset would hand
+    away an allowance the run never spent — and a window a seed had emptied would be a
+    window an attacker could spend before the limit noticed.
+    """
+    for _ in range(AUTH_THROTTLE_SIGN_IN_IP):
+        is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="a@example.com")
+    assert is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+
+    reset_email_change_throttle(ip_address="1.2.3.4", emails=["a@example.com"])
+
+    assert is_throttled("sign_in", ip_address="1.2.3.4", normalised_email="b@example.com") is True
+
+
+def test_the_email_change_reset_clears_only_the_addresses_it_is_given(throttle_adapter):
+    """Another account's spent allowance is another account's business."""
+    for n in range(AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT):
+        is_throttled("email_change", ip_address=f"1.2.3.{n}", normalised_email="other@example.com")
+    assert (
+        is_throttled("email_change", ip_address="9.9.9.9", normalised_email="other@example.com")
+        is True
+    )
+
+    reset_email_change_throttle(ip_address="9.9.9.9", emails=["maya@example.com"])
+
+    assert (
+        is_throttled("email_change", ip_address="9.9.9.9", normalised_email="other@example.com")
+        is True
     )

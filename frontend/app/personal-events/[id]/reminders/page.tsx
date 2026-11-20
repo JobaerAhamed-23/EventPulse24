@@ -55,6 +55,7 @@ export default async function PersonalEventRemindersPage({
 
   const name = session.kind === "signed-in" ? displayName(session.user) : "";
   const email = session.kind === "signed-in" ? session.user.email : "";
+  const avatarUrl = session.kind === "signed-in" ? session.user.avatar_url : "";
 
   // **The plan, the default and the event's name are read together.** The default is
   // what "Reset to default" restores; the name is for the crumb, and the plan payload
@@ -109,7 +110,7 @@ export default async function PersonalEventRemindersPage({
     );
 
   return (
-    <AppShell name={name} email={email}>
+    <AppShell name={name} email={email} avatarUrl={avatarUrl}>
       {content}
     </AppShell>
   );

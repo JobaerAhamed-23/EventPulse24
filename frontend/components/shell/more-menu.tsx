@@ -36,7 +36,7 @@ import { BrowseGlyph, MoreGlyph } from "@/components/shell/nav-glyphs";
  * `AccountPanel` the rail opens is rendered here *inline* — a sheet inside a sheet would
  * be a second overlay level, and `Sheet` keeps there being exactly one.
  */
-export function MoreMenu({ name, email }: AccountProps) {
+export function MoreMenu({ name, email, avatarUrl }: AccountProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -83,7 +83,7 @@ export function MoreMenu({ name, email }: AccountProps) {
             list: a Sign out button inside a `<ul>` of routes would read as a sixth route.
           */}
           <div className="my-3 h-px bg-border-subtle" />
-          <AccountPanel name={name} email={email} />
+          <AccountPanel name={name} email={email} avatarUrl={avatarUrl} />
         </div>
       </Sheet>
     </>

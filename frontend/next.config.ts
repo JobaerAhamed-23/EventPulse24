@@ -38,6 +38,27 @@ import type { NextConfig } from "next";
  * | `/events-in/brooklyn` | **308 → `/events-in-brooklyn`** — one canonical URL |
  * | `/events-in/brooklyn?page=2` | **308 → `/events-in-brooklyn?page=2`** — the query is preserved |
  * | `/events-in-brooklyn/extra` | **404** — the rewrite's `([^/]+?)` does not span a slash |
+ *
+ * ## The profile picture needs no `images.remotePatterns`
+ *
+ * **The avatar is served from the frontend's own origin**, so there is no remote host to
+ * allowlist — and `next/image`'s optimizer is not used at all.
+ *
+ * **What was measured, not inferred.** `me` hands out `/api/auth/profile/avatar/{version}`
+ * — an app-owned path on the frontend's origin, which answers **302** to a freshly
+ * minted presigned URL. The disc renders a plain `<img src={avatarUrl}>`, not
+ * `next/image`, and `components/shell/avatar-disc.tsx` carries the reasoning.
+ *
+ * **Two things follow, and both are why the optimizer would not help.**
+ *
+ * 1. **There is no remote host to configure.** `remotePatterns` exists to tell the
+ *    optimizer which off-origin hosts it may fetch from; the URL the page carries is
+ *    same-origin, so there is nothing to allow.
+ * 2. **The optimizer cannot optimize a URL that is a redirect to a signature that
+ *    expires.** The URL in the HTML never carries a signature — the browser follows the
+ *    302 under it and the signature is minted per request — so there is no stable,
+ *    cacheable asset for the optimizer to work on. The 302 *is* the cache-busting
+ *    strategy, and the `{version}` segment in the path is the version.
  */
 const nextConfig: NextConfig = {
   async rewrites() {

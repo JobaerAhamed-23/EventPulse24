@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from apps.identity.managers import UserManager
 from ports.billing import ProPlan
+from ports.blob import MAX_KEY_LENGTH
 from shared.models import AuditEntry, UUIDv7Model
 from shared.retention import RetentionCategory
 
@@ -53,6 +54,31 @@ class User(UUIDv7Model, AbstractBaseUser, PermissionsMixin):
     #: It is **not** normalised the way the email is: the email is a key, and this is a
     #: person's name. The case is theirs.
     name = models.CharField(max_length=120, blank=True, default="")
+
+    #: The key of this account's profile picture in the object store — **not the picture**.
+    #:
+    #: The bytes live in the bucket; this column holds the opaque key that finds them. A
+    #: picture in a database column is a picture read on every query that touches the row.
+    #:
+    #: **Blank, not null**, exactly as `name` above is: `""` is the single "no picture set"
+    #: state, so "cleared" and "never set" are one state rather than two with the same
+    #: meaning. What the product shows in its place — initials, a silhouette — is a
+    #: *display* rule the frontend owns.
+    #:
+    #: **The key is opaque (AD-13).** It carries no account id, no address and no filename:
+    #: `avatars/<random>`. A key derived from the account would let anyone holding one
+    #: enumerate the others.
+    #:
+    #: **A new key on every upload, never an overwrite.** Replacing a picture stores a new
+    #: object and deletes the old one after the row commits, so there is no moment at which
+    #: this column names a half-written object.
+    #:
+    #: **The object is removed when the account is destroyed.** `services/deletion.py`
+    #: deletes it in `transaction.on_commit`, when the account is actually destroyed rather
+    #: than when deletion is requested — so a person who cancels inside the thirty-day
+    #: grace period gets their picture back. The object *is* also removed when the picture
+    #: is replaced or cleared.
+    avatar_key = models.CharField(max_length=MAX_KEY_LENGTH, blank=True, default="")
 
     is_staff = models.BooleanField(
         default=False,
@@ -144,6 +170,162 @@ class PasswordResetToken(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"reset token for {self.user_id}"
+
+
+class PendingEmailChange(UUIDv7Model):
+    """One outstanding request to move the login to a new address, as a digest (AD-18).
+
+    **The login is the credential, so the new address is proven before it moves.** This
+    row is that proof in flight: it holds the requested address and a token, and only
+    that token returning from the new address completes the change.
+
+    **Its shape is `PasswordResetToken`'s, deliberately and almost field for field.** That
+    row's docstring records why each property is there — single-use via `used_at` set in
+    the consuming transaction, short-lived via `expires_at` from a named constant,
+    revocable without being used, no token at rest, the user held by value (OQ-8) — and
+    every one of those reasons applies unchanged to a credential move. It also records
+    that Django's `PasswordResetTokenGenerator` was *probed* against the pinned Django and
+    rejected as replayable and unrevocable; that finding is not re-litigated here.
+
+    **`new_email` is normalised on the way in**, exactly as `User.email` is. The confirm
+    compares like with like, and a case variant cannot be smuggled past `user_email_uq`.
+
+    **There is deliberately no unique constraint on `new_email`.** Two people may both
+    *request* the same address; only one can *confirm* it, and `User`'s `user_email_uq` is
+    what decides between them. A unique constraint here would let whoever requested first
+    deny the address to the person who actually owns the mailbox — a squatting vector in a
+    table that is supposed to be a queue of unproven claims.
+
+    **The address is not a credential the way a password is, but it is PII**, so it never
+    appears in an audit row's details, in a log line, or in `__str__` (AD-13).
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_IDENTITY
+
+    user_id = models.UUIDField()
+    # The address being proven. Normalised (trimmed, lowercased) before it is stored.
+    new_email = models.EmailField(max_length=254)
+    # sha256(salt + token), hex. The token itself is never stored.
+    token_hash = models.CharField(max_length=64, unique=True)
+    # The per-row salt, hex. It makes the digest unattackable with precomputed digests.
+    token_salt = models.CharField(max_length=32)
+    expires_at = models.DateTimeField()
+    # Set when the token is consumed and the login moved. Null until then.
+    used_at = models.DateTimeField(null=True, blank=True)
+    # Set when the request is invalidated without being used: a newer request, a cancel.
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # Used means the login moved; revoked means it did not. Never both.
+            models.CheckConstraint(
+                condition=~(models.Q(used_at__isnull=False) & models.Q(revoked_at__isnull=False)),
+                name="pending_email_change_used_or_revoked_ck",
+            ),
+        ]
+        indexes = [
+            # Revoking a user's outstanding requests, and showing them the pending one,
+            # both look up by user.
+            models.Index(fields=["user_id"], name="pending_email_change_user_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # **No address here** (AD-13): `__str__` reaches logs and the admin changelist.
+        return f"pending email change for {self.user_id}"
+
+
+class DeletionRequest(UUIDv7Model):
+    """One outstanding request to delete an account, and the grace period it carries.
+
+    **The row is the fact.** An account under a deletion request is not deleted yet, is not
+    frozen, and is not marked inactive — it is *scheduled*, and this row says when for.
+
+    **Why a row and not a column on `User`.** A column would have to be nullable and would
+    travel with every read of the account — including every `me` call and the user's own
+    export — for a fact that is true for a thirty-day window and then false. A row that
+    exists only while the deletion is pending says exactly what it is, and deleting that
+    row is the whole of a cancellation.
+
+    **The grace period is the point of the row.** Amendment A-16 promises a person can
+    cancel any time during thirty days. `scheduled_for` is when that promise expires, and
+    it is computed once — at request time — from `DELETION_GRACE_PERIOD`, so the deadline
+    does not move if the constant ever changes under an outstanding request.
+
+    **Nothing is destroyed while this row exists.** In particular the profile picture's
+    object: it is removed when the account is *destroyed*, not when deletion is requested.
+    A person who cancels inside the grace period gets their picture back — and removing it
+    at request time would make the grace period a lie, because the promise was that the
+    account comes back whole.
+
+    **The user is held by value (OQ-8)**, like every other table that reaches an account.
+    There is no relation to `User`, and no cascade: the rows are purged by an explicit walk
+    (`services/deletion.py`), because a cascade would delete the audit rows that must
+    survive the account.
+
+    **The address is not here** (AD-13): `__str__` reaches logs and the admin changelist.
+
+    **The cancel token lives here, and its lifetime is this row's lifetime.** The notice
+    mail carries a link that cancels the deletion, and that link has to authenticate the
+    person who follows it as the account's owner. The token is therefore held here as a
+    salted digest (`token_hash` + `token_salt`), and **its lifetime is the row's**,
+    because the row is deleted when the token is spent — spending the token *is* the
+    cancellation.
+
+    **There is deliberately no separate expiry column for it.** A second expiry would be a
+    second source of truth about when the promise ends, and it could disagree with
+    `scheduled_for`: a token expired while the grace period was still live would break
+    the promise A-16 makes, and a token alive after the row was destroyed would be a
+    token with nothing to cancel. **One row, one lifetime, no way for the two to drift.**
+
+    **Why a long-lived token is defensible here, when it would not be elsewhere.** A
+    password-reset token lives thirty minutes because spending it grants *full account
+    access*. This token lives the whole grace period because spending it **deletes the
+    pending destruction** — it grants no access, reads nothing, exposes no data, and
+    leaves the account exactly as it was. **A credential that can only prevent destruction
+    is a categorically weaker bearer than one that grants access**, and its worst outcome
+    is that the account *survives*. That bounded upside is what makes the window
+    acceptable; the same window on a reset token would not be.
+
+    **The address is deliberately not captured here.** A second mail — "your account has
+    been destroyed" — cannot exist without it, because when `destroy_account` runs the
+    account row is gone and there is nothing left to write to. Capturing the address onto
+    a row that outlives the account is a PII question (AD-13) and a retention one
+    (AD-15), and it is not settled. **This row does not hold it.**
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_IDENTITY
+
+    #: The account being deleted, by value.
+    user_id = models.UUIDField()
+    #: When the request was made. The grace period runs from here.
+    requested_at = models.DateTimeField(default=timezone.now)
+    #: When the account is destroyed, if the request is not cancelled first.
+    #:
+    #: **Computed once, at request time.** A deadline that moved whenever the constant
+    #: changed would mean an outstanding request's grace period silently grew or shrank.
+    scheduled_for = models.DateTimeField()
+    #: sha256(salt + token), hex. The token itself is never stored (AD-18).
+    #:
+    #: **Nullable**, because the migration is forward-only: a row that existed before
+    #: this column did has no token, and the mail that would carry one was never sent for
+    #: it. A row with no token simply has no cancel link outstanding.
+    token_hash = models.CharField(max_length=64, null=True, blank=True)
+    #: The per-row salt, hex. It makes the digest unattackable with precomputed digests
+    #: of the token space.
+    token_salt = models.CharField(max_length=32, null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            # The worker asks "which requests are due?" on every tick, and the API asks
+            # "does this account have an outstanding request?" — both look up by user.
+            models.Index(fields=["user_id"], name="deletion_request_user_idx"),
+            models.Index(fields=["scheduled_for"], name="deletion_request_due_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # **No address here** (AD-13).
+        return f"deletion request for {self.user_id}"
 
 
 class SubscriptionStatus(models.TextChoices):

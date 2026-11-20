@@ -18,6 +18,7 @@ from apps.identity.webhooks_api import router as billing_webhook_router
 from apps.personalization.api import router as personal_router
 from apps.personalization.collections_api import router as collections_router
 from apps.personalization.detail_api import router as detail_router
+from apps.personalization.ranking_transparency_api import router as ranking_transparency_router
 from apps.personalization.source_mutes_api import router as source_mutes_router
 from apps.personalization.taste_mutes_api import router as taste_mutes_router
 from config.errors import install_error_handlers
@@ -89,6 +90,11 @@ api.add_router("/settings", source_mutes_router)
 # Taste` (`less-like-this-mute-prompt-desktop.html`), so the category mute lives here and
 # nowhere else.
 api.add_router("/settings", taste_mutes_router)
+# FR-22: the published ranking formula, behind `Settings → Privacy`. A read of module
+# constants — no query, no personal data, the same answer for every caller — but it is
+# mounted behind `auth=current_user` like every other settings router, because the surface
+# is an authed settings screen and an anonymous route to it would be a second, quieter one.
+api.add_router("/settings", ranking_transparency_router)
 # FR-24: the Detail Screen. It has no `auth=` of its own, because it serves **two**
 # audiences — a signed-in caller gets their own explanation, an anonymous caller gets the
 # public facts and nothing personal (AD-12). The two handlers apply their own rules.

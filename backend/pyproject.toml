@@ -18,6 +18,19 @@ dependencies = [
     "cryptography==46.0.3",
     "stripe==13.1.0",
     "pgvector==0.4.1",
+    # The S3 client for ports.blob — MinIO locally, an S3-compatible bucket in production.
+    # It is the reference client for the API both of them speak; the `minio` SDK would be
+    # a client to swap at deploy. Pinned exactly, like everything else here.
+    "boto3==1.42.6",
+    # The image decoder for the avatar command. **It exists to refuse things**: the
+    # content type is sniffed from the bytes rather than trusted from a filename, the
+    # dimensions are read before anything is stored, and `MAX_IMAGE_PIXELS` bounds a
+    # decompression bomb. The stdlib has no replacement — `imghdr` was removed in Python
+    # 3.13 — and a hand-rolled header parser would give sniffing and dimensions but no
+    # re-encode and no bomb guard, which is a worse trade on untrusted input than a
+    # well-known dependency with a patch stream. Pinned exactly, and fenced by the
+    # `image-decoder` contract below so it stays in the one app that validates uploads.
+    "pillow==12.1.0",
 ]
 
 [dependency-groups]
@@ -192,6 +205,7 @@ source_modules = [
     "worker",
     "shared",
     "adapters.billing",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
@@ -220,6 +234,7 @@ source_modules = [
     "config",
     "worker",
     "shared",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",
@@ -245,6 +260,7 @@ source_modules = [
     "shared",
     "formats",
     "adapters.billing",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.email",
     "adapters.geo",
@@ -253,6 +269,67 @@ source_modules = [
 ]
 forbidden_modules = ["httpx", "httpcore", "requests", "urllib3"]
 # Wiring the adapter in (config -> adapters.crawl -> httpx) is the intended path.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "s3-sdk"
+name = "Only adapters.blob imports the S3 SDK"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "apps",
+    "ports",
+    "config",
+    "worker",
+    "shared",
+    "adapters.billing",
+    "adapters.calendar",
+    "adapters.crawl",
+    "adapters.email",
+    "adapters.geo",
+    "adapters.llm",
+    "adapters.logging",
+    "adapters.throttle",
+    "adapters.revalidation",
+]
+forbidden_modules = [
+    "boto3",
+    "botocore",
+    "s3transfer",
+]
+# Wiring the adapter in (config -> adapters.blob -> boto3) is the intended path.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "image-decoder"
+name = "Only apps.identity decodes images"
+type = "forbidden"
+source_modules = [
+    "domain",
+    "ports",
+    "shared",
+    "worker",
+    "apps.catalog",
+    "apps.delivery",
+    "apps.editorial",
+    "apps.ingestion",
+    "apps.personalization",
+]
+forbidden_modules = [
+    "PIL",
+]
+# **Why this fence exists.** Pillow decodes bytes that came from the internet, and it is a
+# C extension with a CVE history. The one place that is justified is the command that
+# validates an upload before storing it — `apps.identity.services.avatar`, which is why
+# `apps.identity` is absent from the sources above.
+#
+# **`domain` is listed first and means it most.** `domain/` is pure stdlib by construction
+# (AD-1); an image decoder there would be a parser of untrusted bytes in the layer that is
+# supposed to be arithmetic.
+#
+# `config` is also absent: it wires settings that name the caps, and a settings module that
+# cannot be imported alongside the app it configures is a contract that fights the wiring
+# rather than the risk.
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
@@ -266,6 +343,7 @@ source_modules = [
     "worker",
     "shared",
     "adapters.billing",
+    "adapters.blob",
     "adapters.calendar",
     "adapters.crawl",
     "adapters.email",

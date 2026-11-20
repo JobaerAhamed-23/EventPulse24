@@ -12,6 +12,7 @@ from config.checks import (
     check_apps_are_routed,
     check_retention_declared,
     check_uuid7_primary_keys,
+    find_blob_storage_errors,
     find_cross_alias_relations,
     find_fake_fetch_fixture_errors,
     find_missing_credential_key_errors,
@@ -302,3 +303,88 @@ def test_the_e007_error_never_repeats_the_key():
 
     assert "LEAKEDVALUE" not in str(error)
     assert "LEAKEDVALUE" not in error.hint
+
+
+# --- E008: the object store ---
+
+
+def test_the_in_memory_adapter_needs_no_configuration():
+    """**The suite runs on it and dials no store.** Demanding credentials to run tests
+    would be demanding credentials for a store nobody opens."""
+    assert find_blob_storage_errors("adapters.blob.memory.InMemoryBlobAdapter", {}) == []
+
+
+def test_the_s3_adapter_without_configuration_is_reported_as_e008():
+    [error] = find_blob_storage_errors("adapters.blob.s3.S3BlobAdapter", {})
+
+    assert error.id == "eventpulse.E008"
+
+
+def test_a_fully_configured_store_reports_nothing():
+    assert (
+        find_blob_storage_errors(
+            "adapters.blob.s3.S3BlobAdapter",
+            {
+                "endpoint": "http://store:9000",
+                "public_endpoint": "http://127.0.0.1:9000",
+                "bucket": "b",
+                "access_key": "a",
+                "secret_key": "s",
+            },
+        )
+        == []
+    )
+
+
+def test_e008_names_every_missing_setting_and_only_those():
+    """An operator fixes what the error names, so it must name all of it and nothing else."""
+    [error] = find_blob_storage_errors(
+        "adapters.blob.s3.S3BlobAdapter",
+        {
+            "endpoint": "http://store:9000",
+            "public_endpoint": "",
+            "bucket": "b",
+            "access_key": "",
+            "secret_key": "s",
+        },
+    )
+
+    assert "public_endpoint" in error.msg
+    assert "access_key" in error.msg
+    assert "endpoint," not in error.msg.replace("public_endpoint,", "")
+    assert "bucket" not in error.msg
+    assert "secret_key" not in error.msg
+
+
+def test_the_e008_hint_distinguishes_the_two_endpoints():
+    """Getting them the wrong way round yields a URL every backend test accepts and no
+    browser can fetch, so the hint has to say which is which."""
+    [error] = find_blob_storage_errors("adapters.blob.s3.S3BlobAdapter", {})
+
+    assert "this process dials" in error.hint
+    assert "the browser dials" in error.hint
+
+
+def test_the_e008_hint_offers_the_way_out():
+    [error] = find_blob_storage_errors("adapters.blob.s3.S3BlobAdapter", {})
+
+    assert "BLOB_ADAPTER=memory" in error.hint
+
+
+def test_the_e008_error_never_repeats_a_secret():
+    """A partially configured store still holds a real key, and the error is operator-visible."""
+    [error] = find_blob_storage_errors(
+        "adapters.blob.s3.S3BlobAdapter",
+        {
+            "endpoint": "http://store:9000",
+            "public_endpoint": "",
+            "bucket": "b",
+            "access_key": "AKIALEAKEDVALUE",
+            "secret_key": "SECRETLEAKEDVALUE",
+        },
+    )
+
+    assert "AKIALEAKEDVALUE" not in str(error)
+    assert "SECRETLEAKEDVALUE" not in str(error)
+    assert "AKIALEAKEDVALUE" not in error.hint
+    assert "SECRETLEAKEDVALUE" not in error.hint

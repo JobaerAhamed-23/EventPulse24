@@ -120,7 +120,11 @@ function field(): HTMLInputElement {
 function renderShell(storedName: string) {
   return render(
     <>
-      <Sidenav name={storedName === "" ? FALLBACK : storedName} email={EMAIL} />
+      <Sidenav
+        name={storedName === "" ? FALLBACK : storedName}
+        email={EMAIL}
+        avatarUrl=""
+      />
       <ProfileName initialName={storedName} email={EMAIL} />
     </>,
   );

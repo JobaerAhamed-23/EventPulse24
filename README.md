@@ -12,7 +12,7 @@ Prerequisites: Docker (Compose v2), `make`, `uv`, Node.js 24 LTS and `pnpm`. Fol
 ```bash
 make env        # create .env from .env.example
 make doctor     # check prerequisites and ports
-make up         # start Postgres 18 + pgvector, Redis, Mailpit
+make up         # start Postgres 18 + pgvector, Redis, Mailpit, the object store
 make db-check   # verify the database is ready
 make migrate    # create the tables in both schemas (catalog, personal)
 make web-install   # install the frontend dependencies
@@ -25,7 +25,9 @@ Changed an API endpoint? Run `make client`: it exports the OpenAPI schema and re
 
 Already set up before? Run `make db-init && make migrate` to bring an existing database up to date (keeps data).
 
-Run `make` to list all commands. The Mailpit inbox is at <http://127.0.0.1:8025>; `make send-test-email` puts a message there. With `ADAPTER_MODE=fake` (the default) the AI, embeddings, billing and calendar run on local stand-ins, so no API keys are needed.
+Run `make` to list all commands. The Mailpit inbox is at <http://127.0.0.1:8025>; `make send-test-email` puts a message there. The object store's console is at <http://127.0.0.1:9001>, and `make buckets` creates its bucket (idempotent, and `make up` already runs it).
+
+**Upgrading an existing checkout:** `.env` is never overwritten, so a checkout from before object storage needs the `BLOB_*` block from `.env.example` copied into it. Without it `manage.py check` refuses to start with `eventpulse.E008` and tells you which settings are missing — that is deliberate: a stack that boots healthy and fails the first time somebody uploads a picture is worse. To run with no object store at all, set `BLOB_ADAPTER=memory`; nothing is then kept across a restart. **The test suite needs none of this** — it runs on the in-memory adapter and passes with the store stopped. With `ADAPTER_MODE=fake` (the default) the AI, embeddings, billing and calendar run on local stand-ins, so no API keys are needed.
 
 Before pushing, run `make coverage-backend && make lint-backend && make test-web && make lint-web`. **CI (`.github/workflows/ci.yml`) runs these same targets** on every push and pull request, plus the contract check (`make client` must leave `frontend/lib/api/` unchanged) and a frontend production build. `lint-backend` covers Ruff, the format check and the architecture's import contracts (`make lint-imports` runs only the contracts).
 

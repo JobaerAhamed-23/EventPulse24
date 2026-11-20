@@ -378,12 +378,16 @@ class TestTheImportContractsHold:
 
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_there_are_nineteen_contracts(self):
+    def test_there_are_twenty_one_contracts(self):
         """**The number is the assertion.** A contract removed from the configuration
         would leave the suite green — the walls that are checked are the walls that
         exist. So the count is itself a contract.
+
+        The twenty-first is `image-decoder`: only `apps.identity` may import Pillow,
+        because decoding bytes that came from the internet is justified in the command
+        that validates an upload and nowhere else.
         """
-        assert len(IMPORTLINTER_CONFIG["contracts"]) == 19
+        assert len(IMPORTLINTER_CONFIG["contracts"]) == 21
 
     def test_the_public_surface_cannot_reach_another_apps_models(self):
         """**`models-ingestion`, the wall the catalog's public reads stand behind.**

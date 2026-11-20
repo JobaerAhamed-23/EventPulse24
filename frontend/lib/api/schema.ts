@@ -34,6 +34,10 @@ export interface paths {
         /**
          * The signed-in user
          * @description The signed-in user's id, email, name and onboarding status. An anonymous request is refused with 401. Nothing internal is returned: there is no password hash, no permission list and no catch-all field. The name is empty when no name is set; the frontend renders its own fallback in that case. The onboarding status says only whether the onboarding is finished and which step the user is on; the full state is at `/api/personal/onboarding`.
+         *
+         *     `pending_email` is the address an outstanding email change is *to*, or empty when there is none, and `pending_email_expires_at` is when that link stops working. It is the caller's own pending change, and only the caller can read it.
+         *
+         *     `deletion_scheduled_for` is when the account will be destroyed, and `deletion_requested_at` is when that was asked for — both empty when no deletion is pending. They are moments rather than a flag, because a person deciding whether to cancel needs to know *when* the account dies, not merely that it might. The date was computed once, when the request was made, and asking again does not move it.
          */
         get: operations["apps_identity_api_me"];
         put?: never;
@@ -100,6 +104,150 @@ export interface paths {
          */
         put: operations["apps_identity_api_put_profile"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the signed-in user's profile picture
+         * @description Uploads a profile picture as `multipart/form-data` with one file field, `file`. The picture is validated from its bytes — the filename and the declared content type are not trusted — re-encoded to strip metadata, and stored privately. The answer is the caller's whole profile, so a client can update what it knows without a second `me` call.
+         *
+         *     A file that is not a readable PNG, JPEG, WebP or GIF is refused with 422 and nothing is stored; an existing picture is left exactly as it was. A file whose declared length is over the cap is refused with 413 before the body is parsed.
+         */
+        post: operations["apps_identity_api_post_profile_avatar"];
+        /**
+         * Remove the signed-in user's profile picture
+         * @description Removes the stored picture and the object behind it. Removing a picture that is not set is a success: the account ends in the state the caller asked for.
+         *
+         *     **A `DELETE`, not a `PUT` of an empty string.** The product's settings writes are `PUT` with patch semantics, but removing a stored object is a deletion and reads as one.
+         */
+        delete: operations["apps_identity_api_delete_profile_avatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/avatar/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch the signed-in user's profile picture
+         * @description Redirects to a freshly signed, short-lived URL for the caller's own picture.
+         *
+         *     **Why a redirect rather than a signed URL on the profile.** The bucket is private, and a presigned URL cannot be made stable without a data race in the signing path — so it would change on every render and defeat the browser cache. This URL is stable for as long as the picture is; the signature is minted here, per request.
+         *
+         *     The `version` segment derives from the stored object, so replacing a picture changes this URL and a cache invalidates itself. A `version` that is not the caller's current one is refused with 404 rather than served.
+         */
+        get: operations["apps_identity_api_get_profile_avatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What deleting the account would do
+         * @description The two sentences the confirmation modal shows: what the deletion removes, and what it leaves behind as anonymised aggregates.
+         *
+         *     **This is a preview, and it changes nothing.** It says what the engine does, and it carries no state about the caller's account — the pending-deletion moments ride `me`, where they already are. The two strings are constants of the product, so there is nothing here to refresh and nothing to cache.
+         *
+         *     **They are the same two strings the confirmation mail renders.** One source, two surfaces: a modal that described the destruction in different words from the mail would be telling the same person two different stories about the same thing.
+         */
+        get: operations["apps_identity_api_read_account_deletion_copy_endpoint"];
+        put?: never;
+        /**
+         * Ask to delete the account
+         * @description Records a request to delete the signed-in account, and answers with the date the deletion will take effect.
+         *
+         *     **Nothing is destroyed yet.** The account keeps working, in full, for the grace period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request off during that time. The stored profile picture is removed when the account is destroyed, not when the request is made, so cancelling inside the grace period leaves the picture where it was.
+         *
+         *     **Asking twice is not an error.** The first request set the date; a later one returns the same date rather than moving it, so the promise the product made cannot be extended by asking again.
+         *
+         *     `what_is_deleted` and `what_survives` are the two sentences that say what the deletion does and what it leaves behind, in the product's own words. **They are the same two strings the confirmation mail renders**, so the modal and the mail cannot tell the person two different stories about the same destruction.
+         */
+        post: operations["apps_identity_api_request_account_deletion_endpoint"];
+        /**
+         * Call off a pending account deletion
+         * @description Calls off any outstanding request to delete the signed-in account. The account keeps working, and everything it holds is left exactly where it was.
+         *
+         *     Cancelling when nothing is pending is **not** an error: the caller wanted no pending deletion and has none either way. The answer is the same in both cases.
+         */
+        delete: operations["apps_identity_api_cancel_account_deletion_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask to change the account's email address
+         * @description Asks to move the login to a new address. A confirmation link is sent to that address, and a warning that the change was asked for is sent to the current one. **Nothing changes until the link is opened.**
+         *
+         *     The answer is the same whether the address is free or already belongs to another account, so this endpoint cannot be used to find out who has an account. Asking for the address you already have is refused with 422, because that is a mistake about your own account rather than a probe of someone else's.
+         */
+        post: operations["apps_identity_api_request_email_change_endpoint"];
+        /**
+         * Call off a pending email change
+         * @description Revokes any outstanding email change for the signed-in account, so the confirmation link already sent can no longer move the login.
+         *
+         *     Cancelling when nothing is pending is **not** an error: the caller wanted no pending change and has none either way. The answer is the same in both cases.
+         */
+        delete: operations["apps_identity_api_cancel_email_change_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/profile/email/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a new email address
+         * @description Consumes a confirmation token and moves the login to the address it proves. The token is single-use and short-lived.
+         *
+         *     **The caller does not need a session**: the link is opened from a mailbox, possibly in a browser that never signed in, and requiring a session would make the link work only where it was requested. It is still CSRF-checked — fetch `GET /api/auth/csrf` first — exactly as the password-reset confirmation is.
+         *
+         *     A token that was already used, revoked or expired is refused, and so is one whose address another account claimed in the meantime. The refusal does not say which of those it was.
+         */
+        post: operations["apps_identity_api_confirm_email_change_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1419,6 +1567,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The published Relevance Pulse formula, its scale and its amendment
+         * @description FR-22's published formula, projected from the constants the product computes with.
+         */
+        get: operations["apps_personalization_ranking_transparency_api_read_ranking_transparency"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/sources": {
         parameters: {
             query?: never;
@@ -1609,6 +1777,99 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AccountDeletionCancelOut
+         * @description The answer to "actually, don't": the pending request is gone.
+         *
+         *     **Cancelling when nothing is pending is not an error.** The caller wanted no pending
+         *     deletion and has none either way, so the answer is the same in both cases — the same
+         *     reasoning as `EmailChangeCancelOut`, and for the same reason: a client that could
+         *     tell the two apart would be reading state it can already get from `me`.
+         */
+        AccountDeletionCancelOut: {
+            /**
+             * Status
+             * @default cancelled
+             */
+            status: string;
+        };
+        /**
+         * AccountDeletionCopyOut
+         * @description **What deleting this account would do — read before anything is asked.**
+         *
+         *     **This is the preview.** The confirmation modal has to say what the deletion
+         *     removes and what it leaves behind, and it has to say it *before* the person has
+         *     typed anything. So the copy is read, not written into the frontend.
+         *
+         *     ## One set of words, for two surfaces
+         *
+         *     `what_is_deleted` and `what_survives` are the two sentences that say what the
+         *     deletion does and what it leaves behind. **They are published here rather than
+         *     written into the frontend**, because the mail already renders them — from the same
+         *     two constants in `services.deletion` — and a second copy of the same sentence is a
+         *     second place for the two surfaces to disagree.
+         *
+         *     **The A-16 mockup's wording for these is not used, and that is not a
+         *     preference.** The mockup's second paragraph ends *"We can't reverse deletion."*,
+         *     which contradicts the thirty-day grace period the paragraph after it promises.
+         *     **A modal that says both in consecutive paragraphs is a modal that lies**, and the
+         *     backend's own wording — which the mail already ships — is the true one.
+         *
+         *     ## It carries no state, on purpose
+         *
+         *     **This read says what the engine does, and nothing about this account.** It is a
+         *     constant of the product dressed as a read, and it is on this path because this is
+         *     the only screen that asks the question. **The account's own pending state does not
+         *     ride here** — `me` carries that, and it already does.
+         *
+         *     **So there is nothing to cache and nothing to refresh.** The two strings never
+         *     change, which is why the modal can read them once and open with its text already
+         *     on screen.
+         */
+        AccountDeletionCopyOut: {
+            /** What Is Deleted */
+            what_is_deleted: string;
+            /** What Survives */
+            what_survives: string;
+        };
+        /**
+         * AccountDeletionRequestOut
+         * @description The answer to "please delete my account": the request was recorded, and when it
+         *     will take effect.
+         *
+         *     **`scheduled_for` is the promise.** The thirty-day grace period is something the
+         *     product told the person about, so the answer says exactly when the account will be
+         *     destroyed — not "in about a month", not "soon". A person who cancels needs to know
+         *     how long they have, and a person who wants to be sure the request landed needs to
+         *     see the date that was set.
+         *
+         *     **`requested_at` is when the request was recorded, and it can differ from
+         *     `scheduled_for` by exactly the grace period.** The schedule is computed once, when
+         *     the request is first made, so that a later request cannot move the date.
+         *
+         *     **No reason field.** Nothing here records why somebody asked, and nothing here
+         *     records what was deleted — the account is still there, in full, and the audit trail
+         *     is where a record of the eventual deletion belongs.
+         *
+         *     **It carries the copy too**, because a client that has just asked for the deletion
+         *     wants to say what it did — and the copy is in this answer anyway, so asking for it
+         *     again would be a second request for a string the server already sent.
+         */
+        AccountDeletionRequestOut: {
+            /** Requested At */
+            requested_at: string;
+            /** Scheduled For */
+            scheduled_for: string;
+            /**
+             * Status
+             * @default scheduled
+             */
+            status: string;
+            /** What Is Deleted */
+            what_is_deleted: string;
+            /** What Survives */
+            what_survives: string;
+        };
         /**
          * BillingAccountOut
          * @description The account screen's view of a plan (FR-48).
@@ -2526,8 +2787,36 @@ export interface components {
          *     It is read through `personalization`'s **published interface** — the service, never
          *     the model — because `identity` may not reach into another app's tables (AD-2). The
          *     import contract `models-personalization` proves it.
+         *
+         *     The **pending deletion** is here for the same reason `pending_email` is: the
+         *     frontend has to be able to *say* that an account is scheduled for destruction, and
+         *     it cannot say it from a boolean. A person who asked to delete their account and
+         *     then changed their mind needs to reach the way back — and a way back that does not
+         *     say when the account dies is not a way back, it is a countdown they cannot read.
+         *
+         *     **The two moments ride every page's payload, and that is the cost.** `me` is read
+         *     on every render, so two small strings are carried by every user forever, including
+         *     the ones who will never delete anything. The alternative is a second round trip on
+         *     one screen — and it cannot be the shell's job either, because the shell is not
+         *     where the danger zone lives. **The trade is two strings on every payload, and it
+         *     buys the ability to name the date.**
          */
         CurrentUserOut: {
+            /**
+             * Avatar Url
+             * @default
+             */
+            avatar_url: string;
+            /**
+             * Deletion Requested At
+             * @default
+             */
+            deletion_requested_at: string;
+            /**
+             * Deletion Scheduled For
+             * @default
+             */
+            deletion_scheduled_for: string;
             /** Email */
             email: string;
             /**
@@ -2538,6 +2827,16 @@ export interface components {
             /** Name */
             name: string;
             onboarding: components["schemas"]["OnboardingStatusOut"];
+            /**
+             * Pending Email
+             * @default
+             */
+            pending_email: string;
+            /**
+             * Pending Email Expires At
+             * @default
+             */
+            pending_email_expires_at: string;
         };
         /**
          * DataExportOut
@@ -3004,6 +3303,70 @@ export interface components {
             quiet_hours: components["schemas"]["QuietHoursOut"] | null;
             /** Weekday */
             weekday: number;
+        };
+        /**
+         * EmailChangeCancelOut
+         * @description The cancel answer. The same whether something was pending or nothing was.
+         *
+         *     Cancelling with nothing outstanding is not an error — the caller wanted no pending
+         *     change and has none — so the response does not distinguish the two. A client that
+         *     could tell them apart would be reading state it can already get from `me`.
+         */
+        EmailChangeCancelOut: {
+            /**
+             * Status
+             * @default cancelled
+             */
+            status: string;
+        };
+        /**
+         * EmailChangeConfirmIn
+         * @description The email-change confirmation: the token from the link sent to the new address.
+         */
+        EmailChangeConfirmIn: {
+            /** Token */
+            token: string;
+        };
+        /**
+         * EmailChangeConfirmOut
+         * @description The confirmation answer: the login has moved.
+         *
+         *     It carries the new address, because the caller may have no session — the link can be
+         *     opened in a browser that never signed in — and a client that cannot read `me` still
+         *     needs to be able to say what just happened.
+         */
+        EmailChangeConfirmOut: {
+            /** Email */
+            email: string;
+            /**
+             * Status
+             * @default email_changed
+             */
+            status: string;
+        };
+        /**
+         * EmailChangeRequestIn
+         * @description The email-change request: the address to move the login to.
+         */
+        EmailChangeRequestIn: {
+            /** New Email */
+            new_email: string;
+        };
+        /**
+         * EmailChangeRequestOut
+         * @description The email-change answer. **The same for a free address and a taken one.**
+         *
+         *     It says the request was received, and nothing about whether anybody already holds the
+         *     address. Any difference here — a status, a field, a message — would turn this endpoint
+         *     into an oracle for *"does an account exist at this address?"*, which is the thing the
+         *     whole flow is shaped to avoid.
+         */
+        EmailChangeRequestOut: {
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
         };
         /**
          * ErrorOut
@@ -3834,6 +4197,11 @@ export interface components {
          *     thing that changed, but the answer is the caller's whole profile rather than a delta.
          */
         ProfileOut: {
+            /**
+             * Avatar Url
+             * @default
+             */
+            avatar_url: string;
             /** Email */
             email: string;
             /**
@@ -4014,6 +4382,85 @@ export interface components {
             start: string;
             /** Weekday */
             weekday: number;
+        };
+        /**
+         * RankingAmendmentOut
+         * @description Which amendment published the current weights, and when it last moved.
+         *
+         *     FR-22 requires the surface to show "the current weights and the last-amendment date".
+         *     `id` is the **PRD** amendment (what FR-22 promises a reader can look up), `record` is
+         *     the ADR that authorises the constants, and `date` is when the published amendment last
+         *     moved — not when the weights last changed, which may be earlier.
+         */
+        RankingAmendmentOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Id */
+            id: string;
+            /** Record */
+            record: string;
+        };
+        /**
+         * RankingBucketOut
+         * @description One step of the 1-5 dot Confidence Pulse scale (FR-22).
+         *
+         *     `min_score` is the **inclusive** lower bound for this many dots, as a decimal string
+         *     for the same reason `RankingTermOut.weight` is.
+         */
+        RankingBucketOut: {
+            /** Dots */
+            dots: number;
+            /** Min Score */
+            min_score: string;
+        };
+        /**
+         * RankingTermOut
+         * @description One weighted term of the published Relevance Pulse formula (FR-22).
+         *
+         *     **`weight` is a string, not a number.** FR-22's bucket boundaries are exact and the
+         *     whole of `domain/ranking.py` turns on `Decimal("0.85")` not being the float `0.85`. A
+         *     JSON number would be parsed into a double by the browser, on the one page that exists
+         *     to let a reader check the arithmetic — so the decimal crosses the wire as the text it
+         *     is, and the client renders it without doing sums on it.
+         *
+         *     **`label` is the server's, not the client's.** The same rule the interest chips and
+         *     the category keys already follow: the client never owns a list of formula terms, so it
+         *     cannot render a term the server does not recognise, and the wording of the explanation
+         *     cannot drift from the thing being explained.
+         */
+        RankingTermOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Weight */
+            weight: string;
+        };
+        /**
+         * RankingTransparencyOut
+         * @description The published formula, its scale, and its amendment — FR-22 made visible.
+         *
+         *     **Every value here is projected from `shared.constants`.** The surface holds no copy
+         *     of a weight or a boundary; a second copy on the page whose purpose is that there is
+         *     one source of truth would be the exact drift FR-22 exists to prevent.
+         *
+         *     `boundary_rule` is `"lower"` and says which way an exact boundary falls: a score of
+         *     exactly 0.85 shows **4** dots, not 5. It is published because a reader checking the
+         *     arithmetic at a boundary gets the wrong answer without it.
+         */
+        RankingTransparencyOut: {
+            amendment: components["schemas"]["RankingAmendmentOut"];
+            /** Boundary Rule */
+            boundary_rule: string;
+            /** Buckets */
+            buckets: components["schemas"]["RankingBucketOut"][];
+            /** Terms */
+            terms: components["schemas"]["RankingTermOut"][];
+            /** Total */
+            total: string;
         };
         /**
          * ReminderPlanIn
@@ -4919,6 +5366,400 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_post_profile_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_delete_profile_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_get_profile_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Found */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_read_account_deletion_copy_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionCopyOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_request_account_deletion_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_cancel_account_deletion_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionCancelOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_request_email_change_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_cancel_email_change_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeCancelOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_confirm_email_change_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeConfirmOut"];
                 };
             };
             /** @description Forbidden */
@@ -7129,6 +7970,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_personalization_ranking_transparency_api_read_ranking_transparency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankingTransparencyOut"];
                 };
             };
         };

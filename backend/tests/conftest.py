@@ -167,3 +167,16 @@ def _restrict_test_db_access() -> None:
         cursor.execute(
             f"GRANT CONNECT, TEMPORARY ON DATABASE {database} TO {', '.join(PROJECT_ROLES)}"
         )
+
+
+@pytest.fixture
+def blob_key(request) -> str:
+    """A key unique to this test, so a run against a real store leaves no collisions.
+
+    **Opaque, as the port requires** (AD-13): it carries the test's node id hashed, not
+    its name, and nothing about any user.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(request.node.nodeid.encode()).hexdigest()[:32]
+    return f"tests/{digest}"

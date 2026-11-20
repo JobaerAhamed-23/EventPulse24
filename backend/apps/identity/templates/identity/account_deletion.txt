@@ -1,0 +1,26 @@
+Hi,
+
+Someone asked to delete your EventPulse24 account. We have not deleted it — not yet, and
+not if you would rather it stayed.
+
+Your account will be destroyed on {{ scheduled_for }}. You have {{ grace_days }} from now
+to change your mind, and until then your account keeps working exactly as it does now.
+
+If you want to keep it, open this link:
+
+{{ cancel_link }}
+
+The link works until your account is destroyed, and it works only once. After that the
+deletion cannot be cancelled, and your account will be destroyed on the date above.
+
+If you did not ask for this, open the link anyway — it stops the deletion.
+
+What we delete when the account is destroyed:
+
+{{ what_is_deleted }}
+
+What we keep:
+
+{{ what_survives }}
+
+If the link doesn't work, copy it into your browser.

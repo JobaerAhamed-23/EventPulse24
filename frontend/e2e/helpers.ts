@@ -68,6 +68,32 @@ export async function resetSignInThrottle(emails: string[]): Promise<void> {
 }
 
 /**
+ * Give the account its email-change allowance back, through the product's own reset.
+ *
+ * **The email-change window is much tighter than the sign-in's** — five an hour per IP
+ * and three an hour per account — so a spec that asks for an address change more than
+ * three times inside the hour is refused with a 429 by the second run, and the test
+ * fails for a reason that has nothing to do with the code under test. **That is not
+ * hypothetical: it is what happened the first time this spec ran.** The sign-in reset
+ * does not help, because it clears the *sign-in* window and not this one.
+ *
+ * **The addresses given are the accounts' own**, because the endpoint keys the account
+ * on its own address rather than on the address being requested — so a reset that
+ * passed the *target* address would clear a key the endpoint never writes.
+ *
+ * **It is not a backdoor around the throttle**; it is the throttle's own reset, the
+ * same shape as the sign-in's, and it clears the counters rather than the rules. A
+ * reader who asks six times in an hour is still refused the sixth.
+ */
+export async function resetEmailChangeThrottle(emails: string[]): Promise<void> {
+  const script = [
+    "from apps.identity.services.throttle import reset_email_change_throttle",
+    "reset_email_change_throttle(ip_address='127.0.0.1', emails=" + JSON.stringify(emails) + ")",
+  ].join("\n");
+  await run("uv", ["run", "python", "manage.py", "shell", "-c", script], { cwd: BACKEND_DIR });
+}
+
+/**
  * The signed-in user's name, set to whatever the caller asks for.
  *
  * **The name is account state, so it outlives a test.** A test that sets a name leaves
@@ -383,4 +409,121 @@ export async function clearSavedEvents(page: Page): Promise<void> {
     });
     expect(removed.ok()).toBeTruthy();
   }
+}
+
+/**
+ * The desktop rail, by its landmark — the page has two navigation landmarks.
+ *
+ * **The same locator `settings-navigation.spec.ts` uses**, moved here because two specs
+ * need it now. **A helper that one of them had to copy would be a second copy of the
+ * thing this repo keeps arguing about.**
+ */
+export function rail(page: Page) {
+  return page.getByRole("complementary", { name: "Primary" });
+}
+
+/**
+ * The settings sub-nav, by its own label.
+ *
+ * **The same locator `settings-navigation.spec.ts` uses.** It is the one door into the
+ * settings surface, and the door a person uses.
+ */
+export function subnav(page: Page) {
+  return page.getByRole("navigation", { name: "Settings sections" });
+}
+
+/**
+ * Go to a settings section **by clicking the sub-nav**, from wherever the browser is.
+ *
+ * **This is the acceptance criterion, and the difference matters.** "Reach
+ * `/settings/profile` by clicking" is a claim about the sub-nav's Profile row being a
+ * link that works. A test that did `page.goto("/settings/profile")` would pass whether
+ * the row was a link, a dead `<span>`, or absent — it would be testing the router, not
+ * the navigation.
+ *
+ * **It lands on the first section first**, because the sub-nav only exists on a
+ * settings screen, and the rail's Settings row is what a person clicks to get there.
+ * So the walk is: the rail's Settings row, then the sub-nav's section row.
+ */
+export async function goToSettingsSection(page: Page, label: string, path: string): Promise<void> {
+  await page.goto("/");
+  await rail(page).getByRole("link", { name: "Settings" }).click();
+
+  const nav = subnav(page);
+  await expect(nav, "the landing screen carries no settings sub-nav").toBeVisible();
+
+  const row = nav.getByRole("link", { name: label, exact: true });
+  await expect(row, `the sub-nav does not offer ${label}`).toBeVisible();
+  await row.click();
+
+  await expect(page, `clicking ${label} did not land on ${path}`).toHaveURL(new RegExp(`${path}$`));
+}
+
+/**
+ * The account row in the rail — the button that opens the account sheet.
+ *
+ * **Its accessible name carries the display name**, so it is found by that name and not
+ * by a role alone.
+ */
+export function accountRow(page: Page) {
+  return page.getByRole("button", { name: /^Account: / });
+}
+
+/**
+ * The face in the rail.
+ *
+ * **The picture is out of the accessibility tree by design** — it is `alt=""` inside an
+ * `aria-hidden` wrapper, because the name is beside it in text. **So a screen-reader
+ * locator cannot reach it**, and a test that needs to know whether the rail is showing a
+ * picture or the initials has to look at the DOM.
+ *
+ * **The hook is on the disc**, so this locator answers "what is the disc showing"
+ * without knowing which of the disc's two forms it took.
+ */
+export function railDisc(page: Page) {
+  return rail(page).locator("[data-avatar-disc]").first();
+}
+
+/**
+ * The account sheet's face — the one in the dialog the account row opens.
+ *
+ * **It is a different disc from the rail's**, in a different part of the document, so a
+ * test that wants to check the sheet has to ask for it separately. **Both are the same
+ * component**, and this file is where that claim is checked.
+ */
+export function sheetDisc(page: Page) {
+  return page.locator("dialog[aria-label='Account'] [data-avatar-disc]").first();
+}
+
+/**
+ * The signed-in user's picture, removed.
+ *
+ * **The picture is account state, so it outlives a test** — exactly as the name does,
+ * and for the same reason `setName` records: a test that uploads a picture leaves it
+ * behind, and the next test — and the next *run* — inherits it.
+ *
+ * **This was found by a mutation probe, not by reading the code.** The probe removed
+ * the island's publish call and the upload test failed at its *first* assertion — the
+ * one that says the rail has no picture *before* the upload — because the previous
+ * test's picture was still on the account. **A test that depends on a previous test
+ * having left the account in a particular state is a test that fails for a reason that
+ * has nothing to do with the code under test.**
+ *
+ * **The removal goes through the product's own endpoint**, not through the database: a
+ * helper that wrote the row directly would be testing the row, not the product. And it
+ * is the same `DELETE` the "Remove picture" button presses.
+ *
+ * **The CSRF token is read from the browser's own cookie**, for the reason `setName`
+ * records: Django rotates it on sign-in, and `page.request` is Playwright's own
+ * client rather than the app's.
+ */
+export async function clearAvatar(page: Page): Promise<void> {
+  const cookies = await page.context().cookies();
+  const token = cookies.find((cookie) => cookie.name === "csrftoken")?.value;
+  expect(token, "the browser holds no csrftoken cookie").toBeTruthy();
+
+  const removed = await page.request.delete("/api/auth/profile/avatar", {
+    headers: { "X-CSRFToken": token as string },
+  });
+  expect(removed.ok(), "the picture could not be removed").toBeTruthy();
 }

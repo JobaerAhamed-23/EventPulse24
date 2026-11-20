@@ -11,6 +11,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
 from ports.billing import BillingPort
+from ports.blob import BlobPort
 from ports.calendar import CalendarPort
 from ports.email import EmailPort
 from ports.embedding import EmbeddingPort
@@ -26,6 +27,7 @@ PORT_KEYS: dict[type, str] = {
     EmbeddingPort: "embedding",
     EmailPort: "email",
     BillingPort: "billing",
+    BlobPort: "blob",
     CalendarPort: "calendar",
     SourceFetchPort: "fetch",
     GeoPort: "geo",
@@ -64,6 +66,10 @@ def get_email_port() -> EmailPort:
 
 def get_billing_port() -> BillingPort:
     return get_adapter(BillingPort)
+
+
+def get_blob_port() -> BlobPort:
+    return get_adapter(BlobPort)
 
 
 def get_calendar_port() -> CalendarPort:

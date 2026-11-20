@@ -35,6 +35,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.expire_data_exports",
                 "worker.tasks.report_held_sends",
@@ -55,6 +58,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.expire_data_exports",
                 "worker.tasks.report_held_sends",
@@ -74,6 +80,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.expire_data_exports",
                 "worker.tasks.report_held_sends",
@@ -94,6 +103,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
             ],
         ),
         (
@@ -107,6 +119,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
             ],
         ),
         # Minute 30 is a multiple of 15 and of 5, so both the refresh and the reconciler run.
@@ -121,6 +136,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.expire_data_exports",
                 "worker.tasks.report_held_sends",
@@ -143,6 +161,9 @@ def _at(monkeypatch, when: datetime) -> None:
                 # FR-52: every beat, like the digest dispatcher and the send sweep. A
                 # person waiting for their own data is not waiting for a modulo boundary.
                 "worker.tasks.schedule_data_exports",
+                # The account-deletion grace period: every beat, because a promise
+                # measured in days is not owed at the next five-minute boundary.
+                "worker.tasks.destroy_due_accounts",
                 "worker.tasks.reconcile_outbox",
                 "worker.tasks.expire_data_exports",
                 "worker.tasks.report_held_sends",

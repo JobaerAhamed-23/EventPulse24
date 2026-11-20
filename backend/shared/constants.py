@@ -3,7 +3,7 @@
 Stdlib only, so `domain` can be allowed to import it (decision for architecture-contracts).
 """
 
-from datetime import time, timedelta
+from datetime import date, time, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from fractions import Fraction
@@ -502,6 +502,17 @@ AUTH_SESSION_LIFETIME = timedelta(days=7)
 # own default is three days, which is too long for a credential that resets a password.
 AUTH_RESET_TOKEN_LIFETIME = timedelta(minutes=30)
 
+# An email-change link is also a bearer credential, and it is deliberately **longer-lived
+# than a reset link**. The two answer different situations: a reset is a person locked out
+# of their account *now*, acting in the minutes after they asked; an email change is a
+# person who has just told us about a mailbox they may not read until this evening. A
+# 30-minute window would expire most honest attempts and teach people to request a second
+# link, which is worse for them and no better for us.
+#
+# It is still a window, not an open door: the link proves one address once, it is revoked
+# by any newer request, and the old address is warned the moment the change is asked for.
+AUTH_EMAIL_CHANGE_TOKEN_LIFETIME = timedelta(hours=24)
+
 # PRD §11.2: "Rate limiting on all public endpoints (per-IP and per-user)". The three
 # public auth operations are limited per IP *and* per account identifier, in the window
 # below. The per-account sign-up limit is the lowest of the three: sign-up is the
@@ -514,6 +525,12 @@ AUTH_THROTTLE_SIGN_UP_IP = 5
 AUTH_THROTTLE_SIGN_UP_ACCOUNT = 3
 AUTH_THROTTLE_RESET_IP = 5
 AUTH_THROTTLE_RESET_ACCOUNT = 3
+# An email-change request sends mail to an address the *requester* typed, so without a
+# limit the endpoint is a mailer pointed at anyone. It is limited like a reset, and the
+# per-account key digests **the account's own** address rather than the requested one —
+# keying on the target would let one account spray many victims at full allowance.
+AUTH_THROTTLE_EMAIL_CHANGE_IP = 5
+AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT = 3
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Calendar connections (FR-50, AD-18)
@@ -982,7 +999,110 @@ RANKING_WEIGHT_SUM = (
 # checks that it lists the weights it claims to authorise — so moving a weight and
 # updating this string in the same commit still fails, because the ADR's own table has to
 # move too, and the ADR is a document a human reads.
+# ── The profile picture (FR-? / account-profile-expansion) ────────────────────────────
+#
+# **These are refusal limits, not storage limits.** They bound what the decoder is asked
+# to do with bytes that came from the internet, which is the most dangerous thing this
+# codebase does.
+
+#: The largest upload accepted, in bytes.
+#:
+#: **Enforced while reading, never after.** The command reads at most `AVATAR_MAX_BYTES + 1`
+#: and refuses if that last byte arrived — so a 2 GB upload costs five mebibytes of memory
+#: and a 422, not two gigabytes and an outage. A cap checked after a read is not a cap.
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
+
+#: The largest image accepted, as total pixels.
+#:
+#: **This is the decompression-bomb guard**, and it is why it is a pixel count rather than
+#: a width and a height: a 1 × 50,000,000 image is as expensive to decode as a square one
+#: and would pass any per-side check. 4096 x 4096 is the budget; a picture rendered at
+#: 96 px has no honest need of more.
+AVATAR_MAX_PIXELS = 4096 * 4096
+
+#: The image formats stored, as Pillow names them.
+#:
+#: **Raster only, and SVG is refused by its absence.** An SVG is a document that can carry
+#: script and fetch external references; it is not the same kind of thing as the four
+#: below, and the word "image" in a filename does not make it one.
+#:
+#: The format is taken from the decoder's own identification of the bytes — never from the
+#: filename and never from the declared content type, both of which the uploader chooses.
+AVATAR_ALLOWED_FORMATS = ("PNG", "JPEG", "WEBP", "GIF")
+
+#: What each stored format is written back out as, after re-encoding.
+#:
+#: **Everything that is not already PNG becomes PNG**, except JPEG, which stays JPEG: a
+#: photograph re-encoded to PNG is several times larger for no gain, and a graphic
+#: re-encoded to JPEG acquires artefacts it did not have. GIF becomes PNG deliberately —
+#: an animated avatar is not a thing this product shows, and taking the first frame is the
+#: honest reading of "a picture of you".
+AVATAR_OUTPUT_FORMAT = {"PNG": "PNG", "JPEG": "JPEG", "WEBP": "PNG", "GIF": "PNG"}
+
+#: The content type stored alongside each output format.
+AVATAR_CONTENT_TYPE = {"PNG": "image/png", "JPEG": "image/jpeg"}
+
+#: The prefix every avatar key carries. The rest of the key is random.
+#:
+#: **The key is opaque (AD-13)**: no user id, no email, no filename. A key derived from an
+#: account would let anyone holding one enumerate the others, and a key carrying a filename
+#: would carry whatever the uploader chose to name their file.
+AVATAR_KEY_PREFIX = "avatars/"
+
+# ── Account deletion (account-profile-expansion) ───────────────────────────────────────
+
+#: How long a person has to change their mind before the account is destroyed.
+#:
+#: **Thirty days, and it is a promise the product makes.** Amendment A-16's third paragraph
+#: says a person can cancel any time during the grace period, so this is not a retention
+#: tuning knob — it is the interval the product told people about. A change to this number
+#: changes what the product has promised.
+#:
+#: **Nothing is destroyed until this expires.** The picture's object in particular: it is
+#: removed when the account is *destroyed*, not when deletion is requested, so a person who
+#: cancels inside the grace period gets their picture back. Removing it at request time
+#: would make the grace period a lie.
+DELETION_GRACE_PERIOD = timedelta(days=30)
+
 RANKING_WEIGHTS_AMENDMENT = "ADR-0025"
+
+# **The PRD amendment that publishes the formula, and when it last moved.**
+#
+# FR-22's testable consequence is that Settings → Privacy → "Ranking algorithm version"
+# shows "the current weights **and the last-amendment date**". Nothing held that date:
+# `RANKING_WEIGHTS_AMENDMENT` above names the ADR, which is the engineering record, while
+# the *published* amendment is the PRD's — and the surface has to show the published one,
+# because the PRD is what FR-22 promises a user can read the formula from.
+#
+# **Why constants rather than reading the documents.** Parsing `prd.md` at request time
+# would make a user-facing read depend on a markdown file's heading structure, and would
+# fail open — a reformatted document would silently show nothing. These are pinned by
+# `tests/shared/test_constants.py`, which asserts the id appears in **both** the ADR and
+# the PRD's FR-22 section. So a future amendment that moves the documents without moving
+# these (or the reverse) fails CI, and the page cannot show a stale amendment.
+#
+# **The date is when the amendment last moved, not when the weights last changed.** A-25
+# was first recorded 2026-11-11 as `A-10` and re-minted 2026-11-19 when that ID was found
+# to belong to the Browse surface. The weights did not move either time. A user asking
+# "when did this last change?" is asking about the published record, which is this date.
+RANKING_WEIGHTS_AMENDMENT_ID = "A-25"
+RANKING_WEIGHTS_AMENDMENT_DATE = date(2026, 11, 19)
+
+# The human label for each term of the published formula — **the server's vocabulary**,
+# the same rule `INTEREST_CHIPS` follows.
+#
+# The client never owns a list of formula terms, so it can never render a term the server
+# does not recognise, and the wording of an explanation cannot drift between the surface
+# and the thing being explained. The keys are the `RANKING_WEIGHT_*` terms as
+# `domain/ranking.py` names them; the labels are what a reader who has not read the PRD
+# can understand without one.
+RANKING_TERM_LABELS = (
+    ("interest_overlap", "What you picked"),
+    ("source_reliability", "How reliable the source is"),
+    ("recency", "How soon it starts"),
+    ("city_match", "How near it is"),
+    ("confidence", "How sure we are of the details"),
+)
 
 # The recency bands, in order: how soon the event starts, relative to `now`.
 #

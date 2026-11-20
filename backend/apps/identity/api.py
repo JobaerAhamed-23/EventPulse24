@@ -64,8 +64,11 @@ from django.conf import settings
 from django.contrib.auth import HASH_SESSION_KEY
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
+from django.http import HttpResponse, HttpResponseRedirect
 from django.utils import timezone
-from ninja import Router, Status
+from ninja import File, Router, Status
+from ninja.errors import HttpError
+from ninja.files import UploadedFile
 
 from apps.identity.api_auth import (
     current_user,
@@ -73,9 +76,18 @@ from apps.identity.api_auth import (
     require_csrf,
     unauthenticated_user,
 )
+from apps.identity.models import PendingEmailChange
 from apps.identity.schemas import (
+    AccountDeletionCancelOut,
+    AccountDeletionCopyOut,
+    AccountDeletionRequestOut,
     CsrfTokenOut,
     CurrentUserOut,
+    EmailChangeCancelOut,
+    EmailChangeConfirmIn,
+    EmailChangeConfirmOut,
+    EmailChangeRequestIn,
+    EmailChangeRequestOut,
     PasswordResetConfirmIn,
     PasswordResetConfirmOut,
     PasswordResetRequestIn,
@@ -89,12 +101,38 @@ from apps.identity.schemas import (
     SignUpOut,
 )
 from apps.identity.services.authenticate import authenticate
+from apps.identity.services.avatar import (
+    clear_user_avatar,
+    set_user_avatar,
+    version_of,
+)
+from apps.identity.services.deletion import (
+    DELETION_REMOVES,
+    DELETION_SURVIVES,
+    cancel_account_deletion,
+    request_account_deletion,
+)
+from apps.identity.services.deletion_read import read_pending_deletion
+from apps.identity.services.email_change import (
+    cancel_email_change,
+    confirm_email_change,
+    request_email_change,
+)
+from apps.identity.services.emails import (
+    email_change_stream,
+    render_confirm_email_change_email,
+    render_email_change_requested_email,
+)
 from apps.identity.services.password_reset import request_password_reset, reset_password
 from apps.identity.services.profile import set_user_name
 from apps.identity.services.session import sign_out
 from apps.identity.services.sign_up import sign_up
 from apps.personalization.schemas import OnboardingStatusOut
 from apps.personalization.services.onboarding import get_onboarding_state
+from ports.blob import BlobPort
+from ports.registry import get_adapter, get_email_port
+from shared.constants import SEND_KEY_SEPARATOR
+from shared.db import PERSONAL
 from shared.errors import ErrorOut
 
 router = Router(tags=["auth"])
@@ -103,6 +141,9 @@ router = Router(tags=["auth"])
 #: the work may not have happened yet: a known address gets an email, and an unknown one
 #: gets nothing. Both answer the same, so the status cannot say which happened.
 RESET_REQUESTED = 202
+
+#: The email-change request is accepted, not finished: the link has yet to be opened.
+EMAIL_CHANGE_REQUESTED = 202
 
 
 def _client_ip(request) -> str | None:
@@ -249,6 +290,17 @@ def signout(request):
     return SignOutOut()
 
 
+def _avatar_url(user) -> str:
+    """The app-owned URL for this account's picture, or `""` when none is set.
+
+    **The reverse is not used.** The path is written out because `api.py` is a surface
+    file and the router's prefix is wired in `config/api.py`; reversing a Ninja operation
+    from inside the handler that defines it is a loop the project does not otherwise make.
+    """
+    version = version_of(user.avatar_key)
+    return f"/api/auth/profile/avatar/{version}" if version else ""
+
+
 @router.get(
     "/me",
     response={200: CurrentUserOut, 401: ErrorOut},
@@ -259,7 +311,16 @@ def signout(request):
         "permission list and no catch-all field. The name is empty when no name is set; "
         "the frontend renders its own fallback in that case. The onboarding status says "
         "only whether the onboarding is finished and which step the user is on; the full "
-        "state is at `/api/personal/onboarding`."
+        "state is at `/api/personal/onboarding`.\n\n"
+        "`pending_email` is the address an outstanding email change is *to*, or empty "
+        "when there is none, and `pending_email_expires_at` is when that link stops "
+        "working. It is the caller's own pending change, and only the caller can read it.\n\n"
+        "`deletion_scheduled_for` is when the account will be destroyed, and "
+        "`deletion_requested_at` is when that was asked for — both empty when no deletion "
+        "is pending. They are moments rather than a flag, because a person deciding "
+        "whether to cancel needs to know *when* the account dies, not merely that it "
+        "might. The date was computed once, when the request was made, and asking again "
+        "does not move it."
     ),
 )
 def me(request):
@@ -277,10 +338,48 @@ def me(request):
     # cross-site write.
     state = get_onboarding_state(user_id=user.pk, now=timezone.now())
 
+    # **The outstanding email change, if there is one.** Read here rather than from a
+    # second endpoint for the reason `name` is here: the shell is rendered on every page
+    # and a second round trip for one row of the caller's own account would be a second
+    # answer to a question this response already has in hand.
+    #
+    # Read-only, like the onboarding read above and for the same reason: `me` is a `GET`,
+    # and a `GET` is never CSRF-checked, so a write behind one would be a cross-site
+    # write. An expired request is simply not reported — it is left for the next command
+    # to revoke.
+    pending = (
+        PendingEmailChange.objects.using(PERSONAL)
+        .filter(
+            user_id=user.pk,
+            used_at__isnull=True,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        .order_by("-created_at")
+        .values_list("new_email", "expires_at")
+        .first()
+    )
+
+    # **The outstanding deletion request, if there is one.** Read through the service
+    # rather than from the model, and the reason is specific rather than general:
+    # **`DeletionRequest` carries the cancel token's digest**, and a read that handed the
+    # API layer the row would hand it the digest of a bearer credential that cancels the
+    # account's destruction. The service returns two dates and nothing else — so the
+    # token cannot reach the wire.
+    #
+    # Read-only, like the two reads above and for the same reason: `me` is a `GET`, and a
+    # `GET` is never CSRF-checked, so a write behind one would be a cross-site write.
+    deletion = read_pending_deletion(user_id=user.pk)
+
     return CurrentUserOut(
         id=user.pk,
         email=user.email,
         name=user.name,
+        avatar_url=_avatar_url(user),
+        pending_email=pending[0] if pending else "",
+        pending_email_expires_at=pending[1].isoformat() if pending else "",
+        deletion_scheduled_for=deletion.scheduled_for.isoformat() if deletion else "",
+        deletion_requested_at=deletion.requested_at.isoformat() if deletion else "",
         onboarding=OnboardingStatusOut(
             completed=state.completed,
             current_step=state.current_step,
@@ -346,7 +445,351 @@ def put_profile(request, body: ProfileIn):
 
     # The answer is the caller's whole profile — the id, the email and the name that was
     # just saved — so the client can update what it knows without a second `me` call.
-    return ProfileOut(id=user.pk, email=user.email, name=saved)
+    return ProfileOut(id=user.pk, email=user.email, name=saved, avatar_url=_avatar_url(user))
+
+
+@router.post(
+    "/profile/avatar",
+    # 200 the updated profile; 401 anonymous; 403 the CSRF refusal; 413 an upload whose
+    # declared length is over the cap; 422 one the command refused after decoding it.
+    # Declaring them is what puts `ErrorOut` in the generated client.
+    response={200: ProfileOut, 401: ErrorOut, 403: ErrorOut, 413: ErrorOut, 422: ErrorOut},
+    summary="Set the signed-in user's profile picture",
+    description=(
+        "Uploads a profile picture as `multipart/form-data` with one file field, `file`. "
+        "The picture is validated from its bytes — the filename and the declared content "
+        "type are not trusted — re-encoded to strip metadata, and stored privately. The "
+        "answer is the caller's whole profile, so a client can update what it knows "
+        "without a second `me` call.\n\n"
+        "A file that is not a readable PNG, JPEG, WebP or GIF is refused with 422 and "
+        "nothing is stored; an existing picture is left exactly as it was. A file whose "
+        "declared length is over the cap is refused with 413 before the body is parsed."
+    ),
+)
+def post_profile_avatar(request, file: UploadedFile = File(...)):  # noqa: B008
+    """Store the caller's profile picture."""
+    # **The CSRF check is first**, as on every write on this router. The caveat
+    # `put_profile` records applies here too and more sharply: Ninja parses the multipart
+    # body before this handler runs, so a bad token on a huge upload is answered after the
+    # body was read. That is what `_refuse_oversized_body` below cannot help with and why
+    # the declared-length check lives in a `before` hook rather than here.
+    require_csrf(request)
+
+    user = current_user(request)
+
+    # The write goes through the named command (AD-5). Everything dangerous — the size cap
+    # enforced while reading, the format sniffed from the bytes, the pixel cap, the EXIF
+    # strip, the old object's removal after commit — lives there, not here.
+    set_user_avatar(user_id=user.pk, upload=file)
+    user.refresh_from_db()
+
+    return ProfileOut(id=user.pk, email=user.email, name=user.name, avatar_url=_avatar_url(user))
+
+
+@router.delete(
+    "/profile/avatar",
+    response={200: ProfileOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Remove the signed-in user's profile picture",
+    description=(
+        "Removes the stored picture and the object behind it. Removing a picture that is "
+        "not set is a success: the account ends in the state the caller asked for.\n\n"
+        "**A `DELETE`, not a `PUT` of an empty string.** The product's settings writes are "
+        "`PUT` with patch semantics, but removing a stored object is a deletion and reads "
+        "as one."
+    ),
+)
+def delete_profile_avatar(request):
+    """Remove the caller's profile picture."""
+    require_csrf(request)
+
+    user = current_user(request)
+    clear_user_avatar(user_id=user.pk)
+    user.refresh_from_db()
+
+    return ProfileOut(id=user.pk, email=user.email, name=user.name, avatar_url=_avatar_url(user))
+
+
+@router.get(
+    "/profile/avatar/{version}",
+    # 302 for a store that mints fetchable URLs; 200 when the bytes are served
+    # inline because it cannot. 401 anonymous; 404 a version that is not the caller's.
+    response={200: None, 302: None, 401: ErrorOut, 404: ErrorOut},
+    summary="Fetch the signed-in user's profile picture",
+    description=(
+        "Redirects to a freshly signed, short-lived URL for the caller's own picture.\n\n"
+        "**Why a redirect rather than a signed URL on the profile.** The bucket is "
+        "private, and a presigned URL cannot be made stable without a data race in the "
+        "signing path — so it would change on every render and defeat the browser cache. "
+        "This URL is stable for as long as the picture is; the signature is minted here, "
+        "per request.\n\n"
+        "The `version` segment derives from the stored object, so replacing a picture "
+        "changes this URL and a cache invalidates itself. A `version` that is not the "
+        "caller's current one is refused with 404 rather than served."
+    ),
+)
+def get_profile_avatar(request, version: str):
+    """Redirect to a freshly signed URL for the caller's own picture.
+
+    **This is the one endpoint in the project whose response is consumed by the browser's
+    image loader rather than by typed client code.** An `<img>` issues it with cookies and
+    no CSRF token, which is correct for a `GET` — no write hides here — and it is still an
+    authenticated read of the caller's own row, which is why it sits on `/api/auth` beside
+    the profile it belongs to.
+    """
+    # No `require_csrf`: a GET is never CSRF-checked, and nothing here writes.
+    user = current_user(request)
+
+    # **The version is checked against the caller's own key, not merely parsed.** A stale
+    # URL — one that may have been shared while it was current — must not resolve to
+    # whatever picture the account holds *now*.
+    if not user.avatar_key or version != version_of(user.avatar_key):
+        raise HttpError(404, "No picture at that address.")
+
+    blob = get_adapter(BlobPort)
+    url = blob.url_for(user.avatar_key, ttl_seconds=settings.BLOB_URL_TTL_SECONDS)
+
+    # **Not every store can mint a URL a browser can fetch.** The in-memory adapter — a
+    # supported mode, `BLOB_ADAPTER=memory`, for running with no object store at all —
+    # returns `memory://…`, and Django refuses to redirect to a scheme outside
+    # http/https/ftp. Redirecting blindly would answer **400 Suspicious operation** for
+    # every user in that mode, which is a broken feature reported as a security event.
+    #
+    # So a store that cannot hand out a fetchable address has its bytes served inline
+    # instead. The redirect is an optimisation for stores that *can* serve — it keeps the
+    # bytes off this process — not the contract. The contract is "the caller's picture".
+    if not url.startswith(("http://", "https://")):
+        stored_blob = blob.open(user.avatar_key)
+        response = HttpResponse(stored_blob.data, content_type=stored_blob.content_type)
+        response["Cache-Control"] = f"private, max-age={settings.AVATAR_REDIRECT_MAX_AGE}"
+        return response
+
+    response = HttpResponseRedirect(url)
+    # **Strictly less than the presign TTL**, and derived from it in settings so the two
+    # cannot drift. A browser holding this redirect longer than the signature lives would
+    # show a broken picture for exactly the difference.
+    response["Cache-Control"] = f"private, max-age={settings.AVATAR_REDIRECT_MAX_AGE}"
+    return response
+
+
+@router.get(
+    "/profile/deletion",
+    # 200 the copy; 401 an anonymous caller. A read cannot fail on CSRF — only writes
+    # are checked, and only writes can be refused.
+    response={200: AccountDeletionCopyOut, 401: ErrorOut},
+    summary="What deleting the account would do",
+    description=(
+        "The two sentences the confirmation modal shows: what the deletion removes, and "
+        "what it leaves behind as anonymised aggregates.\n\n"
+        "**This is a preview, and it changes nothing.** It says what the engine does, "
+        "and it carries no state about the caller's account — the pending-deletion "
+        "moments ride `me`, where they already are. The two strings are constants of "
+        "the product, so there is nothing here to refresh and nothing to cache.\n\n"
+        "**They are the same two strings the confirmation mail renders.** One source, "
+        "two surfaces: a modal that described the destruction in different words from "
+        "the mail would be telling the same person two different stories about the same "
+        "thing."
+    ),
+)
+def read_account_deletion_copy_endpoint(request):
+    """What deleting this account would do. Nothing is asked, and nothing is written."""
+    # **A read needs no CSRF token.** CSRF guards writes; a `GET` that changed nothing
+    # is not a thing an attacker could do anything with.
+    #
+    # **The account is resolved and then not consulted.** The resolver raises for an
+    # anonymous caller, and that is the whole reason it is called: the preview is
+    # behind the same session wall as the thing it previews. **The two strings
+    # describe what the engine does, and that is the same for everybody** — so the
+    # answer is the same for everybody, and the account's own state is not in it.
+    current_user(request)
+
+    return AccountDeletionCopyOut(
+        what_is_deleted=DELETION_REMOVES,
+        what_survives=DELETION_SURVIVES,
+    )
+
+
+@router.post(
+    "/profile/deletion",
+    # 200 the recorded request; 401 an anonymous caller; 403 the CSRF refusal. The request
+    # cannot fail on its merits — a second request is idempotent, not an error.
+    response={200: AccountDeletionRequestOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Ask to delete the account",
+    description=(
+        "Records a request to delete the signed-in account, and answers with the date the "
+        "deletion will take effect.\n\n"
+        "**Nothing is destroyed yet.** The account keeps working, in full, for the grace "
+        "period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request "
+        "off during that time. The stored profile picture is removed when the account is "
+        "destroyed, not when the request is made, so cancelling inside the grace period "
+        "leaves the picture where it was.\n\n"
+        "**Asking twice is not an error.** The first request set the date; a later one "
+        "returns the same date rather than moving it, so the promise the product made "
+        "cannot be extended by asking again.\n\n"
+        "`what_is_deleted` and `what_survives` are the two sentences that say what the "
+        "deletion does and what it leaves behind, in the product's own words. **They are "
+        "the same two strings the confirmation mail renders**, so the modal and the mail "
+        "cannot tell the person two different stories about the same destruction."
+    ),
+)
+def request_account_deletion_endpoint(request):
+    """Record a request to delete the caller's account. Nothing is destroyed yet."""
+    # **The CSRF check is first**, as on every write on this router.
+    require_csrf(request)
+
+    user = current_user(request)
+
+    # The write goes through the named command (AD-5). The command computes the schedule
+    # once, writes the audit row in the same transaction, and returns the row it holds —
+    # the existing one if this is a second request.
+    pending = request_account_deletion(user_id=user.pk)
+
+    return AccountDeletionRequestOut(
+        requested_at=pending.requested_at.isoformat(),
+        scheduled_for=pending.scheduled_for.isoformat(),
+        # **The two paragraphs, from the same constants the mail renders.**
+        #
+        # The confirmation modal has to say what the deletion does and what it leaves
+        # behind, and it has to say it in the same words the mail uses. Publishing them
+        # here is what makes that possible: a frontend that wrote its own copy would be
+        # a second sentence about the same destruction, and the two could drift.
+        what_is_deleted=DELETION_REMOVES,
+        what_survives=DELETION_SURVIVES,
+    )
+
+
+@router.delete(
+    "/profile/deletion",
+    # 401 an anonymous caller, 403 the CSRF refusal. Cancelling cannot fail on its merits.
+    response={200: AccountDeletionCancelOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Call off a pending account deletion",
+    description=(
+        "Calls off any outstanding request to delete the signed-in account. The account "
+        "keeps working, and everything it holds is left exactly where it was.\n\n"
+        "Cancelling when nothing is pending is **not** an error: the caller wanted no "
+        "pending deletion and has none either way. The answer is the same in both cases."
+    ),
+)
+def cancel_account_deletion_endpoint(request):
+    """Call off any outstanding request to delete the caller's account."""
+    require_csrf(request)
+
+    user = current_user(request)
+    cancel_account_deletion(user_id=user.pk)
+
+    return AccountDeletionCancelOut()
+
+
+@router.post(
+    "/profile/email",
+    # 202 is the accepted request; 401 an anonymous caller; 403 the CSRF refusal; 422 the
+    # two plain refusals (no address, your own address); 429 the throttle. Declaring them
+    # is what puts `ErrorOut` in the generated client.
+    response={
+        EMAIL_CHANGE_REQUESTED: EmailChangeRequestOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+    },
+    summary="Ask to change the account's email address",
+    description=(
+        "Asks to move the login to a new address. A confirmation link is sent to that "
+        "address, and a warning that the change was asked for is sent to the current "
+        "one. **Nothing changes until the link is opened.**\n\n"
+        "The answer is the same whether the address is free or already belongs to "
+        "another account, so this endpoint cannot be used to find out who has an "
+        "account. Asking for the address you already have is refused with 422, because "
+        "that is a mistake about your own account rather than a probe of someone "
+        "else's."
+    ),
+)
+def request_email_change_endpoint(request, body: EmailChangeRequestIn):
+    """Ask to move the login. The answer never says whether the address was taken."""
+    require_csrf(request)
+
+    user = current_user(request)
+
+    pending = request_email_change(
+        user_id=user.pk,
+        new_email=body.new_email,
+        ip_address=_client_ip(request),
+    )
+
+    # **`None` means "nothing to send", and the response does not change because of it.**
+    # It is the already-taken case, and a caller who could tell it apart from a free
+    # address would have an account-existence oracle.
+    if pending is not None:
+        email_port = get_email_port()
+        stream = email_change_stream()
+
+        # The confirmation, to the address being proven.
+        email_port.send(
+            render_confirm_email_change_email(to=pending.new_email, token=pending.token),
+            stream=stream,
+            idempotency_key=f"email_change_confirm{SEND_KEY_SEPARATOR}{pending.row_id}",
+        )
+        # The warning, to the address still on the account. **This is the security
+        # control**, not a courtesy: it is the one message that reaches the real account
+        # holder when somebody else asked.
+        email_port.send(
+            render_email_change_requested_email(to=pending.old_email, new_email=pending.new_email),
+            stream=stream,
+            idempotency_key=f"email_change_warn{SEND_KEY_SEPARATOR}{pending.row_id}",
+        )
+
+    return Status(EMAIL_CHANGE_REQUESTED, EmailChangeRequestOut())
+
+
+@router.delete(
+    "/profile/email",
+    # 401 an anonymous caller, 403 the CSRF refusal. Cancelling cannot fail on its merits.
+    response={200: EmailChangeCancelOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Call off a pending email change",
+    description=(
+        "Revokes any outstanding email change for the signed-in account, so the "
+        "confirmation link already sent can no longer move the login.\n\n"
+        "Cancelling when nothing is pending is **not** an error: the caller wanted no "
+        "pending change and has none either way. The answer is the same in both cases."
+    ),
+)
+def cancel_email_change_endpoint(request):
+    """Call off any outstanding email change."""
+    require_csrf(request)
+
+    user = current_user(request)
+    cancel_email_change(user_id=user.pk)
+
+    return EmailChangeCancelOut()
+
+
+@router.post(
+    "/profile/email/confirm",
+    # 422 covers every way a token can fail — unknown, used, revoked, expired, or beaten
+    # to the address — and says which it was in none of them. 403 is the CSRF refusal.
+    response={200: EmailChangeConfirmOut, 403: ErrorOut, 422: ErrorOut},
+    summary="Confirm a new email address",
+    description=(
+        "Consumes a confirmation token and moves the login to the address it proves. "
+        "The token is single-use and short-lived.\n\n"
+        "**The caller does not need a session**: the link is opened from a mailbox, "
+        "possibly in a browser that never signed in, and requiring a session would make "
+        "the link work only where it was requested. It is still CSRF-checked — fetch "
+        "`GET /api/auth/csrf` first — exactly as the password-reset confirmation is.\n\n"
+        "A token that was already used, revoked or expired is refused, and so is one "
+        "whose address another account claimed in the meantime. The refusal does not say "
+        "which of those it was."
+    ),
+)
+def confirm_email_change_endpoint(request, body: EmailChangeConfirmIn):
+    """Consume a confirmation token and move the login."""
+    require_csrf(request)
+
+    # **No `current_user` here.** The person opening this link is reading mail, and the
+    # browser they read it in may never have signed in. `password_reset_confirm` is
+    # anonymous for the same reason.
+    user = confirm_email_change(token=body.token)
+
+    return EmailChangeConfirmOut(email=user.email)
 
 
 @router.post(

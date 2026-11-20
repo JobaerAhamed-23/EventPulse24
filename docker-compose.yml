@@ -58,5 +58,87 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    # Object storage for ports.blob: profile pictures today, anything else an account owns
+    # later. It speaks the S3 API, so the client that talks to it here is the client that
+    # talks to a bucket in production — which is why it is here rather than a MEDIA_ROOT
+    # volume that would have to be torn out before a deploy.
+    # MinIO is to bytes what Mailpit is to mail: a real local service, not a fake.
+    #
+    # **Why this is `pgsty/minio` and not `minio/minio`.** MinIO deleted `minio/minio` and
+    # `minio/mc` from Docker Hub in September 2026 — the registry answers **404 object not
+    # found**, not 403, and `docker pull` reports it as "may require 'docker login'", which
+    # is Docker's one message for *absent or forbidden* and cost this project several days
+    # of chasing credentials for a repository that no longer exists. quay.io/minio refuses
+    # anonymous pulls (401). `pgsty/*` is a third-party republish of the real binaries:
+    # `minio --version` in this image reports `RELEASE.2026-08-04T00-00-00Z`, AGPLv3.
+    #
+    # **Pinned by digest, not by tag, precisely because it is third-party.** A tag on
+    # somebody else's repository can be moved under us; a digest cannot. Re-pin
+    # deliberately, never by floating the tag.
+    #
+    # **It was measured against the privacy property before being adopted** — an unsigned
+    # URL returns 403, an expired presigned URL returns 403, and an anonymous PUT is
+    # refused. `localstack` and `chrislusf/seaweedfs` were measured too and **failed all
+    # three**, answering 200 to unsigned and expired reads and accepting an anonymous
+    # write; either would make "the bucket is private" false locally while every backend
+    # test passed. `dxflrs/garage` also passes and is the first-party alternative if a
+    # third-party image is ever judged unacceptable — it needs a node layout and explicit
+    # key grants, so it is a design change rather than an image swap.
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${BLOB_ACCESS_KEY:-eventpulse_local}
+      MINIO_ROOT_PASSWORD: ${BLOB_SECRET_KEY:-eventpulse_local_secret}
+      TZ: UTC
+    ports:
+      # The API dials 9000; a presigned URL the browser fetches is minted for this same
+      # host port, which is why BLOB_PUBLIC_ENDPOINT names 127.0.0.1 and not `minio`.
+      - "127.0.0.1:${EP_MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${EP_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      # MinIO's own documented container healthcheck.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  createbuckets:
+    # One-shot: make the bucket if it is not there, then exit 0.
+    #
+    # **It is behind a profile, and that is not cosmetic.** Measured on Compose
+    # v2.27.0-desktop.2: `docker compose up -d --wait` exits **1** when a one-shot service
+    # exits 0 — it reports `container ... exited (0)` as a failure — so leaving this in the
+    # default set would break `make up` for everyone, on a clean clone, every time. Behind
+    # the profile the same `up` exits 0, and `make up` runs this explicitly afterwards with
+    # `docker compose run --rm`, which was measured to succeed twice in a row.
+    # The same republish, for the same reason, pinned the same way. `mc --version` reports
+    # `RELEASE.2026-11-12T00-00-00Z`.
+    image: pgsty/mc@sha256:b532278b7a3747dbab6fe45eebb40a653efa704e6758e24e9d9ec54fc96c1800
+    profiles: ["bootstrap"]
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      BLOB_BUCKET: ${BLOB_BUCKET:-eventpulse24-blobs}
+      BLOB_ACCESS_KEY: ${BLOB_ACCESS_KEY:-eventpulse_local}
+      BLOB_SECRET_KEY: ${BLOB_SECRET_KEY:-eventpulse_local_secret}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$BLOB_ACCESS_KEY" "$$BLOB_SECRET_KEY"
+        # --ignore-existing is what makes a second `make up` a no-op rather than an error.
+        mc mb --ignore-existing "local/$$BLOB_BUCKET"
+        # The bucket stays private: no anonymous policy is set, here or anywhere. The only
+        # way to read an object is a presigned URL, which is minted per object and expires.
+        echo "bucket ready: $$BLOB_BUCKET (private)"
+
 volumes:
   pgdata:
+  minio-data:

@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from apps.delivery.services.pulse_ping import mint_ping_send
 from apps.identity.services import data_export as export_service
+from apps.identity.services import deletion as deletion_service
 from apps.identity.services.emails import (
     data_export_link,
     data_export_stream,
@@ -105,6 +106,11 @@ def tick() -> None:
     # the next five-minute boundary. The dispatcher claims nothing when nothing is waiting,
     # which is almost always.
     _enqueue(schedule_data_exports)
+    # The account-deletion grace period. Every tick rather than on a slower cadence: the
+    # promise is "thirty days", and a promise measured in days is not owed at the next
+    # five-minute boundary — but a day late is a day late, so the job looks every tick and
+    # destroys only what is actually due.
+    _enqueue(destroy_due_accounts)
     if _now().minute % OUTBOX_RECONCILE_EVERY_MINUTES == 0:
         _enqueue(reconcile_outbox)
         # FR-52's other half: links that have run out, and the payloads behind them.
@@ -748,3 +754,36 @@ def expire_data_exports() -> None:
     count = export_service.expire_due_exports(now=_now())
     if count:
         logger.info("Data exports expired", extra={"job": "expire_data_exports", "count": count})
+
+
+@shared_task(name="worker.tasks.destroy_due_accounts")
+def destroy_due_accounts() -> None:
+    """Destroy the accounts whose thirty-day grace period has expired.
+
+    **The grace period is a promise, and this is where it is kept.** A request records
+    the date the account will be destroyed; this job destroys the accounts that reached
+    it. Nothing here destroys an account whose grace has not expired — the command is
+    asked only for the requests that are due.
+
+    **It drains rather than taking one**, the same shape as `schedule_data_exports`: an
+    account deletion is rare, so a dispatcher that took one per tick would take an hour
+    to clear a batch of sixty against a promise measured in days.
+
+    **A failure on one account does not stop the others.** One account that cannot be
+    destroyed — a locked row, a provider that is down — must not hold every other
+    person's deletion hostage, so each account is attempted on its own and the failure
+    is logged. The request row stays, so the next tick tries again.
+    """
+    now = _now()
+    destroyed = 0
+    for request in deletion_service.due_deletion_requests(now=now):
+        try:
+            if deletion_service.destroy_account(user_id=request.user_id):
+                destroyed += 1
+        except Exception as exc:
+            logger.warning(
+                "Account not destroyed",
+                extra={"job": "destroy_due_accounts", "error_type": type(exc).__name__},
+            )
+    if destroyed:
+        logger.info("Accounts destroyed", extra={"job": "destroy_due_accounts", "count": destroyed})

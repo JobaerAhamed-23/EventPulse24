@@ -19,6 +19,13 @@ FAKE_ADAPTERS = {
     # The revalidation fake records the signals it is given instead of sending them, so a
     # local run never calls the frontend and a test never needs a server.
     "revalidation": "adapters.revalidation.fake.FakeRevalidationAdapter",
+    # **Blobs really are stored, in MinIO** — the same arrangement as email, which "still
+    # really sends, to Mailpit". MinIO is Mailpit for bytes: a real local service standing
+    # in for a real remote one, speaking the API production speaks, rather than a fake
+    # that would let a broken bucket, a wrong endpoint or an unsigned URL pass unnoticed
+    # until a deploy. The *test* suite is what uses the in-memory adapter, and
+    # `config/settings_test.py` selects it there.
+    "blob": "adapters.blob.s3.S3BlobAdapter",
 }
 
 HTTP_FETCH_ADAPTER = "adapters.crawl.http.HttpFetchAdapter"
@@ -57,6 +64,18 @@ CALENDAR_ADAPTERS = {"fake": FAKE_ADAPTERS["calendar"], "ics": CALENDAR_ADAPTER}
 
 HEADER_GEO_ADAPTER = "adapters.geo.header.HeaderGeoAdapter"
 
+#: The object store (`ports.blob`), chosen by `BLOB_ADAPTER` rather than by `ADAPTER_MODE`.
+#:
+#: **It is overridable on its own for the same reason the throttle is**: a port whose
+#: local behaviour a developer may need to change without changing what the mode means
+#: for the ports that need credentials. `memory` runs the whole stack with no object
+#: store at all — nothing is kept across a restart, which is honest about what it is —
+#: and `s3` is both the local MinIO and the production bucket, because they are one API.
+BLOB_ADAPTERS = {
+    "memory": "adapters.blob.memory.InMemoryBlobAdapter",
+    "s3": "adapters.blob.s3.S3BlobAdapter",
+}
+
 # Filled in by the intents that build the real gateway and email provider. The Stripe, ICS and
 # Voyage adapters have landed; the LLM gateway and the email provider have not.
 REAL_ADAPTERS: dict[str, str] = {
@@ -84,6 +103,9 @@ REAL_ADAPTERS: dict[str, str] = {
     # from the start. There is no "fake frontend" in production mode — a local run that
     # never signals the frontend is a local run whose pages stay stale, which is honest.
     "revalidation": "adapters.revalidation.http.HttpRevalidationAdapter",
+    # The object store is the same adapter in both modes: MinIO and a production bucket
+    # speak one API, and the difference between them is four settings, not a class.
+    "blob": BLOB_ADAPTERS["s3"],
 }
 
 
@@ -92,11 +114,13 @@ def adapter_paths(
     fetch: str | None = None,
     throttle: str | None = None,
     calendar: str | None = None,
+    blob: str | None = None,
 ) -> dict[str, str]:
     """The adapter table for `mode`.
 
-    **`fetch` (SOURCE_FETCH), `throttle` (THROTTLE_ADAPTER) and `calendar`
-    (CALENDAR_ADAPTER) each override one port.** None of them changes the mode: they name
+    **`fetch` (SOURCE_FETCH), `throttle` (THROTTLE_ADAPTER), `calendar`
+    (CALENDAR_ADAPTER) and `blob` (BLOB_ADAPTER) each override one port.** None of them
+    changes the mode: they name
     the adapter for a single port and leave every other port on the table the mode chose.
     Each is overridable for the same reason — it is a port whose behaviour a local run may
     need to change without changing the mode's meaning for the ports that need credentials.
@@ -112,6 +136,8 @@ def adapter_paths(
         paths["throttle"] = THROTTLE_ADAPTERS[throttle]
     if calendar is not None:
         paths["calendar"] = CALENDAR_ADAPTERS[calendar]
+    if blob is not None:
+        paths["blob"] = BLOB_ADAPTERS[blob]
     return paths
 
 

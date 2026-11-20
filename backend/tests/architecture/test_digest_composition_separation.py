@@ -73,6 +73,12 @@ REQUEST_MODULES = (
     # asks of a request handler. It is a **sibling** of the sources router above, not
     # the same screen: the sources screen mutes sources, and this one mutes categories.
     "apps/personalization/taste_mutes_api.py",
+    # FR-22. It is the thinnest request module here: it runs no query at all and writes
+    # nothing, projecting `shared.constants` onto the wire so `Settings → Privacy` can
+    # publish the formula the product computes with. It is listed for the same reason the
+    # others are — a surface file missing from this tuple is a surface file no guard
+    # checks.
+    "apps/personalization/ranking_transparency_api.py",
     "config/api.py",
     "config/health.py",
 )

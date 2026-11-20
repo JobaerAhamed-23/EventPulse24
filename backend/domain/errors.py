@@ -105,6 +105,26 @@ class InvalidResetTokenError(ValidationError):
     default_message = "That reset link isn't valid anymore. Ask for a new one."
 
 
+class InvalidEmailChangeTokenError(ValidationError):
+    """The email-change token was unknown, used, revoked, expired — or lost the race.
+
+    **One error for all five cases**, the same rule `InvalidResetTokenError` states: a
+    message that distinguished them would be an oracle for guessing tokens (AD-18).
+
+    **The fifth case is the one this flow has and the reset flow does not.** Between the
+    request and the confirmation, another account can claim the address; the confirmation
+    then loses on `user_email_uq`. That is not a different kind of failure to the person
+    holding the link — their address is unavailable and the link did not work — so it is
+    not a different error.
+
+    **It is its own class rather than a reuse of `InvalidResetTokenError`** so the two
+    flows' refusals cannot be confused, by a caller or by a test.
+    """
+
+    code = "invalid_email_change_token"
+    default_message = "That link isn't valid anymore. Ask for a new one."
+
+
 class ThrottledError(DomainError):
     """Too many attempts.
 

@@ -38,6 +38,9 @@ workspace:
     - choice: wide
       items_count: 6
       timestamp: 2026-11-13T09:47:45.462Z
+    - choice: wide
+      items_count: 4
+      timestamp: 2026-11-20T13:10:00.000Z
   planning_sources:
     prd: _bmad-output/planning-artifacts/prds/prd-EventPulse24-2026-08-19/
     ux: _bmad-output/planning-artifacts/ux-designs/ux-EventPulse24-2026-08-23/
@@ -1458,7 +1461,7 @@ intents:
   - id: traceability-gap-closure
     title: Traceability Gap Closure — the Cost Dashboard, the Ping Promise, and the
       Timeline's Missing Detail
-    status: in_progress
+    status: completed
     created: 2026-11-17
     source: doc-trace 2026-11-17 (first full Section C pass)
     work_items:
@@ -1508,7 +1511,7 @@ intents:
         run_id: run-eventpulse24-039
         completed_at: 2026-11-17T15:56:13.029Z
       - id: timeline-why-this-tag
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on:
@@ -1516,14 +1519,199 @@ intents:
         added: 2026-11-17
         source: split from timeline-hover-detail; AD-10 bars personalization from the
           Event Fit
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T14:02:00.000Z
+        run_id: run-eventpulse24-046
+        completed_at: 2026-11-19T15:02:45.967Z
       - id: fr22-published-formula
-        status: pending
+        status: completed
         complexity: high
         mode: validate
         depends_on: []
         added: 2026-11-17
         source: found while tagging A-3; the PRD publishes four weighted terms and the
           product computes five
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T14:38:00.000Z
+        run_id: run-eventpulse24-047
+        completed_at: 2026-11-19T15:15:17.597Z
+      - id: settings-privacy-ranking-transparency
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - fr22-published-formula
+        added: 2026-11-19
+        source: split from fr22-published-formula; FR-22's transparency surface does not
+          exist — there is no /settings/privacy route
+        run_id: run-eventpulse24-048
+        completed_at: 2026-11-19T15:42:30.785Z
+      - id: time-bomb-tests-remainder
+        status: completed
+        complexity: low
+        mode: confirm
+        depends_on:
+          - time-bomb-tests
+        added: 2026-11-19
+        source: found while diagnosing three failures four runs had reported as
+          pre-existing and unowned; run 039 converted 2 of 10 call sites
+        run_id: run-eventpulse24-049
+        completed_at: 2026-11-19T16:01:32.382Z
+    completed_at: 2026-11-19T16:01:32.325Z
+  - id: account-profile-expansion
+    title: A Profile Worth Having — a Face, an Address You Can Move, and a Place
+    status: completed
+    created: 2026-11-19
+    work_items:
+      - id: object-storage-and-minio
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T00:00:00Z
+        run_id: run-eventpulse24-050
+        completed_at: 2026-11-19T16:31:10.229Z
+      - id: avatar-model-and-command
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - object-storage-and-minio
+        checkpoint_1: approved
+        checkpoint_1_at: 2026-11-19T16:40:00.000Z
+        run_id: run-eventpulse24-051
+        completed_at: 2026-11-19T16:58:23.361Z
+      - id: account-deletion-and-avatar-removal
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - avatar-model-and-command
+        added: 2026-11-19
+        source: split from avatar-model-and-command at its Checkpoint 1; no account
+          deletion exists anywhere, so its avatar-removal criterion had nothing
+          to hook into
+        run_id: run-eventpulse24-053
+        completed_at: 2026-11-20T06:43:49.702Z
+      - id: avatar-endpoint-and-contract
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - avatar-model-and-command
+        run_id: run-eventpulse24-052
+        completed_at: 2026-11-19T17:29:14.736Z
+      - id: avatar-on-the-shell
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - avatar-endpoint-and-contract
+        run_id: run-eventpulse24-053
+        completed_at: 2026-11-20T06:43:49.702Z
+      - id: pending-email-model-and-commands
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-042
+        completed_at: 2026-11-19T09:52:31.876Z
+      - id: email-change-mails
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - pending-email-model-and-commands
+        run_id: run-eventpulse24-043
+        completed_at: 2026-11-19T10:35:55.524Z
+      - id: email-change-endpoints-and-contract
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - email-change-mails
+        run_id: run-eventpulse24-044
+        completed_at: 2026-11-19T11:15:48.309Z
+      - id: email-change-on-the-profile-screen
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - email-change-endpoints-and-contract
+        run_id: run-eventpulse24-045
+        completed_at: 2026-11-19T11:56:00.199Z
+      - id: place-on-the-profile-screen
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-041
+        completed_at: 2026-11-19T00:00:00Z
+      - id: profile-screen-and-e2e
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - avatar-on-the-shell
+          - email-change-on-the-profile-screen
+          - place-on-the-profile-screen
+        run_id: run-eventpulse24-053
+        completed_at: 2026-11-20T06:43:49.702Z
+      - id: account-deletion-confirmation-email
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-deletion-and-avatar-removal
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20;
+          A-16's third paragraph promises an email the user can cancel from, and
+          the account-deletion work item recorded that it was never built
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+      - id: account-danger-zone
+        status: completed
+        complexity: low
+        mode: autopilot
+        depends_on:
+          - account-deletion-and-avatar-removal
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20; split
+          out of the two deletion surfaces to break a dependency cycle, because
+          the section is the container both of them hang on
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+      - id: account-deletion-cancel-surface
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-deletion-and-avatar-removal
+          - account-danger-zone
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20; the
+          cancel command and endpoint exist, but CurrentUserOut carries no
+          pending- deletion state, so no surface can know a deletion is pending
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+      - id: account-delete-confirmation-surface
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - account-deletion-and-avatar-removal
+          - account-danger-zone
+          - account-deletion-confirmation-email
+          - account-deletion-cancel-surface
+        added: 2026-11-20
+        source: found while reconciling the intent against the code on 2026-11-20; the
+          engine shipped with no user-reachable surface, and
+          endpoint-coverage.test.ts exempts the endpoint because no caller
+          exists
+        run_id: run-eventpulse24-054
+        completed_at: 2026-11-20T10:06:27.173Z
+    completed_at: 2026-11-20T06:43:49.702Z
 runs:
   active: []
   completed:
@@ -2216,3 +2404,122 @@ runs:
           mode: autopilot
       started: 2026-11-17T16:04:29.208Z
       completed: 2026-11-17T16:07:06.820Z
+    - id: run-eventpulse24-042
+      scope: single
+      work_items:
+        - id: pending-email-model-and-commands
+          intent: account-profile-expansion
+          mode: validate
+      started: 2026-11-19T09:20:50.140Z
+      completed: 2026-11-19T09:52:31.876Z
+    - id: run-eventpulse24-043
+      scope: single
+      work_items:
+        - id: email-change-mails
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-19T10:15:44.126Z
+      completed: 2026-11-19T10:35:55.524Z
+    - id: run-eventpulse24-044
+      scope: single
+      work_items:
+        - id: email-change-endpoints-and-contract
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-19T10:37:19.444Z
+      completed: 2026-11-19T11:15:48.309Z
+    - id: run-eventpulse24-045
+      scope: single
+      work_items:
+        - id: email-change-on-the-profile-screen
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-19T11:17:34.206Z
+      completed: 2026-11-19T11:56:00.199Z
+    - id: run-eventpulse24-046
+      scope: single
+      work_items:
+        - id: timeline-why-this-tag
+          intent: traceability-gap-closure
+          mode: validate
+      started: 2026-11-19T14:41:17.544Z
+      completed: 2026-11-19T15:02:45.967Z
+    - id: run-eventpulse24-047
+      scope: single
+      work_items:
+        - id: fr22-published-formula
+          intent: traceability-gap-closure
+          mode: validate
+      started: 2026-11-19T15:03:59.184Z
+      completed: 2026-11-19T15:15:17.597Z
+    - id: run-eventpulse24-048
+      scope: single
+      work_items:
+        - id: settings-privacy-ranking-transparency
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-19T15:16:57.756Z
+      completed: 2026-11-19T15:42:30.785Z
+    - id: run-eventpulse24-049
+      scope: single
+      work_items:
+        - id: time-bomb-tests-remainder
+          intent: traceability-gap-closure
+          mode: confirm
+      started: 2026-11-19T15:47:02.267Z
+      completed: 2026-11-19T16:01:32.382Z
+    - id: run-eventpulse24-050
+      scope: single
+      work_items:
+        - id: object-storage-and-minio
+          intent: account-profile-expansion
+          mode: validate
+      started: 2026-11-19T16:22:25.335Z
+      completed: 2026-11-19T16:31:10.229Z
+    - id: run-eventpulse24-051
+      scope: single
+      work_items:
+        - id: avatar-model-and-command
+          intent: account-profile-expansion
+          mode: validate
+      started: 2026-11-19T16:38:17.038Z
+      completed: 2026-11-19T16:58:23.361Z
+    - id: run-eventpulse24-052
+      scope: single
+      work_items:
+        - id: avatar-endpoint-and-contract
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-19T17:00:41.373Z
+      completed: 2026-11-19T17:29:14.736Z
+    - id: run-eventpulse24-053
+      scope: wide
+      work_items:
+        - id: account-deletion-and-avatar-removal
+          intent: account-profile-expansion
+          mode: validate
+        - id: avatar-on-the-shell
+          intent: account-profile-expansion
+          mode: confirm
+        - id: profile-screen-and-e2e
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-20T03:37:57.952Z
+      completed: 2026-11-20T06:43:49.702Z
+    - id: run-eventpulse24-054
+      scope: wide
+      work_items:
+        - id: account-deletion-confirmation-email
+          intent: account-profile-expansion
+          mode: confirm
+        - id: account-danger-zone
+          intent: account-profile-expansion
+          mode: autopilot
+        - id: account-deletion-cancel-surface
+          intent: account-profile-expansion
+          mode: confirm
+        - id: account-delete-confirmation-surface
+          intent: account-profile-expansion
+          mode: confirm
+      started: 2026-11-20T07:09:44.981Z
+      completed: 2026-11-20T10:06:27.173Z

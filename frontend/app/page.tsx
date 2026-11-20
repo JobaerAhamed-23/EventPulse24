@@ -85,7 +85,11 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const attempt = attemptFromQuery((await searchParams)[RETRY_PARAM]);
 
   return (
-    <AppShell name={displayName(session.user)} email={session.user.email}>
+    <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       {digest.kind === "unavailable" ? (
         <DigestError attempt={attempt} />
       ) : (

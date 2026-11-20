@@ -1,0 +1,15 @@
+Hi,
+
+Someone asked to use this address for an EventPulse24 account.
+
+Open this link to confirm it:
+
+{{ confirm_link }}
+
+The link is valid for {{ valid_for }}, and it works only once. Until you open it,
+nothing changes — the account keeps signing in with its current address.
+
+If you weren't expecting this, you can ignore this message. Without the link, nobody
+can move an account to this address.
+
+If the link doesn't work, copy it into your browser.

@@ -5,7 +5,7 @@ from pathlib import Path
 from config.adapters import adapter_paths
 from config.databases import build_databases
 from config.env import env
-from shared.constants import AUTH_SESSION_LIFETIME
+from shared.constants import AUTH_SESSION_LIFETIME, AVATAR_MAX_BYTES
 from shared.db import CATALOG, PERSONAL
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,6 +46,11 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Last, and after the session and auth middleware, so a refusal here is a refusal of a
+    # request that was otherwise ready to run — and **before any view**, which is the whole
+    # point: Ninja parses a multipart body when it resolves the handler's file parameter,
+    # so a check inside the handler would run after the upload had already been spooled.
+    "config.middleware.UploadSizeLimitMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -197,12 +202,54 @@ STATIC_URL = "static/"
 # is shared by every process in the stack and a per-process fake cannot serve it.
 # CALENDAR_ADAPTER names the calendar importer on its own, so a local run can import a real
 # ICS feed while every other adapter stays fake; unset, it follows the mode.
+# BLOB_ADAPTER names the object store on its own, so a local run can work with no store
+# at all (`memory`) without changing what the mode means for every other port.
 ADAPTERS = adapter_paths(
     env.adapter_mode,
     env.source_fetch,
     env.throttle_adapter,
     env.calendar_adapter,
+    env.blob_adapter,
 )
+
+# The object store (adapters.blob.s3.S3BlobAdapter). Two endpoints on purpose: the first
+# is the address this process dials, the second is the address a presigned URL is minted
+# for, because a SigV4 signature is bound to the host in its canonical request and the
+# browser does not share this process's view of the network.
+BLOB_STORAGE = {
+    "endpoint": env.blob_endpoint,
+    "public_endpoint": env.blob_public_endpoint,
+    "region": env.blob_region,
+    "bucket": env.blob_bucket,
+    "access_key": env.blob_access_key,
+    "secret_key": env.blob_secret_key,
+}
+
+# How long a presigned URL is good for. Short on purpose: it is the inside of a stable
+# app-owned URL, not something a page is rendered with.
+BLOB_URL_TTL_SECONDS = env.blob_url_ttl_seconds
+
+# How long a browser may cache the avatar **redirect**.
+#
+# **Derived, never written twice.** The redirect points at a presigned URL that stops
+# working after `BLOB_URL_TTL_SECONDS`. If a browser cached the redirect for longer than
+# the signature lives, the picture would be broken for exactly the difference — and the
+# failure would appear only after the cache warmed, which is the worst kind to find.
+#
+# Half the TTL, so a cached redirect always has at least as long again to be followed.
+# A literal here would be a second number free to drift from the first; deriving it means
+# changing the TTL moves this with it, and `test_avatar_api.py` reads **both** settings
+# rather than either constant.
+AVATAR_REDIRECT_MAX_AGE = BLOB_URL_TTL_SECONDS // 2
+
+# The largest avatar **request body** accepted, before the body is parsed.
+#
+# **Larger than `AVATAR_MAX_BYTES`, deliberately.** That constant caps the *picture*; this
+# caps the *request*, which also carries the multipart boundaries, the field headers and
+# any other part. A request limit equal to the picture limit would refuse a legal picture
+# of exactly the maximum size for the few hundred bytes of envelope around it. The slack
+# is bounded and the command still enforces the real cap on the decoded file.
+AVATAR_MAX_REQUEST_BYTES = AVATAR_MAX_BYTES + 64 * 1024
 
 # Source fetch limits (adapters.crawl.http.FetchLimits) and the fake adapter's fixtures.
 SOURCE_FETCH = {

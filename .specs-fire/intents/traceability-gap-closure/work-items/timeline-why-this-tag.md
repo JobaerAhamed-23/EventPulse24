@@ -4,9 +4,12 @@ title: The Timeline block's Why-this tag — deferred, with the reason
 intent: traceability-gap-closure
 complexity: high
 mode: validate
-status: pending
-depends_on: [timeline-hover-detail]
+status: completed
+depends_on:
+  - timeline-hover-detail
 created: 2026-11-17
+run_id: run-eventpulse24-046
+completed_at: 2026-11-19T15:02:43.066Z
 ---
 
 # Work Item: The Timeline block's Why-this tag — deferred, with the reason

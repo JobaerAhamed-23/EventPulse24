@@ -62,7 +62,7 @@ function sidenavItem(label: string): HTMLElement | undefined {
 
 describe("the sidenav", () => {
   it("links Timeline to the screen", () => {
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const item = sidenavItem("Timeline");
     expect(item).not.toBeUndefined();
@@ -71,7 +71,7 @@ describe("the sidenav", () => {
   });
 
   it("links Conflicts to the screen", () => {
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const item = sidenavItem("Conflicts");
     expect(item).not.toBeUndefined();
@@ -81,7 +81,7 @@ describe("the sidenav", () => {
   });
 
   it("marks Timeline as the current route when it is", () => {
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
       (anchor) => anchor.getAttribute("href") === "/timeline",
@@ -92,7 +92,7 @@ describe("the sidenav", () => {
   it("marks Conflicts as the current route when it is", () => {
     pathname.mockReturnValue("/conflicts");
 
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
       (anchor) => anchor.getAttribute("href") === "/conflicts",
@@ -103,7 +103,7 @@ describe("the sidenav", () => {
   it("does not mark Conflicts as the current route on another page", () => {
     pathname.mockReturnValue("/");
 
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
       (anchor) => anchor.getAttribute("href") === "/conflicts",
@@ -112,7 +112,7 @@ describe("the sidenav", () => {
   });
 
   it("links Browse to the screen, because the Browse surface shipped", () => {
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     // **Browse was the last inert row in the rail.** The surface shipped with the
     // Browse read API, so the row is a link to the same `/browse` the mobile More
@@ -127,7 +127,7 @@ describe("the sidenav", () => {
   it("marks Browse as the current route when it is", () => {
     pathname.mockReturnValue("/browse");
 
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
       (anchor) => anchor.getAttribute("href") === "/browse",
@@ -138,7 +138,7 @@ describe("the sidenav", () => {
   it("does not mark Browse as the current route on another page", () => {
     pathname.mockReturnValue("/");
 
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
       (anchor) => anchor.getAttribute("href") === "/browse",
@@ -150,7 +150,7 @@ describe("the sidenav", () => {
     // It pointed at `/settings/reminders` until the index existed, and that screen has
     // no links out — so the rail's Settings row landed the user on one of six settings
     // screens with no way to reach the other five.
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const item = sidenavItem("Settings");
     const link = item?.querySelector("a");
@@ -166,7 +166,7 @@ describe("the sidenav", () => {
     for (const path of ["/settings", ...SETTINGS_SECTIONS.map((section) => section.href)]) {
       pathname.mockReturnValue(path);
 
-      render(<Sidenav name="Maya" email="maya@example.test" />);
+      render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
       const link = [...sidenavRail().querySelectorAll("a")].find(
         (anchor) => anchor.getAttribute("href") === "/settings",
@@ -179,7 +179,7 @@ describe("the sidenav", () => {
   it("does not mark Settings active on another page", () => {
     pathname.mockReturnValue("/");
 
-    render(<Sidenav name="Maya" email="maya@example.test" />);
+    render(<Sidenav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = [...sidenavRail().querySelectorAll("a")].find(
       (anchor) => anchor.getAttribute("href") === "/settings",
@@ -190,21 +190,21 @@ describe("the sidenav", () => {
 
 describe("the bottom tab", () => {
   it("links Timeline to the screen", () => {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = screen.getByRole("link", { name: "Timeline" });
     expect(link).toHaveAttribute("href", "/timeline");
   });
 
   it("links Conflicts to the screen", () => {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const link = screen.getByRole("link", { name: "Conflicts" });
     expect(link).toHaveAttribute("href", "/conflicts");
   });
 
   it("marks Timeline as the current route when it is", () => {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("aria-current")).toBe(
       "page",
@@ -214,7 +214,7 @@ describe("the bottom tab", () => {
   it("marks Conflicts as the current route when it is", () => {
     pathname.mockReturnValue("/conflicts");
 
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     expect(screen.getByRole("link", { name: "Conflicts" }).getAttribute("aria-current")).toBe(
       "page",
@@ -222,7 +222,7 @@ describe("the bottom tab", () => {
   });
 
   it("keeps the routes that do not exist inert", () => {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     // **The mobile rail gets the same treatment as the desktop one.** A route that
     // only exists on desktop is not a route, and the onboarding copy — *"You can
@@ -241,7 +241,7 @@ describe("the bottom tab", () => {
   });
 
   it("links Digest to the home, because the digest home shipped", () => {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     // **The first tab was the one inert slot nobody noticed.** It has had no `href`
     // since the digest home shipped, so on a phone the Digest tab rendered the inert
@@ -258,7 +258,7 @@ describe("the bottom tab", () => {
     // that marks nothing active there while the rail marks Digest reads as a bug.
     pathname.mockReturnValue("/events/folk-pub-quiz");
 
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     expect(screen.getByRole("link", { name: "Digest" }).getAttribute("aria-current")).toBe("page");
   });
@@ -267,7 +267,7 @@ describe("the bottom tab", () => {
     for (const path of ["/settings", ...SETTINGS_SECTIONS.map((section) => section.href)]) {
       pathname.mockReturnValue(path);
 
-      render(<BottomTabNav name="Maya" email="maya@example.test" />);
+      render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
       expect(screen.getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBe(
         "page",
@@ -277,7 +277,7 @@ describe("the bottom tab", () => {
   });
 
   it("keeps Add a control, because it opens the create sheet rather than routing", () => {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const add = screen.getByRole("button", { name: "Add personal event" });
     expect(add).toHaveAttribute("aria-haspopup", "dialog");
@@ -294,7 +294,7 @@ describe("the More sheet", () => {
    * reason these assertions have to open it first.
    */
   async function openMore(): Promise<HTMLElement> {
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const more = screen.getByRole("button", { name: "More" });
     fireEvent.click(more);
@@ -328,7 +328,7 @@ describe("the More sheet", () => {
   it("keeps More a control, so it carries no current-route marker", async () => {
     pathname.mockReturnValue("/browse");
 
-    render(<BottomTabNav name="Maya" email="maya@example.test" />);
+    render(<BottomTabNav name="Maya" email="maya@example.test" avatarUrl="" />);
 
     const more = screen.getByRole("button", { name: "More" });
     expect(more.getAttribute("aria-current")).toBeNull();

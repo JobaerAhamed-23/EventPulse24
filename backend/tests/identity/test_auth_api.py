@@ -304,6 +304,25 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
     The **name** is here because the frontend shows it on every screen, so it is a read
     the frontend already makes. It is `""` when no name is set — the one "no name set"
     state, and the frontend renders its own fallback in that case.
+
+    **`pending_email`** is the address an outstanding email change is *to*, `""` when
+    there is none. It is here rather than behind its own endpoint for the same reason the
+    name is — the screen that shows it is reached on a path that already reads `me` — and
+    it is the **address** rather than a boolean, because a screen that cannot say *which*
+    address a link went to is no use to someone who mistyped it.
+    **`pending_email_expires_at`** rides with it: the screen has to say whether a link is
+    still worth waiting for, and a duration written into the frontend would be a number
+    that keeps claiming "24 hours" after the constant says otherwise.
+
+    **`deletion_scheduled_for`** and **`deletion_requested_at`** say when the account
+    will be destroyed and when that was asked for, both `""` when no deletion is pending.
+    They are **moments and not a boolean**, because a person deciding whether to cancel
+    needs to know *when* the account dies — a flag that says "maybe" is no use to someone
+    reading a deadline.
+
+    **The exact dict is the assertion, and that is the point.** A field added to
+    `CurrentUserOut` without a thought lands here as a failure, which is how `me` is kept
+    from becoming a settings blob. Adding one is meant to cost this edit.
     """
     user = UserFactory(email="maya@example.test", plain_password=PASSWORD)
     client = csrf_json_client()
@@ -317,6 +336,11 @@ def test_me_returns_the_id_the_email_the_name_and_the_onboarding_status_and_noth
         "id": str(user.pk),
         "email": "maya@example.test",
         "name": "",
+        "avatar_url": "",
+        "pending_email": "",
+        "pending_email_expires_at": "",
+        "deletion_scheduled_for": "",
+        "deletion_requested_at": "",
         "onboarding": {"completed": False, "current_step": 1},
     }
     # The hash is not in the body under any key.

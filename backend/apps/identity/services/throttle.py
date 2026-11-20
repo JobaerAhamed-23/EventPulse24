@@ -20,6 +20,8 @@ The limits are the named constants in `shared/constants.py`.
 windows for a set of accounts and an address, and it exists so that the repeatable seed
 starts from a full allowance. It clears the counters, not the rules — the limits are
 unchanged, and a reader is still refused the eleventh sign-in in an hour.
+`reset_email_change_throttle` is the same thing for the email-change window, and it
+exists for the same reason.
 """
 
 import hashlib
@@ -27,6 +29,8 @@ from collections.abc import Iterable
 
 from ports.registry import get_throttle_port
 from shared.constants import (
+    AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT,
+    AUTH_THROTTLE_EMAIL_CHANGE_IP,
     AUTH_THROTTLE_RESET_ACCOUNT,
     AUTH_THROTTLE_RESET_IP,
     AUTH_THROTTLE_SIGN_IN_ACCOUNT,
@@ -41,6 +45,12 @@ LIMITS: dict[str, tuple[int, int]] = {
     "sign_in": (AUTH_THROTTLE_SIGN_IN_IP, AUTH_THROTTLE_SIGN_IN_ACCOUNT),
     "sign_up": (AUTH_THROTTLE_SIGN_UP_IP, AUTH_THROTTLE_SIGN_UP_ACCOUNT),
     "reset": (AUTH_THROTTLE_RESET_IP, AUTH_THROTTLE_RESET_ACCOUNT),
+    # An email-change request sends mail to an address the *requester* typed, so an
+    # unlimited endpoint is a mailer pointed at anyone. **Its account key digests the
+    # account's own address, not the requested one** — keying on the target would let one
+    # account spray many victims at full allowance and would open a counter bucket per
+    # victim address.
+    "email_change": (AUTH_THROTTLE_EMAIL_CHANGE_IP, AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT),
 }
 
 #: The IP part of a key is the address as the edge gave it. It is never logged.
@@ -126,3 +136,44 @@ def reset_sign_in_throttle(*, ip_address: str | None, emails: Iterable[str]) -> 
     port.reset(ip_key("sign_in", ip_address))
     for email in emails:
         port.reset(account_key("sign_in", email.strip().lower()))
+
+
+def reset_email_change_throttle(*, ip_address: str | None, emails: Iterable[str]) -> None:
+    """Give these email-change attempts back: clear the email-change windows.
+
+    **This is the twin of `reset_sign_in_throttle`, and it exists for the same reason.**
+    The email-change limits are five an hour per IP and three an hour per account, and
+    they are much tighter than the sign-in's — so a suite that asks for an address change
+    more than three times inside the hour finds the window already up. The request is
+    refused with a 429 and the test fails for a reason that has nothing to do with the
+    code under test.
+
+    **The window is tight for a good reason, and that reason survives the reset.** An
+    email-change request sends real mail to an address the requester typed, so it is the
+    operation where a tight limit matters most. **The limits themselves are not
+    touched**: `AUTH_THROTTLE_EMAIL_CHANGE_IP` is still five and
+    `AUTH_THROTTLE_EMAIL_CHANGE_ACCOUNT` is still three, and a reader who asks six times
+    in an hour is still refused the sixth. What changes is that a *seeded* run starts
+    from a full allowance instead of from whatever the previous run left behind.
+
+    **Both counters are cleared, and both have to be** — for the same reason the
+    sign-in reset clears both: the per-IP counter is the one a single-machine suite
+    trips first, and the per-account counter is the one an account the suite asks for
+    a change more than once trips.
+
+    **The account key is the digest of the account's own address**, which is what
+    `request_email_change` keys on — *not* the address being requested. So the addresses
+    given here are the accounts' own addresses, and they are normalised the same way
+    before they are keyed, exactly as the sign-in reset's are.
+
+    Args:
+        ip_address: The address the callers ask from. Cleared for the email-change
+            operation only.
+        emails: The accounts' own addresses. Cleared for the email-change operation
+            only — the sign-in, sign-up and reset windows are not touched, because a
+            seeded run does one of those things at a time.
+    """
+    port = get_throttle_port()
+    port.reset(ip_key("email_change", ip_address))
+    for email in emails:
+        port.reset(account_key("email_change", email.strip().lower()))

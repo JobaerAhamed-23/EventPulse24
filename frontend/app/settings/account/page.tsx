@@ -1,14 +1,12 @@
 import { redirect } from "next/navigation";
 
 import { DownloadMyData } from "@/components/settings/download-my-data";
-import { HomeCity } from "@/components/settings/home-city";
 import { PlanSummary } from "@/components/settings/plan-summary";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readBillingAccount } from "@/lib/billing-account-read";
 import { displayName } from "@/lib/display-name";
-import { readHomeCity } from "@/lib/home-city-read";
 import { getSession, homeRoute } from "@/lib/session";
 
 /**
@@ -56,7 +54,7 @@ export default async function SettingsAccountPage() {
   // plan that is not theirs.**
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         <SettingsStates />
       </AppShell>
     );
@@ -64,13 +62,17 @@ export default async function SettingsAccountPage() {
 
   // **Two reads, side by side.** They answer unrelated questions — the plan and the city
   // — and neither should wait on the other to render.
-  const [read, homeCity] = await Promise.all([readBillingAccount(), readHomeCity()]);
+  const read = await readBillingAccount();
 
   const name = displayName(session.user);
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={name} email={session.user.email}>
+      <AppShell
+        name={name}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
         <SettingsNav />
 
         <SettingsStates />
@@ -81,7 +83,11 @@ export default async function SettingsAccountPage() {
   const account = read.account;
 
   return (
-    <AppShell name={name} email={session.user.email}>
+    <AppShell
+        name={name}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       <SettingsNav />
 
       <header className="flex flex-col gap-1">
@@ -105,28 +111,34 @@ export default async function SettingsAccountPage() {
       </div>
 
       {/*
-        **The city, between the plan and the data.** It is the setting a reader arrives
-        here to change: Browse's empty state offers "Change city" and sends them to this
-        route, so the control it promises should not be below a download button.
+        **The city moved to `/settings/profile`, and this row is the signpost.**
 
-        **An unavailable read renders nothing rather than an empty picker.** A select with
-        no options would read as "your city is not available", which is a statement about
-        the user rather than about the request that failed.
+        It was here because Browse's empty state offers "Change city" and sent a reader
+        to this route. **Where a person lives is a fact about them, not about their
+        billing**, and the profile screen is the one that answers "who and where am I" —
+        so the control went there and this says where.
+
+        **A removed control that leaves a hole is worse than the split it fixed.**
+        Anyone who knows the city as an Account setting, and any link still pointing
+        here, lands on a row that takes them one tap further rather than on nothing.
+
+        It is rendered unconditionally: unlike the control it replaces, a signpost does
+        not depend on a read that can fail.
+
+        **It names Profile; it does not link to it.** `tests/settings-routes.test.ts`
+        forbids a hand-written link from one settings screen to another, and the sub-nav
+        above already carries Profile. The sentence says where the control went; the
+        sub-nav is how you get there.
       */}
-      {homeCity.kind === "found" ? (
-        <div className="mt-12 max-w-(--layout-container-reading)">
-          <h2 className="text-ink-primary [font:var(--type-scale-headline-sm)]">City</h2>
-          <div className="mt-6">
-            <HomeCity
-              initialCity={homeCity.city}
-              initialCitySource={homeCity.citySource}
-              choices={homeCity.choices}
-              deliveryTime={homeCity.deliveryTime}
-              timezone={homeCity.timezone}
-            />
-          </div>
-        </div>
-      ) : null}
+      <div className="mt-12 max-w-(--layout-container-reading)">
+        <h2 className="text-ink-primary [font:var(--type-scale-headline-sm)]">City</h2>
+        <p
+          data-city-moved-note
+          className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
+        >
+          Your city now sits with the rest of your details under Profile.
+        </p>
+      </div>
 
       {/*
         **Its own section, at the same level as the plan.** Not nested under it, not

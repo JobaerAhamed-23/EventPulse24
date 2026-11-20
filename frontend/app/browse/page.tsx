@@ -71,7 +71,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   // what the page is.
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         <BrowseError />
       </AppShell>
     );
@@ -82,7 +82,11 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={displayName(session.user)} email={session.user.email}>
+      <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
         <BrowseError />
       </AppShell>
     );
@@ -93,7 +97,11 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const noCards = browse.cards.length === 0;
 
   return (
-    <AppShell name={displayName(session.user)} email={session.user.email}>
+    <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       {noCity || noCards ? (
         /*
          **A user with no city gets the same quiet empty state as a city with nothing

@@ -27,6 +27,19 @@ from adapters.throttle.memory import InMemoryThrottleAdapter
 _EMAIL_CONSUMERS = (
     "apps.identity.services.sign_up",
     "apps.identity.services.password_reset",
+    # **The deletion notice is sent from the command, not the edge.**
+    # `request_account_deletion` sends the notice itself, after the transaction commits
+    # — because a rolled-back request must send no mail, and the mail is outside the
+    # transaction exactly as the picture's bucket removal is. So this service module is
+    # a consumer of the port, and a fixture that patched only the services would let a
+    # real SMTP adapter answer here.
+    "apps.identity.services.deletion",
+    # **The email-change sends happen at the edge, not in the command.**
+    # `request_email_change` returns the token and both addresses and sends nothing, so
+    # the command stays testable with no email port at all; `apps.identity.api` owns the
+    # two sends. That makes the API module a third consumer of this port, and a fixture
+    # that patched only the services would let a real SMTP adapter answer here.
+    "apps.identity.api",
 )
 
 

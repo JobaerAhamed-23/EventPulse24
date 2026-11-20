@@ -66,6 +66,8 @@ const DECLARED_UNCALLED: Record<Endpoint, string> = {
     "The anonymous public list. The signed-in UI uses `/api/personal/browse`, which is personalised and quota-aware.",
   "GET /api/catalog/events/{event_id}":
     "The anonymous public read by id. The UI reads `/api/events/{id}` when signed in and `by-slug` for the public page.",
+  "GET /api/auth/profile/avatar/{version}":
+    "Fetched by the browser's image loader from an `<img src>`, not by this client. The URL arrives on `me` as `avatar_url` and is put straight into the tag; there is no fetch to typecheck. It is the one endpoint here whose consumer is the markup rather than TypeScript.",
 };
 
 /** Every `METHOD /path` in the committed contract. */
@@ -139,7 +141,9 @@ function calledEndpoints(): Map<Endpoint, string[]> {
     const [method, route] = endpoint.split(" ") as [Uppercase<Method>, string];
     // `.POST(` then optional whitespace then the exact path literal. The path is
     // escaped: it contains `{` and `}`, which are regex quantifier syntax.
-    const call = new RegExp(`\\.${method}\\s*\\(\\s*"${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`);
+    const call = new RegExp(
+      `\\.${method}\\s*\\(\\s*"${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
+    );
     for (const { relative, code } of files) {
       if (!call.test(code)) continue;
       called.set(endpoint, [...(called.get(endpoint) ?? []), relative]);

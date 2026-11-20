@@ -9,7 +9,7 @@ EP_DB_NAME ?= eventpulse24
 API_BASE_URL ?= http://127.0.0.1:$(or $(API_PORT),8000)
 
 .DEFAULT_GOAL := help
-.PHONY: help env doctor up down reset-db ps logs psql db-check db-init api worker beat send-test-email \
+.PHONY: help env doctor up buckets down reset-db ps logs psql db-check db-init api worker beat send-test-email \
         manage migrate makemigrations test-backend lint-backend lint-imports fmt-backend \
         web web-install lint-web test-web test-e2e openapi client dev coverage-backend seed-browse seed-browse-for-test \
         grant-pro revoke-pro seed-dhaka
@@ -33,19 +33,27 @@ env: ## Create .env from .env.example (never overwrites an existing .env)
 doctor: ## Check prerequisites and ports (installs nothing)
 	@sh scripts/doctor.sh
 
-up: ## Start Postgres, Redis and Mailpit and wait until healthy
+up: ## Start Postgres, Redis, Mailpit and the object store, and make the bucket
 	docker compose up -d --wait
+	@$(MAKE) --no-print-directory buckets
+
+buckets: ## Create the object-store bucket if it is missing (idempotent)
+	# Run as its own step rather than left in the default service set: `docker compose up
+	# -d --wait` exits 1 when a one-shot service exits 0 (measured on Compose v2.27.0),
+	# so the bootstrap job sits behind the `bootstrap` profile and is invoked here.
+	docker compose run --rm createbuckets
 
 down: ## Stop the containers (data is kept)
-	docker compose down
+	docker compose --profile bootstrap down
 
 reset-db: ## Delete all local data and re-initialize (asks first; FORCE=1 to skip)
 	@if [ "$(FORCE)" != "1" ]; then \
 		printf "This deletes ALL local EventPulse24 data (Postgres volume). Continue? [y/N] "; \
 		read ans; [ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Aborted."; exit 1; }; \
 	fi
-	docker compose down -v
+	docker compose --profile bootstrap down -v
 	docker compose up -d --wait
+	@$(MAKE) --no-print-directory buckets
 
 ps: ## Show container status
 	docker compose ps
