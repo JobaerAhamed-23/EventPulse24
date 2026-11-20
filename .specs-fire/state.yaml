@@ -1777,8 +1777,162 @@ intents:
         run_id: run-eventpulse24-056
         completed_at: 2026-11-20T12:27:55.367Z
     completed_at: 2026-11-20T12:23:48.600Z
+  - id: city-picker-and-auto-collection
+    title: City Picker Over a Curated World List, With Automatic Collection
+    status: in_progress
+    created: 2026-11-20
+    work_items:
+      - id: city-catalog-dataset
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: city-choices-endpoint
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-catalog-dataset
+      - id: stored-city-is-the-picked-city
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - city-catalog-dataset
+      - id: source-city-timezone
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on: []
+      - id: city-provider-templates
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-catalog-dataset
+      - id: api-source-parser
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on: []
+      - id: city-provisioning-service
+        status: pending
+        complexity: high
+        mode: validate
+        depends_on:
+          - city-catalog-dataset
+          - city-provider-templates
+          - source-city-timezone
+          - api-source-parser
+      - id: provisioning-probation
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-provisioning-service
+      - id: browse-collecting-states
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-provisioning-service
+      - id: city-coverage-request
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-provisioning-service
+      - id: home-city-dropdown-catalog
+        status: pending
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-choices-endpoint
+          - stored-city-is-the-picked-city
 runs:
-  active: []
+  active:
+    - id: run-eventpulse24-057
+      scope: wide
+      work_items:
+        - id: city-catalog-dataset
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: in_progress
+          current_phase: execute
+          checkpoint_state: approved
+          current_checkpoint: plan
+        - id: source-city-timezone
+          intent: city-picker-and-auto-collection
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: api-source-parser
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: city-choices-endpoint
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: stored-city-is-the-picked-city
+          intent: city-picker-and-auto-collection
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: city-provider-templates
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: city-provisioning-service
+          intent: city-picker-and-auto-collection
+          mode: validate
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: provisioning-probation
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: browse-collecting-states
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: city-coverage-request
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+        - id: home-city-dropdown-catalog
+          intent: city-picker-and-auto-collection
+          mode: confirm
+          status: pending
+          current_phase: null
+          checkpoint_state: none
+          current_checkpoint: null
+      current_item: city-catalog-dataset
+      started: 2026-11-20T13:36:37.657Z
   completed:
     - id: run-eventpulse24-001
       scope: single
