@@ -11,9 +11,15 @@
  *
  * **The zone travels with the time.** `DigestScheduleIn` says it plainly: *"Both or
  * neither. A wall clock without its zone is not a schedule."* So this sends the zone it
- * read, unchanged, alongside the new time. The zone is set during onboarding and this
- * route does not second-guess it — but it does send it, because the server refuses to
- * half-apply the pair.
+ * read, unchanged, alongside the new time. The zone is set in onboarding and changed on
+ * `/settings/profile`, next to the city that answers the same question; this control does
+ * not second-guess it — but it does send it, because the server refuses to half-apply the
+ * pair.
+ *
+ * **Sending the zone is not owning it.** The zone lived on this screen for a while, one
+ * row above, and the two controls were a mirror image of each other: each sent the other
+ * half unchanged. That is still true across the two screens, because it was always a fact
+ * about the endpoint rather than about the layout.
  *
  * **The save is inline and it sends one field.** The digest schedule goes up as
  * `{ digest: { delivery_time, timezone } }`; the quiet window and the default slots

@@ -5,13 +5,15 @@
  *
  * ## It was unreachable, and a link already promised otherwise
  *
- * Browse's hero carries a "Change city" link, and its own comment says why: *"'Change
- * city' is a real link, and it goes to `/settings/account`: the city is the digest
- * preference's city, and account settings is where the preference lives. A control that
- * goes nowhere is a lie about what the page can do."* The link shipped; the control did
- * not. `/settings/account` had **Plan** and **Your data** and nothing about a city — so
- * the one route the product offers for fixing an empty Browse led to a page that could
- * not fix it.
+ * Browse's hero carries a "Change city" link, and its own comment says why: *"a control
+ * that goes nowhere is a lie about what the page can do."* The link shipped; the control
+ * did not. It pointed at `/settings/account`, which had **Plan** and **Your data** and
+ * nothing about a city — so the one route the product offers for fixing an empty Browse
+ * led to a page that could not fix it.
+ *
+ * **The control now lives on `/settings/profile`, and the link points there.** Where a
+ * person lives is a fact about them rather than about their billing, and it sits beside
+ * the zone, which answers the same question.
  *
  * The same link is in Browse's *empty* state, which is where it matters most: a user
  * whose city has nothing on, or who has no city at all, is sent here precisely to change

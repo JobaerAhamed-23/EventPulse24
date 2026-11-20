@@ -392,3 +392,33 @@ describe("who gets to be here", () => {
     expect(sidenavAccountName()).toBe("Maya");
   });
 });
+
+describe("the zone, which is not on this screen any more", () => {
+  it("is not edited here", async () => {
+    /**
+     * **It opened this screen once**, on the grounds that *"everything under it is read
+     * in that zone"* — true of the page, and not the question a reader arrives with.
+     * "Which zone am I in" is the same question as "which city am I in", and the city
+     * was two screens away. Both are on `/settings/profile` now.
+     *
+     * **Two copies would be worse than either place.** `DigestTimezone` saves on change,
+     * so a second one here would be a second control writing the same field.
+     */
+    render(await SettingsGeneralPage());
+
+    expect(screen.queryByRole("combobox", { name: "Timezone" })).not.toBeInTheDocument();
+    expect(document.querySelector("[data-digest-timezone]")).toBeNull();
+  });
+
+  it("keeps the delivery time, which is a digest setting and reads as one", async () => {
+    /**
+     * **The zone's move did not take the delivery time with it.** The two are sent
+     * together — the endpoint takes *"both or neither"* — but that is a constraint on
+     * the request, not on which screen each is edited from. `DigestDeliveryTime` still
+     * posts the stored zone back unchanged, exactly as it always did.
+     */
+    render(await SettingsGeneralPage());
+
+    expect(screen.getByLabelText("Delivery time")).toHaveValue("09:00");
+  });
+});

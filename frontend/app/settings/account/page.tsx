@@ -31,11 +31,14 @@ import { getSession, homeRoute } from "@/lib/session";
  * a Pro-only section would be the same gate wearing a layout, which this item's acceptance
  * criterion forbids by name.
  *
- * **The city is here because a link already said it was.** Browse's "Change city" goes to
- * this route — *"the city is the digest preference's city, and account settings is where
- * the preference lives"* — and until now it arrived at a page with no such control. The
- * city is the account's own setting in the same sense the plan is: it is what the account
- * *is*, not what it is configured to send.
+ * **The city is not here, and no longer has a signpost here either.** It was on this
+ * screen because Browse's "Change city" link pointed at this route; it then moved to
+ * `/settings/profile`, and a row saying so was left behind so that the link and anyone's
+ * memory still landed somewhere useful. **A signpost is a cost that only pays while
+ * something still points at it** — and the links were repointed at `/settings/profile`
+ * with the move. What is left is a heading over a sentence over nothing, between the
+ * plan and the export, on a screen whose subject is neither. So it is gone, and this
+ * paragraph is the record that it was deliberate rather than dropped.
  *
  * **Cancellation is Stripe's.** No local cancel flow — it would be a second write path into
  * subscription state for the webhook to reconcile against.
@@ -60,8 +63,8 @@ export default async function SettingsAccountPage() {
     );
   }
 
-  // **Two reads, side by side.** They answer unrelated questions — the plan and the city
-  // — and neither should wait on the other to render.
+  // **One read: the plan.** The city used to be named on this screen and is not any
+  // more, so there is nothing else to ask for.
   const read = await readBillingAccount();
 
   const name = displayName(session.user);
@@ -93,7 +96,7 @@ export default async function SettingsAccountPage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Account</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          Your plan, your city, and your data.
+          Your plan, and your data.
         </p>
       </header>
 
@@ -108,36 +111,6 @@ export default async function SettingsAccountPage() {
             periodEnd={account.period_end}
           />
         </div>
-      </div>
-
-      {/*
-        **The city moved to `/settings/profile`, and this row is the signpost.**
-
-        It was here because Browse's empty state offers "Change city" and sent a reader
-        to this route. **Where a person lives is a fact about them, not about their
-        billing**, and the profile screen is the one that answers "who and where am I" —
-        so the control went there and this says where.
-
-        **A removed control that leaves a hole is worse than the split it fixed.**
-        Anyone who knows the city as an Account setting, and any link still pointing
-        here, lands on a row that takes them one tap further rather than on nothing.
-
-        It is rendered unconditionally: unlike the control it replaces, a signpost does
-        not depend on a read that can fail.
-
-        **It names Profile; it does not link to it.** `tests/settings-routes.test.ts`
-        forbids a hand-written link from one settings screen to another, and the sub-nav
-        above already carries Profile. The sentence says where the control went; the
-        sub-nav is how you get there.
-      */}
-      <div className="mt-12 max-w-(--layout-container-reading)">
-        <h2 className="text-ink-primary [font:var(--type-scale-headline-sm)]">City</h2>
-        <p
-          data-city-moved-note
-          className="mt-6 text-ink-secondary [font:var(--type-scale-body-md)]"
-        >
-          Your city now sits with the rest of your details under Profile.
-        </p>
       </div>
 
       {/*

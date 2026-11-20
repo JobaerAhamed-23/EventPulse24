@@ -52,7 +52,7 @@ export function BrowseEmpty() {
         show more.
       </p>
       <Link
-        href="/settings/account"
+        href="/settings/profile"
         className="mt-6 inline-block text-accent-terracotta underline underline-offset-4 [font:var(--type-scale-body-sm)]"
         data-browse-change-city
       >

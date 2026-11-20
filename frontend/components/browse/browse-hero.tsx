@@ -75,9 +75,12 @@ export function BrowseHero({ browse }: BrowseHeroProps) {
         **The count is the pool's size**, which is what the user can page to — not a
         `COUNT(*)` that would count rows the staleness bound then drops.
 
-        **"Change city" is a real link**, and it goes to `/settings/account`: the city is
-        the digest preference's city, and account settings is where the preference lives.
-        A control that goes nowhere is a lie about what the page can do.
+        **"Change city" is a real link**, and it goes to `/settings/profile`, where the
+        city picker is. It pointed at `/settings/account` while the picker was there; the
+        control moved to the profile screen — where you live is a fact about you, not
+        about your billing — and this link moved with it. A control that goes nowhere, or
+        that lands on a screen with no such control, is a lie about what the page can
+        do.
       */}
       <p
         className="mt-8 inline-flex flex-wrap items-center gap-x-4 gap-y-1 rounded-full border border-border-subtle bg-surface-elevated px-4 py-2 text-ink-secondary [font:var(--type-scale-body-sm)]"
@@ -94,7 +97,7 @@ export function BrowseHero({ browse }: BrowseHeroProps) {
           ·
         </span>
         <Link
-          href="/settings/account"
+          href="/settings/profile"
           className="text-accent-terracotta underline underline-offset-4"
           data-browse-change-city
         >

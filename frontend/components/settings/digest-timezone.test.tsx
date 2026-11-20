@@ -61,12 +61,17 @@ describe("showing the zone", () => {
     expect(select).toHaveValue("Asia/Dhaka");
   });
 
-  it("says that the rows below it are read in this zone", () => {
-    // The row sits first on the page precisely because everything under it — the quiet
-    // window, the brief's "today", the timeline's week — is a local time.
+  it("names the settings that are read in this zone", () => {
+    // **It used to say "everything below", and that was a claim about the page.** The
+    // control opened `/settings/general`, with the quiet window and the digest beneath
+    // it. It now sits on `/settings/profile` under the city, where there is nothing
+    // below it at all — so it names the settings the zone governs instead of pointing
+    // down the page at them.
     renderControl("UTC");
 
-    expect(screen.getByText(/Everything below is read in this zone/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Your Pulse Digest, quiet hours and timeline are read in this zone/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the zone's current offset, computed rather than stored", () => {
