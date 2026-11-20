@@ -36,10 +36,12 @@ class SignUpIn(Schema):
     visitor and break AD-12's cacheability. So the carry is a **request field**: the
     frontend reads the cookie and sends the city here.
 
-    A city the catalog does not cover is stored as the fallback with `city_source`
-    `fallback`, so the digest can say "we don't have your city yet" rather than passing
-    the fallback off as the user's city. The sign-up **response** says nothing about
-    it either way — a city is not an account-existence oracle, but the response shape
+    A city in the curated catalog is stored **exactly as sent**, with `city_source`
+    `choice`. A city **outside** it is **refused** — the account is still created, but
+    the city is not stored and the caller is told which value was refused — because the
+    stored city is the picked city, and a reader who chose Chittagong must not be
+    answered with New York City. The sign-up **response** says nothing about the city
+    either way — a city is not an account-existence oracle, but the response shape
     carries nothing beyond `status` in any case.
     """
 

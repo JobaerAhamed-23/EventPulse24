@@ -307,7 +307,7 @@ export interface paths {
          * Create an account
          * @description Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.
          *
-         *     `city` is optional: the visitor's home city, carried across from the preview choice. A city the catalog does not cover is stored as the fallback, and the response says nothing about it either way.
+         *     `city` is optional: the visitor's home city, carried across from the preview choice. A city in the curated catalog is stored **exactly as sent**. A city **outside** it is **refused** with a 422: the account is still created, but the city is not stored and the response names the rejected value — because the stored city is the picked city. The sign-up response itself says nothing about the city either way.
          */
         post: operations["apps_identity_api_signup"];
         delete?: never;
@@ -1261,7 +1261,7 @@ export interface paths {
          * Set the digest delivery time, timezone, home city and personal-events opt-out
          * @description Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.
          *
-         *     `city` is the user's home city, in the catalog's own spelling. A city the catalog does not cover is stored as the fallback and reported back with `city_source` set to `fallback`, so the client can say "we don't have your city yet" rather than implying it is the user's city.
+         *     `city` is the user's home city, in the catalog's own spelling. A city in the curated catalog is stored **exactly as sent**, with `city_source` set to `choice`. A city **outside** it is **refused**: the request answers 422, nothing is stored, and the response names the rejected value — because the stored city is the picked city, and a reader who chose Chittagong must not be answered with New York City and a cheerful 200.
          *
          *     `include_personal_events` defaults to included — personal events are in the digest unless the user opts out. Both fields are optional, and **leaving one out does not change it**: an omitted field (and a `null` city) means "leave it alone", so a client that only wants to change the delivery time does not reset the city. This endpoint cannot clear the city — a `null` and an omitted field are the same value, and a shape that cannot tell them apart must not guess.
          */
@@ -3212,10 +3212,11 @@ export interface components {
          *     delivery time must not silently clear the city or silently re-include personal
          *     events.
          *
-         *     **`city` is the user's home city, in the catalog's spelling.** A city the catalog
-         *     does not cover is stored as the fallback with `city_source` `fallback`, so the digest
-         *     can say "we don't have your city yet" rather than passing the fallback off as the
-         *     user's city.
+         *     **`city` is the user's home city, in the catalog's spelling.** A city in the
+         *     curated catalog is stored **exactly as sent**, with `city_source` set to `choice`.
+         *     A city **outside** it is **refused** — the request answers 422 and nothing is
+         *     stored — because the stored city is the picked city: a reader who chose Chittagong
+         *     must not be answered with New York City and a cheerful 200.
          *
          *     **A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an
          *     omitted field are the same value here, so "leave it alone" and "clear it" cannot be
@@ -4796,10 +4797,12 @@ export interface components {
          *     visitor and break AD-12's cacheability. So the carry is a **request field**: the
          *     frontend reads the cookie and sends the city here.
          *
-         *     A city the catalog does not cover is stored as the fallback with `city_source`
-         *     `fallback`, so the digest can say "we don't have your city yet" rather than passing
-         *     the fallback off as the user's city. The sign-up **response** says nothing about
-         *     it either way — a city is not an account-existence oracle, but the response shape
+         *     A city in the curated catalog is stored **exactly as sent**, with `city_source`
+         *     `choice`. A city **outside** it is **refused** — the account is still created, but
+         *     the city is not stored and the caller is told which value was refused — because the
+         *     stored city is the picked city, and a reader who chose Chittagong must not be
+         *     answered with New York City. The sign-up **response** says nothing about the city
+         *     either way — a city is not an account-existence oracle, but the response shape
          *     carries nothing beyond `status` in any case.
          */
         SignUpIn: {

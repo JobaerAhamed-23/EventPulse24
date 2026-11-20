@@ -98,16 +98,19 @@ code under test. So the flag says "this is a test run" and the flag is what clea
 events, then the **Event Fit** rows, and only then the accounts' city — and each of
 those depends on the one before it:
 
-- A city's **coverage** is not a list of names; it is "the cities with a published
-  event that has an Event Fit". `list_supported_cities` reads the fit rows, so a city
-  with no fit row is not a city the catalog serves.
-- `set_digest_preference` **checks the city against the catalog's coverage** and
-  replaces an uncovered city with the fallback. So if the accounts were written before
-  the fits, their city would silently become "New York City" — a real city, full of
-  nothing this seed wrote — and Browse would serve an empty surface while the seed
-  reported success.
 - The fit is computed from the event's **venue city**, so the venues have to exist
   before the events, and the events before the fits.
+- Browse's pool is the city's **published events with an Event Fit**, so the fits have
+  to exist before an account's city can point at anything. The seed writes the fits
+  because a city with no fit row is a city the catalog serves nothing for.
+
+**The seed's city is the server's choice, not a reader's pick.** "Fixtureville" is a
+fictional city for a local walk-through — it is not in the curated catalog and never
+could be. So the seed writes it with `city_source="seed"`, and the value is stored
+**verbatim**, the same way the fallback is. This is the one write in the codebase that
+is legitimately not a reader's choice: a reader's pick is `choice`, and a reader who
+picked a city the catalog does not hold is **refused** rather than silently answered
+with somewhere else. The seed has no reader to mislead, so it stores what it means.
 
 That chain is why the seed says what it says. It is also why the walk-through's surface
 had to be built before this command existed.
@@ -134,6 +137,7 @@ from apps.ingestion.services.source_registry import (
     register_source,
 )
 from apps.ingestion.services.venue_registry import find_venue, register_venue
+from apps.personalization.services.digest_preferences import SOURCE_SEED
 from apps.personalization.services.onboarding import (
     INTEREST_CHIP_KEYS,
     advance_step,
@@ -597,14 +601,10 @@ class Command(BaseCommand):
     def _event_fits(self, *, now: datetime) -> int:
         """Persist the Event Fit for the published events, and report how many were written.
 
-        **Why the seed has to do this at all.** A city's coverage is not a list of names:
-        `list_supported_cities` reads the **Event Fit** rows, and a city with no fit row
-        is a city the catalog does not serve. `set_digest_preference` checks the city it
-        is given against that coverage and replaces an uncovered city with the fallback
-        ("New York City") — so without this step the seeded accounts would end up in a
-        real city full of nothing this seed wrote, and Browse would serve an empty
-        surface while the seed reported success. That is exactly what happened the first
-        time this command was written, and the test now pins it.
+        **Why the seed has to do this at all.** Browse's pool is the city's published
+        events **with an Event Fit**, so a city whose events have no fit row is a city
+        the catalog serves nothing for. Without this step the seeded accounts would sit
+        in a city with an empty surface while the seed reported success.
 
         **The backfill is the published write, and it is idempotent.** The write is an
         upsert on `(event, city)`, so a second run replaces each row's score and tags
@@ -688,8 +688,9 @@ class Command(BaseCommand):
 
             # The interests, the digest preference and the city. `set_digest_preference`
             # writes the zone, the delivery time and the city in one transaction, and the
-            # city is checked against the catalog's own coverage — so the venues above
-            # have to exist first, which is why the events are seeded before the users.
+            # city's pool is the published events with an Event Fit — so the venues and
+            # the events above have to exist first, which is why they are seeded before
+            # the users.
             set_interests(
                 user_id=user_id,
                 chip_keys=list(spec.get("chips", [])),
@@ -703,6 +704,12 @@ class Command(BaseCommand):
                 actor=user_actor,
                 now=now,
                 city=spec.get("city", city),
+                # **The server chose this city.** "Fixtureville" is a fictional city for a
+                # local walk-through, and it is not a city the picker could have offered —
+                # so it is stored verbatim, the same way the fallback is. A reader's pick
+                # would be `choice`, and a reader who picked a city the catalog does not
+                # hold would be refused.
+                city_source=SOURCE_SEED,
             )
 
             state = self._complete_onboarding(user_id=user_id, actor=user_actor, now=now)

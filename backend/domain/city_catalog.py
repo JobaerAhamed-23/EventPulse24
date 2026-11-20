@@ -260,6 +260,12 @@ WORLD_CITIES: tuple[CityChoice, ...] = (
         ("Seattle, WA", "wa", "Washington", "America/Los_Angeles"),
         ("Portland, OR", "or", "Oregon", "America/Los_Angeles"),
         ("Las Vegas, NV", "nv", "Nevada", "America/Los_Angeles"),
+        # **Montgomery is the project's own local seed city**, so it carries no region
+        # qualifier — the string the seed's venue and its source already use is plain
+        # "Montgomery", and a qualified "Montgomery, AL" would key differently and
+        # resolve to nothing. It sits in `America/Chicago`, which is Central Time, not
+        # the `America/New_York` the country default would give it.
+        ("Montgomery", "", "", "America/Chicago"),
     ),
     # --- Canada --------------------------------------------------------------------------
     *_country(

@@ -27,9 +27,10 @@ from shared.db import CATALOG, PERSONAL
 from tests.csrf import CsrfClient
 
 # The catalog is in the list because the digest-preference endpoint resolves the city
-# against the catalog's covered cities (FR-2's rule, reused). Without it, a request
-# that names a city cannot be answered — and the answer would be wrong rather than
-# absent, which is worse.
+# against the curated catalog in `domain.city_catalog`. That module is stdlib and needs
+# no database — but the preview's coverage rule, which this endpoint used to reuse, did,
+# and leaving the database in place keeps this file's fixtures comparable with the
+# preview's.
 pytestmark = pytest.mark.django_db(databases=[PERSONAL, CATALOG])
 
 User = get_user_model()
@@ -267,9 +268,11 @@ def test_putting_the_digest_preference_carries_the_city_and_the_opt_out():
 
     assert response.status_code == 200
     digest = response.json()["digest"]
-    # An unsupported city is stored as the fallback, and says so.
-    assert digest["city"] == "New York City"
-    assert digest["city_source"] == "fallback"
+    # **A catalog city is stored as it was sent.** This used to answer "New York City"
+    # with `city_source="fallback"` — the silent rewrite the item ended. Brooklyn is in
+    # the curated catalog, so the stored city is Brooklyn.
+    assert digest["city"] == "Brooklyn"
+    assert digest["city_source"] == "choice"
     assert digest["include_personal_events"] is False
     preference = DigestPreference.objects.using(PERSONAL).get()
     assert preference.include_personal_events is False
@@ -297,8 +300,8 @@ def test_omitting_the_city_does_not_clear_the_stored_one():
 
     assert response.status_code == 200
     digest = response.json()["digest"]
-    assert digest["city"] == "New York City"
-    assert digest["city_source"] == "fallback"
+    assert digest["city"] == "Brooklyn"
+    assert digest["city_source"] == "choice"
 
 
 def test_omitting_the_opt_out_does_not_re_include_personal_events():

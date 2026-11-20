@@ -634,10 +634,11 @@ class DigestPreferenceIn(Schema):
     delivery time must not silently clear the city or silently re-include personal
     events.
 
-    **`city` is the user's home city, in the catalog's spelling.** A city the catalog
-    does not cover is stored as the fallback with `city_source` `fallback`, so the digest
-    can say "we don't have your city yet" rather than passing the fallback off as the
-    user's city.
+    **`city` is the user's home city, in the catalog's spelling.** A city in the
+    curated catalog is stored **exactly as sent**, with `city_source` set to `choice`.
+    A city **outside** it is **refused** — the request answers 422 and nothing is
+    stored — because the stored city is the picked city: a reader who chose Chittagong
+    must not be answered with New York City and a cheerful 200.
 
     **A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an
     omitted field are the same value here, so "leave it alone" and "clear it" cannot be

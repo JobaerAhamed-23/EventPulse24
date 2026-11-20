@@ -630,6 +630,9 @@ class DigestPreference(UUIDv7Model):
         Not decoration: a fallback the user did not pick must be *labelled* as one, and
         the digest says "we don't have your city yet" for a fallback rather than
         implying New York City is the user's city.
+
+        **The first four describe how a *reader's* city arrives.** The fifth does not: a
+        reader never authors one.
         """
 
         # The edge's geo header, at sign-up.
@@ -640,6 +643,11 @@ class DigestPreference(UUIDv7Model):
         FALLBACK = "fallback"
         # The backfill command filled it, because the account predates this item.
         BACKFILL = "backfill"
+        # The local dev seed wrote it, because the seed authors a fictional city for a
+        # walk-through. **The server chose it**, so it is stored verbatim — the same
+        # exemption the fallback gets, for the same reason: there is no reader to
+        # mislead, because there is no reader.
+        SEED = "seed"
 
     retention_category = RetentionCategory.PREFERENCE_SIGNALS
 
