@@ -5,6 +5,11 @@ from apps.identity.services.audit import write_audit
 from apps.identity.services.authenticate import authenticate
 from apps.identity.services.avatar import clear_user_avatar, set_user_avatar
 from apps.identity.services.billing import open_portal, read_entitlement, start_checkout
+from apps.identity.services.deletion import (
+    cancel_account_deletion,
+    destroy_account,
+    request_account_deletion,
+)
 from apps.identity.services.email_change import (
     cancel_email_change,
     confirm_email_change,
@@ -35,7 +40,9 @@ __all__ = [
     "end_other_sessions",
     "get_recipient_address",
     "cancel_email_change",
+    "cancel_account_deletion",
     "confirm_email_change",
+    "destroy_account",
     "hash_token",
     "is_pro",
     "is_throttled",
@@ -46,6 +53,7 @@ __all__ = [
     "record_subscription_started",
     "request_email_change",
     "request_password_reset",
+    "request_account_deletion",
     "reset_password",
     "clear_user_avatar",
     "set_user_avatar",

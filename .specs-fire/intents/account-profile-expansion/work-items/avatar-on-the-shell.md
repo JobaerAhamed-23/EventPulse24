@@ -4,7 +4,7 @@ title: The Face, Everywhere the Name Already Is
 intent: account-profile-expansion
 complexity: medium
 mode: confirm
-status: pending
+status: in_progress
 depends_on:
   - avatar-endpoint-and-contract
 created: 2026-11-19

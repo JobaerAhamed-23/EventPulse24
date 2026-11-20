@@ -78,6 +78,8 @@ from apps.identity.api_auth import (
 )
 from apps.identity.models import PendingEmailChange
 from apps.identity.schemas import (
+    AccountDeletionCancelOut,
+    AccountDeletionRequestOut,
     CsrfTokenOut,
     CurrentUserOut,
     EmailChangeCancelOut,
@@ -102,6 +104,10 @@ from apps.identity.services.avatar import (
     clear_user_avatar,
     set_user_avatar,
     version_of,
+)
+from apps.identity.services.deletion import (
+    cancel_account_deletion,
+    request_account_deletion,
 )
 from apps.identity.services.email_change import (
     cancel_email_change,
@@ -540,6 +546,65 @@ def get_profile_avatar(request, version: str):
     # show a broken picture for exactly the difference.
     response["Cache-Control"] = f"private, max-age={settings.AVATAR_REDIRECT_MAX_AGE}"
     return response
+
+
+@router.post(
+    "/profile/deletion",
+    # 200 the recorded request; 401 an anonymous caller; 403 the CSRF refusal. The request
+    # cannot fail on its merits — a second request is idempotent, not an error.
+    response={200: AccountDeletionRequestOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Ask to delete the account",
+    description=(
+        "Records a request to delete the signed-in account, and answers with the date the "
+        "deletion will take effect.\n\n"
+        "**Nothing is destroyed yet.** The account keeps working, in full, for the grace "
+        "period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request "
+        "off during that time. The stored profile picture is removed when the account is "
+        "destroyed, not when the request is made, so cancelling inside the grace period "
+        "leaves the picture where it was.\n\n"
+        "**Asking twice is not an error.** The first request set the date; a later one "
+        "returns the same date rather than moving it, so the promise the product made "
+        "cannot be extended by asking again."
+    ),
+)
+def request_account_deletion_endpoint(request):
+    """Record a request to delete the caller's account. Nothing is destroyed yet."""
+    # **The CSRF check is first**, as on every write on this router.
+    require_csrf(request)
+
+    user = current_user(request)
+
+    # The write goes through the named command (AD-5). The command computes the schedule
+    # once, writes the audit row in the same transaction, and returns the row it holds —
+    # the existing one if this is a second request.
+    pending = request_account_deletion(user_id=user.pk)
+
+    return AccountDeletionRequestOut(
+        requested_at=pending.requested_at.isoformat(),
+        scheduled_for=pending.scheduled_for.isoformat(),
+    )
+
+
+@router.delete(
+    "/profile/deletion",
+    # 401 an anonymous caller, 403 the CSRF refusal. Cancelling cannot fail on its merits.
+    response={200: AccountDeletionCancelOut, 401: ErrorOut, 403: ErrorOut},
+    summary="Call off a pending account deletion",
+    description=(
+        "Calls off any outstanding request to delete the signed-in account. The account "
+        "keeps working, and everything it holds is left exactly where it was.\n\n"
+        "Cancelling when nothing is pending is **not** an error: the caller wanted no "
+        "pending deletion and has none either way. The answer is the same in both cases."
+    ),
+)
+def cancel_account_deletion_endpoint(request):
+    """Call off any outstanding request to delete the caller's account."""
+    require_csrf(request)
+
+    user = current_user(request)
+    cancel_account_deletion(user_id=user.pk)
+
+    return AccountDeletionCancelOut()
 
 
 @router.post(

@@ -160,6 +160,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/profile/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask to delete the account
+         * @description Records a request to delete the signed-in account, and answers with the date the deletion will take effect.
+         *
+         *     **Nothing is destroyed yet.** The account keeps working, in full, for the grace period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request off during that time. The stored profile picture is removed when the account is destroyed, not when the request is made, so cancelling inside the grace period leaves the picture where it was.
+         *
+         *     **Asking twice is not an error.** The first request set the date; a later one returns the same date rather than moving it, so the promise the product made cannot be extended by asking again.
+         */
+        post: operations["apps_identity_api_request_account_deletion_endpoint"];
+        /**
+         * Call off a pending account deletion
+         * @description Calls off any outstanding request to delete the signed-in account. The account keeps working, and everything it holds is left exactly where it was.
+         *
+         *     Cancelling when nothing is pending is **not** an error: the caller wanted no pending deletion and has none either way. The answer is the same in both cases.
+         */
+        delete: operations["apps_identity_api_cancel_account_deletion_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/profile/email": {
         parameters: {
             query?: never;
@@ -1735,6 +1765,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AccountDeletionCancelOut
+         * @description The answer to "actually, don't": the pending request is gone.
+         *
+         *     **Cancelling when nothing is pending is not an error.** The caller wanted no pending
+         *     deletion and has none either way, so the answer is the same in both cases — the same
+         *     reasoning as `EmailChangeCancelOut`, and for the same reason: a client that could
+         *     tell the two apart would be reading state it can already get from `me`.
+         */
+        AccountDeletionCancelOut: {
+            /**
+             * Status
+             * @default cancelled
+             */
+            status: string;
+        };
+        /**
+         * AccountDeletionRequestOut
+         * @description The answer to "please delete my account": the request was recorded, and when it
+         *     will take effect.
+         *
+         *     **`scheduled_for` is the promise.** The thirty-day grace period is something the
+         *     product told the person about, so the answer says exactly when the account will be
+         *     destroyed — not "in about a month", not "soon". A person who cancels needs to know
+         *     how long they have, and a person who wants to be sure the request landed needs to
+         *     see the date that was set.
+         *
+         *     **`requested_at` is when the request was recorded, and it can differ from
+         *     `scheduled_for` by exactly the grace period.** The schedule is computed once, when
+         *     the request is first made, so that a later request cannot move the date.
+         *
+         *     **No reason field.** Nothing here records why somebody asked, and nothing here
+         *     records what was deleted — the account is still there, in full, and the audit trail
+         *     is where a record of the eventual deletion belongs.
+         */
+        AccountDeletionRequestOut: {
+            /** Requested At */
+            requested_at: string;
+            /** Scheduled For */
+            scheduled_for: string;
+            /**
+             * Status
+             * @default scheduled
+             */
+            status: string;
+        };
         /**
          * BillingAccountOut
          * @description The account screen's view of a plan (FR-48).
@@ -5370,6 +5446,82 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_request_account_deletion_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apps_identity_api_cancel_account_deletion_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionCancelOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

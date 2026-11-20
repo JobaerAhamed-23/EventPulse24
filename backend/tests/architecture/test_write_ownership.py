@@ -61,6 +61,11 @@ TABLE_OWNERS = {
     # `services/email_change` commands. The address it holds is the account's future
     # credential, and the app that owns the credential owns the claim on it.
     "identity_pendingemailchange": "identity",
+    # The deletion request is identity's for the same reason the pending email change
+    # is: it is a claim about the account's own lifecycle, written only by identity's
+    # `services/deletion` commands. It holds no personal data beyond the account's own
+    # id (AD-13), and it is the row the grace period is computed from.
+    "identity_deletionrequest": "identity",
     # FR-48: `identity/__init__.py` has always said "Owns User and Subscription". Billing
     # state is account state, and the app that can tell you an account exists is the one
     # that tells you what it is entitled to. Written only by `services/subscriptions`.

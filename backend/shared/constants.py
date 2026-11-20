@@ -1049,6 +1049,21 @@ AVATAR_CONTENT_TYPE = {"PNG": "image/png", "JPEG": "image/jpeg"}
 #: would carry whatever the uploader chose to name their file.
 AVATAR_KEY_PREFIX = "avatars/"
 
+# ── Account deletion (account-profile-expansion) ───────────────────────────────────────
+
+#: How long a person has to change their mind before the account is destroyed.
+#:
+#: **Thirty days, and it is a promise the product makes.** Amendment A-16's third paragraph
+#: says a person can cancel any time during the grace period, so this is not a retention
+#: tuning knob — it is the interval the product told people about. A change to this number
+#: changes what the product has promised.
+#:
+#: **Nothing is destroyed until this expires.** The picture's object in particular: it is
+#: removed when the account is *destroyed*, not when deletion is requested, so a person who
+#: cancels inside the grace period gets their picture back. Removing it at request time
+#: would make the grace period a lie.
+DELETION_GRACE_PERIOD = timedelta(days=30)
+
 RANKING_WEIGHTS_AMENDMENT = "ADR-0025"
 
 # **The PRD amendment that publishes the formula, and when it last moved.**

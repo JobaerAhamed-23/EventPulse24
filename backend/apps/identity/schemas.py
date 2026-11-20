@@ -266,6 +266,42 @@ class CsrfTokenOut(Schema):
     csrf_token: str
 
 
+class AccountDeletionRequestOut(Schema):
+    """The answer to "please delete my account": the request was recorded, and when it
+    will take effect.
+
+    **`scheduled_for` is the promise.** The thirty-day grace period is something the
+    product told the person about, so the answer says exactly when the account will be
+    destroyed — not "in about a month", not "soon". A person who cancels needs to know
+    how long they have, and a person who wants to be sure the request landed needs to
+    see the date that was set.
+
+    **`requested_at` is when the request was recorded, and it can differ from
+    `scheduled_for` by exactly the grace period.** The schedule is computed once, when
+    the request is first made, so that a later request cannot move the date.
+
+    **No reason field.** Nothing here records why somebody asked, and nothing here
+    records what was deleted — the account is still there, in full, and the audit trail
+    is where a record of the eventual deletion belongs.
+    """
+
+    status: str = "scheduled"
+    requested_at: str
+    scheduled_for: str
+
+
+class AccountDeletionCancelOut(Schema):
+    """The answer to "actually, don't": the pending request is gone.
+
+    **Cancelling when nothing is pending is not an error.** The caller wanted no pending
+    deletion and has none either way, so the answer is the same in both cases — the same
+    reasoning as `EmailChangeCancelOut`, and for the same reason: a client that could
+    tell the two apart would be reading state it can already get from `me`.
+    """
+
+    status: str = "cancelled"
+
+
 class CheckoutIn(Schema):
     """The checkout request: which plan to buy.
 

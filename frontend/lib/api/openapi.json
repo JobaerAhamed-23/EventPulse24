@@ -1,6 +1,42 @@
 {
   "components": {
     "schemas": {
+      "AccountDeletionCancelOut": {
+        "description": "The answer to \"actually, don't\": the pending request is gone.\n\n**Cancelling when nothing is pending is not an error.** The caller wanted no pending\ndeletion and has none either way, so the answer is the same in both cases — the same\nreasoning as `EmailChangeCancelOut`, and for the same reason: a client that could\ntell the two apart would be reading state it can already get from `me`.",
+        "properties": {
+          "status": {
+            "default": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "AccountDeletionCancelOut",
+        "type": "object"
+      },
+      "AccountDeletionRequestOut": {
+        "description": "The answer to \"please delete my account\": the request was recorded, and when it\nwill take effect.\n\n**`scheduled_for` is the promise.** The thirty-day grace period is something the\nproduct told the person about, so the answer says exactly when the account will be\ndestroyed — not \"in about a month\", not \"soon\". A person who cancels needs to know\nhow long they have, and a person who wants to be sure the request landed needs to\nsee the date that was set.\n\n**`requested_at` is when the request was recorded, and it can differ from\n`scheduled_for` by exactly the grace period.** The schedule is computed once, when\nthe request is first made, so that a later request cannot move the date.\n\n**No reason field.** Nothing here records why somebody asked, and nothing here\nrecords what was deleted — the account is still there, in full, and the audit trail\nis where a record of the eventual deletion belongs.",
+        "properties": {
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "scheduled_for": {
+            "title": "Scheduled For",
+            "type": "string"
+          },
+          "status": {
+            "default": "scheduled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requested_at",
+          "scheduled_for"
+        ],
+        "title": "AccountDeletionRequestOut",
+        "type": "object"
+      },
       "BillingAccountOut": {
         "description": "The account screen's view of a plan (FR-48).\n\n**The wider read `SubscriptionOut` deliberately refused to become.** That schema stays\none bool because *\"a field here would be a field two callers could disagree about\"*;\nthis one carries the state a person needs to act on their own subscription, and the two\ncannot disagree because `is_pro` here is computed from the same\n`LIVE_SUBSCRIPTION_STATUSES` the entitlement read uses.\n\n**`needs_payment` is the field this schema exists for.** `is_pro` is true for a\n`past_due` account — a failed payment leaves someone entitled while they fix it — so a\nscreen that could only see the bool would show a person with a recoverable problem\nexactly what it shows a person with none.\n\n**`period_end` is not a renewal date**, and is not named as one. This product does not\nmodel `cancel_at_period_end`, so a subscription cancelled in the provider's portal reads\n`active` until its term runs out and nothing here can tell them apart. The field says\nwhen the current term ends, which is true in both cases.",
         "properties": {
@@ -5309,6 +5345,90 @@
           }
         },
         "summary": "Fetch the signed-in user's profile picture",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/profile/deletion": {
+      "delete": {
+        "description": "Calls off any outstanding request to delete the signed-in account. The account keeps working, and everything it holds is left exactly where it was.\n\nCancelling when nothing is pending is **not** an error: the caller wanted no pending deletion and has none either way. The answer is the same in both cases.",
+        "operationId": "apps_identity_api_cancel_account_deletion_endpoint",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionCancelOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Call off a pending account deletion",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "Records a request to delete the signed-in account, and answers with the date the deletion will take effect.\n\n**Nothing is destroyed yet.** The account keeps working, in full, for the grace period — thirty days — and `DELETE /api/auth/profile/deletion` calls the request off during that time. The stored profile picture is removed when the account is destroyed, not when the request is made, so cancelling inside the grace period leaves the picture where it was.\n\n**Asking twice is not an error.** The first request set the date; a later one returns the same date rather than moving it, so the promise the product made cannot be extended by asking again.",
+        "operationId": "apps_identity_api_request_account_deletion_endpoint",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionRequestOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Ask to delete the account",
         "tags": [
           "auth"
         ]

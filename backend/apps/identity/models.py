@@ -73,11 +73,11 @@ class User(UUIDv7Model, AbstractBaseUser, PermissionsMixin):
     #: object and deletes the old one after the row commits, so there is no moment at which
     #: this column names a half-written object.
     #:
-    #: **Caveat, recorded deliberately: nothing deletes an account yet.** This key's
-    #: lifetime is bounded by an account-deletion path that does not exist — no command, no
-    #: endpoint, no surface. The object *is* removed when the picture is replaced or
-    #: cleared; it is only account deletion that cannot yet take it. See
-    #: `account-deletion-and-avatar-removal`.
+    #: **The object is removed when the account is destroyed.** `services/deletion.py`
+    #: deletes it in `transaction.on_commit`, when the account is actually destroyed rather
+    #: than when deletion is requested — so a person who cancels inside the thirty-day
+    #: grace period gets their picture back. The object *is* also removed when the picture
+    #: is replaced or cleared.
     avatar_key = models.CharField(max_length=MAX_KEY_LENGTH, blank=True, default="")
 
     is_staff = models.BooleanField(
@@ -233,6 +233,62 @@ class PendingEmailChange(UUIDv7Model):
     def __str__(self) -> str:
         # **No address here** (AD-13): `__str__` reaches logs and the admin changelist.
         return f"pending email change for {self.user_id}"
+
+
+class DeletionRequest(UUIDv7Model):
+    """One outstanding request to delete an account, and the grace period it carries.
+
+    **The row is the fact.** An account under a deletion request is not deleted yet, is not
+    frozen, and is not marked inactive — it is *scheduled*, and this row says when for.
+
+    **Why a row and not a column on `User`.** A column would have to be nullable and would
+    travel with every read of the account — including every `me` call and the user's own
+    export — for a fact that is true for a thirty-day window and then false. A row that
+    exists only while the deletion is pending says exactly what it is, and deleting that
+    row is the whole of a cancellation.
+
+    **The grace period is the point of the row.** Amendment A-16 promises a person can
+    cancel any time during thirty days. `scheduled_for` is when that promise expires, and
+    it is computed once — at request time — from `DELETION_GRACE_PERIOD`, so the deadline
+    does not move if the constant ever changes under an outstanding request.
+
+    **Nothing is destroyed while this row exists.** In particular the profile picture's
+    object: it is removed when the account is *destroyed*, not when deletion is requested.
+    A person who cancels inside the grace period gets their picture back — and removing it
+    at request time would make the grace period a lie, because the promise was that the
+    account comes back whole.
+
+    **The user is held by value (OQ-8)**, like every other table that reaches an account.
+    There is no relation to `User`, and no cascade: the rows are purged by an explicit walk
+    (`services/deletion.py`), because a cascade would delete the audit rows that must
+    survive the account.
+
+    **The address is not here** (AD-13): `__str__` reaches logs and the admin changelist.
+    """
+
+    retention_category = RetentionCategory.ACCOUNT_IDENTITY
+
+    #: The account being deleted, by value.
+    user_id = models.UUIDField()
+    #: When the request was made. The grace period runs from here.
+    requested_at = models.DateTimeField(default=timezone.now)
+    #: When the account is destroyed, if the request is not cancelled first.
+    #:
+    #: **Computed once, at request time.** A deadline that moved whenever the constant
+    #: changed would mean an outstanding request's grace period silently grew or shrank.
+    scheduled_for = models.DateTimeField()
+
+    class Meta:
+        indexes = [
+            # The worker asks "which requests are due?" on every tick, and the API asks
+            # "does this account have an outstanding request?" — both look up by user.
+            models.Index(fields=["user_id"], name="deletion_request_user_idx"),
+            models.Index(fields=["scheduled_for"], name="deletion_request_due_idx"),
+        ]
+
+    def __str__(self) -> str:
+        # **No address here** (AD-13).
+        return f"deletion request for {self.user_id}"
 
 
 class SubscriptionStatus(models.TextChoices):

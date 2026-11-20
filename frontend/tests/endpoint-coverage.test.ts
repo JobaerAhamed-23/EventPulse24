@@ -68,6 +68,10 @@ const DECLARED_UNCALLED: Record<Endpoint, string> = {
     "The anonymous public read by id. The UI reads `/api/events/{id}` when signed in and `by-slug` for the public page.",
   "GET /api/auth/profile/avatar/{version}":
     "Fetched by the browser's image loader from an `<img src>`, not by this client. The URL arrives on `me` as `avatar_url` and is put straight into the tag; there is no fetch to typecheck. It is the one endpoint here whose consumer is the markup rather than TypeScript.",
+  "POST /api/auth/profile/deletion":
+    "**A-16's confirmation modal is not built.** The engine is — the command, the grace period and this endpoint all exist — but the modal that would call it is scoped to a follow-up item, because A-16's third paragraph promises a cancellation surface and an email, and a modal in front of promises the engine does not keep would be worse than no modal. The API a modal needs is already here; the modal is what is missing.",
+  "DELETE /api/auth/profile/deletion":
+    "The same gap, the other half: cancelling a pending deletion is called by the same modal that does not exist yet.",
 };
 
 /** Every `METHOD /path` in the committed contract. */
