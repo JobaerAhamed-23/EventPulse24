@@ -1453,6 +1453,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cities a reader may pick
+         * @description Every city in the curated catalog, alphabetically by label, as `value`/`label` pairs. `value` is the string to store; `label` is the disambiguating form to show. This is the picker's source and is independent of which cities have events — for that, see `/preview/cities`. No session is used and none is set.
+         */
+        get: operations["apps_catalog_cities_api_city_choices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/public/preview": {
         parameters: {
             query?: never;
@@ -2283,6 +2303,35 @@ export interface components {
         CheckoutOut: {
             /** Url */
             url: string;
+        };
+        /**
+         * CityChoiceOut
+         * @description One pickable city: what gets stored, and what the reader reads.
+         *
+         *     **The two are different strings on purpose.** `value` is the catalog's own `name` and
+         *     is what a preference will hold; `label` is the disambiguating display form, computed
+         *     for the dropdown and stored nowhere. `domain.city_catalog` asserts over the whole
+         *     dataset that no row's `value` equals its `label` and that no two rows share either, so
+         *     a reader is never shown two identical options and whatever comes back can be stored
+         *     verbatim.
+         */
+        CityChoiceOut: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * CityChoicesOut
+         * @description Every pickable city, alphabetical by label.
+         *
+         *     **An object rather than a bare array**, matching `PreviewCitiesOut`. A top-level array
+         *     cannot grow a sibling field without breaking every client, and a catalog version or a
+         *     count are both plausible next additions.
+         */
+        CityChoicesOut: {
+            /** Cities */
+            cities: components["schemas"]["CityChoiceOut"][];
         };
         /**
          * CityPageEventOut
@@ -7779,6 +7828,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelineOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_cities_api_city_choices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityChoicesOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

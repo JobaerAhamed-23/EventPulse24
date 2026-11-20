@@ -86,10 +86,40 @@ class PreviewCitiesOut(Schema):
     cities: list[str]
 
 
+class CityChoiceOut(Schema):
+    """One pickable city: what gets stored, and what the reader reads.
+
+    **The two are different strings on purpose.** `value` is the catalog's own `name` and
+    is what a preference will hold; `label` is the disambiguating display form, computed
+    for the dropdown and stored nowhere. `domain.city_catalog` asserts over the whole
+    dataset that no row's `value` equals its `label` and that no two rows share either, so
+    a reader is never shown two identical options and whatever comes back can be stored
+    verbatim.
+    """
+
+    #: The string to store: "Portland, OR", "Dhaka".
+    value: str
+    #: The string to show: "Portland, Oregon", "Chittagong, Bangladesh".
+    label: str
+
+
+class CityChoicesOut(Schema):
+    """Every pickable city, alphabetical by label.
+
+    **An object rather than a bare array**, matching `PreviewCitiesOut`. A top-level array
+    cannot grow a sibling field without breaking every client, and a catalog version or a
+    count are both plausible next additions.
+    """
+
+    cities: list[CityChoiceOut]
+
+
 __all__ = [
     "CITY_SOURCE_FALLBACK",
     "CITY_SOURCE_GEO",
     "CITY_SOURCE_QUERY",
+    "CityChoiceOut",
+    "CityChoicesOut",
     "PreviewCardOut",
     "PreviewCitiesOut",
     "PreviewOut",

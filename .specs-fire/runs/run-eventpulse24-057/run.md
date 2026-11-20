@@ -5,38 +5,38 @@ work_items:
   - id: city-catalog-dataset
     intent: city-picker-and-auto-collection
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: source-city-timezone
     intent: city-picker-and-auto-collection
     mode: validate
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: api-source-parser
     intent: city-picker-and-auto-collection
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: city-choices-endpoint
     intent: city-picker-and-auto-collection
     mode: confirm
-    status: pending
-    current_phase: null
-    checkpoint_state: none
-    current_checkpoint: null
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
+    current_checkpoint: plan
   - id: stored-city-is-the-picked-city
     intent: city-picker-and-auto-collection
     mode: validate
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: city-provider-templates
     intent: city-picker-and-auto-collection
     mode: confirm
@@ -79,7 +79,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: city-catalog-dataset
+current_item: stored-city-is-the-picked-city
 status: in_progress
 started: 2026-11-20T13:36:37.657Z
 completed: null
@@ -91,11 +91,11 @@ completed: null
 wide (11 work items)
 
 ## Work Items
-1. **city-catalog-dataset** (confirm) — in_progress
-2. **source-city-timezone** (validate) — pending
-3. **api-source-parser** (confirm) — pending
-4. **city-choices-endpoint** (confirm) — pending
-5. **stored-city-is-the-picked-city** (validate) — pending
+1. **city-catalog-dataset** (confirm) — completed
+2. **source-city-timezone** (validate) — completed
+3. **api-source-parser** (confirm) — completed
+4. **city-choices-endpoint** (confirm) — completed
+5. **stored-city-is-the-picked-city** (validate) — in_progress
 6. **city-provider-templates** (confirm) — pending
 7. **city-provisioning-service** (validate) — pending
 8. **provisioning-probation** (confirm) — pending
@@ -103,8 +103,9 @@ wide (11 work items)
 10. **city-coverage-request** (confirm) — pending
 11. **home-city-dropdown-catalog** (confirm) — pending
 
+
 ## Current Item
-city-catalog-dataset (confirm)
+stored-city-is-the-picked-city (validate)
 
 ## Files Created
 (none yet)

@@ -37,9 +37,6 @@ log, and nothing pairs a city with an IP — the IP is used only as part of a th
 key, which is the same treatment the auth endpoints give it.
 """
 
-import ipaddress
-
-from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from ninja import Router, Status
@@ -52,6 +49,15 @@ from apps.catalog.preview_schemas import (
     PreviewCitiesOut,
     PreviewOut,
 )
+from apps.catalog.public_surface import (
+    cacheable as _cacheable,
+)
+from apps.catalog.public_surface import (
+    client_ip as _client_ip,
+)
+from apps.catalog.public_surface import (
+    throttle_key as _throttle_key,
+)
 from apps.ingestion.services.preview_read import (
     list_preview_cards,
     list_supported_cities,
@@ -59,11 +65,9 @@ from apps.ingestion.services.preview_read import (
 from ports.registry import get_geo_port, get_throttle_port
 from shared.constants import (
     GEO_CITY_MAX_LENGTH,
-    PREVIEW_CACHE_CONTROL,
     PREVIEW_FALLBACK_CITY,
     PREVIEW_THROTTLE_IP,
     PREVIEW_THROTTLE_WINDOW_SECONDS,
-    PREVIEW_VARY,
 )
 from shared.errors import ErrorOut
 
@@ -71,66 +75,6 @@ router = Router(tags=["preview"])
 
 #: The number of cards the preview returns. Three is what FR-2 and the UX spec show.
 PREVIEW_SIZE = 3
-
-
-def _client_ip(request) -> str | None:
-    """The caller's IP, for the throttle key and nothing else.
-
-    **The same rule the auth endpoints use**, and for the same reason. It comes from
-    `X-Forwarded-For` only when a trusted edge is known to overwrite that header
-    (`settings.TRUST_FORWARDED_FOR`, off by default). The header is otherwise
-    attacker-controlled: Next's rewrite forwards the browser's headers as they arrived,
-    so a browser that sets `X-Forwarded-For` has that value reach Django unchanged.
-    Trusting it unconditionally let any caller mint a fresh throttle bucket per request.
-
-    The value must also parse as an IP address, so a caller cannot pad the key with
-    arbitrary text. It is **never logged and never stored** (AD-13); it only ever becomes
-    part of a throttle key.
-    """
-    if settings.TRUST_FORWARDED_FOR:
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            candidate = forwarded.split(",")[0].strip()
-            try:
-                ipaddress.ip_address(candidate)
-            except ValueError:
-                pass
-            else:
-                return candidate
-    return request.META.get("REMOTE_ADDR")
-
-
-def _throttle_key(ip_address: str | None, scope: str = "preview") -> str:
-    """The per-IP counter key for one of the preview's routes.
-
-    The IP is the **only** part of the key. The preview has no user, and a per-user
-    limit would mean reading the session — which would mean the endpoint is not
-    anonymous (AD-12).
-
-    **Each route has its own scope**, so the two counters are separate and neither
-    route can spend the other's budget. The scope is a fixed literal at every call
-    site, never anything a caller controls — the caller's contribution to the key is
-    the address and nothing else.
-    """
-    return f"{scope}:ip:{ip_address or 'unknown'}"
-
-
-def _cacheable(response: HttpResponse) -> HttpResponse:
-    """Mark a response as a public, cacheable, per-city response.
-
-    **`Vary` carries nothing session-related.** A response that varies on the cookie is
-    not cacheable, and — worse — a shared cache that stores one variant under a key that
-    ignores the cookie would serve one visitor's response to another. The preview sets no
-    cookie and reads no session, so the response is identical for everyone and the cache
-    key is the URL.
-
-    The response object is the one django-ninja injects into a view parameter annotated
-    as `HttpResponse` — it is the *same* object ninja fills with the body afterwards, so
-    the headers set here survive.
-    """
-    response["Cache-Control"] = PREVIEW_CACHE_CONTROL
-    response["Vary"] = PREVIEW_VARY
-    return response
 
 
 @router.get(

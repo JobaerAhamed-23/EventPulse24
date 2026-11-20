@@ -4,9 +4,12 @@ title: The picker's choices endpoint
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [city-catalog-dataset]
+status: completed
+depends_on:
+  - city-catalog-dataset
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-20T16:25:12.714Z
 ---
 
 # Work Item: The picker's choices endpoint

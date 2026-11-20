@@ -667,6 +667,42 @@
         "title": "CheckoutOut",
         "type": "object"
       },
+      "CityChoiceOut": {
+        "description": "One pickable city: what gets stored, and what the reader reads.\n\n**The two are different strings on purpose.** `value` is the catalog's own `name` and\nis what a preference will hold; `label` is the disambiguating display form, computed\nfor the dropdown and stored nowhere. `domain.city_catalog` asserts over the whole\ndataset that no row's `value` equals its `label` and that no two rows share either, so\na reader is never shown two identical options and whatever comes back can be stored\nverbatim.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "CityChoiceOut",
+        "type": "object"
+      },
+      "CityChoicesOut": {
+        "description": "Every pickable city, alphabetical by label.\n\n**An object rather than a bare array**, matching `PreviewCitiesOut`. A top-level array\ncannot grow a sibling field without breaking every client, and a catalog version or a\ncount are both plausible next additions.",
+        "properties": {
+          "cities": {
+            "items": {
+              "$ref": "#/components/schemas/CityChoiceOut"
+            },
+            "title": "Cities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cities"
+        ],
+        "title": "CityChoicesOut",
+        "type": "object"
+      },
       "CityPageEventOut": {
         "description": "One event on a city page.\n\n**The score and the tags are the persisted Event Fit, served as stored** (AD-10).\nThe page shows what the fit says, not what a fresh computation would say — so a\nscore of 1 on an event that would now score 5 is shown as 1, and the reason is that\nthe fit has not been recomputed yet.",
         "properties": {
@@ -8460,6 +8496,39 @@
         "summary": "The signed-in user's week, day by day",
         "tags": [
           "personal"
+        ]
+      }
+    },
+    "/api/public/cities": {
+      "get": {
+        "description": "Every city in the curated catalog, alphabetically by label, as `value`/`label` pairs. `value` is the string to store; `label` is the disambiguating form to show. This is the picker's source and is independent of which cities have events — for that, see `/preview/cities`. No session is used and none is set.",
+        "operationId": "apps_catalog_cities_api_city_choices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CityChoicesOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "The cities a reader may pick",
+        "tags": [
+          "preview"
         ]
       }
     },

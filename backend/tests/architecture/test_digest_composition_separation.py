@@ -46,6 +46,9 @@ COMPOSE_DIGEST = "compose_digest"
 #: heard of.
 REQUEST_MODULES = (
     "apps/catalog/api.py",
+    # FR-2. The city picker's choices: it projects `domain.city_catalog` onto the wire and
+    # runs no query at all — about as close to AD-11's shape as a request handler gets.
+    "apps/catalog/cities_api.py",
     "apps/catalog/preview_api.py",
     "apps/delivery/api.py",
     "apps/delivery/email_api.py",

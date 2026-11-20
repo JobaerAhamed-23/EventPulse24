@@ -1265,6 +1265,16 @@ PREVIEW_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidat
 # is identical for everyone and the cache key is the URL.
 PREVIEW_VARY = "Accept-Encoding"
 
+# The city picker's cache headers. **Much longer than the preview's, because this is a
+# different kind of resource.** The preview's cards change as events are ingested, so it
+# is stale within minutes. The picker's choices are a checked-in dataset: they change
+# when code ships and at no other time, so caching them for a minute asks the origin to
+# re-serve a constant.
+#
+# The consequence is accepted and known: a deploy that adds a city may take up to a day
+# to reach every edge cache. A city the reader cannot find yet is the same outcome as a
+# city not yet added, and `city-coverage-request` is the answer to both.
+CITY_CHOICES_CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800"
 
 # The public event page's cache headers (FR-26). The browser holds it for an hour, a
 # shared cache for an hour too, and a shared cache may serve a slightly stale copy while

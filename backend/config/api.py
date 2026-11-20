@@ -6,6 +6,7 @@ Its OpenAPI schema is the contract the frontend client is generated from (AD-19)
 from ninja import NinjaAPI
 
 from apps.catalog.api import router as catalog_router
+from apps.catalog.cities_api import router as cities_router
 from apps.catalog.preview_api import router as preview_router
 from apps.delivery.api import router as reminders_router
 from apps.delivery.email_api import router as email_router
@@ -34,6 +35,10 @@ api.add_router("/catalog", catalog_router)
 # `auth=` of its own and never touches `request.user` or `personal`, so its responses are
 # identical for a signed-in caller and an anonymous one, and they stay cacheable.
 api.add_router("/public", preview_router)
+# The picker's choices, on the same public prefix: `GET /api/public/cities`. A separate
+# router because it answers a different question from the preview's city list — the
+# catalog a reader may pick from, not the cities the preview can serve today.
+api.add_router("/public", cities_router)
 # FR-4, AD-18: the auth surface. It has no `auth=` of its own — sign-up and sign-in are
 # how a session is created — and it enforces CSRF on its unsafe requests explicitly,
 # because Django Ninja exempts every view it builds from Django's CSRF middleware.

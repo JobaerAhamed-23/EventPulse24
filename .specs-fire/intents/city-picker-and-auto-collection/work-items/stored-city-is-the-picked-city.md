@@ -4,8 +4,9 @@ title: The stored city is the picked city
 intent: city-picker-and-auto-collection
 complexity: high
 mode: validate
-status: pending
-depends_on: [city-catalog-dataset]
+status: in_progress
+depends_on:
+  - city-catalog-dataset
 created: 2026-11-20
 ---
 
