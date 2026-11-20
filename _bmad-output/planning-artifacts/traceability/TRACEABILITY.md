@@ -257,6 +257,24 @@ as the forms it matches, and its first version was blind to the commonest way th
 codebase stores a route: in a table. `lib/settings-sections.ts` holds exactly such a table;
 every row in it resolves today, and the widened matcher now reads it.
 
+**F-6 and F-7 are closed by amendment (2026-11-20, `run-eventpulse24-056`).**
+
+- **F-6 → Amendment A-27.** PRD §10.2 published retention windows for
+  `EMAIL_DELIVERY_EVENTS` (90 days) and `ANALYTICS_AGGREGATES` (indefinite). **Neither
+  category is used by any model**, and the repository contains no analytics vendor. Both
+  windows are withdrawn from §10.2; the enum members stay because `deletion.py` classifies
+  them and the walk test requires it. `test_retention_published.py` fails if either ever
+  gains a model.
+- **F-7 → Amendment A-28.** §10.2 claimed the system is configured to opt out of the LLM
+  provider's training-data retention. `adapters/llm/voyage.py` configures nothing of the
+  kind. The sentence is replaced by the verified position: **no personal data reaches the
+  provider at all** — `embed_event()` sends public event title and description — and the
+  opt-out becomes a prerequisite if personal data is ever embedded.
+
+**Both corrections run in the user's favour**, and both were found by writing `/privacy`
+from the code rather than from the PRD. A document that is only ever checked against
+itself cannot find this class of error.
+
 **The method is repaired as well as the product.** `frontend/tests/internal-links.test.ts`
 resolves every literal internal `href` under `app/**` and `components/**` against a real
 `page.tsx` or `route.ts`. A resolving check already existed in

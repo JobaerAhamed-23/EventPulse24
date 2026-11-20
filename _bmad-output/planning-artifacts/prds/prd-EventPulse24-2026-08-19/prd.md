@@ -1382,19 +1382,57 @@ Ship-ready functional requirements for the launch MVP:
 - Personal events and personal calendar data are isolated from public event data in the database (separate tables, encryption at rest).
 - Analytics are aggregated; no per-user PII in event logs.
 - A user-requested account deletion purges all personal data within 30 days; aggregated anonymous analytics are retained.
-- **No user-data model training.** EventPulse24 does not use personal data (personal events, saved events, preference-graph signals, user-submitted content) to train, fine-tune, or otherwise improve any third-party or first-party AI model. Public-event ingestion data (the Source Registry contents) is third-party content and is governed by source-specific ToS — see FR-17. Where the LLM provider's terms permit opt-out of training-data retention, the system is configured to opt out at the API level.
+- **No user-data model training.** EventPulse24 does not use personal data (personal events, saved events, preference-graph signals, user-submitted content) to train, fine-tune, or otherwise improve any third-party or first-party AI model. Public-event ingestion data (the Source Registry contents) is third-party content and is governed by source-specific ToS — see FR-17. ~~Where the LLM provider's terms permit opt-out of training-data retention, the system is configured to opt out at the API level.~~ **Corrected by Amendment A-28 — no such configuration exists, and no personal data reaches the provider.** See A-28 below.
 - **Data retention windows per category:**
   - **Personal events + saved events:** retained while account is active; purged within 30 days of account deletion.
   - **Preference graph signals (dwell, swipes, dismissals):** retained 12 months rolling; auto-purged thereafter.
   - **Personal email addresses and calendar credentials (secret ICS/webcal addresses at MVP; OAuth tokens after the fast-follow):** retained while account is active; encrypted at rest; purged on disconnect or account deletion.
-  - **Email delivery events (sent, opened, clicked):** retained 90 days for spam-complaint monitoring; aggregated counts beyond.
+  - **Email delivery events (sent, opened, clicked):** ~~retained 90 days for spam-complaint monitoring; aggregated counts beyond.~~ **Withdrawn by Amendment A-27 — this data is not collected.** See A-27 below.
   - **Audit logs (auth events, settings changes, deletions):** retained 24 months.
   - **Source Registry contents (third-party event data):** retained while event is in date-range + 12 months; auto-archived.
   - **Source-acquisition ToS review records:** retained 7 years (legal).
   - **Billing records (Pro subscribers):** retained 7 years (tax/legal).
-  - **Anonymized analytics aggregates:** retained indefinitely (no PII).
+  - **Anonymized analytics aggregates:** ~~retained indefinitely (no PII).~~ **Withdrawn by Amendment A-27 — no analytics store and no analytics vendor exist.** See A-27 below.
 - **User-visible data inventory:** Settings → Privacy → "What we store" displays the categories and current retention windows in plain language. The export CTA (FR-52) gives all data in <24h; deletion CTA completes in ≤30 days (per §10.1).
 - **No third-party data sales.** Not now, not ever. (See §15.2 "No ads. No commissions. No data sales.")
+
+---
+
+**Amendment A-27 (2026-11-20): two published retention categories are withdrawn, because the data does not exist.**
+
+`backend/shared/retention.py` declares nine `RetentionCategory` members, matching this section's nine published windows. **Seven are used by a model. Two are used by none.**
+
+| Category | This section promised | What the code holds |
+|---|---|---|
+| `EMAIL_DELIVERY_EVENTS` | *"sent, opened, clicked: retained 90 days for spam-complaint monitoring; aggregated counts beyond"* | **No model declares it.** `apps/delivery/email_api.py` states that SM-2 "is a success metric measured in analytics, and the storage that would feed it is not" built. There is no open-tracking pixel and no click-tracking table. |
+| `ANALYTICS_AGGREGATES` | *"retained indefinitely (no PII)"* | **No model declares it**, and the repository contains **no analytics vendor of any kind** — no PostHog, Segment, Mixpanel, Sentry or Google Analytics in `adapters/` or `apps/`. |
+
+**The product collects less than this document said it did.** That is the right direction for an error to run, and it is still an error, because this section is published to users: `/privacy` renders these categories in plain language, and a policy promising to retain open-and-click data for 90 days describes surveillance that does not happen. The divergence was found by writing that page from the registry rather than from this document (`run-eventpulse24-055`), which is the only reason it surfaced at all.
+
+**The enum members are deliberately kept.** `apps/identity/services/deletion.py` classifies both — `EMAIL_DELIVERY_EVENTS` in `PURGED_CATEGORIES`, `ANALYTICS_AGGREGATES` in `UNTOUCHED_CATEGORIES` — and `tests/identity/test_deletion_retention_walk.py` asserts every category is classified. Removing them would be a code change to delete two lines of correct foresight. **This amendment corrects the document and leaves the registry ready for the day either store is built.**
+
+**The omission is enforced, not remembered.** `backend/tests/shared/test_retention_published.py` parametrises over both categories and fails the moment either gains a model — which is precisely the moment `/privacy` would begin understating what is collected. At that point this amendment is spent and the window must be restored here and published there.
+
+**Nothing in §10.5 changes.** Its regulatory tables require a privacy policy to exist and define what it must disclose; they make no claim about these two categories.
+
+---
+
+**Amendment A-28 (2026-11-20): the training-data opt-out sentence described configuration that does not exist.**
+
+The withdrawn sentence read: *"Where the LLM provider's terms permit opt-out of training-data retention, the system is configured to opt out at the API level."*
+
+**`backend/adapters/llm/voyage.py` configures nothing of the kind.** It posts `input`, `model`, `input_type` and `dimensions` to `https://api.voyageai.com/v1/embeddings`. There is no retention parameter, no training flag, and no account-level setting recorded anywhere in the repository.
+
+**What is true, and it is stronger than what was claimed:**
+
+- **No personal data reaches the provider at all.** `apps/ingestion/services/embedding.py`'s `embed_event()` sends `event_embedding_text(title=…, description=…)` built from a public `Event` row. No `PersonalEvent`, `SavedEvent`, `DigestPreference` or preference signal is read into an embedding by any code path, in production or in backfill.
+- **The rest of the bullet stands unchanged.** EventPulse24 does not use personal data to train, fine-tune or otherwise improve any model, first-party or third-party. There is no training or fine-tuning pipeline in this codebase.
+
+**So the clause guarded against something that cannot currently happen, and stated it as a fact about configuration.** The exposure was therefore small — but §10.2 is the document a due-diligence questionnaire is answered from, and an answer drawn from the original sentence would have been wrong.
+
+**The condition that makes the original sentence a requirement:** if personal data is ever embedded — the most likely route being FR-25's preference graph, which would embed user signals rather than public listings — then a provider-level training-retention opt-out stops being a nicety and becomes a prerequisite, to be configured **before** the first such call rather than afterwards.
+
+**`/privacy` never carried this claim.** It was written from the adapter in `run-eventpulse24-055`, which is how the divergence was found, and `frontend/tests/legal-pages.test.tsx` asserts the rendered page does not match `/opt(ed)?[ -]out/i` — so the unverified promise cannot reappear on the public page by accident.
 
 ### 10.3 AI Cost
 
