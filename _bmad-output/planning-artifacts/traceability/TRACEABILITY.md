@@ -226,14 +226,36 @@ followed an `href` to the other end.** That is the gap class, and FR-8 is not th
 it could hide. Closed by **Amendment A-26** (link withdrawn, not deferred) in
 `run-eventpulse24-055`.
 
-**Two further dangling destinations were found by the same scan, and they are worse:**
-`/terms` and `/privacy`, linked four times from `components/auth/signup-form.tsx` and
+**Three further dangling destinations were found, and two of them are worse than FR-8's.**
+
+`/terms` and `/privacy` are linked from `components/auth/signup-form.tsx` and
 `app/signin/page.tsx` beneath *"By creating an account, you agree to our Terms and Privacy
-Policy."* The product asked people to accept documents it then 404'd. **These are invisible
-to every section of this matrix** — a published privacy policy is required by §10.2/§10.5
-and by GDPR, CCPA/CPRA, PIPEDA and the Privacy Act, none of which carry FR headings, and
-this matrix scores FR headings only. Being built in the same run (`legal-page-routes`,
-`legal-copy-draft`).
+Policy."*, **and again from `components/pre-auth/pre-auth-footer.tsx`**. The product asked
+people to accept documents it then 404'd. **These are invisible to every section of this
+matrix** — a published privacy policy is required by §10.2/§10.5 and by GDPR, CCPA/CPRA,
+PIPEDA and the Privacy Act, none of which carry FR headings, and this matrix scores FR
+headings only. Being built in the same run (`legal-page-routes`, `legal-copy-draft`).
+
+`/how` is the third, and **it was missed by the first pass of the very test written to
+catch this class** — a correction recorded here rather than left standing. That test
+matched the JSX attribute form `href="/x"`; the pre-auth footer holds its links in an
+object literal (`{ href: "/how", label: "How it works" }`), which the pattern did not see.
+The matcher now accepts both forms, and `/how` is the only route the widened pass adds.
+**It reaches further than any other link in this finding**: `PreAuthFooter` renders on
+eight surfaces — both auth screens, `/preview`, `/pricing`, the public event and city
+pages, and both not-found pages.
+
+**`/how` has no requirement behind it.** EXPERIENCE.md §323 names the pre-auth footer's
+secondary affordances as *"Log in, Privacy, Terms, social links"*; "How it works" appears
+in that section only as something that must **not** be in the topbar. The footer's own
+header comment records that its link list was taken from the mockups. So it is FR-8's
+shape again — a link with no destination and nothing asking for one — and it is **fenced
+and undecided**, not scheduled.
+
+**The lesson is about the guard, not the links.** A source-matching test is only as good
+as the forms it matches, and its first version was blind to the commonest way this
+codebase stores a route: in a table. `lib/settings-sections.ts` holds exactly such a table;
+every row in it resolves today, and the widened matcher now reads it.
 
 **The method is repaired as well as the product.** `frontend/tests/internal-links.test.ts`
 resolves every literal internal `href` under `app/**` and `components/**` against a real

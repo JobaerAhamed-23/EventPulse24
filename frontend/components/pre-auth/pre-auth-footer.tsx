@@ -9,9 +9,34 @@ import Link from "next/link";
  *
  * The link list is the mockups' list, including the two that are drawn as `#` — About and
  * Contact have no route in the route map. They are rendered as drawn rather than dropped,
- * because this footer is shared with `/preview`, which is built next and draws the same
- * block. "How it works", Privacy and Terms point at routes that do not exist yet either,
- * and will 404 until they do; that is the mockups' link list, not an invention here.
+ * because this footer is shared with `/preview`, which draws the same block.
+ *
+ * **"How it works" is gone (2026-11-20), and Privacy now resolves.** This comment used to
+ * say that "How it works", Privacy and Terms *"point at routes that do not exist yet
+ * either, and will 404 until they do; that is the mockups' link list, not an invention
+ * here."* That was true, and it stayed true for long enough that a user found one of these
+ * 404s for us. Two things changed:
+ *
+ * - **`/privacy` and `/terms` are built**, so the footer's spec'd rows work. `EXPERIENCE.md`
+ *   §323 names this footer's secondary affordances as *"Log in, Privacy, Terms, social
+ *   links"*, so those rows are required and are now kept.
+ * - **`/how` is removed.** It is in no spec. §323's list does not contain it, and "How it
+ *   works" appears in that section only as something that must *not* sit in the topbar. It
+ *   came from the mockups' chrome, it never had a route, and this footer renders on eight
+ *   surfaces — both auth screens, `/preview`, `/pricing`, the public event and city pages,
+ *   and both not-found pages — so it was the furthest-reaching dead link in the product.
+ *   Removing the row is the honest fix; a route would have to be a page somebody decided
+ *   to write.
+ *
+ * **Terms was missing from this list, and §323 requires it.** The row was added on
+ * 2026-11-20, when `/terms` was built. The comment above used to name Terms among the
+ * rows pointing at unbuilt routes, but the link list never actually held one — the
+ * document was named in the prose and absent from the array, so the footer quietly fell
+ * short of §323 for as long as it has existed. It sits next to Privacy, which is where
+ * §323 names it.
+ *
+ * **About and Contact stay as `#`.** They are drawn that way, they go nowhere by
+ * construction rather than by accident, and `#` is not a 404.
  *
  * **Pricing is here because the footer is the conversion surface.** "Log in" and "Sign up
  * free" live here, so the price of the paid tier belongs here too — a visitor who has to
@@ -20,9 +45,9 @@ import Link from "next/link";
  */
 
 const LINKS = [
-  { href: "/how", label: "How it works" },
   { href: "#", label: "About" },
   { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
   { href: "#", label: "Contact" },
   { href: "/pricing", label: "Pricing" },
   { href: "/signin", label: "Log in" },

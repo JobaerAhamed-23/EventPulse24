@@ -5,9 +5,11 @@ title: /terms and /privacy are promised on every auth screen and 404 — build t
 intent: broken-links-and-legal-pages
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on: []
 created: 2026-11-20
+run_id: run-eventpulse24-055
+completed_at: 2026-11-20T11:15:19.236Z
 ---
 
 # Work Item: The two routes the consent sentence depends on

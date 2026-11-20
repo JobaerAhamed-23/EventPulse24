@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SigninPage from "@/app/signin/page";
@@ -93,8 +93,19 @@ describe("/signin", () => {
     render(await SigninPage(props()));
 
     expect(screen.getByRole("link", { name: "Sign up →" })).toHaveAttribute("href", "/signup");
-    expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
-    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+
+    // **Scoped to `main`, because the footer now carries these rows too.** `/terms` and
+    // `/privacy` were built on 2026-11-20 and the pre-auth footer gained its spec'd
+    // Terms row with them, so a page-wide `getByRole("link", { name: "Terms" })` finds
+    // two. The line this test is about is the consent footnote under the form — "By
+    // signing in, you agree to our Terms and Privacy Policy" — so the query belongs
+    // inside `main`, where that sentence lives.
+    //
+    // **Both links 404'd until those routes shipped.** This assertion has always
+    // checked the hrefs; nothing checked that anything served them.
+    const form = within(screen.getByRole("main"));
+    expect(form.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+    expect(form.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
       "href",
       "/privacy",
     );

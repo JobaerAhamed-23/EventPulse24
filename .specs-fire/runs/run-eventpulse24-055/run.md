@@ -12,18 +12,18 @@ work_items:
   - id: legal-page-routes
     intent: broken-links-and-legal-pages
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: legal-copy-draft
     intent: broken-links-and-legal-pages
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
-current_item: legal-page-routes
+    current_checkpoint: plan
+current_item: legal-copy-draft
 status: in_progress
 started: 2026-11-20T10:42:06.861Z
 completed: null
@@ -36,12 +36,12 @@ wide (3 work items)
 
 ## Work Items
 1. **fr8-suggest-link-removal** (confirm) — completed
-2. **legal-page-routes** (confirm) — in_progress
-3. **legal-copy-draft** (confirm) — pending
+2. **legal-page-routes** (confirm) — completed
+3. **legal-copy-draft** (confirm) — in_progress
 
 
 ## Current Item
-legal-page-routes (confirm)
+legal-copy-draft (confirm)
 
 ## Files Created
 (none yet)

@@ -1726,12 +1726,14 @@ intents:
         run_id: run-eventpulse24-055
         completed_at: 2026-11-20T10:51:10.598Z
       - id: legal-page-routes
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on: []
+        run_id: run-eventpulse24-055
+        completed_at: 2026-11-20T11:15:19.236Z
       - id: legal-copy-draft
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -1752,18 +1754,19 @@ runs:
         - id: legal-page-routes
           intent: broken-links-and-legal-pages
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-20T11:15:19.236Z
+        - id: legal-copy-draft
+          intent: broken-links-and-legal-pages
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: legal-copy-draft
-          intent: broken-links-and-legal-pages
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: legal-page-routes
+      current_item: legal-copy-draft
       started: 2026-11-20T10:42:06.861Z
   completed:
     - id: run-eventpulse24-001

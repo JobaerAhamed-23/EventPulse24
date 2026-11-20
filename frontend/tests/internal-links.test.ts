@@ -104,29 +104,30 @@ describe("internal links", () => {
     // helper, or a move of these directories, would leave this suite green and blind.
     expect(files.length).toBeGreaterThan(50);
 
-    // **Two routes are owed and not yet built**, and they are the reason this file
-    // exists. `/terms` and `/privacy` are linked four times from the auth surfaces under
-    // *"By creating an account, you agree to our Terms and Privacy Policy."*
-    // `legal-page-routes` builds them in this same run; until it does, naming them here
-    // is how this test lands green without pretending they resolve.
+    // **There are no exceptions, and getting here took removing three.**
     //
-    // **The exception removes itself.** The assertion below fails the moment either
-    // route is built, so the fence cannot outlive the gap it covers — the same reverse
-    // assertion `digest-home-boundary.test.ts` used to hold `/suggest` honest, which is
-    // what made that dead link a known quantity rather than a surprise.
-    const UNBUILT = new Set(["/terms", "/privacy"]);
-    expect([...UNBUILT].filter((route) => routeTarget(route) !== null)).toEqual([]);
+    // This test shipped with `/terms` and `/privacy` fenced in an `UNBUILT` set, because
+    // the routes were owed and not yet written; `/how` joined them when a widened
+    // matcher found it. All three are now resolved rather than excused — the two legal
+    // routes were built, and the "How it works" row was removed from the pre-auth footer
+    // because no spec ever asked for it (`EXPERIENCE.md` §323 lists that footer's
+    // affordances as "Log in, Privacy, Terms, social links").
+    //
+    // **The fence was what forced that.** Each entry carried a reverse assertion that
+    // failed the moment its route was built, so the exception could not outlive the gap
+    // it covered — the idiom `digest-home-boundary.test.ts` used to hold `/suggest`
+    // honest. If a future link has to ship ahead of its route, bring the set back with
+    // its reverse assertion rather than deleting the entry from `missing`.
 
     const missing: string[] = [];
     let checked = 0;
 
     for (const file of files) {
       const code = withoutComments(readFileSync(file, "utf8"));
-      for (const match of code.matchAll(/href="(\/[^"]*)"/g)) {
+      for (const match of code.matchAll(/href\s*[:=]\s*"(\/[^"]*)"/g)) {
         const route = match[1].split(/[?#]/)[0];
         if (route.includes("[")) continue;
         checked += 1;
-        if (UNBUILT.has(route)) continue;
         if (!routeTarget(route)) {
           missing.push(`${path.relative(ROOT, file)} → ${route}`);
         }
