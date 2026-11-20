@@ -8,7 +8,7 @@ ingest-pipeline-and-lifecycle-design.md
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import blake2b
 from uuid import UUID
 
@@ -19,6 +19,7 @@ from apps.ingestion.models import Event, ExtractedRecord, Source
 from apps.ingestion.parsers import SourceContext, parse
 from apps.ingestion.services.audit import write_audit
 from apps.ingestion.services.ingest_item import IngestRun, ingest_item
+from apps.ingestion.services.provider_keys import authorized_url, strip_key
 from apps.ingestion.services.source_registry import SourceNotFoundError, ensure_can_ingest
 from ports.fetch import FetchBlockedError, FetchError, FetchResult, SourceFetchPort
 from ports.registry import get_fetch_port
@@ -88,16 +89,23 @@ def _run(source_id: UUID, actor: Actor, port: SourceFetchPort) -> IngestReport:
 
     run = IngestRun(source=source, actor=actor, now=now)
     try:
+        # The key is added here and nowhere else: `Source.url` is stored without it, and
+        # `credential=True` stops the HTTP library writing the URL it is fetching.
+        fetch_url, credential = authorized_url(source.url)
         result = port.fetch(
-            source.url,
+            fetch_url,
             etag=source.etag or None,
             last_modified=source.last_modified or None,
             source_id=source.id,
+            credential=credential,
         )
     except FetchError as exc:
         moved = isinstance(exc, FetchBlockedError) and exc.reason == "cross_host_redirect"
         # A moved source is never followed: it is re-registered, which resets its ToS review.
         return _close(run, started, "fetch_failed", "source_moved" if moved else exc.code)
+    # Stripped once, here, so nothing downstream — `fetched_url`, the parser's base URL, a
+    # log line — can carry the key, whoever put it in the final URL.
+    result = replace(result, final_url=strip_key(result.final_url))
     if result.not_modified:
         return _close(run, started, "not_modified", fetch=result)
 

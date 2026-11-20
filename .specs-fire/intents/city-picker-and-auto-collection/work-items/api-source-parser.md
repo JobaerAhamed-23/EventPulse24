@@ -4,9 +4,11 @@ title: A parser for api-method sources
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: pending
+status: completed
 depends_on: []
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-20T16:02:35.772Z
 ---
 
 # Work Item: A parser for api-method sources

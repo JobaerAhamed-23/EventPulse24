@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "code": "DIS1035",
+      "detail": "Rate limit exceeded",
+      "status": "429",
+      "_links": { "about": { "href": "/discovery/v2/errors.html#DIS1035" } }
+    }
+  ]
+}

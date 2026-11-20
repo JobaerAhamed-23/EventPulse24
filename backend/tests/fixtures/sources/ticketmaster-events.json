@@ -1,0 +1,103 @@
+{
+  "_embedded": {
+    "events": [
+      {
+        "name": "Radiohead",
+        "type": "event",
+        "id": "G5diZ9K1avWuW",
+        "url": "https://www.ticketmaster.com/radiohead-new-york-new-york-11-14-2026/event/G5diZ9K1avWuW",
+        "info": "Doors open at 7pm. All ages.",
+        "dates": {
+          "start": {
+            "localDate": "2026-11-14",
+            "localTime": "20:00:00",
+            "dateTime": "2026-11-15T01:00:00Z",
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "America/New_York",
+          "status": { "code": "onsale" }
+        },
+        "_embedded": {
+          "venues": [
+            {
+              "name": "Madison Square Garden",
+              "city": { "name": "New York" },
+              "state": { "name": "New York", "stateCode": "NY" },
+              "country": { "name": "United States Of America", "countryCode": "US" }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Dhaka Jazz Evening",
+        "type": "event",
+        "id": "G5diZ9K2bxWvX",
+        "url": "https://www.ticketmaster.com/event/G5diZ9K2bxWvX",
+        "pleaseNote": "Seating is unreserved.",
+        "dates": {
+          "start": {
+            "localDate": "2026-11-20",
+            "localTime": "19:30:00",
+            "dateTBA": false,
+            "timeTBA": false,
+            "noSpecificTime": false
+          },
+          "timezone": "Asia/Dhaka",
+          "status": { "code": "offsale" }
+        },
+        "_embedded": {
+          "venues": [
+            {
+              "name": "Shilpakala Academy",
+              "city": { "name": "Dhaka" },
+              "country": { "name": "Bangladesh", "countryCode": "BD" }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Winter Fair",
+        "type": "event",
+        "id": "G5diZ9K3cyWwY",
+        "dates": {
+          "start": {
+            "localDate": "2026-12-05",
+            "dateTBA": false,
+            "timeTBA": true,
+            "noSpecificTime": true
+          },
+          "timezone": "Europe/Lisbon",
+          "status": { "code": "onsale" }
+        },
+        "_embedded": {
+          "venues": [
+            { "name": "Parque das Nacoes", "city": { "name": "Lisbon" }, "country": { "countryCode": "PT" } }
+          ]
+        }
+      },
+      {
+        "name": "Cancelled Matinee",
+        "type": "event",
+        "id": "G5diZ9K4dzWxZ",
+        "dates": {
+          "start": { "localDate": "2026-11-18", "localTime": "14:00:00", "dateTime": "2026-11-18T19:00:00Z" },
+          "timezone": "America/New_York",
+          "status": { "code": "canceled" }
+        }
+      },
+      {
+        "name": "Date To Be Announced",
+        "type": "event",
+        "id": "G5diZ9K5eaWyA",
+        "dates": {
+          "start": { "dateTBA": true },
+          "timezone": "America/Chicago",
+          "status": { "code": "onsale" }
+        }
+      }
+    ]
+  },
+  "page": { "size": 20, "totalElements": 5, "totalPages": 1, "number": 0 }
+}
