@@ -101,7 +101,21 @@ describe("PreAuthFooter", () => {
     expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/signin");
     expect(screen.getByRole("link", { name: "Sign up free" })).toHaveAttribute("href", "/signup");
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
-    expect(screen.getByRole("link", { name: "How it works" })).toHaveAttribute("href", "/how");
+
+    // **Terms sits next to Privacy, and it had been missing.** `EXPERIENCE.md` §323
+    // names this footer's secondary affordances as "Log in, Privacy, Terms, social
+    // links". Terms was named in this file's prose and absent from its link array, so
+    // the footer fell short of §323 for as long as it existed. Added 2026-11-20 with
+    // the route.
+    expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+
+    // **"How it works" is gone, and this line used to require it.** It pointed at
+    // `/how`, which no route served and no spec asked for — §323 does not list it, and
+    // names it only as something that must not sit in the topbar. This footer renders
+    // on eight surfaces, so it was the furthest-reaching dead link in the product. It
+    // was removed rather than built: a route would have to be a page somebody decided
+    // to write.
+    expect(screen.queryByRole("link", { name: "How it works" })).toBeNull();
   });
 
   it("marks the current route's own link", () => {

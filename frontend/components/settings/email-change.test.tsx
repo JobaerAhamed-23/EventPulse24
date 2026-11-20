@@ -204,6 +204,49 @@ describe("the expiry on a pending change", () => {
     expect(screen.getByText(/that link has expired/i)).toBeInTheDocument();
   });
 
+  it("reads the clock once per render", async () => {
+    /*
+      **The guard and the value used to be computed from two separate `Date.now()`
+      calls**, so one sentence was decided by two clocks. This asserts the defect
+      directly rather than one of its symptoms: whatever the call site looks like, it
+      reads the time once.
+    */
+    const now = vi.spyOn(Date, "now");
+
+    render(
+      <EmailChange email={OLD} initialPendingEmail={NEW} initialPendingExpiresAt={IN_A_DAY} />,
+    );
+
+    expect(now.mock.calls.length).toBeLessThanOrEqual(1);
+    now.mockRestore();
+  });
+
+  it("does not let the guard and the sentence disagree", async () => {
+    /*
+      **The failure this replaces.** With two reads, the guard could see a live link and
+      the paragraph could then render the dead one — the two halves of a single decision
+      landing on opposite sides of the expiry.
+
+      The clock here jumps two minutes between reads, and the link expires one minute
+      from the first. A component that reads it once renders the live sentence. A
+      component that reads it twice renders "that link has expired" underneath a guard
+      that just decided it had not.
+    */
+    const base = Date.now();
+    const expires = new Date(base + 60_000).toISOString();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(base)
+      .mockReturnValueOnce(base + 120_000)
+      .mockReturnValue(base + 120_000);
+
+    render(<EmailChange email={OLD} initialPendingEmail={NEW} initialPendingExpiresAt={expires} />);
+
+    expect(screen.getByText(/the link works for about 1 more minute/i)).toBeInTheDocument();
+    expect(screen.queryByText(/that link has expired/i)).toBeNull();
+    now.mockRestore();
+  });
+
   it("says nothing when the server sent no expiry", async () => {
     /** An absent or unparseable value is not a reason to invent a deadline. */
     const { container } = render(

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { DangerZone } from "@/components/settings/danger-zone";
+import { DataInventory } from "@/components/settings/data-inventory";
 import { RankingFormula } from "@/components/settings/ranking-formula";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { SettingsStates } from "@/components/settings/settings-states";
@@ -23,11 +24,16 @@ import { getSession, homeRoute } from "@/lib/session";
  *
  * `EXPERIENCE.md` §2 row 9 also commits this route to a data inventory, export (FR-52),
  * deletion, a training opt-out, the Amendment A-14 geo-IP consent toggle, the A-13
- * amendment-history timeline and a read-only mirror of `Settings → Sources`. **None of
- * those is here** — except the deletion, which is here as the *danger zone*
- * (Amendment A-16), not as the route's own section. Export already lives on
- * `/settings/account`, so that part of the route starts as a reconciliation rather than a
- * build, and it is deliberately not folded into the work item that only ever owned FR-22.
+ * amendment-history timeline and a read-only mirror of `Settings → Sources`.
+ *
+ * **The data inventory is now here** (2026-11-20) — PRD §10.2's *"Settings → Privacy →
+ * 'What we store' displays the categories and current retention windows in plain
+ * language"*, built from `RETENTION_ROWS` so it cannot drift from the registry the
+ * database enforces. Deletion is here as the *danger zone* (Amendment A-16) rather than
+ * as the route's own section, and export already lives on `/settings/account`.
+ *
+ * **Still missing:** the A-14 geo-IP consent toggle, the A-13 amendment-history timeline,
+ * and the read-only mirror of `Settings → Sources`. Row 9 is not closed.
  *
  * The settings nav row therefore describes what is actually behind it. A row promising
  * "your data" over a page that only explains ranking would be the same kind of unkept
@@ -82,12 +88,23 @@ export default async function SettingsPrivacyPage() {
         <SettingsStates />
 
         {/*
+          **The inventory renders here too, and for the same reason as the danger zone.**
+          It depends on no API read — `RETENTION_ROWS` is a compiled-in mirror of the
+          retention registry — so a failed *ranking* read is no reason to stop telling a
+          user what is stored about them. A data inventory that vanishes when an
+          unrelated endpoint blinks is one nobody can rely on.
+        */}
+        <div className="mt-8 max-w-(--layout-container-reading)">
+          <DataInventory />
+        </div>
+
+        {/*
           **The danger zone renders even here.** A failed ranking read must not silently
           remove the one control on this page that destroys something — a danger zone
           that disappears when the page is unhealthy is the opposite of what a danger
           zone is for.
         */}
-        <div className="mt-8 max-w-(--layout-container-reading)">
+        <div className="mt-12 max-w-(--layout-container-reading)">
           <DangerZone
             deletionScheduledFor={session.user.deletion_scheduled_for}
             deletionRequestedAt={session.user.deletion_requested_at}
@@ -105,13 +122,22 @@ export default async function SettingsPrivacyPage() {
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Privacy</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
           How your Pulse is ranked, in full. Nothing here is personalised guesswork we won&apos;t
-          show you. Below that, the danger zone — the one part of this page that can be undone only
-          for the next thirty days.
+          show you. Below that, everything we store about you and for how long. Then the danger
+          zone — the one part of this page that can be undone only for the next thirty days.
         </p>
       </header>
 
       <div className="mt-8 max-w-(--layout-container-reading)">
         <RankingFormula ranking={read.ranking} />
+      </div>
+
+      {/*
+        **Readable things together, the irreversible one last.** The inventory explains
+        what is kept; the danger zone destroys it. Putting the inventory between them is
+        also the order a reader needs: what you hold, then the control that removes it.
+      */}
+      <div className="mt-12 max-w-(--layout-container-reading)">
+        <DataInventory />
       </div>
 
       {/*

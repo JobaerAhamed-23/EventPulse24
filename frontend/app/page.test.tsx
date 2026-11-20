@@ -306,19 +306,26 @@ describe("the empty state", () => {
     expect(screen.getByText("No qualifying events in Brooklyn.")).toBeInTheDocument();
   });
 
-  it("offers one low-weight link, and no button", async () => {
+  it("offers nothing to click — no link, no button (Amendment A-26)", async () => {
     const { container } = render(await HomePage(props()));
 
-    const link = screen.getByRole("link", { name: "Suggest an event" });
-    expect(link).toHaveAttribute("href", "/suggest");
+    // **This used to assert the opposite.** It required one link, "Suggest an event",
+    // pointing at `/suggest` — a route that was never built in any layer, so the
+    // assertion was pinning a 404 in place. Amendment A-26 withdrew the link; this
+    // test now holds its absence, and `tests/internal-links.test.ts` holds the general
+    // rule that no internal href may resolve to nothing.
+    expect(screen.queryByRole("link", { name: "Suggest an event" })).toBeNull();
 
     // No CTA pair, no carousel, no upsell: the empty state is the message. The shell's
     // own controls (the Add slot, the Search button) are not part of the empty state,
     // and neither is anything else outside `main` — so the assertion is over the whole
     // digest region, which is what is left now the personal-events list is gone.
+    //
+    // **Both counts are now zero**, which is the strongest form this rule has had: the
+    // surface whose argument is that it offers nothing now offers nothing.
     const main = container.querySelector("main");
     expect([...(main?.querySelectorAll("button") ?? [])]).toHaveLength(0);
-    expect([...(main?.querySelectorAll("a") ?? [])]).toHaveLength(1);
+    expect([...(main?.querySelectorAll("a") ?? [])]).toHaveLength(0);
   });
 
   it("carries no terracotta, which is rationed to four uses", async () => {
