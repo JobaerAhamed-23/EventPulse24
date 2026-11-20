@@ -1741,6 +1741,42 @@ intents:
         run_id: run-eventpulse24-055
         completed_at: 2026-11-20T11:38:45.025Z
     completed_at: 2026-11-20T11:38:08.383Z
+  - id: spec-debt-and-open-findings
+    title: The findings run-055 raised and did not close — plus the About link
+    status: completed
+    created: 2026-11-20
+    follows: broken-links-and-legal-pages
+    work_items:
+      - id: email-change-impure-render
+        status: completed
+        complexity: low
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-056
+        completed_at: 2026-11-20T12:27:55.367Z
+      - id: prd-section-10-2-reconciliation
+        status: completed
+        complexity: low
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-056
+        completed_at: 2026-11-20T12:27:55.367Z
+      - id: settings-privacy-data-inventory
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - prd-section-10-2-reconciliation
+        run_id: run-eventpulse24-056
+        completed_at: 2026-11-20T12:27:55.367Z
+      - id: pre-auth-footer-placeholders
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-056
+        completed_at: 2026-11-20T12:27:55.367Z
+    completed_at: 2026-11-20T12:23:48.600Z
 runs:
   active: []
   completed:
@@ -2566,3 +2602,20 @@ runs:
           mode: confirm
       started: 2026-11-20T10:42:06.861Z
       completed: 2026-11-20T11:38:45.025Z
+    - id: run-eventpulse24-056
+      scope: wide
+      work_items:
+        - id: email-change-impure-render
+          intent: spec-debt-and-open-findings
+          mode: confirm
+        - id: prd-section-10-2-reconciliation
+          intent: spec-debt-and-open-findings
+          mode: confirm
+        - id: settings-privacy-data-inventory
+          intent: spec-debt-and-open-findings
+          mode: confirm
+        - id: pre-auth-footer-placeholders
+          intent: spec-debt-and-open-findings
+          mode: confirm
+      started: 2026-11-20T11:54:04.436Z
+      completed: 2026-11-20T12:27:55.367Z

@@ -1,5 +1,4 @@
-import { BrandTopbar } from "@/components/brand-topbar";
-import { PreAuthFooter } from "@/components/pre-auth/pre-auth-footer";
+import { ProsePage, ProseSection } from "@/components/pre-auth/prose-page";
 
 /**
  * The frame the two legal documents share — `/terms` and `/privacy`.
@@ -18,13 +17,15 @@ import { PreAuthFooter } from "@/components/pre-auth/pre-auth-footer";
  * redirected a signed-out reader somewhere else would be unreadable at exactly the
  * moment it is needed. These routes are static and public.
  *
- * ## Why this is not `AuthPageShell`
+ ## The frame is `ProsePage`; this adds a legal document's contract
  *
- * That component centres a **480 px card**, and `EXPERIENCE.md` is explicit about why:
- * *"480px column — narrower than the 720px onboarding column because auth forms are
- * single-decision, not content-rich."* A policy is the opposite of single-decision. It
- * uses the reading column, which is what that token is for. The frame's *structure* is
- * shared with the auth shell; the measure is not.
+ * `ProsePage` holds the chrome every pre-auth prose surface shares — brand topbar,
+ * reading column, pre-auth footer. **What this component adds is the draft banner and
+ * the last-updated date**, which belong to a legal document and to nothing else:
+ * `/about` carrying a "not reviewed by a lawyer" notice would be a category error.
+ *
+ * (It is not `AuthPageShell`, whose 480 px card `EXPERIENCE.md` specifies for forms that
+ * are *"single-decision, not content-rich"*. A policy is the opposite.)
  *
  * ## The banner is not decoration
  *
@@ -55,12 +56,12 @@ export function LegalPage({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <BrandTopbar />
-      <main className="fade-in flex-1 px-6 py-12">
-        <article className="mx-auto w-full max-w-(--layout-container-reading)">
-          <h1 className="text-ink-primary [font:var(--type-scale-display-md)]">{title}</h1>
-          <p className="mt-3 [font:var(--type-scale-body-md)] text-ink-secondary">{lede}</p>
+    <ProsePage
+      title={title}
+      lede={lede}
+      current={current}
+      beforeContent={
+        <>
           <p className="mt-2 [font:var(--type-scale-meta-md)] text-ink-muted">
             Last updated {lastUpdated}
           </p>
@@ -81,12 +82,11 @@ export function LegalPage({
             disagree, the product is what is true — and that is a bug in this page, which
             we would like to hear about.
           </aside>
-
-          <div className="mt-12 flex flex-col gap-8">{children}</div>
-        </article>
-      </main>
-      <PreAuthFooter current={current} />
-    </div>
+        </>
+      }
+    >
+      {children}
+    </ProsePage>
   );
 }
 
@@ -107,11 +107,8 @@ export function LegalSection({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-8">
-      <h2 className="text-ink-primary [font:var(--type-scale-headline-md)]">{heading}</h2>
-      <div className="mt-3 flex flex-col gap-3 [font:var(--type-scale-body-md)] text-ink-secondary">
-        {children}
-      </div>
-    </section>
+    <ProseSection id={id} heading={heading}>
+      {children}
+    </ProseSection>
   );
 }

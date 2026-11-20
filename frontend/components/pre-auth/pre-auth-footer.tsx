@@ -35,8 +35,15 @@ import Link from "next/link";
  * short of §323 for as long as it has existed. It sits next to Privacy, which is where
  * §323 names it.
  *
- * **About and Contact stay as `#`.** They are drawn that way, they go nowhere by
- * construction rather than by accident, and `#` is not a 404.
+ * **About and Contact now resolve (2026-11-20).** Both rendered as `href="#"` until a
+ * user asked what the About link did. **A `#` is not a 404**, so the link guard never
+ * flagged either — which is how a page §326 explicitly promises stayed unbuilt with
+ * nothing going red. `tests/internal-links.test.ts` now rejects placeholder hrefs too.
+ *
+ * The two were not the same case. **About is named by §326**; Contact appears in no
+ * section and came from the mockups, like "How it works". Contact was built rather than
+ * removed because the footer already linked it on eight surfaces and the legal pages
+ * needed somewhere real to point.
  *
  * **Pricing is here because the footer is the conversion surface.** "Log in" and "Sign up
  * free" live here, so the price of the paid tier belongs here too — a visitor who has to
@@ -45,10 +52,10 @@ import Link from "next/link";
  */
 
 const LINKS = [
-  { href: "#", label: "About" },
+  { href: "/about", label: "About" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
-  { href: "#", label: "Contact" },
+  { href: "/contact", label: "Contact" },
   { href: "/pricing", label: "Pricing" },
   { href: "/signin", label: "Log in" },
   { href: "/signup", label: "Sign up free" },

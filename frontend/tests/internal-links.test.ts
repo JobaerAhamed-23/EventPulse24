@@ -137,4 +137,44 @@ describe("internal links", () => {
     expect(checked).toBeGreaterThan(10);
     expect(missing).toEqual([]);
   });
+
+  it("links to no placeholder, either", () => {
+    /*
+      **The second blind spot, and the one that hid a page the spec asked for.**
+
+      The rule above resolves hrefs beginning with `/`. A `#` is a valid fragment, not a
+      broken route, so it was right not to call it a 404 — and wrong to say nothing at
+      all. The pre-auth footer carried `href="#"` on **About** and **Contact** across
+      eight surfaces, and About is named by `EXPERIENCE.md` §326's canonical footer
+      bullet. A promised page stayed unbuilt for months with nothing going red, until a
+      user asked what the link did.
+
+      So a placeholder is now a finding in its own right. `#`, an empty href and
+      `javascript:` are all ways of rendering something that looks like a link and is
+      not, and a reader cannot tell any of them apart from the real thing until they
+      click.
+
+      **If one is ever deliberate**, name it here in an allow-set with a reverse
+      assertion — the idiom that forced `/terms` and `/privacy` to be built rather than
+      excused. Do not simply drop it from `placeholders`.
+    */
+    const files = [
+      ...sourceFiles(path.join(ROOT, "app")),
+      ...sourceFiles(path.join(ROOT, "components")),
+    ];
+
+    const placeholders: string[] = [];
+
+    for (const file of files) {
+      const code = withoutComments(readFileSync(file, "utf8"));
+      for (const match of code.matchAll(/href\s*[:=]\s*"([^"]*)"/g)) {
+        const value = match[1].trim();
+        if (value === "#" || value === "" || value.toLowerCase().startsWith("javascript:")) {
+          placeholders.push(`${path.relative(ROOT, file)} → ${match[1] || "(empty)"}`);
+        }
+      }
+    }
+
+    expect(placeholders).toEqual([]);
+  });
 });
