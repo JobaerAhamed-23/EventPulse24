@@ -17,6 +17,12 @@
  * **Two shapes, one panel.** The rail opens `AccountPanel` in a sheet. The mobile
  * overflow sheet renders the same panel *inline*, because a sheet opened from inside a
  * sheet is a second overlay level, and `Sheet` keeps there being exactly one.
+ *
+ * **The face is the shell's own disc, and it is live.** The row and the panel draw
+ * `AvatarDisc` — **the same component**, not a copy — so the face in the rail, the face
+ * in the sheet and the face on the profile screen cannot drift apart. And the URL is
+ * read from the avatar store, so a picture saved on this page appears in the row
+ * without a reload.
  */
 
 import Link from "next/link";
@@ -24,6 +30,8 @@ import { useState } from "react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Sheet } from "@/components/sheets/sheet";
+import { AvatarDisc } from "@/components/shell/avatar-disc";
+import { useLiveAvatar } from "@/lib/avatar-store";
 import { useLiveName } from "@/lib/session-name";
 
 export type AccountProps = {
@@ -47,6 +55,14 @@ export type AccountProps = {
    * fact about a flow rather than about the person.
    */
   email: string;
+  /**
+   * The user's picture — `""` when the account has none.
+   *
+   * **It is the seed, not the truth**, for the same reason the name is: the shell was
+   * rendered on the server, and a picture uploaded after that render is newer.
+   * `useLiveAvatar` takes the published picture when there is one.
+   */
+  avatarUrl: string;
 };
 
 /**
@@ -73,10 +89,14 @@ export type AccountProps = {
  * mounts Sign out at both breakpoints, and the rail's own Settings row already goes to
  * `/settings`.
  */
-export function AccountPanel({ name, email }: AccountProps) {
+export function AccountPanel({ name, email, avatarUrl }: AccountProps) {
   // **The live name, not the rendered one.** The panel shows what to call the person,
   // and the name the account holds may have changed since the page was drawn.
   const live = useLiveName(name);
+  // **The live picture, for the same reason.** The account sheet is where the picture is
+  // read most carefully — it is the face the sheet opens with — so a picture saved
+  // elsewhere on the page must be the one shown here.
+  const picture = useLiveAvatar(avatarUrl);
 
   return (
     /*
@@ -88,7 +108,7 @@ export function AccountPanel({ name, email }: AccountProps) {
     */
     <div className="flex flex-col gap-4" data-account-panel>
       <div className="flex items-center gap-3">
-        <Avatar name={live} />
+        <AvatarDisc avatarUrl={picture} name={live} />
         <span className="flex min-w-0 flex-col">
           <span className="text-ink-primary [font:var(--type-scale-body-md)]">{live}</span>
           <span className="truncate text-ink-muted [font:var(--type-scale-meta-sm)]">{email}</span>
@@ -112,11 +132,14 @@ export function AccountPanel({ name, email }: AccountProps) {
 }
 
 /** The rail's account row: the button, and the sheet it opens. */
-export function AccountMenu({ name, email }: AccountProps) {
+export function AccountMenu({ name, email, avatarUrl }: AccountProps) {
   const [open, setOpen] = useState(false);
   // **The live name, not the rendered one** — the row is the account's face, and it
   // must agree with the sheet it opens.
   const live = useLiveName(name);
+  // **And the live picture, for the same reason** — the row and the sheet must show the
+  // same face, and it must be the current one.
+  const picture = useLiveAvatar(avatarUrl);
 
   return (
     <>
@@ -127,7 +150,7 @@ export function AccountMenu({ name, email }: AccountProps) {
         aria-label={`Account: ${live}`}
         className="mt-1 flex w-full items-center gap-3 rounded-subtle px-2 py-2 text-left hover:bg-surface-subtle"
       >
-        <Avatar name={live} />
+        <AvatarDisc avatarUrl={picture} name={live} />
         <span className="flex min-w-0 flex-col">
           <span className="text-ink-primary [font:var(--type-scale-body-md)]">{live}</span>
           <span className="text-ink-muted [font:var(--type-scale-meta-sm)]">Account</span>
@@ -146,26 +169,9 @@ export function AccountMenu({ name, email }: AccountProps) {
 
       <Sheet open={open} onClose={() => setOpen(false)} label="Account">
         <div className="p-4">
-          <AccountPanel name={name} email={email} />
+          <AccountPanel name={name} email={email} avatarUrl={avatarUrl} />
         </div>
       </Sheet>
     </>
-  );
-}
-
-/**
- * The initials disc.
- *
- * It is `aria-hidden`: the name is beside it in text, and a screen reader announcing two
- * letters before the name it abbreviates is noise.
- */
-function Avatar({ name }: { name: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-inset text-ink-secondary [font:var(--type-scale-meta-sm)]"
-    >
-      {name.slice(0, 2).toUpperCase()}
-    </span>
   );
 }

@@ -43,7 +43,7 @@ export default async function TimelinePage({ searchParams }: PageProps<"/timelin
   // session is not a reason to show somebody else's week.
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         <TimelineError href="/timeline" />
       </AppShell>
     );
@@ -62,7 +62,11 @@ export default async function TimelinePage({ searchParams }: PageProps<"/timelin
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={displayName(session.user)} email={session.user.email}>
+      <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
         <TimelineError href={week ? `/timeline?week=${week}` : "/timeline"} />
       </AppShell>
     );
@@ -96,7 +100,11 @@ export default async function TimelinePage({ searchParams }: PageProps<"/timelin
     null;
 
   return (
-    <AppShell name={displayName(session.user)} email={session.user.email}>
+    <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">This week</h1>
         <p className="text-ink-muted [font:var(--type-scale-meta-md)]">

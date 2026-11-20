@@ -44,7 +44,7 @@ import { isSettingsPath } from "@/lib/settings-sections";
  * the account row in its footer is desktop-only; `MoreMenu` carries the same account
  * panel here.
  */
-export function BottomTabNav({ name, email }: AccountProps) {
+export function BottomTabNav({ name, email, avatarUrl }: AccountProps) {
   const pathname = usePathname();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -114,7 +114,7 @@ export function BottomTabNav({ name, email }: AccountProps) {
           Browse lives. It is mounted as its own component because it carries a dialog
           — and a dialog inside a nav slot would be a form nested in a navigation list.
         */}
-        <MoreMenu name={name} email={email} />
+        <MoreMenu name={name} email={email} avatarUrl={avatarUrl} />
       </nav>
 
       {/*

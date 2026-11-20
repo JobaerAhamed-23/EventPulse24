@@ -26,23 +26,34 @@ import { api } from "@/lib/backend-client";
  * `csrfOnRequest` on this client, so these writes carry the token like every other write
  * in the app.
  */
+import { readApiError } from "@/lib/api-errors";
 
 /** What the caller gets back: the saved profile, or a message to show the person. */
 export type AvatarResult =
-  | { kind: "saved"; avatarUrl: string }
-  | { kind: "refused"; message: string };
+  { kind: "saved"; avatarUrl: string } | { kind: "refused"; message: string };
 
 /** The message shown when the server refused but said nothing usable. */
 const FALLBACK_MESSAGE = "That picture couldn't be saved. Try a different one.";
 
+/**
+ * The API's refusal, read for display — **verbatim**.
+ *
+ * **The project's error shape is `{code, message, details}`,** and the message is
+ * written for the person who typed it — *"That file isn't an image we can read. Try a
+ * PNG, JPEG, WebP or GIF."* — so it is shown as it arrived.
+ *
+ * **`readApiError` is the shared reader**, the same one `save-failure.ts` uses, and it
+ * is what makes the two cases different: **it returns the API's own message when the
+ * body is the project's error shape, and nothing usable otherwise.** A body that is not
+ * that shape is not an API refusal that can be quoted — it is something else answering,
+ * and the route's own line is the honest one.
+ */
 function refusal(error: unknown): AvatarResult {
-  // The project's error shape is `{code, message, details}`; the message is written for
-  // the person who typed it, so it is shown as-is when present.
-  const message =
-    typeof error === "object" && error !== null && "message" in error
-      ? String((error as { message: unknown }).message)
-      : "";
-  return { kind: "refused", message: message || FALLBACK_MESSAGE };
+  const failure = readApiError(error);
+  // **`code === null` means the body was not the project's error shape**, so there was
+  // no API message to quote and the fallback stands in.
+  if (failure.code === null) return { kind: "refused", message: FALLBACK_MESSAGE };
+  return { kind: "refused", message: failure.message };
 }
 
 /**

@@ -52,7 +52,7 @@ export default async function SettingsPrivacyPage() {
 
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         <SettingsStates />
       </AppShell>
     );
@@ -63,7 +63,11 @@ export default async function SettingsPrivacyPage() {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={name} email={session.user.email}>
+      <AppShell
+        name={name}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
         <SettingsNav />
 
         <SettingsStates />
@@ -72,7 +76,11 @@ export default async function SettingsPrivacyPage() {
   }
 
   return (
-    <AppShell name={name} email={session.user.email}>
+    <AppShell
+        name={name}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       <SettingsNav />
 
       <header className="flex flex-col gap-1">

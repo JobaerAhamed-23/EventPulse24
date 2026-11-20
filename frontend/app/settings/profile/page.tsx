@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { AvatarUpload } from "@/components/settings/avatar-upload";
 import { EmailChange } from "@/components/settings/email-change";
 import { HomeCity } from "@/components/settings/home-city";
 import { ProfileName } from "@/components/settings/profile-name";
@@ -68,6 +69,18 @@ import { getSession, homeRoute } from "@/lib/session";
  * rail showing the old name after a save. **A save that does not show up is a save that
  * did not happen**, so the island publishes the new display name to the shell once the
  * server has accepted it. The rail, the bottom bar and the account sheet all follow it.
+ *
+ * ## The picture is here too, and it follows the same path
+ *
+ * **The picture is the other half of the face, and the face is drawn in three places** —
+ * the sidenav, the bottom bar and the account sheet — so the screen that owns the
+ * picture is this one, next to the name it sits beside.
+ *
+ * **The island publishes the picture the same way the name's island publishes the
+ * name**: after the server accepts the write, and not before. **The server validates
+ * the bytes, re-encodes them and may refuse the file outright** — so a URL published
+ * early would name a picture that does not exist, and the rail would show a broken face
+ * for an upload that was refused.
  */
 export const dynamic = "force-dynamic";
 
@@ -92,7 +105,7 @@ export default async function SettingsProfilePage() {
   // routes use it because *their* read can fail. This one has no read.
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         {null}
       </AppShell>
     );
@@ -118,17 +131,43 @@ export default async function SettingsProfilePage() {
   const homeCity = await readHomeCity();
 
   return (
-    <AppShell name={displayName(session.user)} email={session.user.email}>
+    <AppShell
+      name={displayName(session.user)}
+      email={session.user.email}
+      avatarUrl={session.user.avatar_url}
+    >
       <SettingsNav />
 
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Profile</h1>
         <p className="max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-md)]">
-          Your name, your address, and the city your Pulse Digest follows.
+          Your picture, your name, your address, and the city your Pulse Digest follows.
         </p>
       </header>
 
+      {/*
+        **The picture, first — because it is the first thing about you.**
+
+        **It sits above the name, and that is the order the account sheet reads in**:
+        face, then name, then address. The rail draws the disc beside the name in that
+        order too, and the sheet opens with the pair — so the screen that edits them
+        presents them in the order they are presented everywhere else.
+
+        **The island is handed the seed and the display name.** The seed is the picture
+        the account holds (`""` when it holds none), and the display name is the source
+        of the initials — **the same name the rail shows**, so the fallback on this
+        screen is the same letters the rail shows. The island publishes the new picture
+        to the shell once the server accepts the write, so the rail, the bottom bar and
+        the account sheet all follow it without a reload.
+      */}
       <div className="mt-8 max-w-(--layout-container-reading)">
+        <AvatarUpload
+          initialAvatarUrl={session.user.avatar_url}
+          name={displayName(session.user)}
+        />
+      </div>
+
+      <div className="mt-12 max-w-(--layout-container-reading)">
         <ProfileName initialName={stored} email={session.user.email} />
       </div>
 

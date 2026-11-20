@@ -34,6 +34,28 @@ const ROOT = path.resolve(__dirname, "..");
 const SETTINGS_DIR = path.join(ROOT, "app", "settings");
 
 /**
+ * The signed-in `<AppShell>` opening — **the one the rules below walk.**
+ *
+ * **It is matched across lines, and it matches the whole opening tag.** The shell
+ * carries the user's name, their email and their picture, and three props do not fit on
+ * one line — so the pattern is `\s` between the attributes rather than a space, and it
+ * runs to the tag's closing `>` so that "what comes after the shell" is well defined.
+ *
+ * **A single-line pattern would match nothing at all**, and a rule that matches nothing
+ * passes vacuously: the failure mode of every source-text assertion, and the reason this
+ * pattern is named rather than inlined. **A mutation probe that deleted `<SettingsNav />`
+ * from `/settings/taste` left the line-by-line rule green** — which is how that was
+ * found.
+ *
+ * **It is a `/g` pattern, and it is only ever used with `matchAll`.** A `/g` pattern
+ * carries a `lastIndex` between calls, so using one with `.test()` would make the
+ * *second* call start where the first stopped — a rule that passes on the first branch
+ * and silently skips the rest. `matchAll` does not have that problem: it reads the
+ * pattern's `lastIndex` and resets it.
+ */
+const SIGNED_IN_SHELL_COUNT = /<AppShell\s+name=\{[^}]*\}\s+email=\{session\.user\.email\}[^>]*>/g;
+
+/**
  * The route segments whose `page.tsx` does nothing but redirect.
  *
  * **The test is "renders nothing", not "mentions redirect".** A page that redirects on
@@ -172,28 +194,39 @@ describe("the settings screens", () => {
 
     for (const section of screenSections()) {
       const source = readFileSync(path.join(SETTINGS_DIR, section, "page.tsx"), "utf8");
-      const lines = source.split("\n");
 
-      lines.forEach((line, index) => {
-        // The signed-out branch is `name="" email=""` and is deliberately bare: a
-        // section rail for somebody who is not signed in is a rail into six redirects.
-        if (!/<AppShell name=\{.*email=\{session\.user\.email\}>/.test(line)) return;
+      /*
+        **The walk is over the whole source, not line by line.**
 
-        const next = lines.slice(index + 1).find((candidate) => candidate.trim() !== "");
-        if (next?.trim() !== "<SettingsNav />") {
-          missing.push(`${section}/page.tsx:${index + 1}`);
+        **The shell's opening spans several lines** — it carries the name, the email and
+        the picture, and three props do not fit on one — so a rule that matched a single
+        line would match nothing and pass vacuously. **A mutation probe that deleted
+        `<SettingsNav />` from `/settings/taste` left the line-by-line rule green**, which
+        is how this was found.
+
+        So the loop finds each signed-in opening *in the source*, and asks what comes
+        after it — the next non-blank text, which must be the sub-nav.
+      */
+      for (const match of source.matchAll(SIGNED_IN_SHELL_COUNT)) {
+        const after = source.slice(match.index + match[0].length);
+        // **The first non-blank thing after the opening tag must be the sub-nav.**
+        const next = after
+          .split("\n")
+          .map((candidate) => candidate.trim())
+          .find((candidate) => candidate !== "");
+        if (next !== "<SettingsNav />") {
+          missing.push(`${section}/page.tsx`);
         }
-      });
+      }
     }
 
     expect(missing).toEqual([]);
   });
 
   it("open at least one signed-in branch each, which is what the rule above walks", () => {
-    // The guard on the guard. If the `<AppShell name={…} email={session.user.email}>`
-    // pattern above ever stops matching — a rename, a refactor to a layout — the loop
-    // would find nothing and pass vacuously, which is the failure mode of every
-    // source-text assertion.
+    // The guard on the guard. If the signed-in `<AppShell>` pattern above ever stops
+    // matching — a rename, a refactor to a layout — the loop would find nothing and
+    // pass vacuously, which is the failure mode of every source-text assertion.
     //
     // **The floor is one, not two, and that is deliberate.** Most settings pages have
     // two: a named `unavailable` shell and the page itself, because most of them read
@@ -207,7 +240,7 @@ describe("the settings screens", () => {
     // something at all; it does not require a second copy of the same assertion.
     for (const section of screenSections()) {
       const source = readFileSync(path.join(SETTINGS_DIR, section, "page.tsx"), "utf8");
-      const branches = source.match(/<AppShell name=\{.*email=\{session\.user\.email\}>/g) ?? [];
+      const branches = source.match(SIGNED_IN_SHELL_COUNT) ?? [];
       expect(branches.length, section).toBeGreaterThanOrEqual(1);
     }
   });

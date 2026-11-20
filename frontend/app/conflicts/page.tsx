@@ -43,7 +43,7 @@ export default async function ConflictsPage() {
   // session is not a reason to show somebody else's conflicts.
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         <ConflictsError href="/conflicts" />
       </AppShell>
     );
@@ -53,7 +53,11 @@ export default async function ConflictsPage() {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={displayName(session.user)} email={session.user.email}>
+      <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
         <ConflictsError href="/conflicts" />
       </AppShell>
     );
@@ -64,7 +68,11 @@ export default async function ConflictsPage() {
   const quiet = active.length === 0 && resolved.length === 0;
 
   return (
-    <AppShell name={displayName(session.user)} email={session.user.email}>
+    <AppShell
+        name={displayName(session.user)}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">
           These days overlap.

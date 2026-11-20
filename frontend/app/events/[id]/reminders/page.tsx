@@ -39,6 +39,7 @@ export default async function ReminderPickerPage({ params }: { params: Promise<{
   const session = await getSession();
   const name = session.kind === "signed-in" ? displayName(session.user) : "";
   const email = session.kind === "signed-in" ? session.user.email : "";
+  const avatarUrl = session.kind === "signed-in" ? session.user.avatar_url : "";
 
   // **The plan and the default are read together.** The default is what "Reset to
   // default" restores, and the picker needs both before it can render the chips.
@@ -105,7 +106,7 @@ export default async function ReminderPickerPage({ params }: { params: Promise<{
     );
 
   return (
-    <AppShell name={name} email={email}>
+    <AppShell name={name} email={email} avatarUrl={avatarUrl}>
       {content}
     </AppShell>
   );

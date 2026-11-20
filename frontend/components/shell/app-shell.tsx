@@ -18,6 +18,7 @@ import { Sidenav } from "@/components/shell/sidenav";
 export function AppShell({
   name,
   email,
+  avatarUrl,
   children,
 }: {
   /** The user's name, for the sidenav's account row. */
@@ -29,6 +30,16 @@ export function AppShell({
    * on desktop, the bottom bar's More sheet on mobile. One prop, threaded to both.
    */
   email: string;
+  /**
+   * The user's picture — `""` when the account has none.
+   *
+   * **It is the seed, not the truth.** The shell is rendered on the server, so this is
+   * the picture the page was drawn with; a picture uploaded *after* the render is
+   * newer, and the shell reads it from the avatar store. Threading it here is what
+   * puts the picture in all three places — the rail, the bottom bar and the account
+   * sheet — from one seed.
+   */
+  avatarUrl: string;
   children: React.ReactNode;
 }) {
   return (
@@ -37,7 +48,7 @@ export function AppShell({
     // outside it, which read as dead space at both edges rather than as composition —
     // so the cap is gone and the app occupies the window it is given.
     <div className="flex min-h-screen bg-surface-paper">
-      <Sidenav name={name} email={email} />
+      <Sidenav name={name} email={email} avatarUrl={avatarUrl} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/*
@@ -95,7 +106,7 @@ export function AppShell({
         </main>
       </div>
 
-      <BottomTabNav name={name} email={email} />
+      <BottomTabNav name={name} email={email} avatarUrl={avatarUrl} />
     </div>
   );
 }

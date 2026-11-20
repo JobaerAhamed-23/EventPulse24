@@ -1600,11 +1600,13 @@ intents:
         run_id: run-eventpulse24-052
         completed_at: 2026-11-19T17:29:14.736Z
       - id: avatar-on-the-shell
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - avatar-endpoint-and-contract
+        run_id: run-eventpulse24-053
+        completed_at: 2026-11-20T05:39:55.101Z
       - id: pending-email-model-and-commands
         status: completed
         complexity: high
@@ -1644,7 +1646,7 @@ intents:
         run_id: run-eventpulse24-041
         completed_at: 2026-11-19T00:00:00Z
       - id: profile-screen-and-e2e
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -1667,18 +1669,19 @@ runs:
         - id: avatar-on-the-shell
           intent: account-profile-expansion
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-20T05:39:55.101Z
+        - id: profile-screen-and-e2e
+          intent: account-profile-expansion
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: profile-screen-and-e2e
-          intent: account-profile-expansion
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: avatar-on-the-shell
+      current_item: profile-screen-and-e2e
       started: 2026-11-20T03:37:57.952Z
   completed:
     - id: run-eventpulse24-001

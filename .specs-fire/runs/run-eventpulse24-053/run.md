@@ -12,18 +12,18 @@ work_items:
   - id: avatar-on-the-shell
     intent: account-profile-expansion
     mode: confirm
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: profile-screen-and-e2e
     intent: account-profile-expansion
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
-current_item: avatar-on-the-shell
+    current_checkpoint: plan
+current_item: profile-screen-and-e2e
 status: in_progress
 started: 2026-11-20T03:37:57.952Z
 completed: null
@@ -36,12 +36,12 @@ wide (3 work items)
 
 ## Work Items
 1. **account-deletion-and-avatar-removal** (validate) — completed
-2. **avatar-on-the-shell** (confirm) — in_progress
-3. **profile-screen-and-e2e** (confirm) — pending
+2. **avatar-on-the-shell** (confirm) — completed
+3. **profile-screen-and-e2e** (confirm) — in_progress
 
 
 ## Current Item
-avatar-on-the-shell (confirm)
+profile-screen-and-e2e (confirm)
 
 ## Files Created
 (none yet)

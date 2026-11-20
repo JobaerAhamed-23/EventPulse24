@@ -339,3 +339,60 @@ describe("files", () => {
     );
   });
 });
+
+describe("the initials rule", () => {
+  /**
+   * The rule, in one module.
+   *
+   * **The disc is drawn in three places** — the sidenav's account row, the bottom bar's
+   * More sheet and the account sheet — and **the fallback is what the account looks
+   * like** to somebody who has not set a picture. So a fallback that differs between
+   * them is visible.
+   *
+   * **The rule therefore lives in `lib/avatar.ts` and nowhere else.** This test is what
+   * stops a second copy appearing: someone writes `name.slice(0, 2).toUpperCase()` in a
+   * component because it is one line, and the rail's initials quietly stop matching the
+   * sheet's.
+   *
+   * **The patterns are deliberately narrow.** `slice(0, 2)` is the naive rule and is
+   * exactly what must not come back; a bare `.toUpperCase()` or `.split(" ")` is
+   * innocent on its own and is not worth a false positive.
+   */
+  const NAIVE_INITIALS = /(?:name|displayName|live)\s*\.\s*slice\s*\(\s*0\s*,\s*2\s*\)/;
+
+  it("is written once, in lib/avatar.ts", () => {
+    const offenders: string[] = [];
+
+    for (const dir of SOURCE_DIRS) {
+      for (const file of sourceFiles(path.join(ROOT, dir))) {
+        if (!file.endsWith(".tsx") && !file.endsWith(".ts")) continue;
+        const rel = path.relative(ROOT, file);
+        // **The rule's own module is the one place it is allowed.** And this file may
+        // name the pattern — that is what makes the rule checkable — so it is exempt
+        // too.
+        if (rel === path.join("lib", "avatar.ts")) continue;
+        if (rel === path.join("tests", "architecture.test.ts")) continue;
+        if (rel === path.join("tests", "avatar-in-the-shell.test.tsx")) continue;
+
+        const source = readFileSync(file, "utf8");
+        if (NAIVE_INITIALS.test(source)) offenders.push(rel);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("is reached through the shared helper, not through a second implementation", () => {
+    // **The helper is the only way to get the initials.** The disc imports it, and the
+    // helper is a pure function in a module that imports nothing — so a server
+    // component may use it too.
+    const disc = readFileSync(path.join(ROOT, "components/shell/avatar-disc.tsx"), "utf8");
+    expect(disc).toMatch(/import\s*\{\s*initials\s*\}\s*from\s*"@\/lib\/avatar"/);
+
+    // **And the helper is the whole rule** — one function, no dependencies, so there is
+    // nothing to keep in step with.
+    const helper = readFileSync(path.join(ROOT, "lib/avatar.ts"), "utf8");
+    expect(helper).toMatch(/export function initials\(/);
+    expect(helper.match(/export function /g) ?? []).toHaveLength(1);
+  });
+});

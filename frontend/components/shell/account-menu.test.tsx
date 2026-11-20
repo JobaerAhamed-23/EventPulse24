@@ -37,20 +37,20 @@ const EMAIL = "maya@example.test";
 
 describe("the account panel", () => {
   it("shows the name and the email", () => {
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     expect(screen.getByText(NAME)).toBeTruthy();
     expect(screen.getByText(EMAIL)).toBeTruthy();
   });
 
   it("offers 'Edit your name'", () => {
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     expect(screen.getByRole("link", { name: "Edit your name" })).toBeTruthy();
   });
 
   it("points 'Edit your name' at the profile screen, which exists", () => {
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     const link = screen.getByRole("link", { name: "Edit your name" });
     expect(link.getAttribute("href")).toBe("/settings/profile");
@@ -59,7 +59,7 @@ describe("the account panel", () => {
   it("does not offer a Settings row", () => {
     // **The rail already has a Settings row** that goes to the same index, so the
     // sheet's copy was a second way to one place.
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
   });
@@ -67,7 +67,7 @@ describe("the account panel", () => {
   it("does not offer a Pricing row", () => {
     // **The sheet is about the account, not about the upsell.** The account's plan has
     // a home: `/settings/account`.
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     expect(screen.queryByRole("link", { name: "Pricing" })).toBeNull();
   });
@@ -85,7 +85,7 @@ describe("the account panel", () => {
     // **So the panel's whole set of destinations is asserted**, not one of them by
     // name. A new link to anywhere — `/pricing`, `/settings`, anywhere else — fails
     // this.
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     const hrefs = Array.from(document.querySelectorAll("a")).map((anchor) =>
       anchor.getAttribute("href"),
@@ -94,7 +94,7 @@ describe("the account panel", () => {
   });
 
   it("still offers Sign out, and it is the last thing in the panel", () => {
-    render(<AccountPanel name={NAME} email={EMAIL} />);
+    render(<AccountPanel name={NAME} email={EMAIL} avatarUrl="" />);
 
     const signOut = screen.getByRole("button", { name: /sign out/i });
     expect(signOut).toBeTruthy();
@@ -123,7 +123,7 @@ describe("the account panel", () => {
 
 describe("the rail's account row", () => {
   it("opens the sheet, and the sheet carries the same panel", () => {
-    render(<AccountMenu name={NAME} email={EMAIL} />);
+    render(<AccountMenu name={NAME} email={EMAIL} avatarUrl="" />);
 
     // **The sheet is closed until the row is pressed.**
     expect(screen.queryByRole("link", { name: "Edit your name" })).toBeNull();
@@ -137,7 +137,7 @@ describe("the rail's account row", () => {
   it("addresses the row by the name it was given", () => {
     // **The row's accessible name carries the name**, so the sheet's trigger says who
     // it belongs to.
-    render(<AccountMenu name={NAME} email={EMAIL} />);
+    render(<AccountMenu name={NAME} email={EMAIL} avatarUrl="" />);
 
     expect(screen.getByRole("button", { name: `Account: ${NAME}` })).toBeTruthy();
   });
@@ -154,7 +154,7 @@ describe("the bottom bar's More sheet", () => {
     // `BottomTabNav` and opens the More sheet through it, the way `nav-routes.test.tsx`
     // does. Rendering `MoreMenu` directly would test the component without the bar
     // that mounts it.
-    render(<BottomTabNav name={NAME} email={EMAIL} />);
+    render(<BottomTabNav name={NAME} email={EMAIL} avatarUrl="" />);
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
 

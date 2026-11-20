@@ -54,7 +54,7 @@ export default async function SettingsAccountPage() {
   // plan that is not theirs.**
   if (session.kind !== "signed-in") {
     return (
-      <AppShell name="" email="">
+      <AppShell name="" email="" avatarUrl="">
         <SettingsStates />
       </AppShell>
     );
@@ -68,7 +68,11 @@ export default async function SettingsAccountPage() {
 
   if (read.kind === "unavailable") {
     return (
-      <AppShell name={name} email={session.user.email}>
+      <AppShell
+        name={name}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
         <SettingsNav />
 
         <SettingsStates />
@@ -79,7 +83,11 @@ export default async function SettingsAccountPage() {
   const account = read.account;
 
   return (
-    <AppShell name={name} email={session.user.email}>
+    <AppShell
+        name={name}
+        email={session.user.email}
+        avatarUrl={session.user.avatar_url}
+      >
       <SettingsNav />
 
       <header className="flex flex-col gap-1">

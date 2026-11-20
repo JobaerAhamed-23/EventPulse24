@@ -93,4 +93,119 @@ Follow the approved design exactly.
 7. The work item's scope note.
 
 ---
+
+# Implementation Plan: The Face, Everywhere the Name Already Is
+
+**Work item:** `avatar-on-the-shell` (confirm mode) · **Intent:** `account-profile-expansion`
+**Depends on:** `avatar-endpoint-and-contract` (the API and the generated client)
+
+## Approach
+
+**The picture goes where the display name already goes.** `AppShell` passes `name` and
+`email` to `Sidenav` and `BottomTabNav`; the avatar follows the same path rather than
+inventing a second one. The three places — the sidenav's account row, the bottom bar's
+More sheet, and the account sheet — all render `AccountPanel`/`AccountMenu`, so there is
+**one** place the disc is drawn and it is drawn three times.
+
+**The fallback must not blank anything.** The initials rule lives in **one** module,
+`frontend/lib/avatar.ts`, mirroring `frontend/lib/display-name.ts`: the initials of the
+display name, capped at two letters, never empty (a display name is never empty). The
+disc renders the picture when there is one and the initials when there is not — and the
+**name beside it is never blanked**, because the name is rendered as text regardless of
+the picture's state.
+
+**The upload control is not save-on-change, and that is the honest break with the house
+pattern.** A file picker has a moment — the file is chosen — and that moment is the
+save. There is no undo on a file picker, so the screen says what will happen before it
+happens rather than after. The control is a real `<input type="file">` behind a
+labelled button, with `accept` set to the formats the server allows.
+
+**The shell follows the save, as the name does — and never before.** The shell is
+rendered on the server, so the picture it was drawn with is fixed for the life of the
+render. **A save that does not show up is a save that did not happen.** The precedent is
+`publishName` in `frontend/lib/session-name.ts`, and the avatar publishes the same way
+after the server has accepted the write — **never before**, because the server may refuse
+the file.
+
+**The avatar gets its own channel, and here is why.** `session-name.ts` publishes a
+*string*; the avatar publishes a *URL*, and a URL has two properties the name does not:
+it changes when the picture is replaced (the `{version}` segment), and it becomes `""`
+when the picture is removed. Reusing the name's channel would mean publishing a URL
+through a store typed `string | null` whose `null` means "ask the seed" — and the
+seed for a picture is a *different* question from the seed for a name. **Two channels,
+two stores, one rule each**: `null` means "ask the seed", and the seed is what the page
+was rendered with.
+
+**The signed URL cannot expire on screen, and that is why the URL is stable.** The
+storage design chose an app-owned URL (`/api/auth/profile/avatar/{version}`) that 302s
+to a freshly-minted presigned URL. The browser sees the stable URL and the redirect
+happens under it, so a signature that expires while the page is open is re-minted on the
+next request. **A broken image icon in the rail is not an acceptable answer**, and this
+is the answer: the URL the shell carries never carries a signature.
+
+**The image carries alt text that is not the word "avatar".** The name is already beside
+the disc in text, so the image is `alt=""` — **decorative** — and the disc keeps its
+`aria-hidden`. A screen reader reads the name once, not "avatar, Maya Ahmed".
+
+**The failure line is the API's own, verbatim**, through the same `saveFailureMessage`
+helper `profile-name.tsx` uses. The generic offline line appears only when the request
+never reached the API.
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `frontend/lib/avatar.ts` | **The one** initials rule — `initials(name)` — server-safe, no imports |
+| `frontend/lib/avatar.ts` (`avatarStore`) | The published-URL store: `publishAvatar`, `useLiveAvatar` |
+| `frontend/lib/avatar.test.ts` | The initials rule, pinned |
+| `frontend/components/shell/avatar-disc.tsx` | **The one** disc — picture or initials, `alt=""` |
+| `frontend/components/shell/avatar-disc.test.tsx` | The disc's fallback and alt-text rules |
+| `frontend/components/settings/avatar-upload.tsx` | The upload/remove island on `/settings/profile` |
+| `frontend/components/settings/avatar-upload.test.tsx` | Upload, refusal, offline, remove, in-flight, publish-ordering |
+| `frontend/tests/avatar-in-the-shell.test.tsx` | The shell follows the picture — all three places, no reload |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `frontend/lib/avatar-upload.ts` | **Reuse it, do not fork it.** It already speaks multipart; its `AvatarResult` becomes the island's contract |
+| `frontend/components/shell/account-menu.tsx` | The disc becomes `AvatarDisc`; the row and the panel take `avatarUrl` |
+| `frontend/components/shell/sidenav.tsx` | `AccountMenu` gains `avatarUrl` |
+| `frontend/components/shell/bottom-tab-nav.tsx` | `MoreMenu` gains `avatarUrl` |
+| `frontend/components/shell/more-menu.tsx` | `AccountPanel` gains `avatarUrl` |
+| `frontend/components/shell/app-shell.tsx` | `AppShell` gains `avatarUrl` and threads it to both navs |
+| `frontend/app/settings/profile/page.tsx` | The picture island on the profile screen; `avatarUrl` from `me` into the shell |
+| `frontend/app/page.tsx`, `timeline`, `browse`, `conflicts`, `settings/*` | `avatarUrl` from `session.user.avatar_url` into `AppShell` |
+| `frontend/next.config.ts` | **`next/image` is not used** — the picture is same-origin, so no remote allowlist is needed. The docstring records that as a measured decision rather than an assumption |
+
+## Tests
+
+| Test File | Coverage |
+|-----------|----------|
+| `frontend/lib/avatar.test.ts` | Initials: two words, one word, a name with a space, an empty name, a name with punctuation; **never empty** |
+| `frontend/components/shell/avatar-disc.test.tsx` | The picture renders when there is one; the initials render when there is not; **the name is never blanked**; the image's alt is `""`, not the word "avatar" |
+| `frontend/components/settings/avatar-upload.test.tsx` | Upload; the API's refusal shown verbatim; the offline line when the request never reached the API; remove; the unset fallback; **the publish-after-accept ordering**; **the control is not pressable twice**; `aria-busy` while in flight — each with a mutation probe |
+| `frontend/tests/avatar-in-the-shell.test.tsx` | The rail, the bottom bar and the account sheet all show the picture after the save, without a reload; a removed picture reverts all three to initials |
+
+## Technical Details
+
+- **The `me` field is `avatar_url`, and it is `""` when unset** — not `null`, not
+  absent. `CurrentUserOut.avatar_url` already carries it (AD-19, the endpoint item).
+- **`useLiveAvatar(seed)` is the seed-or-published rule**, exactly parallel to
+  `useLiveName(seed)`. `null` means "ask the seed"; the seed is what the page was
+  rendered with.
+- **The in-flight counter is a ref, not state** — `saves.current` — so a late response
+  cannot overwrite a newer picture and a second upload cannot be started into two
+  orphaned objects (the work item's own hazard).
+- **The control is not pressable twice**: the file input is `disabled` while an upload
+  is in flight, and `aria-busy` is set on the region.
+- **No `next/image`.** The URL is same-origin (`/api/auth/profile/avatar/{version}`), so
+  the plain `<img>` needs no remote allowlist in `next.config.ts`. The work item flagged
+  the allowlist as a thing to check; the measured answer is that it is not needed, and
+  `next.config.ts`'s docstring records that.
+- **The file input is visually hidden but not `display: none`** — a `display: none`
+  input cannot be triggered by a label in some browsers, and it drops out of the
+  accessibility tree. It is `sr-only` and the button is the real control.
+
+---
 *Generated by specs.md - fabriqa.ai FIRE Flow*

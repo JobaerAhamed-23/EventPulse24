@@ -583,9 +583,10 @@ async function DetailBranch(id: string) {
   const session = await getSession();
   const name = session.kind === "signed-in" ? displayName(session.user) : "";
   const email = session.kind === "signed-in" ? session.user.email : "";
+  const avatarUrl = session.kind === "signed-in" ? session.user.avatar_url : "";
 
   return (
-    <AppShell name={name} email={email}>
+    <AppShell name={name} email={email} avatarUrl={avatarUrl}>
       {content}
     </AppShell>
   );

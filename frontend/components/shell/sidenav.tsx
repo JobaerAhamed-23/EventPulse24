@@ -55,9 +55,11 @@ export type SidenavProps = {
   name: string;
   /** The user's email, shown in the account sheet. */
   email: string;
+  /** The user's picture — `""` when the account has none. The seed for the disc. */
+  avatarUrl: string;
 };
 
-export function Sidenav({ name, email }: SidenavProps) {
+export function Sidenav({ name, email, avatarUrl }: SidenavProps) {
   const pathname = usePathname();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -178,7 +180,7 @@ export function Sidenav({ name, email }: SidenavProps) {
           <SearchGlyph />
           Search
         </button>
-        <AccountMenu name={name} email={email} />
+        <AccountMenu name={name} email={email} avatarUrl={avatarUrl} />
       </div>
     </aside>
   );
