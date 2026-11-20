@@ -92,37 +92,6 @@ async function storedPreference(page: Page): Promise<StoredPreference> {
 }
 
 /**
- * The digest the server holds for this user, as the API serves it.
- *
- * **The three states are distinguished, because "no cards" means two different things.**
- * `not_composed` means the worker has not built today's digest; `empty` means it built
- * one with nothing in it. The walkthrough needs `composed` — a digest with cards — or
- * there is nothing to say about what is in it.
- */
-async function digest(page: Page): Promise<{
-  status: string;
-  local_date: string;
-  cards: { slot: string; event_kind: string; title: string | null }[];
-}> {
-  const response = await page.request.get("/api/personal/digest");
-  expect(response.ok()).toBeTruthy();
-  const body = (await response.json()) as {
-    status?: string;
-    local_date?: string;
-    cards?: { slot?: string; event_kind?: string; title?: string | null }[];
-  };
-  return {
-    status: body.status ?? "",
-    local_date: body.local_date ?? "",
-    cards: (body.cards ?? []).map((card) => ({
-      slot: card.slot ?? "",
-      event_kind: card.event_kind ?? "",
-      title: card.title ?? null,
-    })),
-  };
-}
-
-/**
  * Compose the digest for a local date **N days ahead**, the way the worker would.
  *
  * **Why a day ahead, and not today.** The composition is **idempotent per local date**

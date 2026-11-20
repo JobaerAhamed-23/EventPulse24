@@ -110,10 +110,37 @@ export function EmailChange({
   const [pending, setPending] = useState(initialPendingEmail);
   const [expiresAt, setExpiresAt] = useState(initialPendingExpiresAt);
   const [value, setValue] = useState("");
+  /*
+    **The clock, read once, on mount.**
+
+    This used to be two bare `Date.now()` calls in the markup below — one in the guard
+    that decided whether to render the expiry line, one in the line itself. A single
+    sentence was therefore decided by two clocks, and they could land on opposite sides
+    of the expiry: the guard would see a live link and the paragraph would print "that
+    link has expired" beneath it.
+
+    **It was also impure.** `Date.now()` in render has no stable value, which is what
+    React's compiler objected to, and nothing re-renders when the clock passes the
+    expiry — so the sentence was never going to update anyway.
+
+    **A lazy initializer, so it is read once and not on every render.** This is
+    deliberately not a ticking countdown: a sentence that is true when the page loads is
+    what `expiryLine` was written for, and an interval that re-renders a settings screen
+    every minute is a different product decision.
+  */
+  const [now] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   /** The message, not a flag — so the API's own refusal can be shown verbatim. */
   const [failure, setFailure] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+
+  /**
+   * The expiry sentence, or `null` when there is nothing useful to say.
+   *
+   * **Computed once, from one clock**, so the decision to render it and the words
+   * rendered cannot disagree. That is the whole of the fix.
+   */
+  const expiry = expiryLine(expiresAt, now);
 
   /** Ask for a change to `address`. This is also what Resend does. */
   const request = useCallback(async (address: string) => {
@@ -183,12 +210,12 @@ export function EmailChange({
             Waiting for you to confirm <strong>{pending}</strong>. Your address changes when
             you open the link we sent there.
           </p>
-          {expiryLine(expiresAt, Date.now()) !== null ? (
+          {expiry !== null ? (
             <p
               className="mt-1 text-ink-secondary [font:var(--type-scale-meta-sm)]"
               data-pending-expiry
             >
-              {expiryLine(expiresAt, Date.now())}
+              {expiry}
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
