@@ -1,5 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
+
+import { BrandMark } from "@/components/brand-mark";
 
 /**
  * The brand lockup, as a topbar: `Component.Topbar.PreAuth` on the public routes, and the
@@ -15,39 +16,17 @@ import Link from "next/link";
  * the same inversion the rule forbids elsewhere, so the only interactive thing here is
  * the brand anchor itself.
  *
- * The logo's halo is painted into the PNG — it is a brand asset, not a CSS glow, and so
- * it is outside the token system and exempt from the terracotta glow rationing. It is
- * rendered at 36×36 and must not grow past 40×40 on a pre-auth surface.
+ * The logo is the mark from `BrandMark` — the same component the authed topbar, the
+ * sidenav rail and the pre-auth footer use, so the brand cannot differ from one
+ * surface to another. It is rendered at 36×36 and must not grow past 40×40 on a
+ * pre-auth surface.
  */
 export function BrandTopbar({ href = "/preview" }: { href?: string }) {
   return (
     <nav aria-label="Brand" className="px-6 pt-8 pb-4">
       <Link href={href} aria-label="EventPulse24 home" className="inline-block">
         <span className="flex items-center gap-3">
-          <Image
-            src="/brand/eventpulse24-logo.png"
-            alt=""
-            width={36}
-            height={36}
-            priority
-            className="size-[36px]"
-            /**
-             * Dark Reader (and similar extensions) rewrite the DOM before React hydrates:
-             * they inject `--darkreader-inline-color` into the inline style and a
-             * `data-darkreader-inline-color` attribute onto the element. React then finds
-             * markup that differs from what it rendered on the server and reports a
-             * hydration mismatch.
-             *
-             * The mismatch is in the extension's injected attributes, not in this
-             * component's own markup, and React would only strip them at the cost of a
-             * client re-render of the logo — a visible flash on a surface that is meant to
-             * hold the brand and nothing else.
-             *
-             * `suppressHydrationWarning` is scoped to this element's attributes and
-             * text content; it does not silence hydration warnings from its children.
-             */
-            suppressHydrationWarning
-          />
+          <BrandMark size={36} priority />
           <span className="flex flex-col">
             <span className="text-ink-primary [font:var(--type-scale-headline-sm)]">
               EventPulse24

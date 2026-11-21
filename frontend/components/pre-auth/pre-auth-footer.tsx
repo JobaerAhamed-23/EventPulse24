@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { BrandMark } from "@/components/brand-mark";
+
 /**
  * `Component.Footer.PreAuth` — the footer the pre-auth surfaces share.
  *
@@ -71,7 +73,7 @@ export function PreAuthFooter({ current }: PreAuthFooterProps) {
     <footer className="border-t border-border-subtle px-6 py-8">
       <div className="mx-auto flex max-w-(--layout-container-max) flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 [font:var(--type-scale-meta-md)] text-ink-secondary">
-          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-accent-terracotta" />
+          <BrandMark size={20} />
           EventPulse24
         </div>
         <nav aria-label="Footer">

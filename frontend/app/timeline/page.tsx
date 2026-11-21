@@ -6,7 +6,7 @@ import { TimelinePanel } from "@/components/timeline/timeline-panel";
 import { QuietWeek, TimelineError } from "@/components/timeline/timeline-states";
 import { displayName } from "@/lib/display-name";
 import { getSession, homeRoute } from "@/lib/session";
-import { addDays, isLocalDate, today, weekRange } from "@/lib/timeline-dates";
+import { addDays, isLocalDate, todayIn, weekRange } from "@/lib/timeline-dates";
 import { readTimeline } from "@/lib/timeline-read";
 
 /**
@@ -74,12 +74,17 @@ export default async function TimelinePage({ searchParams }: PageProps<"/timelin
 
   const timeline = read.week;
   const days = timeline.days;
-  const currentDay = today();
+  // **Today is read in the reader's zone, not the renderer's.** This is a server
+  // component, so an environment-local "today" is the *server's* date — UTC on a
+  // deployed box — and a reader east of it spends the end of every day being shown
+  // yesterday's column. The server cut this week in the reader's zone and named that
+  // zone in the response, so the same zone decides which of its days is today.
+  const currentDay = todayIn(timeline.timezone);
 
-  // **The current week's Monday, for the "Today" control.** The client computes it
-  // from the browser's own date, on the calendar — the same rule the server uses to
-  // cut the week. The alternative — asking the server for "the current week" and
-  // reading its Monday — would be a second request for a fact the browser knows.
+  // **The current week's Monday, for the "Today" control.** Computed on the calendar
+  // date — the same rule the server uses to cut the week. The alternative — asking the
+  // server for "the current week" and reading its Monday — would be a second request
+  // for a fact already in hand.
   const todayStart = mondayOf(currentDay);
 
   // **A quiet week replaces the grid.** Seven empty columns saying "Quiet day." seven
@@ -101,10 +106,10 @@ export default async function TimelinePage({ searchParams }: PageProps<"/timelin
 
   return (
     <AppShell
-        name={displayName(session.user)}
-        email={session.user.email}
-        avatarUrl={session.user.avatar_url}
-      >
+      name={displayName(session.user)}
+      email={session.user.email}
+      avatarUrl={session.user.avatar_url}
+    >
       <header className="flex flex-col gap-1">
         <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">This week</h1>
         <p className="text-ink-muted [font:var(--type-scale-meta-md)]">
@@ -126,7 +131,7 @@ export default async function TimelinePage({ searchParams }: PageProps<"/timelin
           weekStart={timeline.week_start}
           day={mobileDay ?? timeline.week_start}
           days={dayDates}
-          todayStart={todayStart}
+          today={currentDay}
         />
       </div>
 
@@ -161,4 +166,3 @@ function mondayOf(day: string): string {
   const weekday = (parts.getUTCDay() + 6) % 7;
   return addDays(day, -weekday);
 }
-

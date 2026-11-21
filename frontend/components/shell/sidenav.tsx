@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { PersonalEventsPanel } from "@/components/personal-events-panel";
 import { AccountMenu } from "@/components/shell/account-menu";
+import { BrandMark } from "@/components/brand-mark";
 import {
   AddGlyph,
   BrowseGlyph,
@@ -69,9 +70,7 @@ export function Sidenav({ name, email, avatarUrl }: SidenavProps) {
       className="sticky top-0 hidden h-screen w-(--layout-sidenav-app-width-tablet) shrink-0 flex-col self-start overflow-y-auto border-r border-border-subtle bg-surface-paper p-6 md:flex lg:w-(--layout-sidenav-app-width-desktop)"
     >
       <div className="flex items-center gap-2 text-ink-primary [font:var(--type-scale-body-md)] font-semibold">
-        <span aria-hidden="true" className="text-accent-terracotta">
-          ◉
-        </span>
+        <BrandMark size={28} />
         EventPulse24
       </div>
       <div className="my-4 h-px bg-border-subtle" />

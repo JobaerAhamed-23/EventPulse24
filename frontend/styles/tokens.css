@@ -87,7 +87,6 @@
   /* Elevation: the one floating shadow; light mode has no glow. */
   --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
   --glow-today: none;
-  --glow-brandmark: none;
 
   /* Type families: next/font variables first (set on <html>), then DESIGN.md's fallbacks. */
   --type-family-display: var(--font-source-serif), Fraunces, Georgia, serif;
@@ -198,5 +197,4 @@
 
   --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.4);
   --glow-today: 0 0 12px rgba(255, 106, 71, 0.55);
-  --glow-brandmark: 0 0 14px rgba(255, 106, 71, 0.55);
 }

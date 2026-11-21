@@ -148,11 +148,21 @@ describe("tokens.css elevation (DESIGN.md §Elevation & Depth, §Color usage rul
     expect(norm(must(dark, "--shadow-floating"))).toBe(norm("0 8px 24px rgba(0,0,0,0.4)"));
   });
 
-  it("has no glow in light mode and both glows in dark mode", () => {
+  /**
+   * The today dot's glow is the only CSS-rendered glow in the system.
+   *
+   * **`--glow-brandmark` used to sit beside it and is gone.** It served the CSS-drawn
+   * brand-dot fallback — the terracotta dot that stood in for the logo before the PNG
+   * existed, and that survived as the authed topbar's and the footer's brand mark long
+   * after the PNG shipped. The brand mark is now the canonical image everywhere, so
+   * there is no CSS-drawn brand mark left to glow, and a token nothing consumes is a
+   * token that only misleads.
+   */
+  it("has no glow in light mode and the today glow in dark mode", () => {
     expect(light.get("--glow-today")).toBe("none");
-    expect(light.get("--glow-brandmark")).toBe("none");
     expect(norm(must(dark, "--glow-today"))).toBe(norm("0 0 12px rgba(255,106,71,0.55)"));
-    expect(norm(must(dark, "--glow-brandmark"))).toBe(norm("0 0 14px rgba(255,106,71,0.55)"));
+    expect(light.get("--glow-brandmark")).toBeUndefined();
+    expect(dark.get("--glow-brandmark")).toBeUndefined();
   });
 
   it("resets Tailwind's shadows so the floating shadow is the only one", () => {

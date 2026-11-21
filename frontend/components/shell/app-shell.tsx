@@ -1,4 +1,5 @@
 import { BottomTabNav } from "@/components/shell/bottom-tab-nav";
+import { BrandMark } from "@/components/brand-mark";
 import { Sidenav } from "@/components/shell/sidenav";
 
 /**
@@ -58,9 +59,7 @@ export function AppShell({
         */}
         <header className="border-b border-border-subtle px-6 py-6">
           <span className="flex items-center gap-2 text-ink-primary [font:var(--type-scale-body-md)] font-semibold">
-            <span aria-hidden="true" className="text-accent-terracotta">
-              ◉
-            </span>
+            <BrandMark size={28} />
             EventPulse24
           </span>
         </header>

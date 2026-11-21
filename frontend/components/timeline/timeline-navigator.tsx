@@ -65,6 +65,12 @@ export function WeekNavigator({
 /**
  * The mobile day navigator: `← {date} →`, centred, with a "Today" pill.
  *
+ * **The "Today" pill marks today, and today is a day — not a week.** The pill is on
+ * the shown day when that day *is* today, so it appears on exactly one day of the
+ * current week and on no day of any other week. Marking the current week's *Monday*
+ * would put the pill under Monday all week long, which is a thing the reader cannot
+ * argue with and cannot explain.
+ *
  * **The arrows move one day and stay in the week.** The last day of the week does not
  * roll into the next week, and the first does not roll back into the previous one: the
  * URL names a *week*, and a day navigator that left the week would show a day the
@@ -75,7 +81,7 @@ export function DayNavigator({
   weekStart,
   day,
   days,
-  todayStart,
+  today,
 }: {
   /** The week's Monday, as the server named it. */
   weekStart: LocalDate;
@@ -83,15 +89,12 @@ export function DayNavigator({
   day: LocalDate;
   /** The week's days, in the server's order. */
   days: LocalDate[];
-  /** The Monday of the current week. */
-  todayStart: LocalDate;
+  /** Today's date in the reader's own zone. */
+  today: LocalDate;
 }) {
   const index = days.indexOf(day);
   const previous = index > 0 ? days[index - 1] : null;
   const next = index >= 0 && index < days.length - 1 ? days[index + 1] : null;
-
-  const todayIndex = days.indexOf(todayStart);
-  const todayDay = todayIndex >= 0 ? days[todayIndex] : null;
 
   return (
     <nav aria-label="Day navigator" className="flex items-center justify-between gap-2 md:hidden">
@@ -110,7 +113,7 @@ export function DayNavigator({
           {weekdayLong(day)}
         </span>
         <span className="[font:var(--type-scale-meta-sm)] text-ink-muted">{shortDate(day)}</span>
-        {todayDay === day ? (
+        {today === day ? (
           <span className="rounded-subtle border border-border-subtle px-3 py-1 [font:var(--type-scale-meta-sm)] text-ink-secondary">
             Today
           </span>
