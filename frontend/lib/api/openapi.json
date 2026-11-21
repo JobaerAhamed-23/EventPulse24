@@ -1451,6 +1451,51 @@
         "title": "ConflictSideRef",
         "type": "object"
       },
+      "CoverageRequestIn": {
+        "description": "The request: the city to cover.\n\n**A city *name*, and only a city name.** The catalog is keyed by name at the wire and\nby id in the row, and the service resolves one to the other. The reader has the name —\nit is the city they picked — and the catalog has the id.\n\n**Bounded, and the bound is a refusal.** An empty city names no city, and one longer\nthan the catalog's own name column cannot name one either, so both are a 422 rather\nthan a lookup that would match nothing.",
+        "properties": {
+          "city": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "City",
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ],
+        "title": "CoverageRequestIn",
+        "type": "object"
+      },
+      "CoverageRequestOut": {
+        "description": "What one request produced.\n\n**`recorded` is the answer the control reads.** It is always true on a success — the\nendpoint has no other successful answer — and it is here so the control has something\nexplicit to branch on rather than inferring from a status code it did not write.\n\n**`request_count` is the number editorial reads, and it is not the reader's business.**\nIt is on the wire because the editorial surface reads it, and the reader's control\ndoes not show it: a reader who is told \"you are the 47th person to ask\" is being told\nsomething about a crowd, and the product's voice is calm.",
+        "properties": {
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "recorded": {
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "request_count": {
+            "title": "Request Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "city",
+          "recorded",
+          "request_count",
+          "created"
+        ],
+        "title": "CoverageRequestOut",
+        "type": "object"
+      },
       "CsrfTokenOut": {
         "description": "The CSRF token the frontend sends back on every unsafe request.\n\nThe token is also set as the `csrftoken` cookie on the same response; the frontend\nreads the cookie and echoes the value in the `X-CSRFToken` header. Sending both is\nDjango's own convention, and it is the one `CsrfViewMiddleware` checks.",
         "properties": {
@@ -6149,6 +6194,59 @@
           }
         },
         "summary": "Get one city page, by slug",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/coverage-requests": {
+      "post": {
+        "description": "Records that a reader wants us to cover a city we have not covered\n\n**One row per city, always.** A second request for the same city does not create a second row — the database refuses it — and the count of how many readers have asked goes up instead. The request is recorded whether it is the first or the hundredth, and the answer is the same either way.\n\n**The city must be one we know about.** A request is for a city we have already tried to cover and failed to. A city we have never heard of is a *pick*, and picking it provisions it immediately — which is a better answer than queueing it. So an unknown city answers 422, and nothing is written.\n\nFive requests per reader per day; the sixth answers 429 with the wait. The limit is checked before the one-row rule, so a repeated request still spends an attempt.",
+        "operationId": "request_city_coverage",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverageRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageRequestOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Ask us to cover a city we have no sources for",
         "tags": [
           "catalog"
         ]

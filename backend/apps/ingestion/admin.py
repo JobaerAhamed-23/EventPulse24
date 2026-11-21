@@ -39,6 +39,7 @@ from django.utils import timezone
 
 from apps.editorial.services import review_queue as editorial_review_queue
 from apps.ingestion.models import (
+    CityCoverageRequest,
     Event,
     EventStateChange,
     IngestionAuditEntry,
@@ -1174,6 +1175,32 @@ class SourceReliabilityScoreAdmin(ReadOnlyAdmin):
     list_filter = ("period_start",)
     list_select_related = ("source",)
     ordering = ("-period_start", "source")
+
+
+@admin.register(CityCoverageRequest)
+class CityCoverageRequestAdmin(ReadOnlyAdmin):
+    """The coverage queue: the cities readers have asked us to go and cover.
+
+    **Editorial reads this queue; readers write it.** The rows are raised by
+    `POST /api/catalog/coverage-requests`, and `ReadOnlyAdmin` means this admin cannot
+    fabricate one — a request is a fact about what a reader asked for, and an editor
+    typing one in would put a city on the queue that nobody asked about.
+
+    **The count is the column that matters.** `request_count` is how many readers have
+    asked for a city, and it is what editorial prioritises on. The ordering is by count
+    first and age second: a city forty people asked for outranks a city one person asked
+    for three months ago.
+
+    **The city is a relation, not a restated name.** `list_select_related` keeps the
+    detail page from a query per row, and the name shown is the catalog's own.
+    """
+
+    list_display = ("city", "request_count", "created_at", "updated_at")
+    list_filter = ("created_at",)
+    list_select_related = ("city",)
+    search_fields = ("city__name", "city__slug")
+    ordering = ("-request_count", "created_at")
+    date_hierarchy = "created_at"
 
 
 @admin.register(IngestionAuditEntry)

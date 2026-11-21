@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { CoverageRequestControl } from "@/components/browse/coverage-request-control";
 import { BrowseHero } from "@/components/browse/browse-hero";
 import { BrowseQuotaProvider } from "@/components/browse/browse-quota-provider";
 import { BrowseSearch } from "@/components/browse/browse-search";
@@ -158,6 +159,21 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
    */
   const isLive = status === "live";
 
+  /*
+   **The coverage request, and where it is offered.**
+   *
+   **It is rendered once, at the page level, and the *condition* is what decides
+   **whether the reader is offered it. **The control appears in the no-sources family
+   **and nowhere else** — asking us to collect a city we are already collecting is
+   **asking for what we are already doing, and a covered city that is simply quiet is
+   **not broken.
+   *
+   **It is a client island in a server page**, and that is the seam the codebase
+   **already uses**: the hero's cards are islands too, and `browse-save.tsx` **owns its
+   **own write.**
+   */
+  const coverageRequest = hasNoSources ? <CoverageRequestControl city={browse.city} /> : null;
+
   return (
     <AppShell
       name={displayName(session.user)}
@@ -185,7 +201,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
          * what we know: we are collecting. A date we cannot keep is a lie, and so is a
          * count we have not got.
          */
-        <BrowseCollecting city={browse.city} />
+        <BrowseCollecting city={browse.city} coverageRequest={coverageRequest} />
       ) : hasNoSources ? (
         /*
          **The no-sources state.** We have no sources for this city, so there are no
@@ -194,10 +210,10 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
          **It is not the quiet state.** A covered city that is simply quiet must not be
          * told its sources failed.
          *
-         **The coverage-request slot is empty until the control lands.** It renders
-         * nothing, so it offers the reader nothing it cannot do.
+         **The coverage request is offered here and only here.** The node is built once
+         * above, guarded by `hasNoSources`, and this is where it is placed.
          */
-        <BrowseNoSources city={browse.city} />
+        <BrowseNoSources city={browse.city} coverageRequest={coverageRequest} />
       ) : noCards ? (
         /*
          **The quiet state.** A covered city with nothing on tonight. The existing

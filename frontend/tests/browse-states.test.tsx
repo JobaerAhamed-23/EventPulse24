@@ -190,7 +190,13 @@ describe("the collecting state", () => {
 
     // **Asking us to collect a city we are collecting is asking for what we are already
     // doing.** The control belongs in the states where it is the real way out.
-    expect(document.querySelector("[data-browse-coverage-request]")).toBeNull();
+    //
+    // **The slot is there and empty** — every state that could hold the control has the
+    // slot, so the *absence* is a decision rather than an accident. What must not be
+    // there is the **control**.
+    expect(document.querySelector("[data-browse-coverage-request]")).toBeTruthy();
+    expect(document.querySelector("[data-browse-coverage-request]")?.textContent).toBe("");
+    expect(screen.queryByRole("button", { name: "Ask us to cover this city" })).toBeNull();
   });
 });
 
@@ -221,6 +227,7 @@ describe("the quiet state", () => {
     await renderWith(STATES.quiet);
 
     expect(document.querySelector("[data-browse-coverage-request]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask us to cover this city" })).toBeNull();
   });
 });
 
@@ -257,6 +264,14 @@ describe("the no-sources state", () => {
     // it offers the reader nothing it cannot do — but the state is the one that has it.
     expect(document.querySelector("[data-browse-coverage-request]")).toBeTruthy();
   });
+
+  it("offers the control itself — the way out of a dead end", async () => {
+    await renderWith(STATES.noSources);
+
+    // **The state without the control is a dead end**, and a dead end is a lie about
+    // the product: we do have a way, and the reader should be able to take it.
+    expect(screen.getByRole("button", { name: "Ask us to cover this city" })).toBeInTheDocument();
+  });
 });
 
 describe("the paused state", () => {
@@ -288,6 +303,15 @@ describe("the paused state", () => {
 
     expect(document.querySelector("[data-browse-coverage-request]")).toBeTruthy();
   });
+
+  it("offers the control, like every member of the family", async () => {
+    await renderWith(STATES.paused);
+
+    // **An editor paused it and we tried and got nothing are different facts — but from
+    // the reader's side the same sentence, and so the same way out.** A reader whose
+    // city was paused by an editor still needs to be able to ask for it.
+    expect(screen.getByRole("button", { name: "Ask us to cover this city" })).toBeInTheDocument();
+  });
 });
 
 describe("the no-providers state", () => {
@@ -300,6 +324,14 @@ describe("the no-providers state", () => {
         name: /couldn't find any event sources for Brooklyn/,
       }),
     ).toBeTruthy();
+  });
+
+  it("offers the control, like every member of the family", async () => {
+    await renderWith(STATES.noProviders);
+
+    // **No provider covers this city** — which is exactly the case where asking us to
+    // cover it is the thing the reader is here to do.
+    expect(screen.getByRole("button", { name: "Ask us to cover this city" })).toBeInTheDocument();
   });
 });
 
@@ -321,6 +353,14 @@ describe("the failed state", () => {
     await renderWith(STATES.failed);
 
     expect(document.querySelector("[data-browse-coverage-request]")).toBeTruthy();
+  });
+
+  it("offers the control, like every member of the family", async () => {
+    await renderWith(STATES.failed);
+
+    // **Provisioning itself failed** — and the reader still needs a way to say "please
+    // try again for my city". The failure was ours, not theirs.
+    expect(screen.getByRole("button", { name: "Ask us to cover this city" })).toBeInTheDocument();
   });
 });
 
@@ -345,6 +385,16 @@ describe("a user with no city", () => {
     await renderWith(STATES.noCity);
 
     expect(document.querySelector("[data-browse-no-sources]")).toBeNull();
+  });
+
+  it("carries no coverage request", async () => {
+    // **A reader with no city has no collection to report on** — and the way out for
+    // them is the picker, not an ask about a city they do not have. The control names
+    // a city, and there is none to name.
+    await renderWith(STATES.noCity);
+
+    expect(document.querySelector("[data-browse-coverage-request]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask us to cover this city" })).toBeNull();
   });
 });
 
@@ -526,6 +576,41 @@ describe("the states do not collapse into one another", () => {
     expect(quietStatus).toBe("live");
     expect(noCityStatus).toBe("");
     expect(quietStatus).not.toBe(noCityStatus);
+  });
+  /**
+   * **The coverage request, and only where it belongs.**
+   *
+   * **The claim is "the control appears in the no-sources family and nowhere else"**,
+   * and a claim about a *set* is only worth as much as the test that says which set.
+   * So this block names the two sets explicitly and asserts the partition — the
+   * control is offered in exactly four states and absent from the other three.
+   *
+   * **This is the assertion that would catch the control leaking into the collecting
+   * state**, which is the most likely way for it to go wrong: a reader watching a
+   * collecting city would be invited to ask us to do the thing we are already doing,
+   * and the surface would be asking for itself.
+   */
+  it("offers the coverage request in the no-sources family and nowhere else", async () => {
+    const OFFERED = ["noSources", "paused", "noProviders", "failed"] as const;
+    const ABSENT = ["collecting", "quiet", "noCity"] as const;
+
+    for (const name of OFFERED) {
+      const view = await renderWith(STATES[name]);
+      expect(
+        screen.getByRole("button", { name: "Ask us to cover this city" }),
+        `${name} should offer the coverage request`,
+      ).toBeInTheDocument();
+      view.unmount();
+    }
+
+    for (const name of ABSENT) {
+      const view = await renderWith(STATES[name]);
+      expect(
+        screen.queryByRole("button", { name: "Ask us to cover this city" }),
+        `${name} should not offer the coverage request`,
+      ).toBeNull();
+      view.unmount();
+    }
   });
 });
 

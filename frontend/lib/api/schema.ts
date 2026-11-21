@@ -442,6 +442,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/coverage-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask us to cover a city we have no sources for
+         * @description Records that a reader wants us to cover a city we have not covered
+         *
+         *     **One row per city, always.** A second request for the same city does not create a second row — the database refuses it — and the count of how many readers have asked goes up instead. The request is recorded whether it is the first or the hundredth, and the answer is the same either way.
+         *
+         *     **The city must be one we know about.** A request is for a city we have already tried to cover and failed to. A city we have never heard of is a *pick*, and picking it provisions it immediately — which is a better answer than queueing it. So an unknown city answers 422, and nothing is written.
+         *
+         *     Five requests per reader per day; the sixth answers 429 with the wait. The limit is checked before the one-row rule, so a repeated request still spends an attempt.
+         */
+        post: operations["request_city_coverage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/events": {
         parameters: {
             query?: never;
@@ -2820,6 +2846,45 @@ export interface components {
              * @enum {string}
              */
             kind: "personal_event" | "saved_event";
+        };
+        /**
+         * CoverageRequestIn
+         * @description The request: the city to cover.
+         *
+         *     **A city *name*, and only a city name.** The catalog is keyed by name at the wire and
+         *     by id in the row, and the service resolves one to the other. The reader has the name —
+         *     it is the city they picked — and the catalog has the id.
+         *
+         *     **Bounded, and the bound is a refusal.** An empty city names no city, and one longer
+         *     than the catalog's own name column cannot name one either, so both are a 422 rather
+         *     than a lookup that would match nothing.
+         */
+        CoverageRequestIn: {
+            /** City */
+            city: string;
+        };
+        /**
+         * CoverageRequestOut
+         * @description What one request produced.
+         *
+         *     **`recorded` is the answer the control reads.** It is always true on a success — the
+         *     endpoint has no other successful answer — and it is here so the control has something
+         *     explicit to branch on rather than inferring from a status code it did not write.
+         *
+         *     **`request_count` is the number editorial reads, and it is not the reader's business.**
+         *     It is on the wire because the editorial surface reads it, and the reader's control
+         *     does not show it: a reader who is told "you are the 47th person to ask" is being told
+         *     something about a crowd, and the product's voice is calm.
+         */
+        CoverageRequestOut: {
+            /** City */
+            city: string;
+            /** Created */
+            created: boolean;
+            /** Recorded */
+            recorded: boolean;
+            /** Request Count */
+            request_count: number;
         };
         /**
          * CsrfTokenOut
@@ -6192,6 +6257,48 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    request_city_coverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverageRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageRequestOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

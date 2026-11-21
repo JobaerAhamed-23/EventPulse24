@@ -4,9 +4,12 @@ title: The coverage request, one per city
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [city-provisioning-service]
+status: completed
+depends_on:
+  - city-provisioning-service
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-21T03:36:14.946Z
 ---
 
 # Work Item: The coverage request, one per city

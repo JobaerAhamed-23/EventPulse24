@@ -62,6 +62,12 @@ REQUEST_MODULES = (
     "apps/identity/export_api.py",
     "apps/identity/webhooks_api.py",
     "apps/ingestion/api.py",
+    # FR-2's sibling, city-picker-and-auto-collection. The coverage request's endpoint:
+    # it takes the reader from the session, calls the published command, and returns —
+    # the shape AD-11 asks of a request handler. It is listed for the same reason the
+    # others are — a surface file missing from this tuple is a surface file no guard
+    # checks.
+    "apps/ingestion/coverage_api.py",
     "apps/personalization/api.py",
     # FR-49. It validates, calls the published commands and returns — the shape AD-11
     # asks of a request handler.

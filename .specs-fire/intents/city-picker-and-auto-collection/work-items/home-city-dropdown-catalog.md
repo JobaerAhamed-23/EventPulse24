@@ -4,8 +4,10 @@ title: The dropdown reads the catalog
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [city-choices-endpoint, stored-city-is-the-picked-city]
+status: in_progress
+depends_on:
+  - city-choices-endpoint
+  - stored-city-is-the-picked-city
 created: 2026-11-20
 ---
 

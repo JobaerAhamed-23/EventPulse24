@@ -378,6 +378,68 @@ class CityProvisioning(UUIDv7Model):
         return f"{self.city_id}: {self.status}"
 
 
+class CityCoverageRequest(UUIDv7Model):
+    """A reader asked us to cover a city we have not covered.
+
+    **The fallback for the cities automatic collection cannot reach.** When a city's
+    provisioning says `no_providers`, `failed`, `yielded_nothing` or `paused`, the
+    surface says so and offers the reader the one way out: ask us to go and cover it.
+    This row is what that ask becomes.
+
+    **One row per city, enforced by the database.** The `UniqueConstraint` is the
+    guarantee, not a promise the service makes — a second writer that did not know
+    about the first would be stopped by PostgreSQL rather than by a code path nobody
+    remembered to write. **The constraint is *named***, so a test can assert that it
+    was that constraint which refused the duplicate and not something else.
+
+    **The row carries no user id.** It is about a *place*, and it says two things:
+    which city, and how many people have asked. The count is a **counter column**, not
+    a per-user join table — the editorial question is "how many people want this city
+    covered?", and the answer to that is a number. A per-user answer would put a user
+    id beside a city, which is the pairing AD-13 is careful about, and nobody could
+    act on it: the reader's own state is in their own session, and the count is what
+    editorial reads.
+
+    **The city is `PROTECT`ed.** A `City` is never deleted, and a cascading delete
+    would mean a request could vanish without anybody deciding to — the same argument
+    `CityProvisioning` makes about its own row.
+
+    **The city is never minted here.** This row is raised for a city we already have:
+    a city we have never heard of is a *pick*, and a pick provisions
+    (`services/city_provisioning.py`). Minting one from a request would put a place
+    into the registry that no reader chose, and would do it every time somebody
+    opened a page.
+    """
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    #: The city that was asked for. A relation, never a restated name — the name is a
+    #: location, and AD-13 keeps locations out of the rows that cross into the log.
+    city = models.ForeignKey(City, on_delete=models.PROTECT, related_name="coverage_requests")
+    #: How many readers have asked for this city. **A count, never a list** — the same
+    #: shape `CityProvisioning.source_count` uses, and for the same reason: the
+    #: sources are rows, and this is the sentence "how many did we get".
+    request_count = models.PositiveIntegerField(default=1)
+    #: When the request was **first** raised. It does not move on a later request —
+    #: "when did somebody first tell us about this city" is the editorial question, and
+    #: a timestamp that moved would answer a different one.
+    created_at = models.DateTimeField(auto_now_add=True)
+    #: When the request was last raised. `created_at` is the first time; this is the
+    #: most recent.
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["city"], name="city_coverage_request_city_uq"),
+            models.CheckConstraint(
+                condition=Q(request_count__gte=1), name="city_coverage_request_count_ck"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.city_id}: {self.request_count}"
+
+
 class Venue(UUIDv7Model):
     """Venue registry: the FR-60 `partial` tier's timezone source and the identity venue key."""
 

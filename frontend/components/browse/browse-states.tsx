@@ -90,8 +90,22 @@ export function BrowseEmpty() {
  * page says when it has cards, and a collecting city is the same page with the events
  * not yet arrived. The reader should not be told their city has no events by a heading
  * that says they do.
+ *
+ * **It carries a coverage-request slot, and the page leaves it empty.**
+ *
+ * **The slot exists so the *absence* is a decision rather than an accident.** Every
+ * state on this surface that could hold the control has the slot; the page passes the
+ * control into the no-sources branch and nowhere else. A reader watching a collecting
+ * city is not offered an ask — asking us to collect a city we are collecting is asking
+ * for what we are already doing.
  */
-export function BrowseCollecting({ city }: { city: string }) {
+export function BrowseCollecting({
+  city,
+  coverageRequest = null,
+}: {
+  city: string;
+  coverageRequest?: ReactNode;
+}) {
   return (
     <section
       role="status"
@@ -110,6 +124,9 @@ export function BrowseCollecting({ city }: { city: string }) {
       <p className="mx-auto mt-3 max-w-[460px] text-ink-secondary [font:var(--type-scale-body-sm)]">
         We&apos;re collecting events for {city} — check back soon.
       </p>
+      <div data-browse-coverage-request className="mt-6">
+        {coverageRequest}
+      </div>
     </section>
   );
 }

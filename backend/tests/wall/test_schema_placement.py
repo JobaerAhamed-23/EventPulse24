@@ -58,6 +58,10 @@ INGESTION_TABLES = {
     # what we did about a city — a fact about the catalog — and it carries no user
     # identity: the reader's own city lives in `personal.DigestPreference`.
     "ingestion_cityprovisioning",
+    # city-picker-and-auto-collection: the coverage request is a catalog table too. It is
+    # about a *place* — "please go and cover this city" — and it carries no user
+    # identity at all: the count of how many readers asked is a number, not a roster.
+    "ingestion_citycoveragerequest",
 }
 
 #: The AI cost row is a catalog table too (AD-8).

@@ -88,6 +88,19 @@ EVENT_REPORT_WINDOW_SECONDS = 24 * 60 * 60
 # attempt at one cross-boundary hop, not a retry loop.
 EVENT_REPORT_RECONCILE_EVERY_MINUTES = 5
 
+# The coverage request's throttle (city-coverage-request): five requests per reader per day.
+#
+# **The same number as `EVENT_REPORT_DAILY_LIMIT`, for the same reason.** The abuse is the
+# same shape — one person, many presses — and the two surfaces are the same kind of surface:
+# a reader asking us to do a thing, with a queue behind it. A reader who presses the button
+# forty times is spending forty attempts, and a limit a repeat could slip past is not a limit.
+#
+# **Five is generous for a button that is not offered twice.** The control is replaced by its
+# confirmation after one press, so the ordinary reader spends one. The limit exists for the
+# reader who reloads the page, and for the one who does not read the confirmation.
+COVERAGE_REQUEST_LIMIT = 5
+COVERAGE_REQUEST_WINDOW_SECONDS = 24 * 60 * 60
+
 # ── FR-16: the Source Reliability Score (domain/reliability.py) ──────────────────────────────
 #
 # **The fourth confidence, and never conflated with the other three.** `extraction_confidence`

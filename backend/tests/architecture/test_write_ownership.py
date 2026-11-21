@@ -145,6 +145,12 @@ TABLE_OWNERS = {
     # `personalization` reaches it through those services rather than through the
     # model: the same division `ingestion_city` above already states.
     "ingestion_cityprovisioning": "ingestion",
+    # AD-16: `ingestion` owns the coverage request too (city-picker-and-auto-collection).
+    # It is written only by `services/coverage_requests.py` — the command behind
+    # `POST /api/catalog/coverage-requests`. **The row is about a place, not a person**,
+    # so it sits on the catalog side of the AD-3 wall and carries no user id: the count
+    # of how many readers asked is a number, not a roster.
+    "ingestion_citycoveragerequest": "ingestion",
     # AD-16: `delivery` owns the reminder plan. It is here because the check covers
     # every app that owns tables, not only the three this intent added to — a table
     # with no owner is a table nobody is responsible for, and the map is only

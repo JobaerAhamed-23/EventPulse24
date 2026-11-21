@@ -1855,13 +1855,15 @@ intents:
         run_id: run-eventpulse24-057
         completed_at: 2026-11-21T02:39:00.549Z
       - id: city-coverage-request
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - city-provisioning-service
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:36:14.946Z
       - id: home-city-dropdown-catalog
-        status: pending
+        status: in_progress
         complexity: medium
         mode: confirm
         depends_on:
@@ -1947,18 +1949,19 @@ runs:
         - id: city-coverage-request
           intent: city-picker-and-auto-collection
           mode: confirm
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
+          current_checkpoint: plan
+          completed_at: 2026-11-21T03:36:14.946Z
+        - id: home-city-dropdown-catalog
+          intent: city-picker-and-auto-collection
+          mode: confirm
           status: in_progress
           current_phase: plan
           checkpoint_state: none
           current_checkpoint: plan
-        - id: home-city-dropdown-catalog
-          intent: city-picker-and-auto-collection
-          mode: confirm
-          status: pending
-          current_phase: null
-          checkpoint_state: none
-          current_checkpoint: null
-      current_item: city-coverage-request
+      current_item: home-city-dropdown-catalog
       started: 2026-11-20T13:36:37.657Z
   completed:
     - id: run-eventpulse24-001

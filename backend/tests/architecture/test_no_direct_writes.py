@@ -54,8 +54,13 @@ def test_surface_files_include_every_app_admin_and_api():
     # nothing and queries nothing — it projects the curated catalog onto the wire — but
     # being in the surface list is what keeps it under AD-5 like every other endpoint.
     assert "apps/catalog/cities_api.py" in names
-    # 6 admins + 6 api.py + 13 *_api.py + config/api.py + config/health.py = 27
-    assert len(names) == 27
+    # FR-2's sibling, city-picker-and-auto-collection: the coverage request's endpoint is
+    # a surface file like any other. It writes a catalog row, so AD-5 applies to it
+    # exactly as it does to every other endpoint — the caller being a signed-in reader
+    # changes nothing about who may write.
+    assert "apps/ingestion/coverage_api.py" in names
+    # 6 admins + 6 api.py + 14 *_api.py + config/api.py + config/health.py = 28
+    assert len(names) == 28
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

@@ -245,6 +245,106 @@ MUTATIONS = [
      "  const isCollecting = status === \"collecting\";",
      "  const isCollecting = status === \"collecting\" || status === \"a_status_from_the_future\";",
      "../frontend/tests/city-collection-vocabulary.test.ts"),
+    #
+    # ── item 10: city-coverage-request ─────────────────────────────────────
+    #
+    ("the one-row guarantee is removed from the schema",
+     "apps/ingestion/models.py",
+     '            models.UniqueConstraint(fields=["city"], name="city_coverage_request_city_uq"),',
+     '            models.UniqueConstraint(fields=["city", "request_count"], name="city_coverage_request_city_uq"),',
+     "tests/ingestion/test_coverage_requests.py"),
+    ("a repeat creates a second row instead of raising the count",
+     "apps/ingestion/services/coverage_requests.py",
+     """        row, created = CityCoverageRequest.objects.using(CATALOG).get_or_create(
+            city=city_row,
+            defaults={"request_count": 1, "created_at": moment},
+        )""",
+     """        row, created = CityCoverageRequest.objects.using(CATALOG).get_or_create(
+            city=city_row,
+            defaults={"request_count": 1, "created_at": moment},
+        )
+        if not created:
+            CityCoverageRequest.objects.using(CATALOG).create(
+                city=city_row,
+                request_count=1,
+                created_at=moment,
+            )""",
+     "tests/ingestion/test_coverage_requests.py"),
+    ("the request mints a city it has never heard of",
+     "apps/ingestion/services/coverage_requests.py",
+     """        city_row = _find_city(name)
+        if city_row is None:
+            # **Refused before anything is written**, so an unknown city leaves no row, no
+            # audit row and no count behind. The reader is told to pick the city instead,
+            # which is the action that actually covers it.
+            raise UnknownHomeCityError()""",
+     """        city_row = _find_city(name)
+        if city_row is None:
+            # **The mutation mints the city instead of refusing it.**
+            city_row = City.objects.using(CATALOG).create(
+                name=name,
+                country_code="US",
+                normalized_key=name.lower(),
+                slug=f"slug-{name.lower().replace(' ', '-')}",
+                region="",
+            )""",
+     "tests/ingestion/test_coverage_requests.py"),
+    ("the count does not move on a repeat",
+     "apps/ingestion/services/coverage_requests.py",
+     """            CityCoverageRequest.objects.using(CATALOG).filter(pk=row.pk).update(
+                request_count=F("request_count") + 1, updated_at=moment
+            )""",
+     """            CityCoverageRequest.objects.using(CATALOG).filter(pk=row.pk).update(
+                request_count=F("request_count"), updated_at=moment
+            )""",
+     "tests/ingestion/test_coverage_requests.py"),
+    ("the audit details carry the city name",
+     "apps/ingestion/services/coverage_requests.py",
+     '            details={"city_id": str(city_row.id), "request_count": row.request_count},',
+     '            details={"city": city_row.name, "request_count": row.request_count},',
+     "tests/ingestion/test_coverage_requests.py"),
+    ("the throttle is checked after the idempotence shortcut",
+     "apps/ingestion/services/coverage_requests.py",
+     """    decision = get_throttle_port().check(
+        throttle_key(actor.id),
+        limit=COVERAGE_REQUEST_LIMIT,
+        window_seconds=COVERAGE_REQUEST_WINDOW_SECONDS,
+    )
+    if not decision.allowed:""",
+     """    decision = get_throttle_port().check(
+        throttle_key(actor.id),
+        limit=COVERAGE_REQUEST_LIMIT,
+        window_seconds=COVERAGE_REQUEST_WINDOW_SECONDS,
+    )
+    if False:""",
+     "tests/ingestion/test_coverage_requests.py"),
+    ("the endpoint drops its authentication",
+     "apps/ingestion/coverage_api.py",
+     'router = Router(tags=["catalog"], auth=current_user)',
+     'router = Router(tags=["catalog"])',
+     "tests/api/test_coverage_request_api.py"),
+    ("the control is offered in the collecting state as well",
+     "../frontend/app/browse/page.tsx",
+     "  const coverageRequest = hasNoSources ? <CoverageRequestControl city={browse.city} /> : null;",
+     "  const coverageRequest = <CoverageRequestControl city={browse.city} />;",
+     "../frontend/tests/browse-states.test.tsx"),
+    ("the control stays visible after a successful ask",
+     "../frontend/components/browse/coverage-request-control.tsx",
+     """      {recorded ? (""",
+     """      {false ? (""",
+     "../frontend/tests/browse-coverage-request.test.tsx"),
+    ("a failed ask leaves a confirmation behind",
+     "../frontend/components/browse/coverage-request-control.tsx",
+     """      if (response.response.status < 200 || response.response.status >= 300) {
+        setFailure(response.error?.message ?? OFFLINE_MESSAGE);
+        return;
+      }""",
+     """      if (response.response.status < 200 || response.response.status >= 300) {
+        setFailure(response.error?.message ?? OFFLINE_MESSAGE);
+        setRecorded(true);
+        return;
+      }""",
+     "../frontend/tests/browse-coverage-request.test.tsx"),
 ]
 
 
