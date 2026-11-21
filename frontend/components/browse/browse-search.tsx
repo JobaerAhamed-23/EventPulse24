@@ -191,6 +191,12 @@ export function BrowseSearch({
             inside the field's 42px left padding, so the text starts clear of it. It is
             `aria-hidden`: the input's label says what the control is, and a decorative
             glyph beside a labelled control is decoration.
+
+            **`suppressHydrationWarning` is here for Dark Reader**, which rewrites a
+            stroke-only SVG's stroke before React hydrates — adding
+            `data-darkreader-inline-stroke` and a `style` attribute. React's guard is
+            one level deep, so it has to sit on the `<svg>` itself rather than on a
+            wrapper. Same reason as the nav glyphs, which say so in full.
           */}
           <svg
             aria-hidden="true"
@@ -199,6 +205,7 @@ export function BrowseSearch({
             stroke="currentColor"
             strokeWidth="1.6"
             className="pointer-events-none absolute left-[14px] size-[16px] text-ink-muted"
+            suppressHydrationWarning
           >
             <circle cx="11" cy="11" r="7" />
             <path d="m21 21-4.3-4.3" />

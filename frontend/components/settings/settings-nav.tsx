@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
+import { SETTINGS_DEFAULT_HREF, SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
 /**
  * `Component.Subnav.Settings` — the row of section links every `/settings/*` screen
@@ -49,10 +49,35 @@ export function SettingsNav() {
     <nav aria-label="Settings sections" className="mb-8">
       <ul className="flex flex-wrap gap-2">
         {SETTINGS_SECTIONS.map((section) => {
-          // **An equality, not a prefix.** No settings section has children, so a prefix
-          // rule would be a claim about routes that do not exist — and `/settings` is
-          // the index, which is not one of the sections and must not light one up.
-          const active = pathname === section.href;
+          /**
+           * **An equality, not a prefix** — with one exception, and the exception is
+           * the index.
+           *
+           * No settings section has children, so a prefix rule would be a claim about
+           * routes that do not exist.
+           *
+           * **The exception is `/settings`, which is where the redirect starts.**
+           * `/settings` is not a section; it forwards to `SETTINGS_DEFAULT_HREF`, and
+           * during that forward the browser's own pathname is still `/settings` while
+           * the server has already rendered the *default* section's markup. So the
+           * server marks the default section and the client — reading `/settings` —
+           * marks nothing, and the two disagree.
+           *
+           * **That disagreement is a hydration mismatch**, and it is visible: React
+           * reports the differing `aria-current` and the differing `className` on the
+           * row. It was found by a browser probe that simulated the Dark Reader
+           * extension, because the extension's DOM rewrite shifts the hydration
+           * timing enough to surface the race — but nothing about it is about the
+           * extension, and it would surface for any reader whose hydration is
+           * disturbed.
+           *
+           * **So the index marks the section it is forwarding to.** The row the reader
+           * sees as current is the row they are about to arrive at, and the server and
+           * the client agree.
+           */
+          const active =
+            pathname === section.href ||
+            (pathname === "/settings" && section.href === SETTINGS_DEFAULT_HREF);
 
           return (
             <li key={section.href}>
