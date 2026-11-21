@@ -75,6 +75,19 @@ class Source(UUIDv7Model):
         ACTIVE = "active"
         PAUSED = "paused"
 
+    class PausedReason(models.TextChoices):
+        """Why a source is paused.
+
+        **Two reasons, and the surface says different things for each.** An editor who
+        pauses a source has decided something about the world; the probation has decided
+        something about the *yield*. A city whose sources were all paused by hand says
+        `paused`; a city whose sources were all paused for zero yield says
+        `yielded_nothing`.
+        """
+
+        MANUAL = "manual", "Paused by an editor"
+        ZERO_YIELD = "zero_yield", "Paused after three runs with no yield"
+
     class TzCoverage(models.TextChoices):
         FULL = "full"
         PARTIAL = "partial"
@@ -86,6 +99,32 @@ class Source(UUIDv7Model):
     source_type = models.CharField(max_length=16, choices=SourceType.choices)
     url = models.URLField(max_length=2048)
     city = models.CharField(max_length=100, blank=True)
+    # The IANA zone of `city`, set at provisioning time from the curated catalog. The last
+    # link in FR-60's fallback chain (row C1b): `_venue_for` never creates a venue (D5), so
+    # without it a brand-new city rejects every naive or date-only time as `tz_unresolvable`
+    # and publishes nothing, forever. Blank on every source that predates this, and a blank
+    # one changes no behaviour at all. Validated through `domain.timezones.canonical_zone`
+    # on write, like a venue's tz.
+    city_tz = models.CharField(max_length=64, blank=True)
+    # The canonical `City` this source belongs to, set at provisioning time.
+    #
+    # **`city` above is a string; this is the link.** A source's city is written as free
+    # text — "Brooklyn", "brooklyn ", "Brooklyn, NY" — because a venue names a city the
+    # way it is written. But the provisioning service resolves a city *once*, from the
+    # curated catalog, and hands the resolved row over. The probation needs "every source
+    # for a city" to decide `yielded_nothing`, and a text join on a name that is "as
+    # written by the first venue to name it" would miss rows.
+    #
+    # **Null on every source that was not provisioned.** A hand-registered seed has no
+    # city, and a blank one changes no behaviour at all. `PROTECT`ed, like every other
+    # ingestion foreign key: a city must not lose its sources without anybody deciding to.
+    city_ref = models.ForeignKey(
+        "City",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="sources",
+    )
     acquisition_method = models.CharField(max_length=16, choices=AcquisitionMethod.choices)
     # Cache of the latest TosReview for the current method (D13). Only record_tos_review and
     # update_source write it.
@@ -104,6 +143,31 @@ class Source(UUIDv7Model):
     last_ingested_at = models.DateTimeField(null=True, blank=True)
     last_attempted_at = models.DateTimeField(null=True, blank=True)
     consecutive_failures = models.PositiveIntegerField(default=0)
+    # How many consecutive runs this source completed **successfully and produced
+    # nothing**.
+    #
+    # **A different counter from `consecutive_failures`, and never the same one.** A
+    # source can fetch perfectly and publish nothing, and conflating the two loses the
+    # distinction this counter exists to preserve: `consecutive_failures` says "the feed
+    # is broken", this says "the feed is fine and has nothing for us".
+    #
+    # At `ZERO_YIELD_RUN_THRESHOLD` the probation pauses the source (audited, never
+    # deleted) and, if every source of the city is paused that way, the city says
+    # `yielded_nothing` rather than "collecting" forever.
+    consecutive_zero_yield_runs = models.PositiveIntegerField(default=0)
+    # Why this source is paused, when it is.
+    #
+    # **Two reasons, and the surface says different things for each.** An editor who
+    # pauses a source has decided something about the world; the probation has decided
+    # something about the *yield*. A city whose sources were all paused by hand says
+    # `paused`; a city whose sources were all paused for zero yield says
+    # `yielded_nothing`. The difference is a fact, not a tone.
+    #
+    # **Blank means "we do not know"** — a source paused before this column existed, or
+    # by a path that does not set the reason. The probation reads blank as a hand-pause,
+    # because "somebody paused this" is a stronger claim than "the probation paused this",
+    # and only the probation's own pauses should produce `yielded_nothing`.
+    paused_reason = models.CharField(max_length=32, blank=True)
     last_error_code = models.CharField(max_length=64, blank=True)
     stale_since = models.DateTimeField(null=True, blank=True)
     # Set when the scheduler enqueues a run, cleared when the run's job ends: a claimed source is
@@ -245,6 +309,135 @@ class City(UUIDv7Model):
 
     def __str__(self) -> str:
         return f"{self.name}{f', {self.region.upper()}' if self.region else ''}"
+
+
+class CityProvisioning(UUIDv7Model):
+    """What we did about a city, so the surface can tell the truth about it.
+
+    **One row per city, ever.** The `OneToOneField` is the idempotency guarantee at the
+    database level: a second provisioning of the same city cannot create a second row, so
+    "provisioning is idempotent" is a fact the schema holds rather than a promise the
+    service makes.
+
+    **The row holds no city *name*.** It holds the `City` foreign key, which identifies the
+    city without restating where a reader lives. AD-13's discipline: the audit row says
+    *that* a city was provisioned; the value stays out of the log. (A `Source`'s own city is
+    a public fact about a place and lives on the source row — a different thing, and this
+    item does not touch it.)
+
+    **`status` is the sentence the surface reads.** `collecting` is the honest word for
+    "we registered sources and are waiting for events" — the city has no events until the
+    scheduler has run and a source has answered, and saying otherwise would be a claim we
+    cannot keep.
+
+    **The city is `PROTECT`ed, not cascaded.** A `City` is never deleted — `Venue` and
+    `EventFit` already protect it — so the rule is academic today. But a cascading
+    delete would mean that a city could one day lose its provisioning record without
+    anybody deciding to, and the row is the sentence the surface reads about a city. If a
+    city is ever to be removed, that has to be a decision somebody makes.
+    """
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    class Status(models.TextChoices):
+        #: Sources registered; we are waiting for the first events.
+        COLLECTING = "collecting"
+        #: The city has published events. Written by the ingest path, not by provisioning.
+        LIVE = "live"
+        #: No template covers this city — or every template needs a credential this
+        #: deployment does not have. A normal outcome, not an error.
+        NO_PROVIDERS = "no_providers"
+        #: Providers exist, but their events produced nothing. Written after an ingest
+        #: cycle, not by provisioning.
+        YIELDED_NOTHING = "yielded_nothing"
+        #: Provisioning stopped for this city. Written by the probation job.
+        PAUSED = "paused"
+        #: Provisioning failed. `last_error_code` says why, and the row is left alone —
+        #: a reader's later pick is not a retry request.
+        FAILED = "failed"
+
+    city = models.OneToOneField(
+        City, on_delete=models.PROTECT, related_name="provisioning", primary_key=False
+    )
+    status = models.CharField(max_length=16, choices=Status.choices)
+    #: How many sources this provisioning registered. A count, never a list — the sources
+    #: themselves are rows, and this is the sentence "how many did we get".
+    source_count = models.PositiveIntegerField(default=0)
+    #: The failure that stopped provisioning, when one did. Blank when none — the same
+    #: shape `Source.last_error_code` uses, so one vocabulary reads both.
+    last_error_code = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=~Q(status=""), name="city_provisioning_status_ck"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.city_id}: {self.status}"
+
+
+class CityCoverageRequest(UUIDv7Model):
+    """A reader asked us to cover a city we have not covered.
+
+    **The fallback for the cities automatic collection cannot reach.** When a city's
+    provisioning says `no_providers`, `failed`, `yielded_nothing` or `paused`, the
+    surface says so and offers the reader the one way out: ask us to go and cover it.
+    This row is what that ask becomes.
+
+    **One row per city, enforced by the database.** The `UniqueConstraint` is the
+    guarantee, not a promise the service makes — a second writer that did not know
+    about the first would be stopped by PostgreSQL rather than by a code path nobody
+    remembered to write. **The constraint is *named***, so a test can assert that it
+    was that constraint which refused the duplicate and not something else.
+
+    **The row carries no user id.** It is about a *place*, and it says two things:
+    which city, and how many people have asked. The count is a **counter column**, not
+    a per-user join table — the editorial question is "how many people want this city
+    covered?", and the answer to that is a number. A per-user answer would put a user
+    id beside a city, which is the pairing AD-13 is careful about, and nobody could
+    act on it: the reader's own state is in their own session, and the count is what
+    editorial reads.
+
+    **The city is `PROTECT`ed.** A `City` is never deleted, and a cascading delete
+    would mean a request could vanish without anybody deciding to — the same argument
+    `CityProvisioning` makes about its own row.
+
+    **The city is never minted here.** This row is raised for a city we already have:
+    a city we have never heard of is a *pick*, and a pick provisions
+    (`services/city_provisioning.py`). Minting one from a request would put a place
+    into the registry that no reader chose, and would do it every time somebody
+    opened a page.
+    """
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    #: The city that was asked for. A relation, never a restated name — the name is a
+    #: location, and AD-13 keeps locations out of the rows that cross into the log.
+    city = models.ForeignKey(City, on_delete=models.PROTECT, related_name="coverage_requests")
+    #: How many readers have asked for this city. **A count, never a list** — the same
+    #: shape `CityProvisioning.source_count` uses, and for the same reason: the
+    #: sources are rows, and this is the sentence "how many did we get".
+    request_count = models.PositiveIntegerField(default=1)
+    #: When the request was **first** raised. It does not move on a later request —
+    #: "when did somebody first tell us about this city" is the editorial question, and
+    #: a timestamp that moved would answer a different one.
+    created_at = models.DateTimeField(auto_now_add=True)
+    #: When the request was last raised. `created_at` is the first time; this is the
+    #: most recent.
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["city"], name="city_coverage_request_city_uq"),
+            models.CheckConstraint(
+                condition=Q(request_count__gte=1), name="city_coverage_request_count_ck"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.city_id}: {self.request_count}"
 
 
 class Venue(UUIDv7Model):

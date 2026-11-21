@@ -17,6 +17,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from freezegun import freeze_time
 
+from apps.ingestion.models import City, CityProvisioning
 from apps.personalization.models import DigestPreference
 from shared.db import CATALOG, PERSONAL
 from tests.csrf import CsrfClient
@@ -64,6 +65,24 @@ def with_city(user, *, city: str | None = CITY, zone: str = ZONE):
         city_source=DigestPreference.CitySource.CHOICE if city else None,
         timezone=zone,
     )
+
+
+def provision(city: str, *, status: str) -> City:
+    """A `City` with a provisioning row in the given status.
+
+    **The rows are written directly.** The provisioning service mints a city from the
+    *curated catalog*, and this file's `CITY` is `"Brooklyn"` — which the catalog spells
+    `"Brooklyn, NY"`. What matters here is the wire, and the wire must work for whatever
+    city a reader picked.
+    """
+    row = City.objects.using(CATALOG).create(
+        name=city,
+        country_code="US",
+        normalized_key=city.lower(),
+        slug=f"slug-{city.lower().replace(' ', '-')}",
+    )
+    CityProvisioning.objects.using(CATALOG).create(city=row, status=status, source_count=1)
+    return row
 
 
 def make_event(*, hours_ahead: float, city: str = CITY, **overrides):
@@ -152,6 +171,66 @@ def test_a_city_with_nothing_on_is_a_different_answer_from_having_no_city():
     assert body["total"] == 0
     assert body["city_missing"] is False
     assert body["city"] == CITY
+
+
+# ── The collection status ────────────────────────────────────────────────────────────────
+#
+# **A city with no events is not one thing.** The wire carries the catalog's sentence
+# about whether our collection of this city is working, so the client can tell
+# "collecting" from "quiet" from "gave nothing" without a second request.
+
+
+def test_the_payload_carries_the_collection_status():
+    """The status is on the response, so the client needs no second request.
+
+    **A second request would be a second answer**, and the surface would have to
+    reconcile them — and a page that says "collecting" because one answer was stale and
+    "live" because the other was fresh is a page that contradicts itself.
+    """
+    user = make_user()
+    with_city(user)
+    provision(CITY, status=CityProvisioning.Status.COLLECTING)
+
+    body = signed_in(user).get(PATH).json()
+
+    assert body["city_collection_status"] == "collecting"
+
+
+def test_a_live_city_says_so_even_with_nothing_on():
+    """**The quiet state and the no-sources state are told apart by this field.**
+
+    A covered city that is simply quiet must not be told its sources failed — and the
+    payload is where that distinction is made.
+    """
+    user = make_user()
+    with_city(user)
+    provision(CITY, status=CityProvisioning.Status.LIVE)
+
+    body = signed_in(user).get(PATH).json()
+
+    assert body["city_collection_status"] == "live"
+    assert body["cards"] == []
+
+
+def test_a_city_that_was_never_provisioned_carries_no_status():
+    """Empty is its own state, and it is not the no-sources state."""
+    user = make_user()
+    with_city(user)
+
+    body = signed_in(user).get(PATH).json()
+
+    assert body["city_collection_status"] == ""
+
+
+def test_a_user_with_no_city_carries_no_status():
+    """There is no collection to report about a city the reader does not have."""
+    user = make_user()
+    with_city(user, city=None)
+
+    body = signed_in(user).get(PATH).json()
+
+    assert body["city_missing"] is True
+    assert body["city_collection_status"] == ""
 
 
 def test_the_tier_boundary_is_on_the_response():

@@ -38,14 +38,19 @@ import { useState } from "react";
 
 import { DigestTimezone } from "@/components/settings/digest-timezone";
 import { HomeCity } from "@/components/settings/home-city";
+import type { CityChoice } from "@/lib/home-city-read";
 
 export type PlaceSettingsProps = {
   /** The stored city, or `null` when the user has none. */
   initialCity: string | null;
   /** How the stored city was arrived at: `geo` | `choice` | `fallback` | `backfill`. */
   initialCitySource: string | null;
-  /** The cities the catalog can serve. One entry per city, already alphabetical. */
-  choices: string[];
+  /**
+   * The cities the catalog offers, alphabetical by the label a reader sees.
+   *
+   * **Each is a pair: the `value` to store, the `label` to show.**
+   */
+  choices: CityChoice[];
   /** The stored delivery time. Both controls send it back unchanged. */
   deliveryTime: string;
   /** The stored zone — an IANA name. The zone control owns it from here. */

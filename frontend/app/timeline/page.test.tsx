@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import TimelinePage from "@/app/timeline/page";
-import { addDays, today } from "@/lib/timeline-dates";
+import { addDays, todayIn } from "@/lib/timeline-dates";
 
 /**
  * `/timeline` — the Unified Timeline.
@@ -17,9 +17,16 @@ import { addDays, today } from "@/lib/timeline-dates";
  * read as a week.
  *
  * **The fixture week is the current week, not a fixed one.** The page decides "today"
- * from the browser's own date, so a fixture pinned to a date in the past would leave
- * the grid with no today column and the mobile view with no day. The week is built
- * from `today()` so the fixture cannot rot.
+ * from the current date, so a fixture pinned to a date in the past would leave the
+ * grid with no today column and the mobile view with no day. The week is built from
+ * the current date so the fixture cannot rot.
+ *
+ * **"The current date" means: in the zone the fixture week names.** The page reads
+ * today in the *reader's* zone — the one the server sent with the week — and not in
+ * whatever zone the machine running this file happens to be set to. The two differ for
+ * eleven hours of every day between, say, Dhaka and New York, so a fixture built from
+ * the machine's date would pass or fail by the clock. `TODAY` is read the same way the
+ * page reads it.
  */
 
 const getSession = vi.fn();
@@ -48,8 +55,14 @@ const USER = {
   onboarding: { completed: true, current_step: null },
 };
 
+/** The zone the fixture week is cut in — the reader's zone, as the server names it. */
+const ZONE = "America/New_York";
+
+/** Today, in the fixture's zone: the day the page will call today. */
+const TODAY = todayIn(ZONE);
+
 /** The seven days of the current week, Monday first. */
-const DAYS = Array.from({ length: 7 }, (_, index) => addDays(mondayOf(today()), index));
+const DAYS = Array.from({ length: 7 }, (_, index) => addDays(mondayOf(TODAY), index));
 const MONDAY = DAYS[0] as string;
 const SUNDAY = DAYS[6] as string;
 
@@ -80,7 +93,7 @@ function week(overrides: Record<string, unknown> = {}) {
       blocks: index === 0 ? [block()] : [],
       date,
     })),
-    timezone: "America/New_York",
+    timezone: ZONE,
     week_end: SUNDAY,
     week_start: MONDAY,
     ...overrides,
@@ -222,7 +235,7 @@ describe("the desktop grid", () => {
     const grid = screen.getByLabelText("Week grid");
     const marked = grid.querySelectorAll('[aria-current="date"]');
     expect(marked).toHaveLength(1);
-    expect(marked[0]?.getAttribute("aria-label")).toBe(today());
+    expect(marked[0]?.getAttribute("aria-label")).toBe(TODAY);
   });
 
   it("says 'Quiet day.' in a day with no events", async () => {
@@ -262,7 +275,7 @@ describe("the mobile day", () => {
   it("falls back to today when the URL names no day", async () => {
     render(await TimelinePage(props({ week: MONDAY })));
 
-    expect(mobileDay(today())).toBeInTheDocument();
+    expect(mobileDay(TODAY)).toBeInTheDocument();
   });
 
   it("does not roll the last day into the next week", async () => {
@@ -309,6 +322,96 @@ describe("the failure state", () => {
     expect(screen.getByRole("link", { name: /try again/i })).toHaveAttribute(
       "href",
       `/timeline?week=${MONDAY}`,
+    );
+  });
+});
+
+/**
+ * **Which zone decides what day it is.**
+ *
+ * The page is a server component, so anything it reads from the environment is read on
+ * the *server* — UTC on a deployed box. The week, though, was cut in the reader's own
+ * zone and the server named that zone in the response. These two pin that the page
+ * reads today in the named zone: the clock is frozen at an instant where the server's
+ * date and the reader's date are two different days, in both directions, and the
+ * highlighted column has to follow the reader.
+ */
+describe("the zone today is read in", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The column the grid marked `aria-current="date"`. */
+  function markedColumn(): string | null | undefined {
+    const grid = screen.getByLabelText("Week grid");
+    const marked = grid.querySelectorAll('[aria-current="date"]');
+    expect(marked).toHaveLength(1);
+    return marked[0]?.getAttribute("aria-label");
+  }
+
+  it("marks the reader's day when the reader is a day ahead of UTC", async () => {
+    // 2026-11-18 20:00 UTC is already Thursday the 19th in Dhaka (UTC+6).
+    vi.setSystemTime(new Date("2026-11-18T20:00:00Z"));
+    const days = Array.from({ length: 7 }, (_, index) => addDays("2026-11-16", index));
+    readTimeline.mockResolvedValue({
+      kind: "week",
+      week: {
+        days: days.map((date) => ({ blocks: [block()], date })),
+        timezone: "Asia/Dhaka",
+        week_end: days[6],
+        week_start: days[0],
+      },
+    });
+
+    render(await TimelinePage(props({ week: days[0] as string })));
+
+    expect(markedColumn()).toBe("2026-11-19");
+  });
+
+  it("marks the reader's day when the reader is a day behind UTC", async () => {
+    // 2026-11-19 02:00 UTC is still Wednesday the 18th in New York (UTC-5).
+    vi.setSystemTime(new Date("2026-11-19T02:00:00Z"));
+    const days = Array.from({ length: 7 }, (_, index) => addDays("2026-11-16", index));
+    readTimeline.mockResolvedValue({
+      kind: "week",
+      week: {
+        days: days.map((date) => ({ blocks: [block()], date })),
+        timezone: "America/New_York",
+        week_end: days[6],
+        week_start: days[0],
+      },
+    });
+
+    render(await TimelinePage(props({ week: days[0] as string })));
+
+    expect(markedColumn()).toBe("2026-11-18");
+  });
+
+  it("points 'Today' at the reader's own week, not the renderer's", async () => {
+    // 2026-11-22 20:00 UTC is Monday the 23rd in Dhaka — a different week, not just a
+    // different day. The "Today" link has to name the reader's Monday.
+    vi.setSystemTime(new Date("2026-11-22T20:00:00Z"));
+    const days = Array.from({ length: 7 }, (_, index) => addDays("2026-11-16", index));
+    readTimeline.mockResolvedValue({
+      kind: "week",
+      week: {
+        days: days.map((date) => ({ blocks: [block()], date })),
+        timezone: "Asia/Dhaka",
+        week_end: days[6],
+        week_start: days[0],
+      },
+    });
+
+    render(await TimelinePage(props({ week: days[0] as string })));
+
+    const nav = screen.getByRole("navigation", { name: "Week navigator" });
+    expect(within(nav).getByLabelText("This week")).toHaveAttribute(
+      "href",
+      "/timeline?week=2026-11-23",
     );
   });
 });

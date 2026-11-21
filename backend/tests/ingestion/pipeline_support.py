@@ -36,7 +36,14 @@ class ScriptedFetchPort(SourceFetchPort):
         limits: FetchLimits | None = None,
         credential: bool = False,
     ) -> FetchResult:
-        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
+        self.calls.append(
+            {
+                "url": url,
+                "etag": etag,
+                "last_modified": last_modified,
+                "credential": credential,
+            }
+        )
         response = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         if isinstance(response, FetchError):
             raise response

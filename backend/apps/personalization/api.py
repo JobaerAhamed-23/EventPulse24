@@ -679,10 +679,12 @@ def put_interests(request, body: InterestsIn):
         "Sets when and where the Pulse Digest should arrive. The delivery time is a "
         "local wall clock, so it means nine in the morning where the user is. The "
         "timezone must be an IANA zone name.\n\n"
-        "`city` is the user's home city, in the catalog's own spelling. A city the "
-        "catalog does not cover is stored as the fallback and reported back with "
-        "`city_source` set to `fallback`, so the client can say \"we don't have your "
-        "city yet\" rather than implying it is the user's city.\n\n"
+        "`city` is the user's home city, in the catalog's own spelling. A city in the "
+        "curated catalog is stored **exactly as sent**, with `city_source` set to "
+        "`choice`. A city **outside** it is **refused**: the request answers 422, "
+        "nothing is stored, and the response names the rejected value — because the "
+        "stored city is the picked city, and a reader who chose Chittagong must not be "
+        "answered with New York City and a cheerful 200.\n\n"
         "`include_personal_events` defaults to included — personal events are in the "
         "digest unless the user opts out. Both fields are optional, and **leaving one "
         'out does not change it**: an omitted field (and a `null` city) means "leave it '
@@ -1032,6 +1034,13 @@ def report_event_endpoint(request, body: EventReportIn):
         "has no city: the response says `city_missing` and carries no cards, and the "
         "client shows the same quiet empty state it shows for a city with nothing "
         "on.\n\n"
+        "`city_collection_status` says how the automatic collection of this city is "
+        "going — `collecting`, `live`, `no_providers`, `yielded_nothing`, `paused` or "
+        "`failed`. It is empty when the user has no city and empty for a city that was "
+        "never provisioned. **A city with no events is not one thing**, and this is the "
+        "fact that tells them apart: a covered city that is simply quiet is `live`, a "
+        "city we are still collecting is `collecting`, and a city whose sources gave "
+        "nothing is `yielded_nothing`.\n\n"
         "The window is cut in the **user's** timezone, so an event at 11pm local on "
         "the seventh day is inside it and one at 1am the next morning is not.\n\n"
         "`total` is how many events the user can page to, and `tier_2_starts_at` is "
@@ -1088,4 +1097,5 @@ def browse_endpoint(request, offset: int = 0, limit: int = BROWSE_PAGE_SIZE):
         ],
         has_more=page.has_more,
         city_missing=page.city_missing,
+        city_collection_status=page.city_collection_status,
     )

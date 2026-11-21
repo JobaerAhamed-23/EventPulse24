@@ -22,13 +22,21 @@ independently:
 2. **The poll finds the cancellation.** This is the pipeline — the fetch, the parse, the
    `EventStateChange`. It is tested on a source whose method has a **parser** (`ics`).
 
-**The seam between them is real, and this file says so.** No high-priority method has a
-parser yet — `api` and `partnership` have no adapter in this codebase (`PARSERS` holds
-`jsonld`, `rss`, `ics` and `email_ics`). So a high-priority source cannot be ingested
-today, and a single test that drove both halves at once would have to fake the parser to do
-it. **Faking the parser would make the test prove a fiction.** So the halves are proved
-separately, each against the real code that implements it, and the composition is proved
-where it *can* be: on the `ics` source, at the lower tier's 24-hour window.
+**The seam between them was real, and has now partly closed.** When this file was
+written no high-priority method had a parser — `api`, `partnership` and `crawl` had no
+adapter — so a high-priority source could not be ingested at all, and a single test driving
+both halves would have had to fake the parser to do it. **Faking the parser would make the
+test prove a fiction**, so the halves were proved separately, each against the real code
+that implements it, and the composition was proved where it *could* be: on the `ics`
+source, at the lower tier's 24-hour window.
+
+`api-source-parser` gave `api` a real parser (`PARSERS` now holds `api`, `jsonld`, `rss`,
+`ics` and `email_ics`), so that constraint no longer binds: an `api` source can be driven
+end to end without faking anything. The structure here is kept as it is because proving
+each half against its own code is worth more than proving them together, and the 24-hour
+boundary assertions below are about the lower tier either way. Unifying them is an
+improvement someone may make — it is no longer a thing the codebase makes impossible.
+`partnership` and `crawl` remain without a parser, deliberately.
 
 **The boundary is asserted from both sides.** At `cadence - 1 second` the source is **not**
 yet due; at `cadence` it **is**. A test that only checks the happy path cannot tell a

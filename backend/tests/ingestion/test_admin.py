@@ -56,6 +56,7 @@ def _source_form(**overrides) -> dict:
         "source_type": "venue",
         "url": FEED_URL,
         "city": "San Francisco",
+        "city_tz": "",
         "acquisition_method": "rss",
         "ingestion_cadence": "",
         "freshness_ttl_hours": "24",
@@ -92,6 +93,41 @@ def test_source_add_runs_register_source_as_the_staff_user(client, editor):
         "",
     )
     assert response.url == reverse("admin:ingestion_source_changelist")
+
+
+def test_source_add_accepts_a_city_timezone_and_canonicalizes_it(client):
+    response = client.post(
+        reverse("admin:ingestion_source_add"), _source_form(city="Dhaka", city_tz="US/Pacific")
+    )
+
+    assert response.status_code == 302
+    assert Source.objects.using(CATALOG).get().city_tz == "America/Los_Angeles"
+
+
+def test_source_add_refuses_a_bad_city_timezone_on_the_field(client):
+    # The admin is the only human path to update_source, so the cleaner's refusal has to land
+    # on the form rather than 500 — SourceForm.clean() routes through check_source_change.
+    response = client.post(
+        reverse("admin:ingestion_source_add"), _source_form(city_tz="Mars/Olympus_Mons")
+    )
+
+    assert response.status_code == 200
+    assert "city_tz" in _form_errors(response)
+    assert not Source.objects.using(CATALOG).exists()
+
+
+def test_every_editable_source_field_is_reachable_in_the_admin():
+    # The invariant that let city_tz slip: SourceForm takes its fields from
+    # EDITABLE_SOURCE_FIELDS, but fieldsets are listed by hand, and a field missing from them
+    # is silently dropped from the form. A field editors cannot reach is not editable.
+    from django.contrib.admin.helpers import flatten_fieldsets
+
+    from apps.ingestion.admin import SourceAdmin
+    from apps.ingestion.services.source_registry import EDITABLE_SOURCE_FIELDS
+
+    shown = set(flatten_fieldsets(SourceAdmin.fieldsets))
+
+    assert set(EDITABLE_SOURCE_FIELDS) <= shown
 
 
 def test_source_change_runs_update_source_with_only_the_changed_field(client):

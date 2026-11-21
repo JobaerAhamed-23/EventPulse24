@@ -104,6 +104,19 @@ class Settings(BaseSettings):
     # `config` above `adapters`, so this is the only place the environment is read.
     voyage_api_key: str
 
+    # FR-17: the Ticketmaster Discovery key, for `api`-method sources.
+    #
+    # **Optional with an empty default, unlike `stripe_api_key` and `voyage_api_key`.**
+    # Those abort the boot when missing because every deployment bills and embeds. An API
+    # source is different: a deployment with none — which is every deployment today — must
+    # still start. `city-provisioning-service` is where "no key, so no API-tier source"
+    # becomes a refusal, at the point someone actually asks for one.
+    #
+    # The key authorises calls out and travels as a query parameter (`apikey=`), which is
+    # why a URL carrying it is treated as a credential and never stored. See
+    # `apps.ingestion.services.provider_keys`.
+    ticketmaster_api_key: str = ""
+
     # How long the backend waits for Voyage to answer an embedding call.
     voyage_timeout_seconds: PositiveFloat = 30.0
 

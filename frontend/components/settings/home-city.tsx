@@ -21,15 +21,39 @@
  *
  * ## The choices come from the catalog, not from a list written here
  *
- * `GET /api/public/preview/cities` is derived from the events that exist — a city is
- * offered when the catalog has an upcoming public event with an Event Fit for it. A
- * hard-coded list would offer cities Browse then comes back empty for, which is the
- * failure this control exists to end rather than to reproduce.
+ * `GET /api/public/cities` answers *"which places may a reader pick?"* — a static
+ * question about the curated catalog, and it answers it the same whether that city has a
+ * thousand ingested events or none. **A reader in Chittagong may pick Chittagong before
+ * anything has ever been collected there**; finding the events is the provisioning
+ * service's job, and saying so honestly while it tries is the Browse states' job.
  *
- * **And it is why this is a select rather than a text box.** The server replaces a city
- * it cannot serve with a fallback (FR-2), silently — so typing "Chittagong" would appear
- * to work and quietly store somewhere else. A picker cannot express the request that
- * would be mishandled.
+ * **Not the preview's list.** `GET /api/public/preview/cities` answers a different
+ * question — "which cities can the Pulse Preview serve *right now*?" — and is computed
+ * from the events that exist. A picker built from it is a mirror of what we happen to
+ * have, and a reader in a city we have not collected for yet would not be offered their
+ * own city.
+ *
+ * ## The reader sees a label; the server stores a value
+ *
+ * Each choice is a pair, and **the two halves are different strings on purpose**.
+ * `"Portland, Oregon"` is what a reader reads; `"Portland, OR"` is what a preference
+ * holds and what `split_region` understands. A native `<select>` already does exactly
+ * this — the option's *text* is what is read and the option's *value* is what is
+ * submitted — so the control renders one and lets the browser do the rest.
+ *
+ * ## And it is still a select rather than a text box
+ *
+ * **The reason changed, and the docstring had to change with it.** The old one said a
+ * text box would "quietly store somewhere else", because the server replaced a city it
+ * could not serve with a fallback, silently. **That is no longer true of a chosen
+ * city**: a city outside the catalog is now *refused* (422), not quietly substituted.
+ *
+ * **So the real reason is the catalog's size and the catalog's canonical spellings.**
+ * There are a hundred and sixty-odd pickable places, and a native `<select>` gives the
+ * platform's own type-ahead and the mobile picker's own wheel for free. A text box would
+ * offer neither, and would add a second job — resolving what the reader typed into
+ * something we hold. A reader who writes "chitagong" gets a refusal; a picker shows them
+ * the spelling we do hold.
  *
  * ## The schedule rides along unchanged
  *
@@ -43,6 +67,9 @@
  * `city_source` exists so that *"a fallback the user did not pick must be labelled as
  * one, not passed off as their city"*. A user whose city reads `fallback` is told the
  * catalog chose it, so an unexpected city is explained rather than merely wrong.
+ *
+ * **The fallback is still live** — only a *chosen* city outside the catalog is refused.
+ * A geo guess and a backfill still fall back, and their accounts still carry one.
  */
 import { useCallback, useState } from "react";
 
@@ -50,14 +77,19 @@ import { saveFailureMessage } from "@/components/settings/save-failure";
 import { SaveFeedback } from "@/components/settings/save-feedback";
 import { SettingRow } from "@/components/settings/setting-row";
 import { api } from "@/lib/backend-client";
+import type { CityChoice } from "@/lib/home-city-read";
 
 export type HomeCityProps = {
   /** The stored city, or `null` when the user has none. */
   initialCity: string | null;
   /** How the stored city was arrived at: `geo` | `choice` | `fallback` | `backfill`. */
   initialCitySource: string | null;
-  /** The cities the catalog can serve. One entry per city, already alphabetical. */
-  choices: string[];
+  /**
+   * The cities the catalog offers, alphabetical by the label a reader sees.
+   *
+   * **Each is a pair: the `value` to store, the `label` to show.**
+   */
+  choices: CityChoice[];
   /** The stored delivery time, sent back unchanged — the server requires it. */
   deliveryTime: string;
   /** The stored zone, sent back unchanged — the server requires it. */
@@ -156,7 +188,18 @@ export function HomeCity({
   // **The stored city is always an option, even when the catalog stopped serving it.** A
   // select whose value is absent from its options renders as blank, which would read as
   // "no city" for a user who has one.
-  const options = choices.includes(city ?? "") || city === null ? choices : [city, ...choices];
+  //
+  // **The stored city is matched by *value*.** The catalog's two strings are different on
+  // purpose — "Portland, Oregon" is read, "Portland, OR" is stored — so the question is
+  // "does some choice's value equal the stored city", never "does some choice's label".
+  //
+  // **And a stored city the catalog no longer holds has no label of its own.** So the
+  // option synthesised for it shows the stored city as its own label: there is nothing
+  // better to show, because we do not know what it is, and inventing a disambiguating
+  // form for a city we do not hold would be a fabrication.
+  const stored = city === null ? null : choices.find((choice) => choice.value === city);
+  const options: CityChoice[] =
+    city === null || stored !== undefined ? choices : [{ value: city, label: city }, ...choices];
 
   return (
     <SettingRow
@@ -185,9 +228,15 @@ export function HomeCity({
               this endpoint cannot carry out.
             */}
             {city === null ? <option value={NO_CITY}>Choose a city</option> : null}
-            {options.map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {/*
+              **The text is the label and the value is the catalog's own.**
+              A native `<select>` shows the option's text and submits its value — so the
+              reader reads "Portland, Oregon" and the server stores "Portland, OR", with
+              nothing here translating between them.
+            */}
+            {options.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
               </option>
             ))}
           </select>

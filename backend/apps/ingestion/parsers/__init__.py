@@ -10,15 +10,22 @@ from collections.abc import Callable
 from apps.ingestion.parsers.feeds import parse_feed
 from apps.ingestion.parsers.ics import parse_ics
 from apps.ingestion.parsers.jsonld import parse_jsonld
+from apps.ingestion.parsers.providers import parse_api
 from apps.ingestion.parsers.types import ParsedCandidate, ParseResult, SourceContext, StatusHint
 
 Parser = Callable[[bytes, SourceContext], ParseResult]
 
 PARSERS: dict[str, Parser] = {
+    # FR-17's top tier. Dispatches again, by host, to a per-provider reader: a provider API
+    # answers in its own shape, so there is no one parser for the method.
+    "api": parse_api,
     "jsonld": parse_jsonld,
     "rss": parse_feed,
     "ics": parse_ics,
     "email_ics": parse_ics,  # the mailbox path hands over the attachment's bytes
+    # `partnership` and `crawl` are deliberately absent: both need an agreement or a ToS
+    # review before anything is read, and `parse()` returning `unsupported_method` is how
+    # the pipeline says so. Registering one here would quietly widen FR-17's hierarchy.
 }
 
 

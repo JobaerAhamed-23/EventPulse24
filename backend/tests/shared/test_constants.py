@@ -60,6 +60,7 @@ from shared.constants import (
     TZ_CAP_DST_GAP,
     TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH,
     TZ_INFERENCE_CONFIDENCE_DIGEST,
+    TZ_SCORE_CITY_ZONE,
     TZ_SCORE_CONFLICT,
     TZ_SCORE_EXPLICIT,
     TZ_SCORE_FIXED_ZONE,
@@ -134,6 +135,7 @@ def test_identity_thresholds_match_the_prd():
     [
         (TZ_SCORE_EXPLICIT, Gate.PUBLISH),
         (TZ_SCORE_VENUE_REGISTRY, Gate.PUBLISH),
+        (TZ_SCORE_CITY_ZONE, Gate.PUBLISH),
         (TZ_SCORE_FIXED_ZONE, Gate.PUBLISH_FLAGGED),
         (TZ_CAP_DST_FOLD, Gate.PUBLISH_FLAGGED),
         (TZ_CAP_DST_GAP, Gate.IN_REVIEW),
@@ -143,6 +145,18 @@ def test_identity_thresholds_match_the_prd():
 def test_each_tz_score_and_cap_lands_in_its_intended_gate(score, gate):
     assert type(score) is Decimal
     assert tz_gate(score) is gate
+
+
+def test_the_city_zone_scores_below_the_venue_registry_and_still_publishes():
+    """Both halves matter, and they are one decision, not two.
+
+    Below the venue registry because a city is weaker evidence than an address. At or above
+    the auto-publish edge because `_PUBLICATION` derives `tz_review_pending` from the gate:
+    a lower number would flag every event in every newly provisioned city, which is a review
+    queue nobody can clear. A change to either side of this is a product decision.
+    """
+    assert TZ_SCORE_CITY_ZONE < TZ_SCORE_VENUE_REGISTRY
+    assert TZ_SCORE_CITY_ZONE >= TZ_INFERENCE_CONFIDENCE_AUTO_PUBLISH
 
 
 def test_ranking_weights_are_pinned():

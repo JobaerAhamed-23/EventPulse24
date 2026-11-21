@@ -195,8 +195,10 @@ def test_success_stores_validators_final_url_and_clears_failure_state():
     )
     assert (stored.etag, stored.last_modified) == ('"v2"', "")
     assert stored.fetched_url == "https://feeds.example.test/moved.ics"
+    # `credential` is False for an ordinary source: the URL is an identifier, and the
+    # deployment is entitled to log it. Only a provider key makes it a secret.
     assert port.calls == [
-        {"url": source.url, "etag": None, "last_modified": None},
+        {"url": source.url, "etag": None, "last_modified": None, "credential": False},
     ]
 
 

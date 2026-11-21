@@ -50,8 +50,17 @@ def test_surface_files_include_every_app_admin_and_api():
     # and a read that is exempt today is a write that is exempt tomorrow.
     assert "apps/personalization/ranking_transparency_api.py" in names
     # 6 admins + 6 api.py + 11 *_api.py + config/api.py + config/health.py = 25
-    # 6 admins + 6 api.py + 12 *_api.py + config/api.py + config/health.py = 26
-    assert len(names) == 26
+    # FR-2: the city picker's choices endpoint is a surface file like any other. It writes
+    # nothing and queries nothing — it projects the curated catalog onto the wire — but
+    # being in the surface list is what keeps it under AD-5 like every other endpoint.
+    assert "apps/catalog/cities_api.py" in names
+    # FR-2's sibling, city-picker-and-auto-collection: the coverage request's endpoint is
+    # a surface file like any other. It writes a catalog row, so AD-5 applies to it
+    # exactly as it does to every other endpoint — the caller being a signed-in reader
+    # changes nothing about who may write.
+    assert "apps/ingestion/coverage_api.py" in names
+    # 6 admins + 6 api.py + 14 *_api.py + config/api.py + config/health.py = 28
+    assert len(names) == 28
 
 
 @pytest.mark.parametrize("path", surface_files(), ids=lambda p: str(p.relative_to(BACKEND_DIR)))

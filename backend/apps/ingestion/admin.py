@@ -39,6 +39,7 @@ from django.utils import timezone
 
 from apps.editorial.services import review_queue as editorial_review_queue
 from apps.ingestion.models import (
+    CityCoverageRequest,
     Event,
     EventStateChange,
     IngestionAuditEntry,
@@ -194,6 +195,14 @@ class SourceForm(forms.ModelForm):
     class Meta:
         model = Source
         fields = list(EDITABLE_SOURCE_FIELDS)
+        help_texts = {
+            "city_tz": (
+                "IANA timezone for this source's city, for example Asia/Dhaka. Used to read a "
+                "time the feed wrote without a zone when no venue is registered yet — leave it "
+                "empty and such times are rejected rather than guessed. A registered venue's "
+                "own timezone always wins over this (FR-60)."
+            )
+        }
 
     def source_values(self) -> dict[str, object]:
         """The registry fields to send: all of them on add, the changed ones on change."""
@@ -272,6 +281,8 @@ class SourceAdmin(CommandAdmin):
         "last_ingested_at",
         "last_attempted_at",
         "consecutive_failures",
+        "consecutive_zero_yield_runs",
+        "paused_reason",
         "last_error_code",
         "stale_since",
         "ingest_claimed_at",
@@ -281,7 +292,7 @@ class SourceAdmin(CommandAdmin):
         "updated_at",
     )
     fieldsets = (
-        (None, {"fields": ("name", "source_type", "url", "city")}),
+        (None, {"fields": ("name", "source_type", "url", "city", "city_tz")}),
         (
             "Acquisition",
             {
@@ -353,7 +364,14 @@ class SourceAdmin(CommandAdmin):
     @admin.action(description="Pause selected sources", permissions=["change"])
     def pause_sources(self, request, queryset):
         for source_id in queryset.values_list("pk", flat=True):
-            pause_source(actor=self.actor(request), source_id=source_id)
+            # **The reason is explicit.** An editor pausing a source has decided something
+            # about the world, and the city says `paused` — not `yielded_nothing`, which
+            # is the probation's word.
+            pause_source(
+                actor=self.actor(request),
+                source_id=source_id,
+                reason=Source.PausedReason.MANUAL,
+            )
         self.message_user(request, "The selected sources are paused.")
 
     @admin.action(description="Resume selected sources", permissions=["change"])
@@ -1157,6 +1175,32 @@ class SourceReliabilityScoreAdmin(ReadOnlyAdmin):
     list_filter = ("period_start",)
     list_select_related = ("source",)
     ordering = ("-period_start", "source")
+
+
+@admin.register(CityCoverageRequest)
+class CityCoverageRequestAdmin(ReadOnlyAdmin):
+    """The coverage queue: the cities readers have asked us to go and cover.
+
+    **Editorial reads this queue; readers write it.** The rows are raised by
+    `POST /api/catalog/coverage-requests`, and `ReadOnlyAdmin` means this admin cannot
+    fabricate one — a request is a fact about what a reader asked for, and an editor
+    typing one in would put a city on the queue that nobody asked about.
+
+    **The count is the column that matters.** `request_count` is how many readers have
+    asked for a city, and it is what editorial prioritises on. The ordering is by count
+    first and age second: a city forty people asked for outranks a city one person asked
+    for three months ago.
+
+    **The city is a relation, not a restated name.** `list_select_related` keeps the
+    detail page from a query per row, and the name shown is the catalog's own.
+    """
+
+    list_display = ("city", "request_count", "created_at", "updated_at")
+    list_filter = ("created_at",)
+    list_select_related = ("city",)
+    search_fields = ("city__name", "city__slug")
+    ordering = ("-request_count", "created_at")
+    date_hierarchy = "created_at"
 
 
 @admin.register(IngestionAuditEntry)

@@ -34,7 +34,10 @@ function renderPlace() {
     <PlaceSettings
       initialCity="Dhaka"
       initialCitySource="choice"
-      choices={["Dhaka", "Chattogram"]}
+      choices={[
+        { value: "Chattogram, Bangladesh", label: "Chattogram, Bangladesh" },
+        { value: "Dhaka", label: "Dhaka, Bangladesh" },
+      ]}
       deliveryTime="09:00:00"
       initialTimezone="America/New_York"
     />,
@@ -74,10 +77,10 @@ describe("the zone the city control sends", () => {
   it("is the zone the account was rendered with, when nothing changed it", async () => {
     renderPlace();
 
-    await pickCity("Chattogram");
+    await pickCity("Chattogram, Bangladesh");
 
     expect(cityBody()).toEqual({
-      city: "Chattogram",
+      city: "Chattogram, Bangladesh",
       delivery_time: "09:00:00",
       timezone: "America/New_York",
     });
@@ -92,7 +95,7 @@ describe("the zone the city control sends", () => {
     renderPlace();
 
     await pickZone("Asia/Dhaka", "Asia/Dhaka");
-    await pickCity("Chattogram");
+    await pickCity("Chattogram, Bangladesh");
 
     expect(cityBody()?.timezone).toBe("Asia/Dhaka");
   });
@@ -102,13 +105,13 @@ describe("the zone the city control sends", () => {
     // a naive shared value would propagate.
     PUT.mockImplementation(async (route: string) => {
       if (route === ZONE_ROUTE) return { data: { digest: { timezone: "Europe/London" } } };
-      return { data: { digest: { city: "Chattogram", city_source: "choice" } } };
+      return { data: { digest: { city: "Chattogram, Bangladesh", city_source: "choice" } } };
     });
 
     renderPlace();
 
     await pickZone("Asia/Dhaka", "Europe/London");
-    await pickCity("Chattogram");
+    await pickCity("Chattogram, Bangladesh");
 
     expect(cityBody()?.timezone).toBe("Europe/London");
   });
@@ -121,13 +124,13 @@ describe("the zone the city control sends", () => {
      */
     PUT.mockImplementation(async (route: string) => {
       if (route === ZONE_ROUTE) return { error: { detail: "Nope." } };
-      return { data: { digest: { city: "Chattogram", city_source: "choice" } } };
+      return { data: { digest: { city: "Chattogram, Bangladesh", city_source: "choice" } } };
     });
 
     renderPlace();
 
     await pickZone("Asia/Dhaka", "America/New_York");
-    await pickCity("Chattogram");
+    await pickCity("Chattogram, Bangladesh");
 
     expect(cityBody()?.timezone).toBe("America/New_York");
   });

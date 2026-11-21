@@ -60,6 +60,14 @@ def constraint_dropped():
     try:
         yield
     finally:
+        # **The pending trigger events are flushed first.** A `PROTECT` foreign key is
+        # created `DEFERRABLE INITIALLY DEFERRED`, so the row the test inserted queues a
+        # deferred FK check that is only evaluated at commit. PostgreSQL refuses to
+        # `ALTER TABLE` a relation with pending trigger events, so the constraint cannot be
+        # put back until they are resolved. `SET CONSTRAINTS ALL IMMEDIATE` evaluates them
+        # now, inside the test's transaction, without committing it.
+        with connections[CATALOG].cursor() as cursor:
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
         with connections[CATALOG].cursor() as cursor:
             cursor.execute(
                 f"ALTER TABLE {TABLE} ADD CONSTRAINT {CONSTRAINT} CHECK ("

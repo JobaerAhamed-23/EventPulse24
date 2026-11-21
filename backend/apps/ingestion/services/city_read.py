@@ -44,6 +44,7 @@ from uuid import UUID
 
 from apps.ingestion.event_fit.reads import CityEventFitEntry, list_city_event_fits
 from apps.ingestion.models import City, Event, EventFit
+from apps.ingestion.services.city_status_read import read_city_collection_status
 from domain.errors import NotFoundError
 from shared.constants import (
     CITY_PAGE_DEFAULT_PAGE_SIZE,
@@ -130,6 +131,15 @@ class CityPage:
     #: an empty listing; it has no next page, and saying otherwise would send a crawler
     #: to an empty page forever.
     has_next: bool
+    #: How the collection of this city is going — the `CityProvisioning.Status` value, or
+    #: `""` when the city was never provisioned.
+    #:
+    #: **This is a *different* question from `is_published`.** `is_published` asks whether
+    #: the city has enough events on record to deserve a page; the status asks whether our
+    #: collection of it is working. A city can be `live` with four events — collection
+    #: working, page not yet published — and a city can be `collecting` with six, which
+    #: is published while the first events are still on their way.
+    city_collection_status: str = ""
 
 
 def _city_by_slug(*, slug: str) -> City | None:
@@ -294,6 +304,7 @@ def get_city_page(
         page=page,
         page_size=page_size,
         has_next=offset + len(items) < upcoming_count,
+        city_collection_status=read_city_collection_status(city=city.name).status,
     )
 
 

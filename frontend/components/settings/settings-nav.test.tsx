@@ -9,7 +9,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsNav } from "@/components/settings/settings-nav";
-import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
+import { SETTINGS_DEFAULT_HREF, SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
 const pathname = vi.fn();
 
@@ -61,15 +61,34 @@ describe("the sub-nav", () => {
     }
   });
 
-  it("marks nothing on the index, which is not a section", () => {
-    // The index renders the long-form list and does not mount this component — but the
-    // rule is the component's, not the page's: `/settings` is not one of the six, and
-    // an equality rather than a prefix is what keeps it from lighting one up.
+  it("marks the section the index forwards to, because that is what it renders", () => {
+    /**
+     * `/settings` is not a section — it redirects to `SETTINGS_DEFAULT_HREF`. But the
+     * redirect is a *server* redirect, and during the forward the browser's pathname is
+     * still `/settings` while the server has already rendered the default section's
+     * markup.
+     *
+     * So the server marks the default section and the client — reading `/settings` —
+     * would mark nothing, and the two disagree. That disagreement is a hydration
+     * mismatch, and React reports it: the differing `aria-current` and the differing
+     * `className` on the row.
+     *
+     * It was found by a browser probe that simulated the Dark Reader extension, because
+     * the extension's DOM rewrite shifts the hydration timing enough to surface the
+     * race — but nothing about it is about the extension, and it would surface for any
+     * reader whose hydration is disturbed.
+     *
+     * So the index marks the section it is forwarding to. The row the reader sees as
+     * current is the row they are about to arrive at, and the server and the client
+     * agree.
+     */
     pathname.mockReturnValue("/settings");
 
     render(<SettingsNav />);
 
-    expect(nav().querySelectorAll("[aria-current='page']")).toHaveLength(0);
+    const current = [...nav().querySelectorAll("[aria-current='page']")];
+    expect(current).toHaveLength(1);
+    expect(current[0]?.getAttribute("href")).toBe(SETTINGS_DEFAULT_HREF);
   });
 
   it("does not mark a section on a route that merely starts like it", () => {

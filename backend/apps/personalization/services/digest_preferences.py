@@ -13,21 +13,35 @@ where there is no request and therefore no headers. `GeoPort.resolve_city` takes
 of headers, not a request", by deliberate design — so the city must already be stored
 by the time the job runs. Nothing in this module reads a header at composition time.
 
-**Why the coverage rule is reused rather than reimplemented.** FR-2's rule already
-exists, and it is already tested: `list_supported_cities()` says which cities the
-catalog can serve, and `PREVIEW_FALLBACK_CITY` is FR-2's "falls back to the
-most-popular city (NYC at MVP)". Two rules for "which cities may a user be in" would
-be two rules that could disagree, and the disagreement would surface as a digest that
-ranks on a city the preview says is not served.
+**Which cities may be stored, and why the answer changed.** The rule used to be the
+preview's: `list_supported_cities()` says which cities the catalog can serve *right
+now*, and anything else was stored as `PREVIEW_FALLBACK_CITY`. That made the picker a
+mirror of the catalog — a city could only be picked once something had been ingested in
+it, so a city nobody had picked was never collected — and it made the server answer a
+reader who chose Chittagong with New York City.
 
-**The import is legal.** The `models-ingestion` contract protects
-`apps.ingestion.models` — the *models* module — not the services.
-`apps.personalization` already imports `apps.ingestion.services.catalog_read` in
-three places, so this is the established way across the AD-3 wall.
+The rule now is the **curated catalog** in `domain.city_catalog`: the answer to *"which
+places may a reader choose?"*, which is the same whether or not one event has ever been
+ingested there. It is the same table the picker is populated from
+(`GET /api/public/cities`), so a city on offer is a city that resolves. The preview's
+coverage list still answers the preview's question — *"which cities can the preview serve
+today?"* — and this module no longer reads it, which is what removes the hazard of two
+rules for one question that could disagree.
+
+**The stored city is the picked city.** A city the reader chose is stored **exactly as
+picked**, and a city outside the catalog is **refused** — not silently rewritten. The
+exceptions are the cities **nobody chose**: a *geo* city, which falls back exactly as it
+always did, and the local dev seed's *fictional* city, which the server chose and so
+stores verbatim. The distinction is the point, and `resolve_home_city` is where it lives.
+
+**The import is legal.** `domain.city_catalog` is a `domain` module, and the AD-2 layers
+contract points inward — `apps` may import `domain`. The `models-ingestion` contract
+protects `apps.ingestion.models` — the *models* module — not the services.
 
 **The city is never logged (AD-13).** It is weak location data about a real person.
 It is not in `__str__`, and it is not in the audit row's `details` — the audit row
-records *that* the city changed, and the value stays out of the log.
+records *that* the city changed, and the value stays out of the log. A refused city is
+in the API error and nowhere else.
 
 Design: .specs-fire/intents/pulse-digest-and-trust/work-items/
 digest-user-preferences-design.md (decisions D1-D14).
@@ -41,12 +55,13 @@ from uuid import UUID
 
 from django.db import connections, transaction
 
-from apps.ingestion.services.preview_read import list_supported_cities
 from apps.personalization.models import DigestPreference
 from apps.personalization.services.audit import write_audit
 from apps.personalization.services.digest_enqueue import (
     enqueue_digest_composition_on_commit,
 )
+from domain.city_catalog import lookup
+from domain.errors import UnknownHomeCityError
 from shared.actor import Actor
 from shared.constants import GEO_CITY_MAX_LENGTH, PREVIEW_FALLBACK_CITY
 from shared.db import PERSONAL
@@ -64,6 +79,15 @@ SOURCE_GEO = "geo"
 SOURCE_CHOICE = "choice"
 SOURCE_FALLBACK = "fallback"
 SOURCE_BACKFILL = "backfill"
+
+#: A city the **server** chose — the local dev seed's fixture city, and nothing else.
+#:
+#: It is not one of the model's four, because the model's four describe how a *reader's*
+#: city arrives: a header, a pick, a gap, a backfill. The seed is not a reader. It
+#: authors a fictional city for a local walk-through, and the value it writes is stored
+#: verbatim because **the server chose it** — which is exactly the reasoning that already
+#: exempts the fallback from the catalog check.
+SOURCE_SEED = "seed"
 
 
 def _user_lock_key(user_id: UUID) -> int:
@@ -105,39 +129,92 @@ def resolve_home_city(
 ) -> tuple[str | None, str | None]:
     """The city to store, and the source to store with it.
 
-    **The rule, in one place.** A city the catalog covers is stored in the catalog's
-    own spelling, with the source it arrived under. A city the catalog does not cover
-    is **not** stored as if it were valid: the fallback is stored instead, and the
-    source becomes `fallback` — so the digest can say "we don't have your city yet"
-    rather than passing the fallback off as the user's city.
+    **The rule, in one place.** A city in the curated catalog is stored in the catalog's
+    own spelling, with the source it arrived under. A city **not** in the catalog is
+    refused — loudly, and with nothing written — when the reader chose it, and falls
+    back to `PREVIEW_FALLBACK_CITY` when nobody did.
 
-    **The fallback is a fallback, not a guess.** It is what the preview already does
-    for an unsupported *geo* city, and this reuses the same constant.
+    **The choice-versus-geo distinction is the whole of this function.** Two callers
+    reach it and they are not the same kind of caller:
+
+    - the reader picking from the dropdown (`source="choice"`) — their choice is
+      authoritative, and a city outside the catalog is a **client bug**. So it is
+      refused: the caller is told, and nothing is stored. Storing the fallback instead
+      would answer the reader with a city they did not choose while appearing to
+      succeed, and the heading would then lie about where they are.
+    - the edge's geo header (`source="geo"`) — **nobody chose it**. An uncoverable value
+      falls back silently, exactly as it always has, because refusing it would turn an
+      edge's guess into a 4xx on a path the reader never asked for.
+
+    **And a third caller, the server itself** (`source="seed"`): the local dev seed
+    authors a *fictional* city for a walk-through, and the value is stored **verbatim**.
+    The reasoning is the same one that exempts the fallback: the server chose it, so
+    there is no reader to mislead and no rule to break. It is not in the model's
+    four-source vocabulary because those four describe how a *reader's* city arrives.
+
+    **The refusal raises before anything is written**, so it leaves no `DigestPreference`
+    row and no audit row behind.
 
     **An absent city stays absent.** `city=None` means "we do not know", and that is a
     real state — it is what an account has before the backfill, and what a user who
     declined location inference has. Storing the fallback for it would be storing an
     inferred city for someone who declined inference, which is the one thing this
-    module will not do.
+    module will not do. It is also **not** a refusal: nothing was wrong with the request.
 
     The city is length-bounded by the same constant the geo adapter uses, because a
     city name is a city name whichever way it arrived, and an over-long value is an
     attempt to put a value somewhere it should not go.
+
+    `now` is not read. The catalog does not change with the clock — that is the whole
+    difference between it and the preview's coverage list, which it replaces. The
+    parameter stays because every caller has a `now` to hand and removing it would churn
+    them for no gain.
     """
     if city is None:
         return None, None
 
+    if source == SOURCE_SEED:
+        # **The server chose this city, so it is stored as it is.** There is no reader to
+        # mislead and no catalog rule to break — and the length bound still applies,
+        # because a value that long is a value put somewhere it should not go.
+        wanted = city.strip()
+        if not wanted or len(wanted) > GEO_CITY_MAX_LENGTH:
+            return PREVIEW_FALLBACK_CITY, SOURCE_FALLBACK
+        return wanted, source
+
     wanted = city.strip()
     if not wanted or len(wanted) > GEO_CITY_MAX_LENGTH:
+        if source == SOURCE_CHOICE:
+            raise _refused(city)
         return PREVIEW_FALLBACK_CITY, SOURCE_FALLBACK
 
-    supported = list_supported_cities(now=now)
-    if not supported.supports(wanted):
+    row = lookup(wanted)
+    if row is None:
+        if source == SOURCE_CHOICE:
+            raise _refused(city)
         return PREVIEW_FALLBACK_CITY, SOURCE_FALLBACK
 
     # The catalog's spelling, not the caller's. "brooklyn" and "Brooklyn" are the same
     # city, and the catalog's is the one the events are filed under.
-    return _canonical(supported.cities, wanted), source
+    return row.name, source
+
+
+def _refused(city: str) -> UnknownHomeCityError:
+    """The refusal for a city the reader chose that the catalog does not hold.
+
+    **The rejected city is in `details`, not in the message.** The message is for a
+    person and stays calm; the value is machine-readable data the client needs in order
+    to re-select. AD-13 keeps the city out of the audit log and out of the log sink,
+    which is a different audience from the reader who just sent it.
+    """
+    return UnknownHomeCityError(
+        details={
+            "errors": [
+                {"loc": ["city"], "msg": UnknownHomeCityError.default_message},
+            ],
+            "rejected_city": city,
+        },
+    )
 
 
 def store_fallback_city(
@@ -149,17 +226,16 @@ def store_fallback_city(
 ) -> DigestPreference:
     """Store the fallback city, under the source the caller names.
 
-    **The fallback is not coverage-checked, because the server chose it.** Every other
-    path into this module hands a *caller's* city to `resolve_home_city`, which asks
-    the catalog whether it serves it — and a city the catalog cannot serve is replaced
-    by the fallback. Applying that rule to the fallback itself would be circular: the
-    fallback is by definition the city the catalog may not currently serve, so it would
-    be replaced by the fallback, and the source would be rewritten from `backfill` to
-    `fallback`. The backfill would then be unable to record what it did, and a
+    **The fallback is not catalog-checked, because the server chose it.** Every other
+    path into this module hands a *caller's* city to `resolve_home_city`, which asks the
+    catalog whether it holds it — and a city it does not hold is refused (a choice) or
+    replaced by the fallback (a geo guess). Applying that rule to the fallback itself
+    would be circular: the fallback is by definition the city the catalog may not hold,
+    so it would be refused, and the backfill would be unable to record what it did — a
     backfilled city would be indistinguishable from a city the catalog rejected.
 
     So the fallback is stored **as it is**, with the source the caller names — `backfill`
-    for the management command, `fallback` for a city the catalog does not cover.
+    for the management command, `fallback` for a geo city the catalog does not hold.
     """
     with transaction.atomic(using=PERSONAL):
         _lock_user(user_id)
@@ -172,26 +248,6 @@ def store_fallback_city(
         _write_city_audit(actor=actor, preference=preference, has_city=True, now=now)
 
     return preference
-
-
-def _canonical(cities: tuple[str, ...] | list[str], city: str) -> str:
-    """The catalog's spelling of `city`.
-
-    The comparison is case-insensitive because the city came from a header or a
-    cookie — both caller-influenced — and the result is the catalog's own spelling.
-
-    **The caller has already checked that the catalog holds the city**, so the loop
-    always finds it. There is no "unchanged" fallback here, deliberately: a fallback
-    would be a path that returns a city the catalog does not serve, and the coverage
-    check above is what makes that impossible. The `raise` is the type-checker's
-    guarantee that the invariant holds — if a future caller skips the check, this
-    fails loudly instead of quietly storing a city under the wrong spelling.
-    """
-    wanted = city.strip().casefold()
-    for name in cities:
-        if name.casefold() == wanted:
-            return name
-    raise ValueError(f"The catalog does not hold a city spelled {city!r}.")
 
 
 def set_home_city(
@@ -212,6 +268,10 @@ def set_home_city(
     state the digest handles (the nearby slot falls back to the timezone). It is not
     the same as leaving the city alone, and it is explicit here rather than inferred
     from an omitted field at the API edge.
+
+    **A refused city writes nothing.** `resolve_home_city` raises before this opens a
+    transaction, so a city the reader chose that the catalog does not hold leaves no
+    preference row, no audit row and no recomposition behind.
     """
     resolved_city, resolved_source = resolve_home_city(city=city, source=source, now=now)
 
@@ -235,8 +295,41 @@ def set_home_city(
         # false. The recomposition replaces the day's digest only while it is **empty**,
         # so a user with cards keeps the cards they were shown (AD-10).
         enqueue_digest_composition_on_commit(user_id)
+        _provision_city_on_commit(resolved_city)
 
     return preference
+
+
+def _provision_city_on_commit(city: str | None) -> None:
+    """Ask `ingestion` to start collecting for this city, once the pick is committed.
+
+    **A pick is a request to collect, not just a label to store.** The whole point of the
+    picker over a curated world list is that a reader in a city we have never seen
+    triggers the collection for it — so the pick has to reach the provisioning service.
+
+    **It goes through `ingestion`'s published service**, not its models: AD-3's
+    `models-ingestion` contract protects `apps.ingestion.models`, and
+    `apps.personalization` may import `apps.ingestion.services.*` — which it already does
+    in sixteen places.
+
+    **After the commit, never inline.** A slow registry write must not fail the reader's
+    save, and the sources are written in the `catalog` schema while the pick is written in
+    the `personal` one — Django will not enlist two databases in one transaction, so
+    pretending otherwise would be a lie about what is atomic.
+
+    **Only the name travels.** The country code is not passed in: the provisioning
+    service reads the city's own catalog row, and a country supplied from here could
+    disagree with it — which would mint a *second* `City` for the same place, the exact
+    split `domain.cities` exists to prevent. One source of truth, and it is the catalog.
+
+    **A city of None provisions nothing**, and neither does a city the catalog does not
+    hold — the service checks that itself and writes nothing at all.
+    """
+    if city is None:
+        return
+    from apps.ingestion.services.city_provisioning import provision_city_on_commit
+
+    provision_city_on_commit(city_name=city)
 
 
 def _write_city_audit(
@@ -405,6 +498,7 @@ __all__ = [
     "SOURCE_CHOICE",
     "SOURCE_FALLBACK",
     "SOURCE_GEO",
+    "SOURCE_SEED",
     "backfill_home_cities",
     "count_users_without_a_city",
     "resolve_home_city",

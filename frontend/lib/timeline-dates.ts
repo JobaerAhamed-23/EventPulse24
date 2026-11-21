@@ -175,6 +175,36 @@ export function today(): LocalDate {
   }
 }
 
+/**
+ * Today's date **in a named zone** — "2026-11-21" in `Asia/Dhaka`.
+ *
+ * **The reader's zone, not the renderer's.** `today()` reads whatever zone the
+ * environment running it is set to. On a server component that environment is the
+ * *server* — typically UTC — so a reader six hours east of it is told "today" is
+ * yesterday for the last six hours of their day. The week itself is already cut in the
+ * reader's own zone (the backend's `timeline_days.week_start_for`), and the server
+ * names that zone in the response; so the day that week highlights has to be read in
+ * the same zone, or the highlight and the grid disagree about what day it is.
+ *
+ * **An unusable zone falls back to `today()`.** A zone the runtime does not know
+ * throws; the environment's own date is a worse answer than the reader's, but it is a
+ * far better one than a crashed page.
+ */
+export function todayIn(zone: string | null | undefined): LocalDate {
+  if (!zone) return today();
+  try {
+    // `en-CA` formats as `YYYY-MM-DD`, which is the shape the API uses.
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    return today();
+  }
+}
+
 /** Whether a date is a well-formed `YYYY-MM-DD` calendar date. */
 export function isLocalDate(value: string | null | undefined): value is LocalDate {
   if (!value) return false;

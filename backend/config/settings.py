@@ -173,6 +173,11 @@ STRIPE_PRICE_IDS = {"monthly": env.stripe_price_monthly, "yearly": env.stripe_pr
 VOYAGE_API_KEY = env.voyage_api_key
 VOYAGE_TIMEOUT_SECONDS = env.voyage_timeout_seconds
 
+# FR-17: the Ticketmaster Discovery key for `api`-method sources. Appended to the fetch
+# URL by `apps.ingestion.services.provider_keys` and never stored on the Source, because
+# a URL carrying it is a credential. Empty when the deployment has no API source.
+TICKETMASTER_API_KEY = env.ticketmaster_api_key
+
 # FR-48: the paths the checkout and portal URLs point at. **These are the whole reason the
 # endpoints cannot be turned into an open redirect.** The success, cancel and portal-return
 # URLs handed to the provider are built from `FRONTEND_BASE_URL` plus one of these paths,

@@ -88,6 +88,19 @@ EVENT_REPORT_WINDOW_SECONDS = 24 * 60 * 60
 # attempt at one cross-boundary hop, not a retry loop.
 EVENT_REPORT_RECONCILE_EVERY_MINUTES = 5
 
+# The coverage request's throttle (city-coverage-request): five requests per reader per day.
+#
+# **The same number as `EVENT_REPORT_DAILY_LIMIT`, for the same reason.** The abuse is the
+# same shape — one person, many presses — and the two surfaces are the same kind of surface:
+# a reader asking us to do a thing, with a queue behind it. A reader who presses the button
+# forty times is spending forty attempts, and a limit a repeat could slip past is not a limit.
+#
+# **Five is generous for a button that is not offered twice.** The control is replaced by its
+# confirmation after one press, so the ordinary reader spends one. The limit exists for the
+# reader who reloads the page, and for the one who does not read the confirmation.
+COVERAGE_REQUEST_LIMIT = 5
+COVERAGE_REQUEST_WINDOW_SECONDS = 24 * 60 * 60
+
 # ── FR-16: the Source Reliability Score (domain/reliability.py) ──────────────────────────────
 #
 # **The fourth confidence, and never conflated with the other three.** `extraction_confidence`
@@ -245,6 +258,12 @@ SOURCE_SHOW_LESS_PENALTY = Decimal("0.10")
 # re-baseline against labeled data. tests/shared/test_constants.py pins each one's gate band.
 TZ_SCORE_EXPLICIT = Decimal("1.00")  # zone or exact instant agrees with every other claim
 TZ_SCORE_VENUE_REGISTRY = Decimal("0.95")  # naive time read in the curated venue tz
+# Below the venue registry on purpose: a city zone is weaker evidence than a specific
+# address. On the >= 0.90 auto-publish edge, so a provisioned city's events publish
+# rather than arriving pre-flagged — flagging every event in every new city would make a
+# review queue nobody can clear. A reading that genuinely needs a human still gets one:
+# the DST caps below apply to a city zone exactly as they do to a venue zone.
+TZ_SCORE_CITY_ZONE = Decimal("0.90")  # naive time read in the source's city zone
 TZ_SCORE_FIXED_ZONE = Decimal("0.85")  # exact instant, but only UTC or Etc/GMT±N to show it in
 TZ_SCORE_CONFLICT = Decimal("0.60")  # two explicit claims disagree: a human decides
 TZ_CAP_DST_FOLD = Decimal("0.80")  # naive time occurs twice; the first is taken
@@ -312,6 +331,58 @@ SCHEDULE_BATCH = 100
 INGEST_CLAIM_TTL = timedelta(hours=1)
 # FR-13: a source with no successful ingestion within this many cadences is flagged stale.
 STALE_AFTER_CADENCES = 2
+
+# ── The city provisioning probation ─────────────────────────────────────────────────
+#
+# A provisioned city's sources run; some of them produce nothing, forever. The probation is
+# the honesty clock and the cost ceiling: a source that runs and produces nothing three
+# times running is paused, and a city whose every source is paused that way says so.
+#
+# **Three, not one.** A 404, a transient fetch failure or a provider having a bad week must
+# not condemn a city permanently. At the default 4-hour cadence that is roughly twelve
+# hours of honest "we're collecting" before the page admits defeat — long enough for a
+# feed to recover, short enough that a thousand-city dropdown is not fetching forever for
+# cities with one reader and zero yield.
+#
+# **The threshold is in runs, not in hours.** A source on a slower cadence is given
+# proportionally more time, because the question is "has this source had three chances and
+# produced nothing?", not "has it been twelve hours?".
+ZERO_YIELD_RUN_THRESHOLD = 3
+
+# The `IngestReport.counts` keys that mean **the source published something**.
+#
+# **Publication is narrow on purpose.** Only `new` and `superseded` put a row into the
+# catalogue for the first time. `updated` and `silent_updated` re-affirm a row that is
+# already there; `unchanged` recognises one; `bound_other_source` says the event is in the
+# catalogue because *another* source published it.
+#
+# Only publication can move a city to `live`. Yield cannot: a city whose sources all
+# re-affirm the same three events forever is covered and producing, but it never
+# *published* anything, and "live" must mean "there are events in this city's catalogue".
+PUBLISHED_COUNT_KEYS = ("new", "superseded")
+
+# The `IngestReport.counts` keys that mean **the source's fetch reached the feed and came
+# back with something that was not rejected**.
+#
+# **`unchanged` is in this set, deliberately.** A healthy source's second and later polls
+# return every event as `unchanged` — a content-hash match. If `unchanged` did not count
+# as yield, every healthy source would accrue a zero-yield run per poll and be paused
+# after twelve hours of doing its job perfectly.
+#
+# `bound_other_source` counts as yield but not as publication: the event exists in the
+# city's catalogue because *another* source published it. The city is not empty; this
+# source is simply redundant.
+#
+# `ambiguous`, `rejected:*`, `failed:*` and `skipped:*` are neither yield nor publication:
+# the item did not reach the catalogue.
+YIELDED_COUNT_KEYS = (
+    "new",
+    "superseded",
+    "updated",
+    "silent_updated",
+    "unchanged",
+    "bound_other_source",
+)
 
 # FR-14: an Event older than this many times its source's `freshness_ttl_hours` is not
 # surfaced in a fresh Pulse Digest.
@@ -1258,6 +1329,17 @@ PREVIEW_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidat
 # response to another. The preview sets no cookie and reads no session, so the response
 # is identical for everyone and the cache key is the URL.
 PREVIEW_VARY = "Accept-Encoding"
+
+# The city picker's cache headers. **Much longer than the preview's, because this is a
+# different kind of resource.** The preview's cards change as events are ingested, so it
+# is stale within minutes. The picker's choices are a checked-in dataset: they change
+# when code ships and at no other time, so caching them for a minute asks the origin to
+# re-serve a constant.
+#
+# The consequence is accepted and known: a deploy that adds a city may take up to a day
+# to reach every edge cache. A city the reader cannot find yet is the same outcome as a
+# city not yet added, and `city-coverage-request` is the answer to both.
+CITY_CHOICES_CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800"
 
 # The public event page's cache headers (FR-26). The browser holds it for an hour, a
 # shared cache for an hour too, and a shared cache may serve a slightly stale copy while

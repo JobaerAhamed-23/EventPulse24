@@ -254,6 +254,25 @@ def test_the_accounts_have_a_city_and_interests():
     assert preference.timezone == "America/New_York"
 
 
+def test_the_seeded_city_is_labelled_as_the_seeds_own():
+    """**The seed's city is the server's choice, and it says so.**
+
+    "Fixtureville" is not in the curated catalog and never could be — it is a fictional
+    city for a local walk-through. A reader's pick is `choice`, and a reader who picked
+    a city the catalog does not hold is *refused* rather than silently answered with
+    somewhere else. The seed is not a reader, so it writes `seed`, and the value is
+    stored verbatim.
+    """
+    from apps.identity.models import User
+    from apps.personalization.models import DigestPreference
+
+    _seed()
+
+    free = User.objects.using(PERSONAL).get(email="free@browse.example.test")
+    preference = DigestPreference.objects.using(PERSONAL).get(user_id=free.pk)
+    assert preference.city_source == "seed"
+
+
 # --- idempotency -------------------------------------------------------------------------------
 
 

@@ -98,12 +98,19 @@ def test_a_city_with_a_source_is_accepted():
     assert preference.city_source == "choice"
 
 
-def test_the_source_choices_are_the_four_the_design_names():
+def test_the_source_choices_are_the_five_the_design_names():
+    """**The first four describe how a *reader's* city arrives; the fifth does not.**
+
+    `geo`, `choice`, `fallback` and `backfill` are all things that happen to a person.
+    `seed` is the local dev seed writing a *fictional* city for a walk-through — the
+    server choosing, with no reader in the story at all.
+    """
     assert {member.value for member in DigestPreference.CitySource} == {
         "geo",
         "choice",
         "fallback",
         "backfill",
+        "seed",
     }
 
 

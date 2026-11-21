@@ -19,6 +19,7 @@ from domain.timezones import (
     resolve_tz,
     to_instant,
 )
+from shared.constants import TZ_SCORE_CITY_ZONE
 
 NY, LA = "America/New_York", "America/Los_Angeles"
 
@@ -284,3 +285,98 @@ def test_offset_zone_none_without_an_iana_fixed_zone(hours):
 def test_to_instant_rejects_naive():
     with pytest.raises(TypeError):
         to_instant(WALL)
+
+
+# --- C1b: the source's city zone, the last link in the chain --------------------------------
+#
+# `ingest_item._venue_for` never creates a venue (D5), so a city with no registered venue
+# resolves `venue=None` for every candidate. Without this row a freshly provisioned city
+# fetches cleanly, parses cleanly and publishes nothing, forever.
+
+
+def test_resolve_tz_city_zone_reads_a_naive_time_and_publishes():
+    result = resolve_tz(WALL, city_tz=NY)
+
+    assert (result.reason, result.zone, result.start_utc) == ("C1b", NY, NY_INSTANT)
+    assert result.tier is Tier.PARTIAL
+    assert result.confidence == TZ_SCORE_CITY_ZONE == Decimal("0.90")
+    assert result.gate is Gate.PUBLISH  # publishes clean: no blanket tz_review_pending
+
+
+def test_resolve_tz_city_zone_scores_below_the_venue_registry():
+    # The whole justification for a separate row: a city is weaker evidence than an address.
+    city = resolve_tz(WALL, city_tz=NY)
+    venue = resolve_tz(WALL, venue_tz=NY)
+
+    assert city.confidence < venue.confidence
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "row"),
+    [
+        ({"source_zone": LA}, "A1"),  # an explicit zone wins
+        ({"venue_tz": LA}, "C1"),  # a registered venue wins
+    ],
+    ids=["source-zone-beats-city", "venue-beats-city"],
+)
+def test_resolve_tz_city_zone_yields_to_more_specific_evidence(kwargs, row):
+    result = resolve_tz(WALL, city_tz=NY, **kwargs)
+
+    assert result.reason == row
+    assert result.zone == LA  # the city zone did not decide the zone either
+
+
+@pytest.mark.parametrize(
+    ("start", "row"),
+    [(NY_INSTANT, "U2"), (at(WALL, -8), "B3")],
+    ids=["utc-instant", "fixed-offset"],
+)
+def test_resolve_tz_an_instant_or_an_offset_ignores_the_city_zone(start, row):
+    # A time that already carries its own claim never falls through to what we hold.
+    result = resolve_tz(start, city_tz=NY)
+
+    assert result.reason == row
+    assert result.zone != NY
+
+
+@pytest.mark.parametrize(
+    ("start", "confidence", "gate"),
+    [(GAP, "0.65", Gate.IN_REVIEW), (FOLD, "0.80", Gate.PUBLISH_FLAGGED)],
+    ids=["gap", "fold"],
+)
+def test_resolve_tz_city_zone_carries_the_dst_caps(start, confidence, gate):
+    # The caps are what keeps 0.90 honest: a reading that genuinely needs a human still gets
+    # one, without flagging every event in every newly provisioned city.
+    result = resolve_tz(start, city_tz=NY)
+
+    assert result.reason == "C1b"
+    assert result.confidence == Decimal(confidence)
+    assert result.gate is gate
+
+
+def test_resolve_tz_city_zone_reads_the_end_in_the_same_zone():
+    result = resolve_tz(WALL, city_tz=NY, end=wall("2026-11-05T22:00"))
+
+    assert result.end_utc == datetime(2026, 11, 6, 3, 0, tzinfo=UTC)
+
+
+def test_resolve_tz_invalid_city_tz_is_ignored_not_raised():
+    # Unlike venue_tz: a bad city zone costs that city its date-only events rather than
+    # raising inside the ingest loop and taking the rest of the run's candidates with it.
+    assert resolve_tz(WALL, city_tz="Mars/Olympus_Mons") == TzRejection(
+        RejectReason.TZ_UNRESOLVABLE
+    )
+    assert resolve_tz(WALL, city_tz="EST") == TzRejection(RejectReason.TZ_UNRESOLVABLE)
+
+
+def test_resolve_tz_city_tz_is_canonicalized_like_every_other_zone():
+    assert resolve_tz(WALL, city_tz="US/Eastern").zone == NY
+
+
+@pytest.mark.parametrize("city_tz", [None, ""])
+def test_resolve_tz_without_a_city_zone_is_exactly_todays_behaviour(city_tz):
+    # The additive guarantee, asserted rather than assumed: every source that predates this
+    # field carries no city_tz, and nothing about its resolution moves.
+    assert resolve_tz(WALL, city_tz=city_tz) == TzRejection(RejectReason.TZ_UNRESOLVABLE)
+    assert resolve_tz(WALL, venue_tz=NY, city_tz=city_tz) == resolve_tz(WALL, venue_tz=NY)
+    assert resolve_tz(WALL, source_zone=LA, city_tz=city_tz) == resolve_tz(WALL, source_zone=LA)

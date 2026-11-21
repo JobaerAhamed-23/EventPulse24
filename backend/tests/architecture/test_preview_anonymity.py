@@ -1,10 +1,15 @@
-"""The Pulse Preview is a public surface: no session, no `personal`, no `request.user`.
+"""The public surfaces carry no session, no `personal` and no `request.user`.
 
 AD-12: "Public event pages render fully without a session." The Pulse Preview is the
 public surface's most important page — it is the first thing a visitor sees — and the
 property is what makes it **cacheable**. A response that depends on who asked cannot be
 cached, and a shared cache that ignored the session would serve one visitor's response
 to another.
+
+**The city picker's choices endpoint is held to the same rule**, and is in the list below.
+It is anonymous for the same reason and cached harder, since its answer changes only when
+code ships. `public_surface` is here too: it is where both routes get their throttle key
+and their cache headers, so a session dependency introduced there would reach both.
 
 **These are checks on the source, not on the behaviour.** The behavioural test lives in
 `tests/api/test_preview_api.py` (a signed-in request and an anonymous one get identical
@@ -25,12 +30,19 @@ import pytest
 from shared.db import CATALOG, PERSONAL
 from tests.architecture.checkers import BACKEND_DIR
 
-# The modules that make up the public preview surface.
-PREVIEW_MODULES = (
+# The modules that make up the anonymous public surface. A module added here is one more
+# place that may never read a session; a public module *missing* from here is checked by
+# nothing at all.
+PUBLIC_SURFACE_MODULES = (
     "apps/catalog/preview_api.py",
     "apps/catalog/preview_schemas.py",
+    "apps/catalog/public_surface.py",
+    "apps/catalog/cities_api.py",
     "apps/ingestion/services/preview_read.py",
 )
+
+#: Kept as an alias: the preview's own modules are a subset, and other tests name it.
+PREVIEW_MODULES = PUBLIC_SURFACE_MODULES
 
 #: The strings that would mean a session dependency.
 #:
@@ -391,11 +403,13 @@ def test_the_public_preview_router_has_no_auth_and_no_session_dependency():
 
     public = [router for prefix, router in getattr(api, "_routers", []) if prefix == "/public"]
 
-    assert len(public) == 1, f"expected exactly one public router, found {len(public)}"
-    router = public[0]
-
-    auth = getattr(router, "auth", NOT_SET_TYPE)
-    assert auth is None or isinstance(auth, NOT_SET_TYPE), (
-        f"the public preview router must have no `auth`, but it has {auth!r}. The "
-        "preview is a public surface (AD-12): it has no session and no user."
-    )
+    # **Every** router on the prefix, not a fixed count. There were two once the city
+    # picker's choices got their own: pinning the number would have meant this check
+    # failed when a public route was added, rather than covering it.
+    assert public, "expected at least one public router"
+    for router in public:
+        auth = getattr(router, "auth", NOT_SET_TYPE)
+        assert auth is None or isinstance(auth, NOT_SET_TYPE), (
+            f"a router mounted at /public must have no `auth`, but one has {auth!r}. "
+            "These are public surfaces (AD-12): no session and no user."
+        )

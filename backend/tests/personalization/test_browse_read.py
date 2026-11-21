@@ -20,7 +20,7 @@ from django.db.models import F
 from django.test.utils import CaptureQueriesContext
 from freezegun import freeze_time
 
-from apps.ingestion.models import Event
+from apps.ingestion.models import City, CityProvisioning, Event
 from apps.ingestion.services.catalog_read import list_public_candidates
 from apps.personalization.models import DigestPreference
 from apps.personalization.services.browse_read import (
@@ -71,6 +71,24 @@ def _user_with_city(*, city: str | None = CITY, zone: str = ZONE):
         timezone=zone,
     )
     return user_id
+
+
+def _provisioned_city(city: str, *, status: str) -> City:
+    """A `City` with a provisioning row in the given status.
+
+    **The rows are written directly, not provisioned.** The provisioning service mints a
+    city from the *curated catalog*, and this file's `CITY` is `"Brooklyn"` — which the
+    catalog spells `"Brooklyn, NY"`. What this file is about is the read, and the read
+    must work for whatever city a reader picked.
+    """
+    row = City.objects.using(CATALOG).create(
+        name=city,
+        country_code="US",
+        normalized_key=city.lower(),
+        slug=f"slug-{city.lower().replace(' ', '-')}",
+    )
+    CityProvisioning.objects.using(CATALOG).create(city=row, status=status, source_count=1)
+    return row
 
 
 def _event(*, hours_ahead: float, city: str = CITY, **overrides):
@@ -426,6 +444,81 @@ def test_a_user_with_no_preference_at_all_is_the_same_quiet_answer():
     assert page.cards == ()
 
 
+# ── The collection status ────────────────────────────────────────────────────────────────
+#
+# **A city with no events is not one thing.** The status is the catalog's sentence about
+# whether our collection of this city is working, and the surface needs it because
+# "collecting" and "quiet" and "gave nothing" are three different facts.
+#
+# **The status is read from the catalog, never denormalised onto the personal side.** A
+# copy on `DigestPreference` would be a second writer of one fact (AD-16), and it would go
+# stale the moment the probation moved the city to `live`.
+
+
+def test_the_status_is_the_catalogs_own_for_a_provisioned_city():
+    """The status comes from the provisioning row, verbatim."""
+    city = _provisioned_city(CITY, status=CityProvisioning.Status.COLLECTING)
+    user_id = _user_with_city()
+
+    page = read_browse_page(user_id=user_id, now=NOW)
+
+    assert page.city_collection_status == "collecting"
+    assert city.provisioning.status == "collecting"
+
+
+def test_the_status_is_read_for_a_live_city():
+    """A city that has published says `live` — and the surface's quiet state is a
+    *different* answer from the no-sources one."""
+    _provisioned_city(CITY, status=CityProvisioning.Status.LIVE)
+    user_id = _user_with_city()
+
+    page = read_browse_page(user_id=user_id, now=NOW)
+
+    assert page.city_collection_status == "live"
+
+
+def test_a_city_that_was_never_provisioned_has_no_status():
+    """**Empty is its own state, not a missing one.**
+
+    A city with no provisioning row is a city we never provisioned — the reader picked it
+    before automatic collection existed, or provisioning never started for it. It is
+    **not** the "no sources" state: that one says we could not find any event sources,
+    which is a claim about the provider registry that a city with no provisioning row has
+    never made.
+    """
+    user_id = _user_with_city()
+
+    page = read_browse_page(user_id=user_id, now=NOW)
+
+    assert page.city_collection_status == ""
+
+
+def test_a_user_with_no_city_has_no_status():
+    """There is no collection to report about a city the reader does not have."""
+    user_id = _user_with_city(city=None)
+
+    page = read_browse_page(user_id=user_id, now=NOW)
+
+    assert page.city_missing is True
+    assert page.city_collection_status == ""
+
+
+def test_the_status_does_not_change_the_cards():
+    """The status is a *fact about the collection*, not a filter.
+
+    **A city that is `collecting` has no cards** — that is what collecting means. But a
+    `live` city has them, and the status must not change what the surface shows.
+    """
+    _provisioned_city(CITY, status=CityProvisioning.Status.LIVE)
+    user_id = _user_with_city()
+    _event(hours_ahead=4)
+
+    page = read_browse_page(user_id=user_id, now=NOW)
+
+    assert page.city_collection_status == "live"
+    assert len(page.cards) == 1
+
+
 # ── The shared read it borrows ──────────────────────────────────────────────────────
 
 
@@ -504,10 +597,22 @@ def test_scoring_a_full_pool_costs_a_query_and_a_bounded_amount_of_python():
     assert len(page.cards) == BROWSE_PAGE_SIZE
     assert page.has_more is True
 
-    # The catalog side is one pool fetch; the personal side is the saved-state join and the
-    # preference, interest and source-visibility reads. Neither grows with the pool size.
-    assert len(catalog_queries) == 1, (
-        f"the pool must be one query, not one per card: {[q['sql'][:120] for q in catalog_queries]}"
+    # The catalog side is the pool fetch and the city's collection status; the personal side
+    # is the saved-state join and the preference, interest and source-visibility reads.
+    # Neither grows with the pool size.
+    #
+    # **The bound was raised from one to two for this item's status read.** The status is
+    # a *separate* fact from the pool — the pool says which events are on, the status says
+    # whether we are collecting this city at all — and it comes from a different table
+    # (`ingestion_cityprovisioning`), so one query cannot serve both without a join that
+    # would multiply the pool's rows by the provisioning's.
+    #
+    # **It is a fixed bound, not a per-card one**, which is the property this assertion is
+    # for: a new per-card query would break it, and a new constant read would have to
+    # raise it deliberately.
+    assert len(catalog_queries) == 2, (
+        f"the pool must be one query and the status one, not one per card: "
+        f"{[q['sql'][:120] for q in catalog_queries]}"
     )
     # **The bound is the number of *user-preference* reads, not a number of cards.** Every
     # query here is one row-set for the user, whatever the pool size: the digest

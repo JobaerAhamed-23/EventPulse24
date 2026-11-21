@@ -188,9 +188,13 @@ export async function generateMetadata({
  * decision — a per-event rendered OG image would mean a render per share, on a
  * deployment whose public surface is meant to be a static document. The image is the
  * brand's mark, and the *event's* title and description carry the specificity.
+ *
+ * **It is a 1200×630 card, not the square logo.** The dimensions below are the real
+ * ones, so the card is the right shape and the mark is not stretched. The card is built
+ * from the canonical logo (`/brand/eventpulse24-logo-ecg.png`) and shares its background.
  */
 const BRANDED_IMAGE = {
-  url: "/brand/eventpulse24-logo.png",
+  url: "/brand/eventpulse24-og.png",
   width: 1200,
   height: 630,
   alt: "EventPulse24",

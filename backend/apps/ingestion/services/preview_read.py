@@ -114,6 +114,18 @@ def source_badge_for(source: Source) -> str:
 def list_supported_cities(*, now: datetime) -> PreviewCities:
     """The cities the preview can serve, alphabetically.
 
+    **This is the preview's coverage answer. It is not the city picker's source.** The two
+    questions look alike and are not: this one is *"which cities can the Pulse Preview show
+    cards for right now?"*, which depends on what has been ingested and changes as events
+    come and go. The picker asks *"which cities may a reader choose?"*, which is the
+    curated catalog in `domain.city_catalog` and is the same answer in a city with a
+    thousand events and in one with none — see `apps/catalog/cities_api.py`.
+
+    Treating this function as the picker's source is what made the picker a mirror of the
+    catalog: a reader could only pick a city we had already collected, so a city nobody
+    had picked was never collected. Nothing about this function changed when that was
+    fixed; what changed is that the picker stopped calling it.
+
     **A city is supported when it has at least one upcoming, published, non-superseded
     event with a *current* Event Fit.** The "current" half matters: a fit whose
     `event_version` no longer matches its event describes an event that no longer

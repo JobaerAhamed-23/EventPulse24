@@ -44,6 +44,34 @@ class InvalidIntervalError(ValidationError):
     default_message = "That time range doesn't make sense."
 
 
+class UnknownHomeCityError(ValidationError):
+    """A city the reader chose that is not in the curated catalog.
+
+    **A refusal, not a rewrite.** The reader picked a city the catalog does not offer,
+    and the old behaviour — storing `PREVIEW_FALLBACK_CITY` and labelling it `fallback` —
+    answered them with a city they had not chosen while appearing to succeed. That is the
+    fault this error exists to end: "the stored city is the picked city". So an unknown
+    city is refused, nothing is written, and the caller is told which value was refused.
+
+    **It is a `ValidationError`, so it is a 422.** The request was well-formed and offered
+    a city the server does not have; that is input breaking a rule, which is what every
+    other validation failure in this codebase is.
+
+    **`details` carries the rejected city** under `rejected_city`, and the message says
+    nothing about it. The two have different jobs: the message is for a person and stays
+    calm, while the value is machine-readable data the client needs in order to re-select.
+
+    **Echoing it back is not a disclosure.** AD-13 keeps a city out of the audit log and
+    out of the log sink, because a city is weak location data about a real person and a
+    log crosses into `catalog`. This error goes back to the person who just sent the
+    value, over their own session. The audit row is a different audience entirely, and it
+    stays silent.
+    """
+
+    code = "unknown_home_city"
+    default_message = "We don't have that city yet. Pick one from the list."
+
+
 class InvalidQuietHoursWindowError(ValidationError):
     """A Quiet Hours window whose start equals its end (FR-12).
 

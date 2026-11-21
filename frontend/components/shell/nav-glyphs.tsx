@@ -13,6 +13,22 @@
  *
  * **Each glyph is `aria-hidden`.** The label beside it is the name; a screen reader
  * announcing "graphic" before every nav item is noise.
+ *
+ * **`suppressHydrationWarning` is on the `<svg>` because that is the element Dark
+ * Reader mutates.** The extension rewrites the page before React hydrates, and on a
+ * stroke-only SVG it rewrites the stroke: it adds `data-darkreader-inline-stroke` and
+ * a `style` attribute carrying `--darkreader-inline-stroke`. React then compares the
+ * mutated `<svg>` against the server markup, finds the extra attributes, and reports
+ * a hydration mismatch — once per glyph, so the sidenav alone produced eight.
+ *
+ * **React's guard is one level deep.** It silences a mismatch on the element that
+ * carries it, not on that element's descendants — so a flag on the `<svg>`'s parent
+ * would not have covered the `<svg>`. That is why this sits here, on the wrapper
+ * every glyph in this file shares, rather than on the `<nav>` that holds them.
+ *
+ * **The guard is here rather than on each glyph individually** because this wrapper is
+ * the one element all eight glyphs render. One flag covers all of them, and a new
+ * glyph inherits it by being a `<Glyph>`.
  */
 
 /** The shared wrapper: the 16×16 box, the stroke, and the hiding. */
@@ -28,6 +44,11 @@ function Glyph({ children }: { children: React.ReactNode }) {
       strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
+      /**
+       * Dark Reader's stroke rewrite, silenced. See the file docstring — the guard is
+       * one level deep, so it belongs on the `<svg>` itself.
+       */
+      suppressHydrationWarning
     >
       {children}
     </svg>

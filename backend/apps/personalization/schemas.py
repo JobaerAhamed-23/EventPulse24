@@ -634,10 +634,11 @@ class DigestPreferenceIn(Schema):
     delivery time must not silently clear the city or silently re-include personal
     events.
 
-    **`city` is the user's home city, in the catalog's spelling.** A city the catalog
-    does not cover is stored as the fallback with `city_source` `fallback`, so the digest
-    can say "we don't have your city yet" rather than passing the fallback off as the
-    user's city.
+    **`city` is the user's home city, in the catalog's spelling.** A city in the
+    curated catalog is stored **exactly as sent**, with `city_source` set to `choice`.
+    A city **outside** it is **refused** — the request answers 422 and nothing is
+    stored — because the stored city is the picked city: a reader who chose Chittagong
+    must not be answered with New York City and a cheerful 200.
 
     **A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an
     omitted field are the same value here, so "leave it alone" and "clear it" cannot be
@@ -1581,6 +1582,15 @@ class BrowseOut(Schema):
     #: True when the user has never set a city. The surface shows the quiet empty state
     #: with "Change city" rather than guessing one the user did not choose.
     city_missing: bool = False
+    #: How the collection of this city is going — `collecting`, `live`, `no_providers`,
+    #: `yielded_nothing`, `paused` or `failed`. **Empty when the user has no city, and
+    #: empty for a city we never provisioned.** Both are answers, not failures.
+    #:
+    #: **It is the ingestion model's own vocabulary, carried verbatim.** Restating it
+    #: here would be a second vocabulary that could drift from the model's — and a new
+    #: status added to the model would then reach the surface unhandled. The frontend
+    #: holds its set to the model's, in a test.
+    city_collection_status: str = ""
 
 
 #: The three states the source-mute control offers, as a closed set.

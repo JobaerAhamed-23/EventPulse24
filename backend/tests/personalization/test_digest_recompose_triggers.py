@@ -219,12 +219,24 @@ def test_the_job_is_queued_after_the_commit_not_inside_it(sent, on_commit):
 
 
 def test_the_callback_is_registered_on_the_personal_alias_and_robustly(on_commit):
-    """`robust=True` is what keeps a broker outage from failing the user's write."""
+    """`robust=True` is what keeps a broker outage from failing the user's write.
+
+    **Two callbacks now, and both are robust.** Setting a home city asks for a
+    recomposition *and* asks `ingestion` to start collecting for the city
+    (city-picker-and-auto-collection) — and the second one writes in the `catalog`
+    schema, which is exactly the kind of slow or broken call that must not fail the
+    reader's save. The assertion is on **every** callback, so a future one registered
+    without `robust=True` fails here rather than at a reader's expense.
+    """
     user_id = uuid7()
 
     set_home_city(user_id=user_id, city="Dhaka", source="choice", actor=actor(user_id), now=NOW)
 
-    assert [(using, robust) for _f, using, robust in on_commit.captured] == [(PERSONAL, True)]
+    captured = [(using, robust) for _f, using, robust in on_commit.captured]
+    assert captured, "no callback was registered at all"
+    assert set(captured) == {(PERSONAL, True)}
+    assert all(using == PERSONAL for using, _robust in captured)
+    assert all(robust for _using, robust in captured)
 
 
 def test_a_broker_outage_does_not_fail_the_write(monkeypatch, on_commit):

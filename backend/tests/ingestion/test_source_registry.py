@@ -265,6 +265,10 @@ def test_a_high_priority_source_may_not_be_registered_with_a_weekly_cadence():
         ("source_type", "blog"),
         ("acquisition_method", "scrape"),
         ("tz_coverage", "some"),
+        ("city_tz", "Mars/Olympus_Mons"),
+        ("city_tz", "EST"),  # loads in zoneinfo, but not a zone an event can happen in
+        ("city_tz", "z" * 65),
+        ("city_tz", None),
         ("freshness_ttl_hours", 0),
         ("freshness_ttl_hours", True),
         ("ingestion_cadence", 4),
@@ -276,6 +280,51 @@ def test_register_source_invalid_field_refused(field, value):
 
     assert _locs(excinfo.value) == [[field]]
     assert _nothing_written()
+
+
+def test_register_source_stores_a_city_zone_canonicalized():
+    # FR-60 row C1b's input. Canonicalized on the way in, like a venue's tz, so the column
+    # holds one spelling per zone and `resolve_tz` reads back exactly what was validated.
+    stored = _reload(_register(city="Dhaka", city_tz=" Asia/Dhaka "))
+
+    assert stored.city_tz == "Asia/Dhaka"
+
+    legacy = _register(url="https://two.example.test/f.rss", city_tz="US/Pacific")
+    assert _reload(legacy).city_tz == "America/Los_Angeles"
+
+
+def test_register_source_without_a_city_zone_stores_blank():
+    # Every source that predates this field. A blank city_tz changes no resolution at all —
+    # `tests/domain/test_timezones.py` asserts that half.
+    assert _reload(_register()).city_tz == ""
+
+
+def test_city_zone_and_tz_coverage_are_unrelated():
+    # tz_coverage describes whether the *feed* carries zones; city_tz is a fact about the
+    # *city*. The Dhaka seed is honestly both: tz_coverage="none" with a real city zone.
+    stored = _reload(_register(tz_coverage="none", city="Dhaka", city_tz="Asia/Dhaka"))
+
+    assert (stored.tz_coverage, stored.city_tz) == ("none", "Asia/Dhaka")
+
+
+def test_update_source_can_set_and_clear_a_city_zone():
+    source = _register()
+
+    update_source(actor=STAFF, source_id=source.id, changes={"city_tz": "Asia/Dhaka"})
+    assert _reload(source).city_tz == "Asia/Dhaka"
+
+    update_source(actor=STAFF, source_id=source.id, changes={"city_tz": ""})
+    assert _reload(source).city_tz == ""
+
+
+def test_update_source_invalid_city_zone_refused_and_row_unchanged():
+    source = _register(city_tz="Asia/Dhaka")
+
+    with pytest.raises(ValidationError) as excinfo:
+        update_source(actor=STAFF, source_id=source.id, changes={"city_tz": "Mars/Olympus_Mons"})
+
+    assert _locs(excinfo.value) == [["city_tz"]]
+    assert _reload(source).city_tz == "Asia/Dhaka"
 
 
 def test_register_source_same_feed_under_another_spelling_refused():
@@ -606,6 +655,61 @@ def test_pause_source_by_system_actor_logs_warning_with_source_id(caplog):
 def test_pause_source_unknown_id_not_found():
     with pytest.raises(SourceNotFoundError):
         pause_source(actor=STAFF, source_id=uuid7())
+
+
+# --- the pause reason -------------------------------------------------------------------------
+
+
+def test_a_pause_records_the_reason_on_the_row():
+    """**The reason is state, not history.** The city reads it to tell a hand-pause from
+    the probation's own pause, *right now* — and the audit log is only retained 24
+    months."""
+    source = _register()
+
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.MANUAL)
+
+    assert _reload(source).paused_reason == Source.PausedReason.MANUAL
+
+
+def test_the_pause_reason_is_not_in_the_audit_details():
+    """The audit's `details` stay exactly `{"from", "to"}` — FR-13's contract, and the
+    shape every other status change has."""
+    source = _register()
+
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+
+    assert _audit(source.id)[-1].details == {"from": "active", "to": "paused"}
+
+
+def test_a_pause_with_no_reason_records_none():
+    """An empty reason means "we do not know", and the city reads it as a hand-pause."""
+    source = _register()
+
+    pause_source(actor=STAFF, source_id=source.id)
+
+    assert _reload(source).paused_reason == ""
+
+
+def test_a_resume_clears_the_reason():
+    source = _register()
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+
+    resume_source(actor=STAFF, source_id=source.id)
+
+    assert _reload(source).paused_reason == ""
+
+
+def test_a_resume_clears_the_zero_yield_counter():
+    """Otherwise the next run would instantly re-pause the source, and the resume would
+    be a no-op in everything but name."""
+    source = _register()
+    source.consecutive_zero_yield_runs = 2
+    source.save(using=CATALOG, update_fields=["consecutive_zero_yield_runs"])
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+
+    resume_source(actor=STAFF, source_id=source.id)
+
+    assert _reload(source).consecutive_zero_yield_runs == 0
 
 
 # --- record_tos_review -------------------------------------------------------------------------

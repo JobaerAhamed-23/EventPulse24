@@ -25,7 +25,7 @@ from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from apps.ingestion.models import City, Event, EventFit
+from apps.ingestion.models import City, CityProvisioning, Event, EventFit
 from shared.db import CATALOG, PERSONAL
 from shared.errors import ErrorOut
 from tests.ingestion.factories import EventFactory, VenueFactory
@@ -120,6 +120,7 @@ def test_the_body_carries_every_field_the_page_needs():
         "page",
         "page_size",
         "has_next",
+        "city_collection_status",
     }
 
 
@@ -450,6 +451,13 @@ def test_the_page_costs_a_bounded_number_of_queries():
     listing is a genuinely different query — the counts are ordered by start time and
     the listing by score — so it cannot be folded in.
 
+    **The bound was raised from three to four for this item's collection status.** The
+    status is a fact about a *different* table (`ingestion_cityprovisioning`), and it is
+    read by a second query on the city's own row. It cannot be folded into the counts
+    query without a join that would multiply the fit rows by the provisioning's, and it
+    cannot be folded into the city query without moving the lookup out of the service
+    that owns it.
+
     The number is asserted so that a future change that adds a query has to say so.
     """
     city = _city_with_events(6)
@@ -458,7 +466,7 @@ def test_the_page_costs_a_bounded_number_of_queries():
         response = Client().get(f"/api/catalog/cities/by-slug/{city.slug}")
 
     assert response.status_code == 200
-    assert len(queries) == 3, "the city, the counts, and the listing: " + "; ".join(
+    assert len(queries) == 4, "the city, the counts, the listing, and the status: " + "; ".join(
         str(q["sql"])[:120] for q in queries
     )
 
@@ -526,3 +534,66 @@ def test_the_response_never_carries_the_raw_source_payload():
 
     assert "payload" not in str(body)
     assert "Stripped source text" in str(body)
+
+
+# ── The collection status ──────────────────────────────────────────────────────────────────
+#
+# **The status is a different question from the threshold.** `is_published` asks whether
+# the city has enough events on record to deserve a page; the status asks whether our
+# collection of it is working. A city can be `live` with four events — collection working,
+# page not yet published.
+
+
+def test_the_city_page_carries_the_collection_status():
+    """The status is on the payload, so the page can degrade honestly."""
+    city = _city_with_events(6)
+    CityProvisioning.objects.using(CATALOG).create(
+        city=city, status=CityProvisioning.Status.LIVE, source_count=2
+    )
+
+    body = get_page(city.slug).json()
+
+    assert body["city_collection_status"] == "live"
+
+
+def test_a_city_that_was_never_provisioned_carries_no_status():
+    """Empty is its own state — not a claim about the provider registry."""
+    city = _city_with_events(6)
+
+    body = get_page(city.slug).json()
+
+    assert body["city_collection_status"] == ""
+
+
+def test_a_live_city_below_the_threshold_is_live_and_not_published():
+    """**The two questions do not collapse into one.**
+
+    A city can be `live` — our collection of it is working — and still be below FR-27's
+    threshold, so its page is not published yet. Neither fact cancels the other, and the
+    payload carries both.
+    """
+    city = _city_with_events(4)
+    CityProvisioning.objects.using(CATALOG).create(
+        city=city, status=CityProvisioning.Status.LIVE, source_count=1
+    )
+
+    body = get_page(city.slug).json()
+
+    assert body["city_collection_status"] == "live"
+    assert body["is_published"] is False
+
+
+def test_the_status_does_not_vary_by_the_session():
+    """The status is a fact about a *place*, so the response stays cacheable (AD-12)."""
+    city = _city_with_events(6)
+    CityProvisioning.objects.using(CATALOG).create(
+        city=city, status=CityProvisioning.Status.COLLECTING, source_count=1
+    )
+
+    anonymous = get_page(city.slug).json()
+
+    signed_in = Client()
+    signed_in.cookies["sessionid"] = "not-a-real-session"
+    with_session = signed_in.get(f"/api/catalog/cities/by-slug/{city.slug}").json()
+
+    assert anonymous["city_collection_status"] == with_session["city_collection_status"]

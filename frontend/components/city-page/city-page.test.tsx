@@ -44,6 +44,9 @@ function event(overrides: Record<string, unknown> = {}) {
 function cityPage(overrides: Record<string, unknown> = {}): CityPageOut {
   return {
     country_code: "US",
+    // **The collection status.** A city that was never provisioned has none, and the
+    // page says nothing about a collection it has not begun.
+    city_collection_status: "",
     event_count: 12,
     has_next: false,
     is_published: true,

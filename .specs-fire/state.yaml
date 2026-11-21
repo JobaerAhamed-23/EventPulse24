@@ -1777,6 +1777,101 @@ intents:
         run_id: run-eventpulse24-056
         completed_at: 2026-11-20T12:27:55.367Z
     completed_at: 2026-11-20T12:23:48.600Z
+  - id: city-picker-and-auto-collection
+    title: City Picker Over a Curated World List, With Automatic Collection
+    status: completed
+    created: 2026-11-20
+    work_items:
+      - id: city-catalog-dataset
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: city-choices-endpoint
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-catalog-dataset
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: stored-city-is-the-picked-city
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - city-catalog-dataset
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: source-city-timezone
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on: []
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: city-provider-templates
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-catalog-dataset
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: api-source-parser
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on: []
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: city-provisioning-service
+        status: completed
+        complexity: high
+        mode: validate
+        depends_on:
+          - city-catalog-dataset
+          - city-provider-templates
+          - source-city-timezone
+          - api-source-parser
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: provisioning-probation
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-provisioning-service
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: browse-collecting-states
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-provisioning-service
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: city-coverage-request
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-provisioning-service
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+      - id: home-city-dropdown-catalog
+        status: completed
+        complexity: medium
+        mode: confirm
+        depends_on:
+          - city-choices-endpoint
+          - stored-city-is-the-picked-city
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:52:08.598Z
+    completed_at: 2026-11-21T03:49:48.110Z
 runs:
   active: []
   completed:
@@ -2619,3 +2714,41 @@ runs:
           mode: confirm
       started: 2026-11-20T11:54:04.436Z
       completed: 2026-11-20T12:27:55.367Z
+    - id: run-eventpulse24-057
+      scope: wide
+      work_items:
+        - id: city-catalog-dataset
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: source-city-timezone
+          intent: city-picker-and-auto-collection
+          mode: validate
+        - id: api-source-parser
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: city-choices-endpoint
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: stored-city-is-the-picked-city
+          intent: city-picker-and-auto-collection
+          mode: validate
+        - id: city-provider-templates
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: city-provisioning-service
+          intent: city-picker-and-auto-collection
+          mode: validate
+        - id: provisioning-probation
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: browse-collecting-states
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: city-coverage-request
+          intent: city-picker-and-auto-collection
+          mode: confirm
+        - id: home-city-dropdown-catalog
+          intent: city-picker-and-auto-collection
+          mode: confirm
+      started: 2026-11-20T13:36:37.657Z
+      completed: 2026-11-21T03:52:08.598Z

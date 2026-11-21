@@ -203,8 +203,11 @@ def get_csrf(request):
         "endpoint does not sign anyone in — call `/api/auth/signin` for that — so the "
         "response is byte-identical and header-identical whichever case it was.\n\n"
         "`city` is optional: the visitor's home city, carried across from the preview "
-        "choice. A city the catalog does not cover is stored as the fallback, and the "
-        "response says nothing about it either way."
+        "choice. A city in the curated catalog is stored **exactly as sent**. A city "
+        "**outside** it is **refused** with a 422: the account is still created, but the "
+        "city is not stored and the response names the rejected value — because the stored "
+        "city is the picked city. The sign-up response itself says nothing about the "
+        "city either way."
     ),
 )
 def signup(request, body: SignUpIn):

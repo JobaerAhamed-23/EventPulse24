@@ -206,6 +206,7 @@ def test_dispatch_covers_every_structured_method():
     from apps.ingestion.models import AcquisitionMethod
 
     structured = {
+        AcquisitionMethod.API,
         AcquisitionMethod.JSONLD,
         AcquisitionMethod.RSS,
         AcquisitionMethod.ICS,
@@ -214,7 +215,9 @@ def test_dispatch_covers_every_structured_method():
     assert set(PARSERS) == {m.value for m in structured}
 
 
-@pytest.mark.parametrize("method", ["api", "partnership", "crawl", "nonsense"])
+# `api` was on this list until `api-source-parser` gave it a parser. `partnership` and
+# `crawl` stay: both need an agreement or an approved ToS review before anything is read.
+@pytest.mark.parametrize("method", ["partnership", "crawl", "nonsense"])
 def test_unsupported_methods_return_an_error(method):
     assert parse(method, b"<rss/>", CONTEXT).error == "unsupported_method"
 

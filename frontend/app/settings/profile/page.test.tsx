@@ -35,7 +35,10 @@ const CITY_FOUND = {
   citySource: "choice",
   deliveryTime: "09:00:00",
   timezone: "Asia/Dhaka",
-  choices: ["Dhaka", "Chattogram"],
+  choices: [
+    { value: "Chattogram, Bangladesh", label: "Chattogram, Bangladesh" },
+    { value: "Dhaka", label: "Dhaka, Bangladesh" },
+  ],
 };
 
 vi.mock("@/lib/session", async () => {
@@ -87,7 +90,9 @@ beforeEach(() => {
   readHomeCity.mockReset();
   readHomeCity.mockResolvedValue(CITY_FOUND);
   PUT.mockReset();
-  PUT.mockResolvedValue({ data: { digest: { city: "Dhaka", city_source: "choice", timezone: "Asia/Dhaka" } } });
+  PUT.mockResolvedValue({
+    data: { digest: { city: "Dhaka", city_source: "choice", timezone: "Asia/Dhaka" } },
+  });
 });
 
 describe("the profile screen", () => {
@@ -198,7 +203,12 @@ describe("the place: the city and the zone, which used to live on two other scre
   it("offers the catalog's cities to choose between", async () => {
     render(await SettingsProfilePage());
 
-    expect(screen.getByRole("option", { name: "Chattogram" })).toBeInTheDocument();
+    // **The reader sees the label and the server gets the value.** The two are
+    // different strings on purpose — "Chattogram, Bangladesh" is read, and
+    // "Chattogram, Bangladesh" is stored.
+    expect(screen.getByRole("option", { name: "Chattogram, Bangladesh" })).toHaveValue(
+      "Chattogram, Bangladesh",
+    );
   });
 
   it("is absent when the read failed, rather than an empty picker", async () => {
@@ -291,7 +301,7 @@ describe("the place: the city and the zone, which used to live on two other scre
     });
 
     fireEvent.change(screen.getByRole("combobox", { name: "City" }), {
-      target: { value: "Chattogram" },
+      target: { value: "Chattogram, Bangladesh" },
     });
     await waitFor(() => {
       expect(
@@ -304,7 +314,7 @@ describe("the place: the city and the zone, which used to live on two other scre
     );
     expect(cityCall, "the city control never sent its change").toBeDefined();
     expect(cityCall?.[1].body).toEqual({
-      city: "Chattogram",
+      city: "Chattogram, Bangladesh",
       delivery_time: "09:00:00",
       timezone: "Europe/London",
     });

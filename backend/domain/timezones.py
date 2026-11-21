@@ -14,6 +14,10 @@ Rules that hold everywhere:
   (fold) takes its first occurrence; a time that doesn't exist (gap) keeps zoneinfo's `fold=0`
   reading. Both lower the confidence.
 - `start_time_local` is derived from the UTC instant and the zone, so it always converts back.
+- A naive time with no explicit zone falls back through what we *hold* about the place, in
+  descending order of how specific the evidence is: the venue's registered zone (C1), then
+  the source's city zone (C1b). Both are read with `read_wall_clock`, so both carry the DST
+  caps; the city zone scores lower because a city is a weaker claim than an address.
 """
 
 import re
@@ -28,6 +32,7 @@ from domain.errors import InvalidTimezoneError
 from shared.constants import (
     TZ_CAP_DST_FOLD,
     TZ_CAP_DST_GAP,
+    TZ_SCORE_CITY_ZONE,
     TZ_SCORE_CONFLICT,
     TZ_SCORE_EXPLICIT,
     TZ_SCORE_FIXED_ZONE,
@@ -188,6 +193,7 @@ def resolve_tz(
     *,
     source_zone: str | None = None,
     venue_tz: str | None = None,
+    city_tz: str | None = None,
     end: datetime | None = None,
 ) -> TzResolution | TzRejection:
     """Resolve an event's start (and end) per the FR-60 table.
@@ -195,12 +201,19 @@ def resolve_tz(
     `start` / `end` are naive (a wall-clock time) or aware with a fixed offset, exactly as the
     source gave them. An invalid `source_zone` is ignored; an invalid `venue_tz` raises, because
     the venue registry validates its zones on write.
+
+    **An invalid `city_tz` is ignored rather than raised, unlike `venue_tz`.** The registry
+    guarantees a venue's zone, so a bad one there is a broken invariant worth stopping for. A
+    source's `city_tz` is set by provisioning, and a bad one should cost that one city its
+    date-only events — a state the product already shows honestly — not raise inside the
+    ingest loop and take every other candidate in the run down with it.
     """
     venue = None
     if venue_tz is not None:
         venue = canonical_zone(venue_tz)
         if venue is None:
             raise InvalidTimezoneError(details={"venue_tz": venue_tz})
+    city = canonical_zone(city_tz)
     source = canonical_zone(source_zone)
     offset = start.utcoffset() if start.tzinfo is not None else None
     wall = start.replace(tzinfo=None)
@@ -243,6 +256,12 @@ def resolve_tz(
     elif venue is not None:
         zone, tier, score, reason = venue, Tier.PARTIAL, TZ_SCORE_VENUE_REGISTRY, "C1"
         instant, cap = read_wall_clock(wall, venue)
+        read_from_wall = True
+    elif city is not None:
+        # Only reachable with no source zone, no offset and no venue — the precedence is the
+        # shape of this chain, not a rule someone has to remember to apply.
+        zone, tier, score, reason = city, Tier.PARTIAL, TZ_SCORE_CITY_ZONE, "C1b"
+        instant, cap = read_wall_clock(wall, city)
         read_from_wall = True
     else:
         return TzRejection(RejectReason.TZ_UNRESOLVABLE)

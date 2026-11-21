@@ -307,7 +307,7 @@ export interface paths {
          * Create an account
          * @description Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.
          *
-         *     `city` is optional: the visitor's home city, carried across from the preview choice. A city the catalog does not cover is stored as the fallback, and the response says nothing about it either way.
+         *     `city` is optional: the visitor's home city, carried across from the preview choice. A city in the curated catalog is stored **exactly as sent**. A city **outside** it is **refused** with a 422: the account is still created, but the city is not stored and the response names the rejected value — because the stored city is the picked city. The sign-up response itself says nothing about the city either way.
          */
         post: operations["apps_identity_api_signup"];
         delete?: never;
@@ -436,6 +436,32 @@ export interface paths {
         get: operations["apps_catalog_api_get_city"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/coverage-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask us to cover a city we have no sources for
+         * @description Records that a reader wants us to cover a city we have not covered
+         *
+         *     **One row per city, always.** A second request for the same city does not create a second row — the database refuses it — and the count of how many readers have asked goes up instead. The request is recorded whether it is the first or the hundredth, and the answer is the same either way.
+         *
+         *     **The city must be one we know about.** A request is for a city we have already tried to cover and failed to. A city we have never heard of is a *pick*, and picking it provisions it immediately — which is a better answer than queueing it. So an unknown city answers 422, and nothing is written.
+         *
+         *     Five requests per reader per day; the sixth answers 429 with the wait. The limit is checked before the one-row rule, so a repeated request still spends an attempt.
+         */
+        post: operations["request_city_coverage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -791,6 +817,8 @@ export interface paths {
          * @description The signed-in user's Browse surface: public events in their city across a seven-day window, ranked by the same Relevance Pulse the Pulse Digest uses, with the save state of each card.
          *
          *     The city is the user's **digest preference** city, not a parameter — one meaning of 'your city' across both surfaces, which is why the surface's 'Change city' link goes to account settings. A user who skipped onboarding has no city: the response says `city_missing` and carries no cards, and the client shows the same quiet empty state it shows for a city with nothing on.
+         *
+         *     `city_collection_status` says how the automatic collection of this city is going — `collecting`, `live`, `no_providers`, `yielded_nothing`, `paused` or `failed`. It is empty when the user has no city and empty for a city that was never provisioned. **A city with no events is not one thing**, and this is the fact that tells them apart: a covered city that is simply quiet is `live`, a city we are still collecting is `collecting`, and a city whose sources gave nothing is `yielded_nothing`.
          *
          *     The window is cut in the **user's** timezone, so an event at 11pm local on the seventh day is inside it and one at 1am the next morning is not.
          *
@@ -1261,7 +1289,7 @@ export interface paths {
          * Set the digest delivery time, timezone, home city and personal-events opt-out
          * @description Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.
          *
-         *     `city` is the user's home city, in the catalog's own spelling. A city the catalog does not cover is stored as the fallback and reported back with `city_source` set to `fallback`, so the client can say "we don't have your city yet" rather than implying it is the user's city.
+         *     `city` is the user's home city, in the catalog's own spelling. A city in the curated catalog is stored **exactly as sent**, with `city_source` set to `choice`. A city **outside** it is **refused**: the request answers 422, nothing is stored, and the response names the rejected value — because the stored city is the picked city, and a reader who chose Chittagong must not be answered with New York City and a cheerful 200.
          *
          *     `include_personal_events` defaults to included — personal events are in the digest unless the user opts out. Both fields are optional, and **leaving one out does not change it**: an omitted field (and a `null` city) means "leave it alone", so a client that only wants to change the delivery time does not reset the city. This endpoint cannot clear the city — a `null` and an omitted field are the same value, and a shape that cannot tell them apart must not guess.
          */
@@ -1445,6 +1473,26 @@ export interface paths {
          *     **Seven days, always** — an empty week still has seven day cells. No other user's events are readable.
          */
         get: operations["apps_personalization_api_read_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cities a reader may pick
+         * @description Every city in the curated catalog, alphabetically by label, as `value`/`label` pairs. `value` is the string to store; `label` is the disambiguating form to show. This is the picker's source and is independent of which cities have events — for that, see `/preview/cities`. No session is used and none is set.
+         */
+        get: operations["apps_catalog_cities_api_city_choices"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2005,6 +2053,11 @@ export interface components {
             /** City */
             city: string;
             /**
+             * City Collection Status
+             * @default
+             */
+            city_collection_status: string;
+            /**
              * City Missing
              * @default false
              */
@@ -2285,6 +2338,35 @@ export interface components {
             url: string;
         };
         /**
+         * CityChoiceOut
+         * @description One pickable city: what gets stored, and what the reader reads.
+         *
+         *     **The two are different strings on purpose.** `value` is the catalog's own `name` and
+         *     is what a preference will hold; `label` is the disambiguating display form, computed
+         *     for the dropdown and stored nowhere. `domain.city_catalog` asserts over the whole
+         *     dataset that no row's `value` equals its `label` and that no two rows share either, so
+         *     a reader is never shown two identical options and whatever comes back can be stored
+         *     verbatim.
+         */
+        CityChoiceOut: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * CityChoicesOut
+         * @description Every pickable city, alphabetical by label.
+         *
+         *     **An object rather than a bare array**, matching `PreviewCitiesOut`. A top-level array
+         *     cannot grow a sibling field without breaking every client, and a catalog version or a
+         *     count are both plausible next additions.
+         */
+        CityChoicesOut: {
+            /** Cities */
+            cities: components["schemas"]["CityChoiceOut"][];
+        };
+        /**
          * CityPageEventOut
          * @description One event on a city page.
          *
@@ -2350,8 +2432,20 @@ export interface components {
          *     is the number the threshold was decided on. `has_next` is measured against the
          *     **listing's** total instead — the two counts answer different questions, and a city
          *     between seasons has the first without the second.
+         *
+         *     **`city_collection_status` is a different question from `is_published`.** The
+         *     threshold asks whether the city has enough events on record to deserve a page; the
+         *     status asks whether our collection of it is working. **The threshold decides whether
+         *     the page shows a listing; the status only ever adds a sentence to the sparse
+         *     state**, and never removes the "coming soon" copy — which is true of the threshold
+         *     whatever the collection is doing.
          */
         CityPageOut: {
+            /**
+             * City Collection Status
+             * @default
+             */
+            city_collection_status: string;
             /** Country Code */
             country_code: string;
             /** Event Count */
@@ -2752,6 +2846,45 @@ export interface components {
              * @enum {string}
              */
             kind: "personal_event" | "saved_event";
+        };
+        /**
+         * CoverageRequestIn
+         * @description The request: the city to cover.
+         *
+         *     **A city *name*, and only a city name.** The catalog is keyed by name at the wire and
+         *     by id in the row, and the service resolves one to the other. The reader has the name —
+         *     it is the city they picked — and the catalog has the id.
+         *
+         *     **Bounded, and the bound is a refusal.** An empty city names no city, and one longer
+         *     than the catalog's own name column cannot name one either, so both are a 422 rather
+         *     than a lookup that would match nothing.
+         */
+        CoverageRequestIn: {
+            /** City */
+            city: string;
+        };
+        /**
+         * CoverageRequestOut
+         * @description What one request produced.
+         *
+         *     **`recorded` is the answer the control reads.** It is always true on a success — the
+         *     endpoint has no other successful answer — and it is here so the control has something
+         *     explicit to branch on rather than inferring from a status code it did not write.
+         *
+         *     **`request_count` is the number editorial reads, and it is not the reader's business.**
+         *     It is on the wire because the editorial surface reads it, and the reader's control
+         *     does not show it: a reader who is told "you are the 47th person to ask" is being told
+         *     something about a crowd, and the product's voice is calm.
+         */
+        CoverageRequestOut: {
+            /** City */
+            city: string;
+            /** Created */
+            created: boolean;
+            /** Recorded */
+            recorded: boolean;
+            /** Request Count */
+            request_count: number;
         };
         /**
          * CsrfTokenOut
@@ -3163,10 +3296,11 @@ export interface components {
          *     delivery time must not silently clear the city or silently re-include personal
          *     events.
          *
-         *     **`city` is the user's home city, in the catalog's spelling.** A city the catalog
-         *     does not cover is stored as the fallback with `city_source` `fallback`, so the digest
-         *     can say "we don't have your city yet" rather than passing the fallback off as the
-         *     user's city.
+         *     **`city` is the user's home city, in the catalog's spelling.** A city in the
+         *     curated catalog is stored **exactly as sent**, with `city_source` set to `choice`.
+         *     A city **outside** it is **refused** — the request answers 422 and nothing is
+         *     stored — because the stored city is the picked city: a reader who chose Chittagong
+         *     must not be answered with New York City and a cheerful 200.
          *
          *     **A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an
          *     omitted field are the same value here, so "leave it alone" and "clear it" cannot be
@@ -4747,10 +4881,12 @@ export interface components {
          *     visitor and break AD-12's cacheability. So the carry is a **request field**: the
          *     frontend reads the cookie and sends the city here.
          *
-         *     A city the catalog does not cover is stored as the fallback with `city_source`
-         *     `fallback`, so the digest can say "we don't have your city yet" rather than passing
-         *     the fallback off as the user's city. The sign-up **response** says nothing about
-         *     it either way — a city is not an account-existence oracle, but the response shape
+         *     A city in the curated catalog is stored **exactly as sent**, with `city_source`
+         *     `choice`. A city **outside** it is **refused** — the account is still created, but
+         *     the city is not stored and the caller is told which value was refused — because the
+         *     stored city is the picked city, and a reader who chose Chittagong must not be
+         *     answered with New York City. The sign-up **response** says nothing about the city
+         *     either way — a city is not an account-existence oracle, but the response shape
          *     carries nothing beyond `status` in any case.
          */
         SignUpIn: {
@@ -6121,6 +6257,48 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    request_city_coverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverageRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageRequestOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7779,6 +7957,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelineOut"];
+                };
+            };
+        };
+    };
+    apps_catalog_cities_api_city_choices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityChoicesOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

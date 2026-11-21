@@ -339,6 +339,7 @@ def set_digest_preference(
     now: datetime,
     city: str | None = None,
     include_personal_events: bool | None = None,
+    city_source: str = SOURCE_CHOICE,
 ) -> OnboardingState:
     """Set the digest delivery time and timezone, and optionally the city and opt-out.
 
@@ -360,6 +361,11 @@ def set_digest_preference(
     **The city still gets its own audit row**, because it is a separate decision with a
     different privacy rule: the city never appears in an audit row's details (AD-13), and
     the flag does.
+
+    **`city_source` is `choice` for a reader's pick**, and that is the default because
+    every browser path that sets a city is a reader picking one. The only other caller is
+    the local dev seed, which authors a *fictional* city for a walk-through and is not a
+    reader — so it says so, and the city is stored verbatim.
     """
     zone = _validated_zone(timezone_name)
     wall_clock = _validated_delivery_time(delivery_time)
@@ -389,7 +395,7 @@ def set_digest_preference(
             set_home_city(
                 user_id=user_id,
                 city=city,
-                source=SOURCE_CHOICE,
+                source=city_source,
                 actor=actor,
                 now=now,
             )

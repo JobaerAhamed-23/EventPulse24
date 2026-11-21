@@ -1,0 +1,4 @@
+{
+  "_links": { "self": { "href": "/discovery/v2/events.json?city=Chittagong{&page,size,sort}", "templated": true } },
+  "page": { "size": 20, "totalElements": 0, "totalPages": 0, "number": 0 }
+}

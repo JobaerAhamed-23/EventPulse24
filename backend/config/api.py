@@ -6,6 +6,7 @@ Its OpenAPI schema is the contract the frontend client is generated from (AD-19)
 from ninja import NinjaAPI
 
 from apps.catalog.api import router as catalog_router
+from apps.catalog.cities_api import router as cities_router
 from apps.catalog.preview_api import router as preview_router
 from apps.delivery.api import router as reminders_router
 from apps.delivery.email_api import router as email_router
@@ -15,6 +16,7 @@ from apps.identity.api import router as auth_router
 from apps.identity.billing_api import router as billing_router
 from apps.identity.export_api import router as export_router
 from apps.identity.webhooks_api import router as billing_webhook_router
+from apps.ingestion.coverage_api import router as coverage_router
 from apps.personalization.api import router as personal_router
 from apps.personalization.collections_api import router as collections_router
 from apps.personalization.detail_api import router as detail_router
@@ -30,10 +32,24 @@ install_error_handlers(api)
 api.add_router("/health", health_router)
 # AD-12: the public catalog is session-free and read-only.
 api.add_router("/catalog", catalog_router)
+# The coverage request — a reader asking us to go and cover a city we have not covered.
+# **It is on the `/catalog` prefix because the row is a catalog row**: it is about a place,
+# it lives on the catalog side of the AD-3 wall, and `ingestion` owns it (AD-16).
+#
+# **It is the one write on this prefix, so it carries `auth=current_user`.** AD-12's
+# session-free rule is about the *public* catalog — the answers that are identical for
+# every caller, and are therefore cacheable. A write is not that: every write on this
+# surface is a signed-in act, and the reader's id comes from the session and never from
+# the payload.
+api.add_router("/catalog", coverage_router)
 # FR-2: the Pulse Preview — the first value a visitor gets, before an account. It has no
 # `auth=` of its own and never touches `request.user` or `personal`, so its responses are
 # identical for a signed-in caller and an anonymous one, and they stay cacheable.
 api.add_router("/public", preview_router)
+# The picker's choices, on the same public prefix: `GET /api/public/cities`. A separate
+# router because it answers a different question from the preview's city list — the
+# catalog a reader may pick from, not the cities the preview can serve today.
+api.add_router("/public", cities_router)
 # FR-4, AD-18: the auth surface. It has no `auth=` of its own — sign-up and sign-in are
 # how a session is created — and it enforces CSRF on its unsafe requests explicitly,
 # because Django Ninja exempts every view it builds from Django's CSRF middleware.

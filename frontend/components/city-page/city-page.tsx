@@ -193,10 +193,97 @@ export function CityPage({ page, currentPage }: CityPageProps) {
             We haven&apos;t found enough events in {page.name} yet to fill this page. Check back
             soon — we list them as they are announced.
           </p>
+          {/*
+           **One added sentence, and only when it is true.**
+           *
+           **The threshold and the collection status are different questions.**
+           * `is_published` asks whether the city has enough events on record to deserve
+           * a page; the status asks whether our collection of it is working. A city can
+           * be `live` with four events — collection working, page not yet published —
+           * and a city can be `collecting` with six, which is published while the first
+           * events are still on their way.
+           *
+           **So the threshold decides whether the page shows a listing, and the status
+           * only ever adds a sentence to the sparse state.** The "coming soon" copy is
+           * true of the threshold whatever the collection is doing, and it is never
+           * removed.
+           *
+           **A `live` city says nothing here**, because the sparse state is the
+           * threshold's answer and the collection's answer is "working" — which the
+           * listing will show soon enough.
+           */}
+          {collectionNote(page.name, page.city_collection_status)}
         </section>
       )}
     </article>
   );
+}
+
+/**
+ * The one sentence the sparse state adds, when there is one.
+ *
+ * **It is a sentence about *our collection*, not about the city.** "We're collecting
+ * events for {city}" is a fact about what we are doing; "We couldn't find any event
+ * sources for {city}" is a fact about our coverage. Neither claims anything about the
+ * city's evening, and neither is a substitute for the "coming soon" copy — which is
+ * true of the threshold and stays.
+ *
+ * **A `live` city says nothing.** Its collection is working, and the threshold's
+ * "coming soon" is the whole of the truth about the page.
+ *
+ * **An unknown status says nothing too.** The fallback is silence rather than a guess
+ * — a new status added to the backend must not reach the surface as a sentence nobody
+ * wrote. The vocabulary is held to the backend's in a test.
+ */
+function collectionNote(city: string, status: string) {
+  if (status === "collecting") {
+    return (
+      <p
+        className="mt-4 max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-lg)]"
+        data-city-collecting
+      >
+        We&apos;re collecting events for {city} — check back soon.
+      </p>
+    );
+  }
+  if (
+    status === "no_providers" ||
+    status === "failed" ||
+    status === "yielded_nothing" ||
+    status === "paused"
+  ) {
+    return (
+      <p
+        className="mt-4 max-w-(--layout-container-reading) text-ink-secondary [font:var(--type-scale-body-lg)]"
+        data-city-no-sources
+      >
+        We couldn&apos;t find any event sources for {city}.
+      </p>
+    );
+  }
+  /*
+   **A `live` city says nothing, and the comparison is written out.**
+   *
+   **A working collection is not news.** The "coming soon" copy above is the whole of
+   *the truth about a sparse page — the threshold's answer — and a city whose
+   *collection is working has nothing to add to it.
+   *
+   **The comparison is here so the status is *recognised* in code**, not merely handled
+   *by omission: the vocabulary test holds this surface and Browse's to the same set of
+   *statuses, and a status missing from the set is a status the backend has and the
+   *surface cannot report.
+   */
+  if (status === "live") {
+    return null;
+  }
+  /*
+   **An unknown status says nothing too.**
+   *
+   **The fallback is silence rather than a guess.** A new status added to the backend
+   *must not reach the surface as a sentence nobody wrote — so the two branches above
+   *are the whole of the vocabulary, and anything else falls through to `null`.
+   */
+  return null;
 }
 
 /**

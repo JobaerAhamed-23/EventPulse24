@@ -86,7 +86,10 @@ const CITY_FOUND = {
   citySource: "choice",
   deliveryTime: "09:00:00",
   timezone: "Asia/Dhaka",
-  choices: ["Dhaka", "Chattogram"],
+  choices: [
+    { value: "Chattogram, Bangladesh", label: "Chattogram, Bangladesh" },
+    { value: "Dhaka", label: "Dhaka, Bangladesh" },
+  ],
 };
 
 beforeEach(() => {

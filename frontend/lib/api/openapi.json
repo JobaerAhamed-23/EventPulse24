@@ -254,6 +254,11 @@
             "title": "City",
             "type": "string"
           },
+          "city_collection_status": {
+            "default": "",
+            "title": "City Collection Status",
+            "type": "string"
+          },
           "city_missing": {
             "default": false,
             "title": "City Missing",
@@ -667,6 +672,42 @@
         "title": "CheckoutOut",
         "type": "object"
       },
+      "CityChoiceOut": {
+        "description": "One pickable city: what gets stored, and what the reader reads.\n\n**The two are different strings on purpose.** `value` is the catalog's own `name` and\nis what a preference will hold; `label` is the disambiguating display form, computed\nfor the dropdown and stored nowhere. `domain.city_catalog` asserts over the whole\ndataset that no row's `value` equals its `label` and that no two rows share either, so\na reader is never shown two identical options and whatever comes back can be stored\nverbatim.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "CityChoiceOut",
+        "type": "object"
+      },
+      "CityChoicesOut": {
+        "description": "Every pickable city, alphabetical by label.\n\n**An object rather than a bare array**, matching `PreviewCitiesOut`. A top-level array\ncannot grow a sibling field without breaking every client, and a catalog version or a\ncount are both plausible next additions.",
+        "properties": {
+          "cities": {
+            "items": {
+              "$ref": "#/components/schemas/CityChoiceOut"
+            },
+            "title": "Cities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cities"
+        ],
+        "title": "CityChoicesOut",
+        "type": "object"
+      },
       "CityPageEventOut": {
         "description": "One event on a city page.\n\n**The score and the tags are the persisted Event Fit, served as stored** (AD-10).\nThe page shows what the fit says, not what a fresh computation would say — so a\nscore of 1 on an event that would now score 5 is shown as 1, and the reason is that\nthe fit has not been recomputed yet.",
         "properties": {
@@ -775,8 +816,13 @@
         "type": "object"
       },
       "CityPageOut": {
-        "description": "One city page: the city's identity, its events, and whether it is published.\n\n**`is_published` is FR-27's threshold, computed by the listing's own filters.** A\ncity with more than the threshold's events is published; a city with fewer is not,\nand the frontend renders \"coming soon\" rather than a listing. **The city page\ndegrades; it does not 404** — a URL that vanishes after ranking throws away every\nbit of ranking it earned.\n\n**`event_count` is the qualifying count**, not the number of items on this page. It\nis the number the threshold was decided on. `has_next` is measured against the\n**listing's** total instead — the two counts answer different questions, and a city\nbetween seasons has the first without the second.",
+        "description": "One city page: the city's identity, its events, and whether it is published.\n\n**`is_published` is FR-27's threshold, computed by the listing's own filters.** A\ncity with more than the threshold's events is published; a city with fewer is not,\nand the frontend renders \"coming soon\" rather than a listing. **The city page\ndegrades; it does not 404** — a URL that vanishes after ranking throws away every\nbit of ranking it earned.\n\n**`event_count` is the qualifying count**, not the number of items on this page. It\nis the number the threshold was decided on. `has_next` is measured against the\n**listing's** total instead — the two counts answer different questions, and a city\nbetween seasons has the first without the second.\n\n**`city_collection_status` is a different question from `is_published`.** The\nthreshold asks whether the city has enough events on record to deserve a page; the\nstatus asks whether our collection of it is working. **The threshold decides whether\nthe page shows a listing; the status only ever adds a sentence to the sparse\nstate**, and never removes the \"coming soon\" copy — which is true of the threshold\nwhatever the collection is doing.",
         "properties": {
+          "city_collection_status": {
+            "default": "",
+            "title": "City Collection Status",
+            "type": "string"
+          },
           "country_code": {
             "title": "Country Code",
             "type": "string"
@@ -1405,6 +1451,51 @@
         "title": "ConflictSideRef",
         "type": "object"
       },
+      "CoverageRequestIn": {
+        "description": "The request: the city to cover.\n\n**A city *name*, and only a city name.** The catalog is keyed by name at the wire and\nby id in the row, and the service resolves one to the other. The reader has the name —\nit is the city they picked — and the catalog has the id.\n\n**Bounded, and the bound is a refusal.** An empty city names no city, and one longer\nthan the catalog's own name column cannot name one either, so both are a 422 rather\nthan a lookup that would match nothing.",
+        "properties": {
+          "city": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "City",
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ],
+        "title": "CoverageRequestIn",
+        "type": "object"
+      },
+      "CoverageRequestOut": {
+        "description": "What one request produced.\n\n**`recorded` is the answer the control reads.** It is always true on a success — the\nendpoint has no other successful answer — and it is here so the control has something\nexplicit to branch on rather than inferring from a status code it did not write.\n\n**`request_count` is the number editorial reads, and it is not the reader's business.**\nIt is on the wire because the editorial surface reads it, and the reader's control\ndoes not show it: a reader who is told \"you are the 47th person to ask\" is being told\nsomething about a crowd, and the product's voice is calm.",
+        "properties": {
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "recorded": {
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "request_count": {
+            "title": "Request Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "city",
+          "recorded",
+          "request_count",
+          "created"
+        ],
+        "title": "CoverageRequestOut",
+        "type": "object"
+      },
       "CsrfTokenOut": {
         "description": "The CSRF token the frontend sends back on every unsafe request.\n\nThe token is also set as the `csrftoken` cookie on the same response; the frontend\nreads the cookie and echoes the value in the `X-CSRFToken` header. Sending both is\nDjango's own convention, and it is the one `CsrfViewMiddleware` checks.",
         "properties": {
@@ -1996,7 +2087,7 @@
         "type": "object"
       },
       "DigestPreferenceIn": {
-        "description": "The digest delivery time and timezone, and the two content preferences.\n\nThe delivery time is a **local wall clock** — \"09:00\" means nine in the morning where\nthe user is, not nine in the morning UTC. The zone says where that is.\n\n**The two new fields are optional, and omission means \"leave it alone\".** The city\nand the opt-out are separate settings, and a client that only wants to change the\ndelivery time must not silently clear the city or silently re-include personal\nevents.\n\n**`city` is the user's home city, in the catalog's spelling.** A city the catalog\ndoes not cover is stored as the fallback with `city_source` `fallback`, so the digest\ncan say \"we don't have your city yet\" rather than passing the fallback off as the\nuser's city.\n\n**A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an\nomitted field are the same value here, so \"leave it alone\" and \"clear it\" cannot be\ntold apart — and a shape that cannot say which one it means must not guess. Guessing\n\"clear\" would wipe the city of every client that sends the field as `null`, and\nguessing \"leave alone\" would make the value unreachable. So a `null` city is\n**left alone**, and clearing is not offered here at all: the service can clear the\ncity (`set_home_city(city=None)`), and a future settings endpoint may expose it\nthrough a shape that *can* distinguish the two. Until then, \"no city\" is reached by\nthe sign-up path or by the backfill, not by this request.",
+        "description": "The digest delivery time and timezone, and the two content preferences.\n\nThe delivery time is a **local wall clock** — \"09:00\" means nine in the morning where\nthe user is, not nine in the morning UTC. The zone says where that is.\n\n**The two new fields are optional, and omission means \"leave it alone\".** The city\nand the opt-out are separate settings, and a client that only wants to change the\ndelivery time must not silently clear the city or silently re-include personal\nevents.\n\n**`city` is the user's home city, in the catalog's spelling.** A city in the\ncurated catalog is stored **exactly as sent**, with `city_source` set to `choice`.\nA city **outside** it is **refused** — the request answers 422 and nothing is\nstored — because the stored city is the picked city: a reader who chose Chittagong\nmust not be answered with New York City and a cheerful 200.\n\n**A `null` city is not a clearing, and this endpoint cannot clear.** A `null` and an\nomitted field are the same value here, so \"leave it alone\" and \"clear it\" cannot be\ntold apart — and a shape that cannot say which one it means must not guess. Guessing\n\"clear\" would wipe the city of every client that sends the field as `null`, and\nguessing \"leave alone\" would make the value unreachable. So a `null` city is\n**left alone**, and clearing is not offered here at all: the service can clear the\ncity (`set_home_city(city=None)`), and a future settings endpoint may expose it\nthrough a shape that *can* distinguish the two. Until then, \"no city\" is reached by\nthe sign-up path or by the backfill, not by this request.",
         "properties": {
           "city": {
             "anyOf": [
@@ -4447,7 +4538,7 @@
         "type": "object"
       },
       "SignUpIn": {
-        "description": "The sign-up request: an address, a password, and optionally a home city.\n\nThe password is a plain string here and is never echoed back. It goes to\n`apps.identity.services.sign_up`, which validates it against Django's configured\npassword validators and hashes it.\n\n**`city` is optional, and it is the visitor's preview choice carried across\nsign-up.** The preview choice lives in a **session cookie** read in the browser\nonly — deliberately, because a server-side choice would make `/preview` vary per\nvisitor and break AD-12's cacheability. So the carry is a **request field**: the\nfrontend reads the cookie and sends the city here.\n\nA city the catalog does not cover is stored as the fallback with `city_source`\n`fallback`, so the digest can say \"we don't have your city yet\" rather than passing\nthe fallback off as the user's city. The sign-up **response** says nothing about\nit either way — a city is not an account-existence oracle, but the response shape\ncarries nothing beyond `status` in any case.",
+        "description": "The sign-up request: an address, a password, and optionally a home city.\n\nThe password is a plain string here and is never echoed back. It goes to\n`apps.identity.services.sign_up`, which validates it against Django's configured\npassword validators and hashes it.\n\n**`city` is optional, and it is the visitor's preview choice carried across\nsign-up.** The preview choice lives in a **session cookie** read in the browser\nonly — deliberately, because a server-side choice would make `/preview` vary per\nvisitor and break AD-12's cacheability. So the carry is a **request field**: the\nfrontend reads the cookie and sends the city here.\n\nA city in the curated catalog is stored **exactly as sent**, with `city_source`\n`choice`. A city **outside** it is **refused** — the account is still created, but\nthe city is not stored and the caller is told which value was refused — because the\nstored city is the picked city, and a reader who chose Chittagong must not be\nanswered with New York City. The sign-up **response** says nothing about the city\neither way — a city is not an account-existence oracle, but the response shape\ncarries nothing beyond `status` in any case.",
         "properties": {
           "city": {
             "anyOf": [
@@ -5769,7 +5860,7 @@
     },
     "/api/auth/signup": {
       "post": {
-        "description": "Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.\n\n`city` is optional: the visitor's home city, carried across from the preview choice. A city the catalog does not cover is stored as the fallback, and the response says nothing about it either way.",
+        "description": "Creates an account. The answer is the same whether the address was new or already taken: an existing account holder is told by email instead. This endpoint does not sign anyone in — call `/api/auth/signin` for that — so the response is byte-identical and header-identical whichever case it was.\n\n`city` is optional: the visitor's home city, carried across from the preview choice. A city in the curated catalog is stored **exactly as sent**. A city **outside** it is **refused** with a 422: the account is still created, but the city is not stored and the response names the rejected value — because the stored city is the picked city. The sign-up response itself says nothing about the city either way.",
         "operationId": "apps_identity_api_signup",
         "parameters": [],
         "requestBody": {
@@ -6103,6 +6194,59 @@
           }
         },
         "summary": "Get one city page, by slug",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/coverage-requests": {
+      "post": {
+        "description": "Records that a reader wants us to cover a city we have not covered\n\n**One row per city, always.** A second request for the same city does not create a second row — the database refuses it — and the count of how many readers have asked goes up instead. The request is recorded whether it is the first or the hundredth, and the answer is the same either way.\n\n**The city must be one we know about.** A request is for a city we have already tried to cover and failed to. A city we have never heard of is a *pick*, and picking it provisions it immediately — which is a better answer than queueing it. So an unknown city answers 422, and nothing is written.\n\nFive requests per reader per day; the sixth answers 429 with the wait. The limit is checked before the one-row rule, so a repeated request still spends an attempt.",
+        "operationId": "request_city_coverage",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverageRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageRequestOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Ask us to cover a city we have no sources for",
         "tags": [
           "catalog"
         ]
@@ -6856,7 +7000,7 @@
     },
     "/api/personal/browse": {
       "get": {
-        "description": "The signed-in user's Browse surface: public events in their city across a seven-day window, ranked by the same Relevance Pulse the Pulse Digest uses, with the save state of each card.\n\nThe city is the user's **digest preference** city, not a parameter — one meaning of 'your city' across both surfaces, which is why the surface's 'Change city' link goes to account settings. A user who skipped onboarding has no city: the response says `city_missing` and carries no cards, and the client shows the same quiet empty state it shows for a city with nothing on.\n\nThe window is cut in the **user's** timezone, so an event at 11pm local on the seventh day is inside it and one at 1am the next morning is not.\n\n`total` is how many events the user can page to, and `tier_2_starts_at` is where the second section begins — the server names the tiers so the rule cannot drift from the Digest's. `quota` reports the save allowance **without spending it**: it is a sign above the gate, not the gate.\n\nEach card carries up to three Why-this Tag keys, the Confidence Pulse bucket and the Source Badge variant, plus `is_saved` so an already-saved event renders as saved on first paint. At most one card per response carries the `must_know` stripe.",
+        "description": "The signed-in user's Browse surface: public events in their city across a seven-day window, ranked by the same Relevance Pulse the Pulse Digest uses, with the save state of each card.\n\nThe city is the user's **digest preference** city, not a parameter — one meaning of 'your city' across both surfaces, which is why the surface's 'Change city' link goes to account settings. A user who skipped onboarding has no city: the response says `city_missing` and carries no cards, and the client shows the same quiet empty state it shows for a city with nothing on.\n\n`city_collection_status` says how the automatic collection of this city is going — `collecting`, `live`, `no_providers`, `yielded_nothing`, `paused` or `failed`. It is empty when the user has no city and empty for a city that was never provisioned. **A city with no events is not one thing**, and this is the fact that tells them apart: a covered city that is simply quiet is `live`, a city we are still collecting is `collecting`, and a city whose sources gave nothing is `yielded_nothing`.\n\nThe window is cut in the **user's** timezone, so an event at 11pm local on the seventh day is inside it and one at 1am the next morning is not.\n\n`total` is how many events the user can page to, and `tier_2_starts_at` is where the second section begins — the server names the tiers so the rule cannot drift from the Digest's. `quota` reports the save allowance **without spending it**: it is a sign above the gate, not the gate.\n\nEach card carries up to three Why-this Tag keys, the Confidence Pulse bucket and the Source Badge variant, plus `is_saved` so an already-saved event renders as saved on first paint. At most one card per response carries the `must_know` stripe.",
         "operationId": "apps_personalization_api_browse_endpoint",
         "parameters": [
           {
@@ -8054,7 +8198,7 @@
     },
     "/api/personal/onboarding/digest-preference": {
       "put": {
-        "description": "Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.\n\n`city` is the user's home city, in the catalog's own spelling. A city the catalog does not cover is stored as the fallback and reported back with `city_source` set to `fallback`, so the client can say \"we don't have your city yet\" rather than implying it is the user's city.\n\n`include_personal_events` defaults to included — personal events are in the digest unless the user opts out. Both fields are optional, and **leaving one out does not change it**: an omitted field (and a `null` city) means \"leave it alone\", so a client that only wants to change the delivery time does not reset the city. This endpoint cannot clear the city — a `null` and an omitted field are the same value, and a shape that cannot tell them apart must not guess.",
+        "description": "Sets when and where the Pulse Digest should arrive. The delivery time is a local wall clock, so it means nine in the morning where the user is. The timezone must be an IANA zone name.\n\n`city` is the user's home city, in the catalog's own spelling. A city in the curated catalog is stored **exactly as sent**, with `city_source` set to `choice`. A city **outside** it is **refused**: the request answers 422, nothing is stored, and the response names the rejected value — because the stored city is the picked city, and a reader who chose Chittagong must not be answered with New York City and a cheerful 200.\n\n`include_personal_events` defaults to included — personal events are in the digest unless the user opts out. Both fields are optional, and **leaving one out does not change it**: an omitted field (and a `null` city) means \"leave it alone\", so a client that only wants to change the delivery time does not reset the city. This endpoint cannot clear the city — a `null` and an omitted field are the same value, and a shape that cannot tell them apart must not guess.",
         "operationId": "apps_personalization_api_put_digest_preference",
         "parameters": [],
         "requestBody": {
@@ -8460,6 +8604,39 @@
         "summary": "The signed-in user's week, day by day",
         "tags": [
           "personal"
+        ]
+      }
+    },
+    "/api/public/cities": {
+      "get": {
+        "description": "Every city in the curated catalog, alphabetically by label, as `value`/`label` pairs. `value` is the string to store; `label` is the disambiguating form to show. This is the picker's source and is independent of which cities have events — for that, see `/preview/cities`. No session is used and none is set.",
+        "operationId": "apps_catalog_cities_api_city_choices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CityChoicesOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "The cities a reader may pick",
+        "tags": [
+          "preview"
         ]
       }
     },

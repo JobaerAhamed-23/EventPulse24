@@ -46,6 +46,9 @@ COMPOSE_DIGEST = "compose_digest"
 #: heard of.
 REQUEST_MODULES = (
     "apps/catalog/api.py",
+    # FR-2. The city picker's choices: it projects `domain.city_catalog` onto the wire and
+    # runs no query at all — about as close to AD-11's shape as a request handler gets.
+    "apps/catalog/cities_api.py",
     "apps/catalog/preview_api.py",
     "apps/delivery/api.py",
     "apps/delivery/email_api.py",
@@ -59,6 +62,12 @@ REQUEST_MODULES = (
     "apps/identity/export_api.py",
     "apps/identity/webhooks_api.py",
     "apps/ingestion/api.py",
+    # FR-2's sibling, city-picker-and-auto-collection. The coverage request's endpoint:
+    # it takes the reader from the session, calls the published command, and returns —
+    # the shape AD-11 asks of a request handler. It is listed for the same reason the
+    # others are — a surface file missing from this tuple is a surface file no guard
+    # checks.
+    "apps/ingestion/coverage_api.py",
     "apps/personalization/api.py",
     # FR-49. It validates, calls the published commands and returns — the shape AD-11
     # asks of a request handler.
