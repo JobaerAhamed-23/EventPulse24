@@ -254,6 +254,73 @@ class City(UUIDv7Model):
         return f"{self.name}{f', {self.region.upper()}' if self.region else ''}"
 
 
+class CityProvisioning(UUIDv7Model):
+    """What we did about a city, so the surface can tell the truth about it.
+
+    **One row per city, ever.** The `OneToOneField` is the idempotency guarantee at the
+    database level: a second provisioning of the same city cannot create a second row, so
+    "provisioning is idempotent" is a fact the schema holds rather than a promise the
+    service makes.
+
+    **The row holds no city *name*.** It holds the `City` foreign key, which identifies the
+    city without restating where a reader lives. AD-13's discipline: the audit row says
+    *that* a city was provisioned; the value stays out of the log. (A `Source`'s own city is
+    a public fact about a place and lives on the source row — a different thing, and this
+    item does not touch it.)
+
+    **`status` is the sentence the surface reads.** `collecting` is the honest word for
+    "we registered sources and are waiting for events" — the city has no events until the
+    scheduler has run and a source has answered, and saying otherwise would be a claim we
+    cannot keep.
+
+    **The city is `PROTECT`ed, not cascaded.** A `City` is never deleted — `Venue` and
+    `EventFit` already protect it — so the rule is academic today. But a cascading
+    delete would mean that a city could one day lose its provisioning record without
+    anybody deciding to, and the row is the sentence the surface reads about a city. If a
+    city is ever to be removed, that has to be a decision somebody makes.
+    """
+
+    retention_category = RetentionCategory.SOURCE_REGISTRY
+
+    class Status(models.TextChoices):
+        #: Sources registered; we are waiting for the first events.
+        COLLECTING = "collecting"
+        #: The city has published events. Written by the ingest path, not by provisioning.
+        LIVE = "live"
+        #: No template covers this city — or every template needs a credential this
+        #: deployment does not have. A normal outcome, not an error.
+        NO_PROVIDERS = "no_providers"
+        #: Providers exist, but their events produced nothing. Written after an ingest
+        #: cycle, not by provisioning.
+        YIELDED_NOTHING = "yielded_nothing"
+        #: Provisioning stopped for this city. Written by the probation job.
+        PAUSED = "paused"
+        #: Provisioning failed. `last_error_code` says why, and the row is left alone —
+        #: a reader's later pick is not a retry request.
+        FAILED = "failed"
+
+    city = models.OneToOneField(
+        City, on_delete=models.PROTECT, related_name="provisioning", primary_key=False
+    )
+    status = models.CharField(max_length=16, choices=Status.choices)
+    #: How many sources this provisioning registered. A count, never a list — the sources
+    #: themselves are rows, and this is the sentence "how many did we get".
+    source_count = models.PositiveIntegerField(default=0)
+    #: The failure that stopped provisioning, when one did. Blank when none — the same
+    #: shape `Source.last_error_code` uses, so one vocabulary reads both.
+    last_error_code = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=~Q(status=""), name="city_provisioning_status_ck"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.city_id}: {self.status}"
+
+
 class Venue(UUIDv7Model):
     """Venue registry: the FR-60 `partial` tier's timezone source and the identity venue key."""
 

@@ -47,17 +47,17 @@ work_items:
   - id: city-provisioning-service
     intent: city-picker-and-auto-collection
     mode: validate
-    status: in_progress
-    current_phase: plan
-    checkpoint_state: none
+    status: completed
+    current_phase: review
+    checkpoint_state: approved
     current_checkpoint: plan
   - id: provisioning-probation
     intent: city-picker-and-auto-collection
     mode: confirm
-    status: pending
-    current_phase: null
+    status: in_progress
+    current_phase: plan
     checkpoint_state: none
-    current_checkpoint: null
+    current_checkpoint: plan
   - id: browse-collecting-states
     intent: city-picker-and-auto-collection
     mode: confirm
@@ -79,7 +79,7 @@ work_items:
     current_phase: null
     checkpoint_state: none
     current_checkpoint: null
-current_item: city-provisioning-service
+current_item: provisioning-probation
 status: in_progress
 started: 2026-11-20T13:36:37.657Z
 completed: null
@@ -97,15 +97,15 @@ wide (11 work items)
 4. **city-choices-endpoint** (confirm) — completed
 5. **stored-city-is-the-picked-city** (validate) — completed
 6. **city-provider-templates** (confirm) — completed
-7. **city-provisioning-service** (validate) — in_progress
-8. **provisioning-probation** (confirm) — pending
+7. **city-provisioning-service** (validate) — completed
+8. **provisioning-probation** (confirm) — in_progress
 9. **browse-collecting-states** (confirm) — pending
 10. **city-coverage-request** (confirm) — pending
 11. **home-city-dropdown-catalog** (confirm) — pending
 
 
 ## Current Item
-city-provisioning-service (validate)
+provisioning-probation (confirm)
 
 ## Files Created
 - `backend/tests/personalization/test_stored_city_is_the_picked_city.py` — 682 cases: the
@@ -140,6 +140,20 @@ city-provisioning-service (validate)
   `PROVIDER_TEMPLATES` registry, and `resolve(city)`
 - `backend/tests/domain/test_city_providers.py` — NEW: 45 tests, over the full
   catalog × templates cross-product
+- `backend/apps/ingestion/services/city_provisioning.py` — NEW: the provisioning service —
+  the catalog gate, the city's advisory lock, the credential filter, and the `on_commit`
+  seam
+- `backend/apps/ingestion/migrations/0015_cityprovisioning.py` — NEW: `CreateModel
+  CityProvisioning`
+- `backend/tests/ingestion/test_city_provisioning.py` — NEW: 235 tests, whole-dataset
+- `backend/apps/ingestion/models.py` — `CityProvisioning` added after `City`
+- `backend/apps/personalization/services/digest_preferences.py` — the trigger:
+  `provision_city_on_commit` in `set_home_city`
+- `backend/tests/ingestion/test_models.py` — three model enumerations
+- `backend/tests/wall/test_schema_placement.py` — the catalog table set
+- `backend/tests/architecture/test_write_ownership.py` — `TABLE_OWNERS`
+- `backend/tests/personalization/test_digest_recompose_triggers.py` — the callback
+  assertion, relaxed from an exact count to "every callback is on `PERSONAL` and robust"
 
 ## Decisions
 - **The refusal's status** — 422 (`ValidationError`). A bad value is a bad request, and
@@ -172,4 +186,26 @@ city-provisioning-service (validate)
   cities in, and widening it is a reviewed commit.
 - **"Disabled" means** — Cannot be registered, not merely quiet. A disabled template that
   only hid itself would be settled by whoever was paying attention.
+- **The provisioning's audit row** — Carries the city id and never the city name; the
+  `Source` rows' own audit rows keep their city, because a source's city is a public
+  fact about a place while a person's city is weak location data about a real person.
+- **A retry** — No. The `CityProvisioning` row's existence means "provisioned", whatever its
+  status says. A reader's pick is not a retry request: they did not know anything failed,
+  and a retry would be invisible to them. A retry belongs to a person or to the scheduler
+  (item 8's probation job).
+- **A city the catalog does not hold** — Nothing happens at all. The stored preference
+  still says whatever the reader picked; it is simply not provisioned. Minting a `City`
+  would put a place into the registry that no reader chose.
+- **The service's arguments** — The name only, never the country. A country supplied from
+  the caller is a second source of truth, and a country that disagrees with the catalog row
+  mints a *second* `City` for the same place — the exact split `domain.cities` exists to
+  prevent, happening silently.
+- **The lock** — `pg_advisory_xact_lock` on the city id, in its own key space
+  (`b"eventpulse24-cty"`, separate from the personal path's `b"eventpulse24-onb"`). A row
+  lock cannot lock a row that does not exist, and the interesting case is exactly that one.
+- **The credential filter** — Driven by `provider_keys.PROVIDER_KEYS`; one table of "hosts
+  that need a key", not two. Exact hosts, never suffixes.
+- **The status** — `collecting`, not `live`. The city has no events until the scheduler has
+  run and a source has answered. `live` is the ingest path's word; `yielded_nothing` and
+  `paused` are item 8's.
 

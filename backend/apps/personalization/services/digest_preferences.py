@@ -295,8 +295,41 @@ def set_home_city(
         # false. The recomposition replaces the day's digest only while it is **empty**,
         # so a user with cards keeps the cards they were shown (AD-10).
         enqueue_digest_composition_on_commit(user_id)
+        _provision_city_on_commit(resolved_city)
 
     return preference
+
+
+def _provision_city_on_commit(city: str | None) -> None:
+    """Ask `ingestion` to start collecting for this city, once the pick is committed.
+
+    **A pick is a request to collect, not just a label to store.** The whole point of the
+    picker over a curated world list is that a reader in a city we have never seen
+    triggers the collection for it — so the pick has to reach the provisioning service.
+
+    **It goes through `ingestion`'s published service**, not its models: AD-3's
+    `models-ingestion` contract protects `apps.ingestion.models`, and
+    `apps.personalization` may import `apps.ingestion.services.*` — which it already does
+    in sixteen places.
+
+    **After the commit, never inline.** A slow registry write must not fail the reader's
+    save, and the sources are written in the `catalog` schema while the pick is written in
+    the `personal` one — Django will not enlist two databases in one transaction, so
+    pretending otherwise would be a lie about what is atomic.
+
+    **Only the name travels.** The country code is not passed in: the provisioning
+    service reads the city's own catalog row, and a country supplied from here could
+    disagree with it — which would mint a *second* `City` for the same place, the exact
+    split `domain.cities` exists to prevent. One source of truth, and it is the catalog.
+
+    **A city of None provisions nothing**, and neither does a city the catalog does not
+    hold — the service checks that itself and writes nothing at all.
+    """
+    if city is None:
+        return
+    from apps.ingestion.services.city_provisioning import provision_city_on_commit
+
+    provision_city_on_commit(city_name=city)
 
 
 def _write_city_audit(

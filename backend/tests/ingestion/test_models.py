@@ -337,14 +337,16 @@ def test_audit_entry_user_actor_allowed():
 INGESTION_MODELS = list(apps.get_app_config("ingestion").get_models())
 
 
-def test_ingestion_has_the_thirteen_designed_models():
+def test_ingestion_has_the_fourteen_designed_models():
     # The seven from catalog-data-model-design.md, plus EventFit (AD-10, FR-26), City
     # (FR-27, city-canonicalization-design.md), RevalidationRequest (FR-26, FR-27,
     # revalidation-signal-design.md), ReviewItem (FR-57, review-queue-model-design.md),
     # SourceObservation (FR-16, editorial-review-commands): the editorial verdicts the
-    # reliability score is computed from, stored as facts rather than as a score, and
+    # reliability score is computed from, stored as facts rather than as a score,
     # SourceReliabilityScore (FR-16, reliability-recompute-and-escalation): the week's
-    # score for a source, kept as a history so a spike can be seen.
+    # score for a source, kept as a history so a spike can be seen, and CityProvisioning
+    # (city-picker-and-auto-collection): what we did about a city, so the surface can
+    # tell the truth about it.
     assert {m.__name__ for m in INGESTION_MODELS} == {
         "Source",
         "TosReview",
@@ -359,6 +361,7 @@ def test_ingestion_has_the_thirteen_designed_models():
         "ReviewItem",
         "SourceObservation",
         "SourceReliabilityScore",
+        "CityProvisioning",
     }
 
 
@@ -391,6 +394,7 @@ def test_ingestion_retention_categories():
         "ReviewItem": RetentionCategory.SOURCE_REGISTRY,
         "SourceObservation": RetentionCategory.SOURCE_REGISTRY,
         "SourceReliabilityScore": RetentionCategory.SOURCE_REGISTRY,
+        "CityProvisioning": RetentionCategory.SOURCE_REGISTRY,
     }
 
 

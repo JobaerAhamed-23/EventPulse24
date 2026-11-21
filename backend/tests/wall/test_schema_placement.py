@@ -54,6 +54,10 @@ INGESTION_TABLES = {
     # source — a standing fact about the catalog, carrying no user identity — so it sits on
     # the catalog side of the AD-3 wall.
     "ingestion_sourcereliabilityscore",
+    # city-picker-and-auto-collection: the provisioning record is a catalog table. It says
+    # what we did about a city — a fact about the catalog — and it carries no user
+    # identity: the reader's own city lives in `personal.DigestPreference`.
+    "ingestion_cityprovisioning",
 }
 
 #: The AI cost row is a catalog table too (AD-8).
