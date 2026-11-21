@@ -1,8 +1,9 @@
 ---
 id: city-picker-and-auto-collection
 title: City Picker Over a Curated World List, With Automatic Collection
-status: in_progress
+status: completed
 created: 2026-11-20
+completed_at: 2026-11-21T03:49:48.114Z
 ---
 
 # Intent: City Picker Over a Curated World List, With Automatic Collection

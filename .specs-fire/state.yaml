@@ -1779,7 +1779,7 @@ intents:
     completed_at: 2026-11-20T12:23:48.600Z
   - id: city-picker-and-auto-collection
     title: City Picker Over a Curated World List, With Automatic Collection
-    status: in_progress
+    status: completed
     created: 2026-11-20
     work_items:
       - id: city-catalog-dataset
@@ -1863,12 +1863,15 @@ intents:
         run_id: run-eventpulse24-057
         completed_at: 2026-11-21T03:36:14.946Z
       - id: home-city-dropdown-catalog
-        status: in_progress
+        status: completed
         complexity: medium
         mode: confirm
         depends_on:
           - city-choices-endpoint
           - stored-city-is-the-picked-city
+        run_id: run-eventpulse24-057
+        completed_at: 2026-11-21T03:49:48.110Z
+    completed_at: 2026-11-21T03:49:48.110Z
 runs:
   active:
     - id: run-eventpulse24-057
@@ -1957,11 +1960,12 @@ runs:
         - id: home-city-dropdown-catalog
           intent: city-picker-and-auto-collection
           mode: confirm
-          status: in_progress
-          current_phase: plan
-          checkpoint_state: none
+          status: completed
+          current_phase: review
+          checkpoint_state: approved
           current_checkpoint: plan
-      current_item: home-city-dropdown-catalog
+          completed_at: 2026-11-21T03:49:48.110Z
+      current_item: null
       started: 2026-11-20T13:36:37.657Z
   completed:
     - id: run-eventpulse24-001

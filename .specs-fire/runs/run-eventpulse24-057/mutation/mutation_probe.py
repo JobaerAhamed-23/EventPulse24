@@ -345,6 +345,61 @@ MUTATIONS = [
         return;
       }""",
      "../frontend/tests/browse-coverage-request.test.tsx"),
+    #
+    # ── item 11: home-city-dropdown-catalog ────────────────────────────────
+    #
+    ("the option shows the value instead of the label",
+     "../frontend/components/settings/home-city.tsx",
+     """            {options.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}""",
+     """            {options.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.value}
+              </option>
+            ))}""",
+     "../frontend/components/settings/home-city.test.tsx"),
+    ("the option submits the label instead of the value",
+     "../frontend/components/settings/home-city.tsx",
+     """            {options.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}""",
+     """            {options.map((choice) => (
+              <option key={choice.value} value={choice.label}>
+                {choice.label}
+              </option>
+            ))}""",
+     "../frontend/components/settings/home-city.test.tsx"),
+    ("the stored city is dropped from the options",
+     "../frontend/components/settings/home-city.tsx",
+     """  const options: CityChoice[] =
+    city === null || stored !== undefined ? choices : [{ value: city, label: city }, ...choices];""",
+     """  const options: CityChoice[] = choices;""",
+     "../frontend/components/settings/home-city.test.tsx"),
+    ("the synthesised option shows an empty label",
+     "../frontend/components/settings/home-city.tsx",
+     "    city === null || stored !== undefined ? choices : [{ value: city, label: city }, ...choices];",
+     '    city === null || stored !== undefined ? choices : [{ value: city, label: "" }, ...choices];',
+     "../frontend/components/settings/home-city.test.tsx"),
+    ("the stored city is matched by its label rather than its value",
+     "../frontend/components/settings/home-city.tsx",
+     "  const stored = city === null ? null : choices.find((choice) => choice.value === city);",
+     "  const stored = city === null ? null : choices.find((choice) => choice.label === city);",
+     "../frontend/components/settings/home-city.test.tsx"),
+    ("the placeholder is always offered",
+     "../frontend/components/settings/home-city.tsx",
+     "            {city === null ? <option value={NO_CITY}>Choose a city</option> : null}",
+     '            <option value={NO_CITY}>Choose a city</option>',
+     "../frontend/components/settings/home-city.test.tsx"),
+    ("the picker goes back to the preview's city list",
+     "../frontend/lib/home-city-read.ts",
+     '      api.GET("/api/public/cities", {}),',
+     '      api.GET("/api/public/preview/cities", {}),',
+     "../frontend/tests/endpoint-coverage.test.ts"),
 ]
 
 

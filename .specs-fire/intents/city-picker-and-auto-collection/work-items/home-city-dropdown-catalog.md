@@ -4,11 +4,13 @@ title: The dropdown reads the catalog
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - city-choices-endpoint
   - stored-city-is-the-picked-city
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-21T03:49:48.110Z
 ---
 
 # Work Item: The dropdown reads the catalog

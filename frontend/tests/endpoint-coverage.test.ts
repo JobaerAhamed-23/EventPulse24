@@ -68,8 +68,6 @@ const DECLARED_UNCALLED: Record<Endpoint, string> = {
     "The anonymous public read by id. The UI reads `/api/events/{id}` when signed in and `by-slug` for the public page.",
   "GET /api/auth/profile/avatar/{version}":
     "Fetched by the browser's image loader from an `<img src>`, not by this client. The URL arrives on `me` as `avatar_url` and is put straight into the tag; there is no fetch to typecheck. It is the one endpoint here whose consumer is the markup rather than TypeScript.",
-  "GET /api/public/cities":
-    "The curated city list. The city picker still reads its options from a hard-coded list, and the work item that rewires it (`home-city-dropdown-catalog`) is what calls this. **This declaration is a placeholder for that item, not a permanent exemption** — the picker must read the catalog, because a curated list kept in the source is a second source of truth for the same fact. It comes out of this map when the picker calls the endpoint.",
 };
 
 /** Every `METHOD /path` in the committed contract. */
