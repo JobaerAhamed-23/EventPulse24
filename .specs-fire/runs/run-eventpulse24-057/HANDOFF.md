@@ -1,106 +1,96 @@
 # Handoff — run-eventpulse24-057
 
-Written 2026-11-20, end of the session that completed items 1–4.
+**This run is complete.** 11 of 11 items delivered, the run-level `walkthrough.md` is
+written, and the run is closed.
+
 Branch `city-picker-and-auto-collection`, working tree clean, nothing pushed.
-
-## How to resume
-
-```
-/specsmd-fire-builder
-```
-
-It scans disk, finds this active run, reads `current_item` from `state.yaml`, and picks up
-at the next work item. No re-planning. Nothing here needs to be pasted in — this file is
-for the human, not the agent.
 
 ## Where things stand
 
-4 of 11 items complete. Run scope is `wide`.
-
-| # | Item | Mode | Status |
+| # | Item | Mode | Commit |
 |---|---|---|---|
-| 1 | `city-catalog-dataset` | confirm | ✅ `e39d367` |
-| 2 | `source-city-timezone` | validate | ✅ `6dd8d96` |
-| 3 | `api-source-parser` | confirm | ✅ `2a0a647` |
-| 4 | `city-choices-endpoint` | confirm | ✅ `d1a9218` |
-| 5 | `stored-city-is-the-picked-city` | **validate** | ◀ next, in_progress |
-| 6 | `city-provider-templates` | confirm | pending |
-| 7 | `city-provisioning-service` | validate | pending |
-| 8 | `provisioning-probation` | confirm | pending |
-| 9 | `browse-collecting-states` | confirm | pending |
-| 10 | `city-coverage-request` | confirm | pending |
-| 11 | `home-city-dropdown-catalog` | confirm | pending |
+| 1 | `city-catalog-dataset` | confirm | `e39d367` |
+| 2 | `source-city-timezone` | validate | `6dd8d96` |
+| 3 | `api-source-parser` | confirm | `2a0a647` |
+| 4 | `city-choices-endpoint` | confirm | `d1a9218` |
+| 5 | `stored-city-is-the-picked-city` | validate | `0478ca2` |
+| 6 | `city-provider-templates` | confirm | `016ae08` |
+| 7 | `city-provisioning-service` | validate | `76496e4` |
+| 8 | `provisioning-probation` | confirm | `4635600` |
+| 9 | `browse-collecting-states` | confirm | `0a6579b` |
+| 10 | `city-coverage-request` | confirm | `618eb2d` |
+| 11 | `home-city-dropdown-catalog` | confirm | `ec02e54` |
 
-Item 5 is `validate` mode, so it stops for plan approval before implementing.
+Suite at HEAD: **9091 backend passed**, **2957 frontend passed** (184 files), typecheck
+clean, lint 0 errors, **39 mutations — 39 caught, 0 survived**, 21 import contracts kept.
 
-Suite at HEAD: **7907 passed, 0 failed**, 97.44% overall, `domain/` 100%.
+**The run-level `walkthrough.md` is in this folder** and is the summary of all eleven
+items — read it first.
+
+## The intent's guarantee, and where it is held
+
+> **"The stored city is the picked city. Never silently rewritten to anything else."**
+
+- **The rule** — `backend/apps/personalization/services/digest_preferences.py`. A city the
+  catalog holds is stored verbatim (682 whole-dataset cases); a city it does not hold is
+  **refused** with a 422, and nothing is stored. A *geo guess* and a *backfill* still
+  fall back — only a *choice* is refused.
+- **The world it is checked against** — `backend/domain/city_catalog.py`, 166 cities.
+- **The offering** — `GET /api/public/cities`, session-free. The picker reads it
+  (item 11); the preview keeps its own list, because it answers a different question.
+- **The consequence** — `backend/apps/ingestion/services/city_provisioning.py`: a pick
+  provisions the city. `city_probation.py`: the city is `live`, `yielded_nothing`,
+  `paused`, or still `collecting`.
+- **The surface** — Browse says one of four honest things, and the no-sources dead end
+  offers a coverage request.
 
 ## Decisions already taken (do not re-litigate)
 
-| Decision | Taken | Where it is recorded |
+Every one of these is recorded in the run's `walkthrough-<item-id>.md` and in `run.md`'s
+Decisions list. The ones most likely to be re-litigated:
+
+| Decision | Taken | Where |
 |---|---|---|
-| ~150 hand-verified cities, not thousands | landed at 165 across 95 countries | `walkthrough-city-catalog-dataset.md` |
-| `TZ_SCORE_CITY_ZONE = 0.90`, no `tz_review_pending` | publishes clean; DST caps still flag genuinely doubtful readings | `walkthrough-source-city-timezone.md` |
-| `_content_hash` includes `city_tz` | D7 precedent; without it a source that gains a zone never re-resolves | same |
-| API key never stored | key-less `Source.url`; added at fetch with `credential=True`; `strip_key` on the way back | `walkthrough-api-source-parser.md` |
-| Choices endpoint throttled, own scope | plus a long cache TTL (1h browser / 1d edge) | `walkthrough-city-choices-endpoint.md` |
+| A city outside the catalog is **refused** (422), not substituted | item 5 | `walkthrough-stored-city-is-the-picked-city.md` |
+| A **geo guess** and a **backfill** still fall back | item 5 | same |
+| The catalog's two forms are **different strings** — value stored, label read | items 1, 11 | `walkthrough-home-city-dropdown-catalog.md` |
+| The Eventbrite template is **disabled**, not omitted | item 6 | `walkthrough-city-provider-templates.md` |
+| A pick **provisions**; it is **not** a retry request | item 7 | `walkthrough-city-provisioning-service.md` |
+| `unchanged` **is** yield; a 304 **leaves** the counter alone | item 8 | `walkthrough-provisioning-probation.md` |
+| Publication is narrow — only `new` and `superseded` make a city `live` | item 8 | same |
+| The coverage request is **one row per city**, not per reader | item 10 | `walkthrough-city-coverage-request.md` |
+| The coverage-request **count is on the wire, not on the screen** | item 10 | same |
+| The picker reads the **catalog**, not the preview's list | item 11 | `walkthrough-home-city-dropdown-catalog.md` |
 
-## Facts the remaining items need
+## Environment gotchas (unchanged)
 
-**For item 6 (`city-provider-templates`)** — verified against live Ticketmaster docs during
-item 3, so do not re-check:
-
-- `city` **is** an official Discovery v2 Event Search parameter. The feared fallback
-  (`countryCode` plus client-side filtering) is not needed.
-- `latlong` is **deprecated** in favour of `geoPoint`, which takes a geohash. No template
-  should use `latlong`.
-- **Put no API key in a URL template.** The URL a template builds is stored on the `Source`;
-  `apps/ingestion/services/provider_keys.py` adds the key at fetch time. A template that
-  carried one would write a secret into a column and a 24-month audit row.
-- Build URLs against host `app.ticketmaster.com` — `providers.READERS` and
-  `provider_keys.PROVIDER_KEYS` both match that host **exactly**, never by suffix.
-
-**For item 7 (`city-provisioning-service`)**:
-
-- Refusing to create an `api` source when `TICKETMASTER_API_KEY` is empty belongs here.
-  The ingest layer deliberately fetches without the key and lets the provider's 401 land in
-  `last_error_code`, where an editor can see it, rather than hiding the misconfiguration.
-- Populate `Source.city_tz` from the catalog's `tz` column at registration. That is the
-  whole reason item 2 exists.
-
-**For item 11 (`home-city-dropdown-catalog`)**:
-
-- `GET /api/public/cities` is live and in the generated client (`frontend/lib/api/schema.ts`).
-- `home-city.tsx`'s docstring still claims the choices come from `preview/cities`. Item 4's
-  AC 6 deliberately left that correction to item 11, where the claim actually stops being true.
-
-## Environment gotchas
-
-- **Docker on this machine is macOS**, so `systemctl --user start docker-desktop` does not
-  exist. Use `open -a Docker`, wait for the daemon, then `make up`.
-- **Never run `ruff format .` from the repo root.** `backend/tests/shared/test_retention_published.py`
-  has pre-existing formatting drift on this branch and gets reformatted every time, adding
-  an unrelated file to the diff. It happened twice this session. Format only the
-  directories being worked in, e.g. `ruff format apps tests config` from `backend/`.
-  `ruff format --check .` reporting exactly one file is therefore expected and is not new.
-- Backend commands go through `uv run --directory backend …` (see `UV_BACKEND` in the Makefile).
+- **Docker on this machine is macOS** — use `open -a Docker`, not `systemctl`.
+- **Never run `ruff format .` from the repo root.** Format only the directories being
+  worked in. `backend/tests/shared/test_retention_published.py` has pre-existing drift.
+- Backend commands go through `uv run --directory backend …`.
 - Changing the API surface requires `make client` (regenerates `openapi.json` **and**
   `schema.ts`); `tests/api/test_contract.py` fails until you do.
+- `pnpm` commands must be run from `frontend/`. The scripts are `pnpm test`,
+  `pnpm typecheck` (not `type-check`), `pnpm lint`, `pnpm format:check`.
 
-## Practices this run has been holding to
+## Practices this run held to
 
-- **Every whole-dataset invariant is mutation-checked** before a test report is written —
-  the rule that a test must be able to fail. It earned its keep: it caught two tests in
-  item 4 that could not fail, both of which the green suite had hidden.
-- Architecture guards are treated as right by default. Item 3's parser was renamed out of
-  the AD-5 surface rather than teaching the discovery an exception; item 4 turned two
-  counting guards into checking guards.
+- **Every whole-dataset invariant is mutation-checked** before a test report is written.
+  **39 mutations, 39 caught, 0 survived.** A mutation that survives is a missing test.
+- Architecture guards are treated as right by default; they were changed only with the
+  reason recorded next to them.
 - Every work item's artifacts are `plan-`, `test-report-`, `review-report-` and
-  `walkthrough-<item-id>.md` in this folder. A run-level `walkthrough.md` is still owed at
-  run completion, matching runs 055 and 056.
+  `walkthrough-<item-id>.md` in this folder, plus the run-level `walkthrough.md`.
 
 ## Still open
 
-- Nothing is pushed and no PR exists.
-- Items 5–11 remain. Item 5 (`stored-city-is-the-picked-city`) is `validate`, so expect a
-  design-doc checkpoint and a plan checkpoint.
+- **Nothing is pushed and no PR exists.** Eleven commits sit on
+  `city-picker-and-auto-collection`.
+- **The Eventbrite template waits for a person** — its Terms restrict automated access.
+  The shape is in the registry; enabling it is one constant after a review.
+- **The coverage-request queue has no editor UI.** The row, the counter, the read-only
+  admin and the throttled endpoint all exist; acting on the queue does not.
+- **The catalog is hand-maintained.** 166 cities is a snapshot, with a whole-dataset test
+  behind every invariant.
+- **`pnpm format:check` reports 44 unformatted files** — one *fewer* than the branch
+  started with. The remainder is pre-existing drift and is not this run's to fix.

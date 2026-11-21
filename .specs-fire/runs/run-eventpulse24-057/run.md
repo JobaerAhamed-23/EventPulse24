@@ -80,9 +80,9 @@ work_items:
     checkpoint_state: approved
     current_checkpoint: plan
 current_item: null
-status: in_progress
+status: completed
 started: 2026-11-20T13:36:37.657Z
-completed: null
+completed: 2026-11-21T03:52:08.598Z
 ---
 
 # Run: run-eventpulse24-057
@@ -484,3 +484,16 @@ wide (11 work items)
 - **The `fallback` note is not vestigial** — Only a *chosen* city outside the catalog is
   refused; a geo guess and a backfill still fall back, and their accounts still carry
   one.
+
+
+## Summary
+
+- Work items completed: 11
+- Completed: 2026-11-21T03:52:08.598Z
+- Backend suite: 9091 passed
+- Frontend suite: 2957 passed (184 files)
+- Mutation probe: 39 mutations, 39 caught, 0 survived
+- Import contracts: 21 kept, 0 broken
+
+**The run's summary is [`walkthrough.md`](./walkthrough.md)** — the spine of the eleven
+items, the decisions, and what is still open for a human.
