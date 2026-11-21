@@ -605,8 +605,21 @@ describe("the metadata", () => {
     expect(twitter.title).toBe("Events in Brooklyn · This week and next · EventPulse24");
     expect(twitter.images).toHaveLength(1);
 
-    const images = metadata.openGraph?.images as Array<{ url: string }> | undefined;
-    expect(images?.[0]?.url).toContain("/brand/");
+    /**
+     * The share image is the OG card, not the square logo.
+     *
+     * **This used to assert only `toContain("/brand/")`**, which every brand asset
+     * satisfies — so it passed just as happily when the card pointed at the square
+     * logo, whose 1282×1288 dimensions are not the 1200×630 the metadata claims.
+     * A share card whose declared size is not its real size is cropped or letterboxed
+     * by whoever renders it, so the path is now asserted exactly.
+     */
+    const images = metadata.openGraph?.images as
+      | Array<{ url: string; width?: number; height?: number }>
+      | undefined;
+    expect(images?.[0]?.url).toBe("/brand/eventpulse24-og.png");
+    expect(images?.[0]?.width).toBe(1200);
+    expect(images?.[0]?.height).toBe(630);
   });
 
   it("reads no session to build the metadata", async () => {

@@ -434,8 +434,17 @@ describe("the metadata", () => {
 
     const metadata = await generateMetadata({ params: Promise.resolve({ id: SLUG }) });
 
-    const images = metadata.openGraph?.images as Array<{ url: string }> | undefined;
-    expect(images?.[0]?.url).toContain("/brand/");
+    /**
+     * The share image is the OG card, not the square logo — asserted exactly, for the
+     * same reason as the city page's test. The square logo is 1282×1288; the card is
+     * 1200×630, and those are the dimensions the metadata must declare.
+     */
+    const images = metadata.openGraph?.images as
+      | Array<{ url: string; width?: number; height?: number }>
+      | undefined;
+    expect(images?.[0]?.url).toBe("/brand/eventpulse24-og.png");
+    expect(images?.[0]?.width).toBe(1200);
+    expect(images?.[0]?.height).toBe(630);
   });
 
   it("reads no session to build the metadata", async () => {

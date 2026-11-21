@@ -13,10 +13,19 @@ import Image from "next/image";
  * rendering of the logo — it was a different picture of the same idea — so no amount
  * of CSS would have reconciled them. Only one source could.
  *
- * **The source of truth is the PNG at `/brand/eventpulse24-logo.png`**, which is a
+ * **The source of truth is the PNG at `/brand/eventpulse24-logo-ecg.png`**, which is a
  * copy of `docs/EventPulse24-logo.png` in the repository root. `public/` is what the
  * browser can fetch, so that is where the file has to live; the `docs/` copy is the
  * canonical original and the two are kept byte-identical.
+ *
+ * **The filename carries `-ecg` for a reason, and it is not decoration.** The file
+ * used to be served at `/brand/eventpulse24-logo.png`, and it used to hold a
+ * *different* picture — the old "P"-in-circle mark. Replacing a file's bytes while
+ * keeping its URL is invisible to anyone who had already loaded that URL: the
+ * browser holds the old mark under the old name and never asks again. A reader
+ * would have been looking at the previous logo while the source said otherwise,
+ * which is exactly the drift this component exists to end. **A new filename is the
+ * only honest way to say "this is a different image".**
  *
  * **The mark is decorative wherever the wordmark sits beside it.** The wordmark
  * already spells "EventPulse24", so an `alt` of "EventPulse24" would make a screen
@@ -44,7 +53,7 @@ export function BrandMark({
 }) {
   return (
     <Image
-      src="/brand/eventpulse24-logo.png"
+      src="/brand/eventpulse24-logo-ecg.png"
       alt={alt}
       width={size}
       height={size}

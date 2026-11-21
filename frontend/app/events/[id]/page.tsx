@@ -191,7 +191,7 @@ export async function generateMetadata({
  *
  * **It is a 1200×630 card, not the square logo.** The dimensions below are the real
  * ones, so the card is the right shape and the mark is not stretched. The card is built
- * from the canonical logo (`/brand/eventpulse24-logo.png`) and shares its background.
+ * from the canonical logo (`/brand/eventpulse24-logo-ecg.png`) and shares its background.
  */
 const BRANDED_IMAGE = {
   url: "/brand/eventpulse24-og.png",

@@ -31,13 +31,13 @@ vi.mock("@/components/personal-events-panel", () => ({
  * all point at the same image, and that the asset on disk is the canonical one.
  */
 
-const CANONICAL_SRC = "/brand/eventpulse24-logo.png";
+const CANONICAL_SRC = "/brand/eventpulse24-logo-ecg.png";
 
 /**
  * The source image of every image in a rendered fragment.
  *
  * **`next/image` rewrites the `src` into its optimizer URL** —
- * `/_next/image?url=%2Fbrand%2Feventpulse24-logo.png&w=96&q=75` — so the canonical
+ * `/_next/image?url=%2Fbrand%2Feventpulse24-logo-ecg.png&w=96&q=75` — so the canonical
  * path is URL-encoded inside it. Decoding it gives back the path that was asked for.
  */
 function imageSrcs(container: HTMLElement): string[] {
@@ -114,10 +114,33 @@ describe("the brand mark", () => {
 
     const repoRoot = join(process.cwd(), "..");
     const [served, canonical] = await Promise.all([
-      readFile(join(process.cwd(), "public", "brand", "eventpulse24-logo.png")),
+      readFile(join(process.cwd(), "public", "brand", "eventpulse24-logo-ecg.png")),
       readFile(join(repoRoot, "docs", "EventPulse24-logo.png")),
     ]);
 
     expect(served.equals(canonical)).toBe(true);
+  });
+
+  /**
+   * The share card has to be the size it says it is.
+   *
+   * **The metadata declares 1200×630, and the card must match.** The square logo is
+   * 1282×1288 — pointing a share card at it means the card is cropped or letterboxed
+   * by whichever platform renders it. The PNG's real dimensions are read from its
+   * IHDR chunk here, so the assertion is against the file on disk rather than against
+   * what the code hopes.
+   */
+  it("serves a share card whose real dimensions match the declared ones", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+
+    const png = await readFile(join(process.cwd(), "public", "brand", "eventpulse24-og.png"));
+
+    // IHDR is the first chunk: 8-byte signature, then length+type, then the data.
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+
+    expect(width).toBe(1200);
+    expect(height).toBe(630);
   });
 });
