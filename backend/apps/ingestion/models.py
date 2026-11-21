@@ -75,6 +75,19 @@ class Source(UUIDv7Model):
         ACTIVE = "active"
         PAUSED = "paused"
 
+    class PausedReason(models.TextChoices):
+        """Why a source is paused.
+
+        **Two reasons, and the surface says different things for each.** An editor who
+        pauses a source has decided something about the world; the probation has decided
+        something about the *yield*. A city whose sources were all paused by hand says
+        `paused`; a city whose sources were all paused for zero yield says
+        `yielded_nothing`.
+        """
+
+        MANUAL = "manual", "Paused by an editor"
+        ZERO_YIELD = "zero_yield", "Paused after three runs with no yield"
+
     class TzCoverage(models.TextChoices):
         FULL = "full"
         PARTIAL = "partial"
@@ -93,6 +106,25 @@ class Source(UUIDv7Model):
     # one changes no behaviour at all. Validated through `domain.timezones.canonical_zone`
     # on write, like a venue's tz.
     city_tz = models.CharField(max_length=64, blank=True)
+    # The canonical `City` this source belongs to, set at provisioning time.
+    #
+    # **`city` above is a string; this is the link.** A source's city is written as free
+    # text — "Brooklyn", "brooklyn ", "Brooklyn, NY" — because a venue names a city the
+    # way it is written. But the provisioning service resolves a city *once*, from the
+    # curated catalog, and hands the resolved row over. The probation needs "every source
+    # for a city" to decide `yielded_nothing`, and a text join on a name that is "as
+    # written by the first venue to name it" would miss rows.
+    #
+    # **Null on every source that was not provisioned.** A hand-registered seed has no
+    # city, and a blank one changes no behaviour at all. `PROTECT`ed, like every other
+    # ingestion foreign key: a city must not lose its sources without anybody deciding to.
+    city_ref = models.ForeignKey(
+        "City",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="sources",
+    )
     acquisition_method = models.CharField(max_length=16, choices=AcquisitionMethod.choices)
     # Cache of the latest TosReview for the current method (D13). Only record_tos_review and
     # update_source write it.
@@ -111,6 +143,31 @@ class Source(UUIDv7Model):
     last_ingested_at = models.DateTimeField(null=True, blank=True)
     last_attempted_at = models.DateTimeField(null=True, blank=True)
     consecutive_failures = models.PositiveIntegerField(default=0)
+    # How many consecutive runs this source completed **successfully and produced
+    # nothing**.
+    #
+    # **A different counter from `consecutive_failures`, and never the same one.** A
+    # source can fetch perfectly and publish nothing, and conflating the two loses the
+    # distinction this counter exists to preserve: `consecutive_failures` says "the feed
+    # is broken", this says "the feed is fine and has nothing for us".
+    #
+    # At `ZERO_YIELD_RUN_THRESHOLD` the probation pauses the source (audited, never
+    # deleted) and, if every source of the city is paused that way, the city says
+    # `yielded_nothing` rather than "collecting" forever.
+    consecutive_zero_yield_runs = models.PositiveIntegerField(default=0)
+    # Why this source is paused, when it is.
+    #
+    # **Two reasons, and the surface says different things for each.** An editor who
+    # pauses a source has decided something about the world; the probation has decided
+    # something about the *yield*. A city whose sources were all paused by hand says
+    # `paused`; a city whose sources were all paused for zero yield says
+    # `yielded_nothing`. The difference is a fact, not a tone.
+    #
+    # **Blank means "we do not know"** — a source paused before this column existed, or
+    # by a path that does not set the reason. The probation reads blank as a hand-pause,
+    # because "somebody paused this" is a stronger claim than "the probation paused this",
+    # and only the probation's own pauses should produce `yielded_nothing`.
+    paused_reason = models.CharField(max_length=32, blank=True)
     last_error_code = models.CharField(max_length=64, blank=True)
     stale_since = models.DateTimeField(null=True, blank=True)
     # Set when the scheduler enqueues a run, cleared when the run's job ends: a claimed source is

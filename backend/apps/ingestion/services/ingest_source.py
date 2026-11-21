@@ -18,6 +18,7 @@ from django.utils import timezone
 from apps.ingestion.models import Event, ExtractedRecord, Source
 from apps.ingestion.parsers import SourceContext, parse
 from apps.ingestion.services.audit import write_audit
+from apps.ingestion.services.city_probation import CounterEffect, classify_run, probate_after_run
 from apps.ingestion.services.ingest_item import IngestRun, ingest_item
 from apps.ingestion.services.provider_keys import authorized_url, strip_key
 from apps.ingestion.services.source_registry import SourceNotFoundError, ensure_can_ingest
@@ -156,6 +157,18 @@ def _close(
         else:
             source.consecutive_failures += 1
             source.last_error_code = error_code
+        # **The zero-yield counter moves here, in the run's own transaction.** It is a
+        # different counter from `consecutive_failures` — a source can fetch perfectly and
+        # publish nothing — and it only moves on evidence: a run that reached the feed and
+        # produced nothing increments it, a run that produced something resets it, and a
+        # run that never reached the feed leaves it alone.
+        classification = classify_run(outcome, counts)
+        if classification.counter_effect is CounterEffect.RESET:
+            source.consecutive_zero_yield_runs = 0
+            changed.append("consecutive_zero_yield_runs")
+        elif classification.counter_effect is CounterEffect.INCREMENT:
+            source.consecutive_zero_yield_runs += 1
+            changed.append("consecutive_zero_yield_runs")
         if fetch is not None:
             source.fetched_url = fetch.final_url
             if outcome == "ok":  # a fresh body: its validators, or none
@@ -192,6 +205,29 @@ def _close(
             "failed_count": _prefixed(counts, "failed:"),
         },
     )
+    # **The probation runs after the commit, in its own transaction.**
+    #
+    # Not inside the block above: that transaction holds this source's row lock, and the
+    # probation reaches for the city's other sources and the provisioning row. Two
+    # concurrent runs of two different sources of the same city would each hold their own
+    # source's lock while reaching for the other, and deadlock.
+    #
+    # **A failure here does not fail a successful ingest.** The run's outcome is already
+    # recorded; the probation is a consequence. The city is one step behind until the next
+    # run, which is a smaller harm than a failed ingest.
+    #
+    # **The log carries no city name** (AD-13): it says *that* the probation failed and
+    # nothing about which city.
+    try:
+        probate_after_run(
+            source=source,
+            outcome=outcome,
+            counts=counts,
+            zero_yield_runs=source.consecutive_zero_yield_runs,
+            actor=run.actor,
+        )
+    except Exception:
+        logger.warning("City probation failed after an ingest run")
     return IngestReport(outcome, error_code, counts)
 
 

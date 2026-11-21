@@ -319,6 +319,58 @@ INGEST_CLAIM_TTL = timedelta(hours=1)
 # FR-13: a source with no successful ingestion within this many cadences is flagged stale.
 STALE_AFTER_CADENCES = 2
 
+# ── The city provisioning probation ─────────────────────────────────────────────────
+#
+# A provisioned city's sources run; some of them produce nothing, forever. The probation is
+# the honesty clock and the cost ceiling: a source that runs and produces nothing three
+# times running is paused, and a city whose every source is paused that way says so.
+#
+# **Three, not one.** A 404, a transient fetch failure or a provider having a bad week must
+# not condemn a city permanently. At the default 4-hour cadence that is roughly twelve
+# hours of honest "we're collecting" before the page admits defeat — long enough for a
+# feed to recover, short enough that a thousand-city dropdown is not fetching forever for
+# cities with one reader and zero yield.
+#
+# **The threshold is in runs, not in hours.** A source on a slower cadence is given
+# proportionally more time, because the question is "has this source had three chances and
+# produced nothing?", not "has it been twelve hours?".
+ZERO_YIELD_RUN_THRESHOLD = 3
+
+# The `IngestReport.counts` keys that mean **the source published something**.
+#
+# **Publication is narrow on purpose.** Only `new` and `superseded` put a row into the
+# catalogue for the first time. `updated` and `silent_updated` re-affirm a row that is
+# already there; `unchanged` recognises one; `bound_other_source` says the event is in the
+# catalogue because *another* source published it.
+#
+# Only publication can move a city to `live`. Yield cannot: a city whose sources all
+# re-affirm the same three events forever is covered and producing, but it never
+# *published* anything, and "live" must mean "there are events in this city's catalogue".
+PUBLISHED_COUNT_KEYS = ("new", "superseded")
+
+# The `IngestReport.counts` keys that mean **the source's fetch reached the feed and came
+# back with something that was not rejected**.
+#
+# **`unchanged` is in this set, deliberately.** A healthy source's second and later polls
+# return every event as `unchanged` — a content-hash match. If `unchanged` did not count
+# as yield, every healthy source would accrue a zero-yield run per poll and be paused
+# after twelve hours of doing its job perfectly.
+#
+# `bound_other_source` counts as yield but not as publication: the event exists in the
+# city's catalogue because *another* source published it. The city is not empty; this
+# source is simply redundant.
+#
+# `ambiguous`, `rejected:*`, `failed:*` and `skipped:*` are neither yield nor publication:
+# the item did not reach the catalogue.
+YIELDED_COUNT_KEYS = (
+    "new",
+    "superseded",
+    "updated",
+    "silent_updated",
+    "unchanged",
+    "bound_other_source",
+)
+
 # FR-14: an Event older than this many times its source's `freshness_ttl_hours` is not
 # surfaced in a fresh Pulse Digest.
 #

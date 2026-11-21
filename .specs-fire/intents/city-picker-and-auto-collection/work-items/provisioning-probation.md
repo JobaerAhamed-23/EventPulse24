@@ -4,10 +4,12 @@ title: Probation for a city that yields nothing
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: in_progress
+status: completed
 depends_on:
   - city-provisioning-service
 created: 2026-11-20
+run_id: run-eventpulse24-057
+completed_at: 2026-11-21T01:55:30.109Z
 ---
 
 # Work Item: Probation for a city that yields nothing

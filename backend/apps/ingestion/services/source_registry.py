@@ -15,7 +15,7 @@ from uuid import UUID
 
 from django.db import transaction
 
-from apps.ingestion.models import AcquisitionMethod, Source, TosReview
+from apps.ingestion.models import AcquisitionMethod, City, Source, TosReview
 from apps.ingestion.services.audit import write_audit
 from domain.dedup import canonical_url
 from domain.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
@@ -432,6 +432,7 @@ def register_source(
     tz_coverage: str,
     city: str = "",
     city_tz: str = "",
+    city_ref: City | None = None,
     ingestion_cadence: timedelta | None = None,
     freshness_ttl_hours: int = 24,
     tos_review: TosReviewInput | None = None,
@@ -439,9 +440,25 @@ def register_source(
     """Add a source to the registry. Crawl needs an approved `tos_review` (FR-17, plan R2).
 
     With no cadence, the method's default applies (`DEFAULT_INGESTION_CADENCE`, design D16).
+
+    **`city_ref` is the resolved city, and it bypasses the cleaner.** `city` above is a
+    string — a source's city is written as free text, because a venue names a city the way
+    it is written. `city_ref` is the *link* to the `City` row the provisioning service
+    already resolved from the curated catalog.
+
+    **The registry does not resolve it.** It cannot: resolving a city *name* is
+    `resolve_city`'s job, and the provisioning service owns that write. Letting the
+    registry resolve the name again would be a second source of truth about which city a
+    source belongs to — and a disagreement would mint a second `City` for the same place.
+    So the caller hands over the row it already holds, and the registry stores it.
+
+    **It is not in the audit row.** The audit's `details` stay exactly `{"fields": fields}`,
+    so every `register_source` audit row has the same shape; the link lives on the row.
     """
     if tos_review is not None:
         _require_person(actor)
+    if city_ref is not None and not isinstance(city_ref, City):
+        raise TypeError("city_ref must be a City instance, not a name or an id.")
     values = {
         "name": name,
         "source_type": source_type,
@@ -467,7 +484,11 @@ def register_source(
                 DEFAULT_INGESTION_CADENCE[fields["acquisition_method"]],
                 method=fields["acquisition_method"],
             )
-        source = Source.objects.using(CATALOG).create(**fields)
+        # **The link is added after the cleaner, and kept out of the audit details.**
+        create_kwargs = dict(fields)
+        if city_ref is not None:
+            create_kwargs["city_ref"] = city_ref
+        source = Source.objects.using(CATALOG).create(**create_kwargs)
         write_audit(
             actor=actor,
             action="register_source",
@@ -518,13 +539,33 @@ def update_source(
     return source
 
 
-def _set_status(actor: Actor, source_id: UUID, status: str, action: str) -> Source:
+def _set_status(
+    actor: Actor,
+    source_id: UUID,
+    status: str,
+    action: str,
+    reason: str = "",
+) -> Source:
     with transaction.atomic(using=CATALOG):
         source = _locked_source(source_id)
         if source.status == status:
             return source  # no change, no audit row (plan R10)
         previous, source.status = source.status, status
-        source.save(using=CATALOG, update_fields=["status", "updated_at"])
+        changed = ["status", "updated_at"]
+        if status == Source.Status.PAUSED:
+            # **The reason lives on the row, not in the audit details.** The audit's
+            # `details` stay exactly `{"from", "to"}` — FR-13's contract, and the shape
+            # every other status change has. The row says *why*.
+            source.paused_reason = reason
+            changed.append("paused_reason")
+        else:
+            # **A resumed source is a source with no reason to be paused.** The reason
+            # and the zero-yield counter are cleared together: a resumed source starts
+            # its probation afresh, or the next run would instantly re-pause it.
+            source.paused_reason = ""
+            source.consecutive_zero_yield_runs = 0
+            changed += ["paused_reason", "consecutive_zero_yield_runs"]
+        source.save(using=CATALOG, update_fields=changed)
         write_audit(
             actor=actor,
             action=action,
@@ -537,13 +578,62 @@ def _set_status(actor: Actor, source_id: UUID, status: str, action: str) -> Sour
     return source
 
 
-def pause_source(*, actor: Actor, source_id: UUID) -> Source:
-    """Stop ingesting a source. Sources are paused, never deleted (FR-13 auditability)."""
-    return _set_status(actor, source_id, Source.Status.PAUSED, "pause_source")
+def pause_source(*, actor: Actor, source_id: UUID, reason: str = "") -> Source:
+    """Stop ingesting a source. Sources are paused, never deleted (FR-13 auditability).
+
+    **`reason` records *why*, on the row.** `Source.PausedReason.MANUAL` when an editor
+    pauses it, `Source.PausedReason.ZERO_YIELD` when the probation does. The city reads
+    the reason to tell the two apart — a hand-paused city says `paused`, a city paused
+    for zero yield says `yielded_nothing`, and the surface says different things for
+    each.
+
+    **An empty reason means "we do not know".** A source paused before this column
+    existed has no reason, and the city treats it as a hand-pause — the conservative
+    reading, because "somebody paused this" is a stronger claim than "the probation
+    paused this", and only the probation's pauses should produce `yielded_nothing`.
+    """
+    source = _set_status(actor, source_id, Source.Status.PAUSED, "pause_source", reason=reason)
+    _reprobate_city(source, actor=actor)
+    return source
 
 
 def resume_source(*, actor: Actor, source_id: UUID) -> Source:
-    return _set_status(actor, source_id, Source.Status.ACTIVE, "resume_source")
+    """Start ingesting a source again.
+
+    **The zero-yield counter is cleared.** A source that resumes after being paused for
+    zero yield starts its probation afresh — otherwise the next run would immediately
+    re-pause it, and the resume would be a no-op in everything but name.
+    """
+    source = _set_status(actor, source_id, Source.Status.ACTIVE, "resume_source")
+    _reprobate_city(source, actor=actor)
+    return source
+
+
+def _reprobate_city(source: Source, *, actor: Actor) -> None:
+    """Re-decide the city's status after a source's status changed.
+
+    **Every path that can change a source's status goes through this module**, so every
+    path that can change a city's status is covered — without a scheduler.
+
+    **The lazy import is deliberate.** `city_probation` imports this module at module
+    level, so a module-level import back would be a cycle. The repo's established
+    pattern is a lazy import inside the function (see `digest_preferences.set_home_city`).
+
+    **A failure here does not undo the pause.** The pause has already committed and the
+    registry's audit row says so; a probation that could not re-decide the city leaves
+    the city one step behind, which the next run repairs.
+
+    **The log carries no city name.** AD-13: a city is weak location data about a real
+    person, and the log sink is exactly the place it must not reach.
+    """
+    if source.city_ref_id is None:
+        return
+    from apps.ingestion.services.city_probation import _probate_city_status
+
+    try:
+        _probate_city_status(city_id=source.city_ref_id, actor=actor)
+    except Exception:
+        logger.warning("City probation failed after a source status change")
 
 
 def record_tos_review(*, actor: Actor, source_id: UUID, review: TosReviewInput) -> TosReview:

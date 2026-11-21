@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 import pytest
 from django.db import transaction
 
-from apps.ingestion.models import City, CityProvisioning, Source
+from apps.ingestion.models import City, CityProvisioning, IngestionAuditEntry, Source
 from apps.ingestion.services.city_provisioning import (
     ACTOR_LABEL,
     NO_TEMPLATE_COVERS_THIS_CITY,
@@ -37,7 +37,7 @@ from apps.ingestion.services.city_provisioning import (
     provision_city,
     provision_city_on_commit,
 )
-from apps.ingestion.services.source_registry import register_source
+from apps.ingestion.services.source_registry import pause_source, register_source
 from apps.personalization.services.digest_preferences import SOURCE_CHOICE
 from domain.city_catalog import WORLD_CITIES, lookup
 from domain.city_providers import SourceSpec
@@ -51,6 +51,9 @@ pytestmark = pytest.mark.django_db(databases=[CATALOG, PERSONAL])
 
 #: A fixed moment, so the pick's audit row reads the same every time.
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
+
+#: The actor the probation writes under — the one that pauses a source for zero yield.
+ACTOR = Actor.system("city_probation")
 
 
 @pytest.fixture(autouse=True)
@@ -663,6 +666,152 @@ class TestProvisioningIsIdempotent:
 
         assert second.provisioning_id == first.provisioning_id
         assert second.status == CityProvisioning.Status.NO_PROVIDERS
+
+
+class TestAYieldedNothingCityIsResumed:
+    """A re-pick resumes a city that yielded nothing — it does not duplicate it.
+
+    **`register_source` raises on a duplicate URL** and never updates an existing row, so
+    the lookup has to come first: `find_source_by_url` canonicalises the URL the same
+    way `register_source` does. A city whose sources were paused for zero yield already
+    has those sources, and registering them again would either raise or — worse — create
+    a second source that fetches the same feed and burns the reliability score twice.
+    """
+
+    def _yielded_nothing_city(self):
+        outcome = provision_city(city_name=CITY)
+        city = City.objects.using(CATALOG).get(pk=outcome.city_id)
+        row = CityProvisioning.objects.using(CATALOG).get(city=city)
+        row.status = CityProvisioning.Status.YIELDED_NOTHING
+        row.save(using=CATALOG, update_fields=["status"])
+        source = Source.objects.using(CATALOG).filter(city_ref=city).first()
+        pause_source(actor=ACTOR, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+        return city, row, source
+
+    def test_a_re_pick_puts_the_city_back_to_collecting(self):
+        city, row, _source = self._yielded_nothing_city()
+
+        provision_city(city_name=CITY)
+
+        row.refresh_from_db(using=CATALOG)
+        assert row.status == CityProvisioning.Status.COLLECTING
+
+    def test_a_re_pick_resumes_the_source_rather_than_registering_a_second_one(self):
+        _city, _row, source = self._yielded_nothing_city()
+        before = Source.objects.using(CATALOG).count()
+
+        provision_city(city_name=CITY)
+
+        assert Source.objects.using(CATALOG).count() == before
+        source.refresh_from_db(using=CATALOG)
+        assert source.status == Source.Status.ACTIVE
+
+    def test_a_resumed_source_starts_its_probation_afresh(self):
+        """Otherwise the next run would instantly re-pause it."""
+        _city, _row, source = self._yielded_nothing_city()
+        source.consecutive_zero_yield_runs = 3
+        source.save(using=CATALOG, update_fields=["consecutive_zero_yield_runs"])
+
+        provision_city(city_name=CITY)
+
+        source.refresh_from_db(using=CATALOG)
+        assert source.consecutive_zero_yield_runs == 0
+
+    def test_a_re_pick_backfills_the_city_ref(self):
+        """A source registered before the column existed has no link — and the probation
+        would never see it again, so the city would never yield nothing a second time."""
+        _city, _row, source = self._yielded_nothing_city()
+        source.city_ref = None
+        source.save(using=CATALOG, update_fields=["city_ref"])
+
+        provision_city(city_name=CITY)
+
+        source.refresh_from_db(using=CATALOG)
+        assert source.city_ref is not None
+
+    def test_a_re_pick_clears_the_error_code(self):
+        _city, row, _source = self._yielded_nothing_city()
+        row.last_error_code = "something_broke"
+        row.save(using=CATALOG, update_fields=["last_error_code"])
+
+        provision_city(city_name=CITY)
+
+        row.refresh_from_db(using=CATALOG)
+        assert row.last_error_code == ""
+
+    def test_a_re_pick_writes_a_resume_audit_row(self):
+        city, _row, _source = self._yielded_nothing_city()
+
+        provision_city(city_name=CITY)
+
+        audit = IngestionAuditEntry.objects.using(CATALOG).filter(action="city.resumed").get()
+        assert audit.details["city_id"] == str(city.id)
+        assert CITY not in str(audit.details)
+
+    def test_a_re_pick_registers_a_source_that_was_missing(self, monkeypatch):
+        """**A paused source is resumed; a missing source is registered.** The two are
+        different operations with different audit rows.
+
+        A source can go missing between the original provisioning and the resume — a
+        template that was added, or a source an operator deleted. The resume registers
+        it rather than leaving the city short of the providers it is supposed to have.
+        """
+        import apps.ingestion.services.city_provisioning as module
+        from domain.city_providers import SourceSpec
+
+        city, row, _source = self._yielded_nothing_city()
+        extra = SourceSpec(
+            name="A source that appeared later",
+            source_type="media",
+            url="https://example.test/later.ics",
+            acquisition_method="ics",
+            tz_coverage="none",
+        )
+        real_resolve = module.resolve
+
+        def resolve_with_extra(choice):
+            return (*real_resolve(choice), extra)
+
+        monkeypatch.setattr(module, "resolve", resolve_with_extra)
+
+        provision_city(city_name=CITY)
+
+        assert Source.objects.using(CATALOG).filter(url=extra.url).exists()
+        row.refresh_from_db(using=CATALOG)
+        assert row.source_count == Source.objects.using(CATALOG).filter(city_ref=city).count()
+
+    def test_the_resume_audit_row_counts_the_resumed_and_the_registered(self):
+        city, _row, _source = self._yielded_nothing_city()
+
+        provision_city(city_name=CITY)
+
+        audit = IngestionAuditEntry.objects.using(CATALOG).filter(action="city.resumed").get()
+        assert audit.details["resumed"] == 1
+        assert audit.details["registered"] == 0
+
+    def test_a_live_city_is_not_dragged_back_to_collecting(self):
+        """The other half of the rule: only `yielded_nothing` re-opens."""
+        outcome = provision_city(city_name=CITY)
+        row = CityProvisioning.objects.using(CATALOG).get(pk=outcome.provisioning_id)
+        row.status = CityProvisioning.Status.LIVE
+        row.save(using=CATALOG, update_fields=["status"])
+
+        provision_city(city_name=CITY)
+
+        row.refresh_from_db(using=CATALOG)
+        assert row.status == CityProvisioning.Status.LIVE
+
+    def test_a_paused_city_stays_paused(self):
+        """An editor's pause is not undone by a reader picking the city."""
+        outcome = provision_city(city_name=CITY)
+        row = CityProvisioning.objects.using(CATALOG).get(pk=outcome.provisioning_id)
+        row.status = CityProvisioning.Status.PAUSED
+        row.save(using=CATALOG, update_fields=["status"])
+
+        provision_city(city_name=CITY)
+
+        row.refresh_from_db(using=CATALOG)
+        assert row.status == CityProvisioning.Status.PAUSED
 
 
 class TestTwoCitiesNeverShareALock:

@@ -139,10 +139,11 @@ TABLE_OWNERS = {
     # it is written only by the ingestion recompute service.
     "ingestion_sourcereliabilityscore": "ingestion",
     # AD-16: `ingestion` owns the city provisioning record too
-    # (city-picker-and-auto-collection). It is written only by
-    # `services/city_provisioning.py`, and `personalization` reaches it through that
-    # service rather than through the model — the same division `ingestion_city` above
-    # already states.
+    # (city-picker-and-auto-collection). It is written only by the two services that
+    # own the record's lifecycle — `services/city_provisioning.py` (a reader's pick)
+    # and `services/city_probation.py` (what the collection actually produced) — and
+    # `personalization` reaches it through those services rather than through the
+    # model: the same division `ingestion_city` above already states.
     "ingestion_cityprovisioning": "ingestion",
     # AD-16: `delivery` owns the reminder plan. It is here because the check covers
     # every app that owns tables, not only the three this intent added to — a table

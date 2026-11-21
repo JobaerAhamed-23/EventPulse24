@@ -280,6 +280,8 @@ class SourceAdmin(CommandAdmin):
         "last_ingested_at",
         "last_attempted_at",
         "consecutive_failures",
+        "consecutive_zero_yield_runs",
+        "paused_reason",
         "last_error_code",
         "stale_since",
         "ingest_claimed_at",
@@ -361,7 +363,14 @@ class SourceAdmin(CommandAdmin):
     @admin.action(description="Pause selected sources", permissions=["change"])
     def pause_sources(self, request, queryset):
         for source_id in queryset.values_list("pk", flat=True):
-            pause_source(actor=self.actor(request), source_id=source_id)
+            # **The reason is explicit.** An editor pausing a source has decided something
+            # about the world, and the city says `paused` — not `yielded_nothing`, which
+            # is the probation's word.
+            pause_source(
+                actor=self.actor(request),
+                source_id=source_id,
+                reason=Source.PausedReason.MANUAL,
+            )
         self.message_user(request, "The selected sources are paused.")
 
     @admin.action(description="Resume selected sources", permissions=["change"])

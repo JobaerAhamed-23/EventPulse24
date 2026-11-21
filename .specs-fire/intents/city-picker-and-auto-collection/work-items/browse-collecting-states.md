@@ -4,8 +4,9 @@ title: The four honest states on Browse and the city page
 intent: city-picker-and-auto-collection
 complexity: medium
 mode: confirm
-status: pending
-depends_on: [city-provisioning-service]
+status: in_progress
+depends_on:
+  - city-provisioning-service
 created: 2026-11-20
 ---
 

@@ -657,6 +657,61 @@ def test_pause_source_unknown_id_not_found():
         pause_source(actor=STAFF, source_id=uuid7())
 
 
+# --- the pause reason -------------------------------------------------------------------------
+
+
+def test_a_pause_records_the_reason_on_the_row():
+    """**The reason is state, not history.** The city reads it to tell a hand-pause from
+    the probation's own pause, *right now* — and the audit log is only retained 24
+    months."""
+    source = _register()
+
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.MANUAL)
+
+    assert _reload(source).paused_reason == Source.PausedReason.MANUAL
+
+
+def test_the_pause_reason_is_not_in_the_audit_details():
+    """The audit's `details` stay exactly `{"from", "to"}` — FR-13's contract, and the
+    shape every other status change has."""
+    source = _register()
+
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+
+    assert _audit(source.id)[-1].details == {"from": "active", "to": "paused"}
+
+
+def test_a_pause_with_no_reason_records_none():
+    """An empty reason means "we do not know", and the city reads it as a hand-pause."""
+    source = _register()
+
+    pause_source(actor=STAFF, source_id=source.id)
+
+    assert _reload(source).paused_reason == ""
+
+
+def test_a_resume_clears_the_reason():
+    source = _register()
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+
+    resume_source(actor=STAFF, source_id=source.id)
+
+    assert _reload(source).paused_reason == ""
+
+
+def test_a_resume_clears_the_zero_yield_counter():
+    """Otherwise the next run would instantly re-pause the source, and the resume would
+    be a no-op in everything but name."""
+    source = _register()
+    source.consecutive_zero_yield_runs = 2
+    source.save(using=CATALOG, update_fields=["consecutive_zero_yield_runs"])
+    pause_source(actor=STAFF, source_id=source.id, reason=Source.PausedReason.ZERO_YIELD)
+
+    resume_source(actor=STAFF, source_id=source.id)
+
+    assert _reload(source).consecutive_zero_yield_runs == 0
+
+
 # --- record_tos_review -------------------------------------------------------------------------
 
 

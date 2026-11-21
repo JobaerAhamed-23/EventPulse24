@@ -53,12 +53,16 @@ from uuid import UUID
 from django.conf import settings
 from django.db import connections, transaction
 
-from apps.ingestion.models import CityProvisioning
+from apps.ingestion.models import CityProvisioning, Source
 from apps.ingestion.parsers import PARSERS
 from apps.ingestion.services.audit import write_audit
 from apps.ingestion.services.cities import resolve_city
 from apps.ingestion.services.provider_keys import PROVIDER_KEYS
-from apps.ingestion.services.source_registry import register_source
+from apps.ingestion.services.source_registry import (
+    find_source_by_url,
+    register_source,
+    resume_source,
+)
 from domain.city_catalog import CityChoice, lookup
 from domain.city_providers import SourceSpec, resolve
 from shared.actor import Actor
@@ -243,6 +247,16 @@ def _provision_choice(*, choice: CityChoice, actor: Actor) -> ProvisioningOutcom
         # re-read is what makes the second one a no-op rather than an exception.
         existing = CityProvisioning.objects.using(CATALOG).filter(city=city).first()
         if existing is not None:
+            if existing.status == CityProvisioning.Status.YIELDED_NOTHING:
+                # **A `yielded_nothing` city is re-provisioned, not duplicated.** Its
+                # sources exist and are paused; the right response is to resume them, not
+                # to register a second set.
+                #
+                # **Only `yielded_nothing` re-opens.** A `live` city stays `live` — it
+                # must not be dragged back to `collecting` by a reader who picks it again.
+                # A `paused` city stays `paused`: an editor's pause is not undone by a
+                # reader picking the city.
+                return _resume_choice(choice=choice, city=city, provisioning=existing, actor=actor)
             return ProvisioningOutcome(
                 city_id=city.id,
                 status=existing.status,
@@ -290,6 +304,11 @@ def _provision_choice(*, choice: CityChoice, actor: Actor) -> ProvisioningOutcom
                 # date-only event time with no registered venue to borrow a zone from.
                 city=choice.name,
                 city_tz=choice.tz,
+                # **The link to the city, resolved once and handed over.** The probation
+                # needs "every source for a city" to decide `yielded_nothing`, and a text
+                # join on a name would miss rows. This is the load-bearing link: without
+                # it the probation sees a city with no sources and leaves it alone.
+                city_ref=city,
             )
             registered += 1
 
@@ -306,6 +325,96 @@ def _provision_choice(*, choice: CityChoice, actor: Actor) -> ProvisioningOutcom
             source_count=registered,
             provisioning_id=row.id,
         )
+
+
+def _resume_choice(
+    *,
+    choice: CityChoice,
+    city,
+    provisioning: CityProvisioning,
+    actor: Actor,
+) -> ProvisioningOutcome:
+    """Re-provision a city that yielded nothing: resume its sources, register what is
+    missing, and put it back to `collecting`.
+
+    **Resume, do not duplicate.** `register_source` **raises**
+    `SourceAlreadyRegisteredError` when the URL is already registered — it never updates an
+    existing row. So the lookup comes first, via `find_source_by_url`, which canonicalises
+    the URL the same way `register_source` does. A city whose sources were paused for zero
+    yield already has those sources; registering them again would either raise or — worse,
+    if the URL check were loosened — create a second source that fetches the same feed and
+    burns the reliability score twice.
+
+    **A paused source is resumed; a missing source is registered.** The two are different
+    operations with different audit rows.
+
+    **The counter is reset.** A resumed source starts its probation afresh; the next run is
+    its first run, not its fourth. `resume_source` does this, so a hand-resume gets it too.
+
+    **The city goes back to `collecting`.** It has sources and they are due; "we are
+    collecting" is the truth. It is not `live` until it publishes.
+
+    **The `city_ref` is backfilled.** A source registered before the column existed has no
+    link, and the probation would never see it again — so the city would never become
+    `yielded_nothing` a second time.
+    """
+    specs = resolve(choice)
+    usable, _skipped = _registerable(specs)
+
+    resumed = 0
+    registered = 0
+    for spec in usable:
+        existing_source = find_source_by_url(spec.url)
+        if existing_source is None:
+            register_source(
+                actor=actor,
+                name=spec.name,
+                source_type=spec.source_type,
+                url=spec.url,
+                acquisition_method=spec.acquisition_method,
+                tz_coverage=spec.tz_coverage,
+                city=choice.name,
+                city_tz=choice.tz,
+                city_ref=city,
+            )
+            registered += 1
+            continue
+
+        if existing_source.status == Source.Status.PAUSED:
+            resume_source(actor=actor, source_id=existing_source.id)
+            resumed += 1
+        if existing_source.city_ref_id is None:
+            existing_source.city_ref = city
+            existing_source.save(using=CATALOG, update_fields=["city_ref", "updated_at"])
+
+    source_count = Source.objects.using(CATALOG).filter(city_ref=city).count()
+
+    provisioning.status = CityProvisioning.Status.COLLECTING
+    provisioning.source_count = source_count
+    provisioning.last_error_code = ""
+    provisioning.save(
+        using=CATALOG,
+        update_fields=["status", "source_count", "last_error_code", "updated_at"],
+    )
+    write_audit(
+        actor=actor,
+        action="city.resumed",
+        target_type="CityProvisioning",
+        target_id=provisioning.id,
+        details={
+            "city_id": str(city.id),
+            "status": provisioning.status,
+            "sources": source_count,
+            "resumed": resumed,
+            "registered": registered,
+        },
+    )
+    return ProvisioningOutcome(
+        city_id=city.id,
+        status=provisioning.status,
+        source_count=source_count,
+        provisioning_id=provisioning.id,
+    )
 
 
 def _write_row(
