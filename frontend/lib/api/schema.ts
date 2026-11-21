@@ -792,6 +792,8 @@ export interface paths {
          *
          *     The city is the user's **digest preference** city, not a parameter — one meaning of 'your city' across both surfaces, which is why the surface's 'Change city' link goes to account settings. A user who skipped onboarding has no city: the response says `city_missing` and carries no cards, and the client shows the same quiet empty state it shows for a city with nothing on.
          *
+         *     `city_collection_status` says how the automatic collection of this city is going — `collecting`, `live`, `no_providers`, `yielded_nothing`, `paused` or `failed`. It is empty when the user has no city and empty for a city that was never provisioned. **A city with no events is not one thing**, and this is the fact that tells them apart: a covered city that is simply quiet is `live`, a city we are still collecting is `collecting`, and a city whose sources gave nothing is `yielded_nothing`.
+         *
          *     The window is cut in the **user's** timezone, so an event at 11pm local on the seventh day is inside it and one at 1am the next morning is not.
          *
          *     `total` is how many events the user can page to, and `tier_2_starts_at` is where the second section begins — the server names the tiers so the rule cannot drift from the Digest's. `quota` reports the save allowance **without spending it**: it is a sign above the gate, not the gate.
@@ -2025,6 +2027,11 @@ export interface components {
             /** City */
             city: string;
             /**
+             * City Collection Status
+             * @default
+             */
+            city_collection_status: string;
+            /**
              * City Missing
              * @default false
              */
@@ -2399,8 +2406,20 @@ export interface components {
          *     is the number the threshold was decided on. `has_next` is measured against the
          *     **listing's** total instead — the two counts answer different questions, and a city
          *     between seasons has the first without the second.
+         *
+         *     **`city_collection_status` is a different question from `is_published`.** The
+         *     threshold asks whether the city has enough events on record to deserve a page; the
+         *     status asks whether our collection of it is working. **The threshold decides whether
+         *     the page shows a listing; the status only ever adds a sentence to the sparse
+         *     state**, and never removes the "coming soon" copy — which is true of the threshold
+         *     whatever the collection is doing.
          */
         CityPageOut: {
+            /**
+             * City Collection Status
+             * @default
+             */
+            city_collection_status: string;
             /** Country Code */
             country_code: string;
             /** Event Count */

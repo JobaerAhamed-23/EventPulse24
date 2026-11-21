@@ -1034,6 +1034,13 @@ def report_event_endpoint(request, body: EventReportIn):
         "has no city: the response says `city_missing` and carries no cards, and the "
         "client shows the same quiet empty state it shows for a city with nothing "
         "on.\n\n"
+        "`city_collection_status` says how the automatic collection of this city is "
+        "going — `collecting`, `live`, `no_providers`, `yielded_nothing`, `paused` or "
+        "`failed`. It is empty when the user has no city and empty for a city that was "
+        "never provisioned. **A city with no events is not one thing**, and this is the "
+        "fact that tells them apart: a covered city that is simply quiet is `live`, a "
+        "city we are still collecting is `collecting`, and a city whose sources gave "
+        "nothing is `yielded_nothing`.\n\n"
         "The window is cut in the **user's** timezone, so an event at 11pm local on "
         "the seventh day is inside it and one at 1am the next morning is not.\n\n"
         "`total` is how many events the user can page to, and `tier_2_starts_at` is "
@@ -1090,4 +1097,5 @@ def browse_endpoint(request, offset: int = 0, limit: int = BROWSE_PAGE_SIZE):
         ],
         has_more=page.has_more,
         city_missing=page.city_missing,
+        city_collection_status=page.city_collection_status,
     )

@@ -1,11 +1,12 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 /**
- * Browse's four non-populated states: the quiet empty state, the no-match empty state,
- * the error state and the loading skeleton.
+ * Browse's non-populated states: the quiet empty state, the no-match empty state, the
+ * collecting state, the no-sources state, the error state and the loading skeleton.
  *
- * **They are four different things and must not share a treatment.** `DESIGN.md` says
- * so about the product's empty states generally: `component.emptystate.quiet` is *an
+ * **They are different things and must not share a treatment.** `DESIGN.md` says so
+ * about the product's empty states generally: `component.emptystate.quiet` is *an
  * absence the system found*, a failure is a third thing, and telling a user their city
  * is empty because a request failed is a lie about the world.
  *
@@ -15,6 +16,12 @@ import Link from "next/link";
  * different places — one at the city's settings, one at the search box — and a reader
  * who was offered "Change city" for a query that simply matched nothing would be sent
  * to fix something that was not broken.
+ *
+ * **And a city with no events is not one thing either.** It can be **collecting** — we
+ * have registered sources and are waiting for the first events — or it can be **quiet**
+ * — covered, and simply nothing on tonight — or it can have **no sources** — we never
+ * found anything to collect from. Those are three different facts, and the third one
+ * has a way out the first two do not need.
  */
 
 /**
@@ -58,6 +65,108 @@ export function BrowseEmpty() {
       >
         Change city
       </Link>
+    </section>
+  );
+}
+
+/**
+ * The collecting state — the city is covered *in progress*.
+ *
+ * **"We're collecting events for {city} — check back soon."**
+ *
+ * **This is not the quiet state, and the difference is the whole point.** A city that
+ * is `collecting` has sources registered and nothing published yet; a city that is
+ * quiet has been covered for a long time and simply has nothing on tonight. Telling the
+ * first kind of reader that their city is empty is a lie — the city is not empty, our
+ * collection of it has not answered yet.
+ *
+ * **It is `role="status"` and `aria-live="polite"`, because the reader is waiting on
+ * it.** This is a state that is expected to change, and the screen reader user is the
+ * one who most needs to hear that it has.
+ *
+ * **The heading is the page's `<h1>`, and it names the reader's own city.** The state
+ * replaces the hero — the page renders one or the other, never both — so there is no
+ * hero h1 above it. **And it is the hero's own heading**: "Events in {city}" is what the
+ * page says when it has cards, and a collecting city is the same page with the events
+ * not yet arrived. The reader should not be told their city has no events by a heading
+ * that says they do.
+ */
+export function BrowseCollecting({ city }: { city: string }) {
+  return (
+    <section
+      role="status"
+      aria-live="polite"
+      aria-label={`Collecting events for ${city}`}
+      className="mt-8 rounded-card border border-dashed border-border-strong bg-surface-elevated px-8 py-16 text-center"
+      data-browse-collecting
+    >
+      <span
+        aria-hidden="true"
+        className="mb-6 inline-flex size-[56px] items-center justify-center rounded-full bg-surface-subtle text-2xl text-accent-terracotta"
+      >
+        ◌
+      </span>
+      <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">Events in {city}.</h1>
+      <p className="mx-auto mt-3 max-w-[460px] text-ink-secondary [font:var(--type-scale-body-sm)]">
+        We&apos;re collecting events for {city} — check back soon.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * The no-sources state — we have nothing to collect this city from.
+ *
+ * **"We couldn't find any event sources for {city}."**
+ *
+ * **This is a different answer from the quiet state, and it must not be folded into
+ * it.** The quiet state says *your city has nothing on*; this one says *we have no
+ * sources for your city*, which is a fact about *our* coverage rather than about the
+ * city's evening. A reader in this state has a way out — asking us to cover the city —
+ * and a reader in the quiet state does not need one.
+ *
+ * **The same line serves four statuses.** `no_providers` (no provider covers this
+ * city), `failed` (provisioning itself failed), `yielded_nothing` (every source gave
+ * nothing) and `paused` (somebody stopped it) are four different facts — but from the
+ * *reader's* side the honest sentence is the same: we have no sources here, so there
+ * are no events, and here is the way to ask for one. **The distinction is not lost** —
+ * it is in the payload, and it is what the editorial surface reads.
+ *
+ * **The heading is the page's `<h1>`.** Like the collecting state, it replaces the
+ * hero.
+ *
+ * **The coverage-request slot is where item 10's control goes.** The slot renders
+ * nothing until that control lands, so it offers the reader nothing it cannot do.
+ */
+export function BrowseNoSources({
+  city,
+  coverageRequest = null,
+}: {
+  city: string;
+  coverageRequest?: ReactNode;
+}) {
+  return (
+    <section
+      aria-label={`No event sources for ${city}`}
+      className="mt-8 rounded-card border border-dashed border-border-strong bg-surface-elevated px-8 py-16 text-center"
+      data-browse-no-sources
+    >
+      <span
+        aria-hidden="true"
+        className="mb-6 inline-flex size-[56px] items-center justify-center rounded-full bg-surface-subtle text-2xl text-accent-terracotta"
+      >
+        ◌
+      </span>
+      <h1 className="text-ink-primary [font:var(--type-scale-headline-lg)]">
+        We couldn&apos;t find any event sources for {city}.
+      </h1>
+      <p className="mx-auto mt-3 max-w-[460px] text-ink-secondary [font:var(--type-scale-body-sm)]">
+        We&apos;re not collecting events in {city} yet, so there is nothing to show. We list them as
+        soon as we find a source.
+      </p>
+      <div data-browse-coverage-request className="mt-6">
+        {coverageRequest}
+      </div>
     </section>
   );
 }

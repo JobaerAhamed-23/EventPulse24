@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 import { BrowseHero } from "@/components/browse/browse-hero";
 import { BrowseQuotaProvider } from "@/components/browse/browse-quota-provider";
 import { BrowseSearch } from "@/components/browse/browse-search";
-import { BrowseEmpty, BrowseError } from "@/components/browse/browse-states";
+import {
+  BrowseEmpty,
+  BrowseError,
+  BrowseCollecting,
+  BrowseNoSources,
+} from "@/components/browse/browse-states";
 import { AppShell } from "@/components/shell/app-shell";
 import { readBrowse } from "@/lib/browse-read";
 import { displayName } from "@/lib/display-name";
@@ -96,23 +101,129 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const noCity = browse.city_missing;
   const noCards = browse.cards.length === 0;
 
+  /*
+   **The four honest states.**
+   *
+   **A city with no events is not one thing.** It can be *collecting* — we registered
+   **sources and are waiting for the first events — or *quiet* — covered, and simply
+   **nothing on tonight — or it can have *no sources* — we never found anything to
+   **collect from. Those are three different facts, and the order of the branches below
+   **is the order they are checked in.
+   *
+   **The order is load-bearing.** `city_missing` comes first, because a user with no
+   **city has no collection to report and must not be told collection is under way.
+   **`collecting` comes next, because a collecting city has no cards *by definition* —
+   **it has not published anything yet — and must not fall through to the quiet state.
+   **That fall-through is the bug this state exists to fix.
+   */
+  const status = browse.city_collection_status;
+  const isCollecting = status === "collecting";
+  /*
+   **The no-sources family: four statuses, one honest sentence.**
+   *
+   **They are four different facts** — no provider covers the city
+   *(`no_providers`), provisioning itself failed (`failed`), every source gave nothing
+   *(`yielded_nothing`), or somebody stopped it (`paused`) — **and from the reader's
+   *side they are one sentence**: we have nothing to collect this city from, so there
+   *are no events, and here is the way to ask for one.
+   *
+   **The distinction is not lost — it is in the payload**, and it is what the editorial
+   *surface reads. The reader has no way to act on the difference between "we never
+   *tried" and "we tried and got nothing", and a sentence that pretended to would be
+   *inventing a distinction the reader cannot use.
+   */
+  const hasNoSources =
+    status === "no_providers" ||
+    status === "failed" ||
+    status === "yielded_nothing" ||
+    status === "paused";
+  /*
+   **A `live` city is the quiet state's city.**
+   *
+   **A covered city with nothing on tonight is not a special case — it is what a
+   *working collection looks like on a Tuesday.** So `live` needs no *treatment* of its
+   *own: the quiet state below is the answer for it, and the ordinary surface is the
+   *answer for it when it has cards.
+   *
+   **The comparison is written out anyway.** A reader of this file should be able to see
+   *that `live` is *handled* — by falling through — rather than infer it from its
+   *absence, and the vocabulary test holds the two surfaces to the same set of statuses
+   *they recognise. A status that is handled by omission is still a status the surface
+   *knows about.
+   *
+   **And a `live` city with no cards is the quiet state.** The condition is
+   **`noCards`** — a `live` city *with* cards has to reach the ordinary surface below,
+   *so `isLive` cannot be part of it. It is used below, to say what the ordinary
+   *surface is for.
+   */
+  const isLive = status === "live";
+
   return (
     <AppShell
-        name={displayName(session.user)}
-        email={session.user.email}
-        avatarUrl={session.user.avatar_url}
-      >
-      {noCity || noCards ? (
+      name={displayName(session.user)}
+      email={session.user.email}
+      avatarUrl={session.user.avatar_url}
+    >
+      {noCity ? (
         /*
-         **A user with no city gets the same quiet empty state as a city with nothing
-         on.** The surface shows one quiet state with "Change city" as the way out,
-         rather than guessing a city the user never chose — a city they never picked
-         would make "Change city" a correction of our guess instead of a setting of
-         their preference.
-        */
+         **A user with no city gets the quiet empty state.** The surface shows it with
+         * "Change city" as the way out, rather than guessing a city the user never
+         * chose — a city they never picked would make "Change city" a correction of
+         * our guess instead of a setting of their preference.
+         *
+         **It is not the collecting state.** A user with no city has no collection to
+         * report, and telling them we are collecting for them would be a claim about a
+         * city they do not have.
+         */
+        <BrowseEmpty />
+      ) : isCollecting ? (
+        /*
+         **The collecting state.** Our sources are registered and have not answered
+         * yet. **This replaces the hero**, so it carries the `<h1>` itself.
+         *
+         **It says "check back soon" and nothing more**, because that is the whole of
+         * what we know: we are collecting. A date we cannot keep is a lie, and so is a
+         * count we have not got.
+         */
+        <BrowseCollecting city={browse.city} />
+      ) : hasNoSources ? (
+        /*
+         **The no-sources state.** We have no sources for this city, so there are no
+         * events — and this is the one empty state with a way out: ask us to cover it.
+         *
+         **It is not the quiet state.** A covered city that is simply quiet must not be
+         * told its sources failed.
+         *
+         **The coverage-request slot is empty until the control lands.** It renders
+         * nothing, so it offers the reader nothing it cannot do.
+         */
+        <BrowseNoSources city={browse.city} />
+      ) : noCards ? (
+        /*
+         **The quiet state.** A covered city with nothing on tonight. The existing
+         * `BrowseEmpty`, unchanged — its copy is the honest answer for exactly this
+         * case, and a covered city must not be told its sources failed.
+         *
+         **This also covers a city that was never provisioned**
+         * (`city_collection_status` is empty). We have no events for it and we are not
+         * collecting for it yet, and the quiet state is the honest answer to that.
+         *
+         **A `live` city with no cards is here too** — that is what a working
+         *collection looks like on a Tuesday. `isLive` is named above so the status is
+         **recognised* in code and not merely handled by omission; the vocabulary test
+         *holds both surfaces to the same set.
+         */
         <BrowseEmpty />
       ) : (
         /*
+         **The ordinary surface — a city that has events.**
+         *
+         **A `live` city with cards lands here**, and so does any city that has cards
+         *and a status the frontend does not recognise. **The cards are the cards**: a
+         *listing we have is a listing we show, whatever our collection is doing, and
+         *degrading a city that has events because of a status the frontend has not
+         *learned about would throw away real events.
+         *
          **No frame of its own — the shell carries it.** Browse used to add `px-2` on
          top of `<main>`'s `px-6` to make a 32px frame. That was 8px more than every
          other authed surface, so a reader moving from Settings or the Timeline to
@@ -122,8 +233,12 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
          **The shell's frame is now responsive** (24/48/80px, from
          `--layout-page-padding-*`), so the thing Browse wanted — a wider frame on a
          wide screen — it now gets, along with everything else and on the same edge.
+         *
+         * **`isLive` is read here so the status is *recognised* in code**, not merely
+         * handled by omission — and the vocabulary test holds this surface and the city
+         * page's to the same set of statuses.
          */
-        <div>
+        <div data-browse-live={isLive ? "true" : "false"}>
           {/*
             **The live allowance, held for the whole surface.**
 

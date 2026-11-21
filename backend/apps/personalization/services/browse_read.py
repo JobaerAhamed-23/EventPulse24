@@ -42,6 +42,7 @@ from apps.ingestion.services.catalog_read import (
     PublicEventCandidate,
     list_public_candidates,
 )
+from apps.ingestion.services.city_status_read import read_city_collection_status
 from apps.personalization.models import DigestPreference, Interest, SavedEvent
 from apps.personalization.services.save_cap import SaveQuota, read_save_quota
 from apps.personalization.services.source_mutes import read_source_visibility
@@ -121,6 +122,16 @@ class BrowsePage:
     #: shows for a city with nothing on — with "Change city" as the way out — rather than an
     #: error, and rather than guessing a city the user never chose.
     city_missing: bool = False
+    #: How the collection of this city is going — `collecting`, `live`, `no_providers`,
+    #: `yielded_nothing`, `paused` or `failed`. **Empty when the user has no city, and
+    #: empty when the city was never provisioned.** Both are honest answers rather than
+    #: failures, and the surface reads them as the states they are.
+    #:
+    #: **It is read from the catalog, never denormalised onto the personal side.** The
+    #: provisioning status is the catalog's fact, owned and written by `ingestion` (AD-16);
+    #: a copy on `DigestPreference` would be a second writer of one fact, and it would go
+    #: stale the moment the probation moved the city to `live`.
+    city_collection_status: str = ""
 
 
 def _read_preference(user_id: UUID) -> DigestPreference | None:
@@ -277,6 +288,12 @@ def read_browse_page(
             city_missing=True,
         )
 
+    # **The collection status, read from the catalog.** A user with no city has no
+    # collection to report, and the flag above says so; the status is the catalog's
+    # sentence about *this* city's sources, and it is empty for a city we never
+    # provisioned — a real answer, not a missing one.
+    collection_status = read_city_collection_status(city=city)
+
     candidates = list_public_candidates(
         now=now,
         city=city,
@@ -399,6 +416,7 @@ def read_browse_page(
         quota=quota,
         cards=tuple(cards),
         has_more=offset + len(cards) < total,
+        city_collection_status=collection_status.status,
     )
 
 

@@ -1582,6 +1582,15 @@ class BrowseOut(Schema):
     #: True when the user has never set a city. The surface shows the quiet empty state
     #: with "Change city" rather than guessing one the user did not choose.
     city_missing: bool = False
+    #: How the collection of this city is going — `collecting`, `live`, `no_providers`,
+    #: `yielded_nothing`, `paused` or `failed`. **Empty when the user has no city, and
+    #: empty for a city we never provisioned.** Both are answers, not failures.
+    #:
+    #: **It is the ingestion model's own vocabulary, carried verbatim.** Restating it
+    #: here would be a second vocabulary that could drift from the model's — and a new
+    #: status added to the model would then reach the surface unhandled. The frontend
+    #: holds its set to the model's, in a test.
+    city_collection_status: str = ""
 
 
 #: The three states the source-mute control offers, as a closed set.

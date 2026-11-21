@@ -197,6 +197,13 @@ class CityPageOut(Schema):
     is the number the threshold was decided on. `has_next` is measured against the
     **listing's** total instead — the two counts answer different questions, and a city
     between seasons has the first without the second.
+
+    **`city_collection_status` is a different question from `is_published`.** The
+    threshold asks whether the city has enough events on record to deserve a page; the
+    status asks whether our collection of it is working. **The threshold decides whether
+    the page shows a listing; the status only ever adds a sentence to the sparse
+    state**, and never removes the "coming soon" copy — which is true of the threshold
+    whatever the collection is doing.
     """
 
     slug: str
@@ -209,6 +216,10 @@ class CityPageOut(Schema):
     page: int
     page_size: int
     has_next: bool
+    #: How the collection of this city is going — the `CityProvisioning.Status` value, or
+    #: `""` when the city was never provisioned. **A fact about a place, not about a
+    #: reader**, so it is cacheable with the rest of the response (AD-12).
+    city_collection_status: str = ""
 
     @classmethod
     def from_city_page(cls, page: CityPage) -> "CityPageOut":
@@ -224,6 +235,7 @@ class CityPageOut(Schema):
             page=page.page,
             page_size=page.page_size,
             has_next=page.has_next,
+            city_collection_status=page.city_collection_status,
         )
 
 
